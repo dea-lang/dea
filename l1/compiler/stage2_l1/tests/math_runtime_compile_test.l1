@@ -1,0 +1,95 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module math_runtime_compile_test;
+
+import std.assert;
+import std.io;
+import std.text;
+import std.vector;
+
+import l1c_lib;
+import support.driver_inputs;
+
+/**
+ * Return the fixture root used for math runtime child modules.
+ *
+ * @return Repo-local fixture directory.
+ */
+func mrt_fixture_root() -> string {
+    return "compiler/stage2_l1/tests/fixtures/math_runtime";
+}
+
+/**
+ * Compile and run one child fixture that must succeed.
+ *
+ * @param module_name Temporary module name.
+ * @param label Human-readable case label.
+ */
+func mrt_expect_run_success(module_name: string, label: string) {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--project-root");
+        sv_push(argv, mrt_fixture_root());
+        sv_push(argv, module_name);
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "expected successful run: " + label + "");
+    }
+
+    printl_ss("[PASS]", label);
+}
+
+/**
+ * Compile and run one child fixture that must fail at runtime.
+ *
+ * @param module_name Temporary module name.
+ * @param label Human-readable case label.
+ */
+func mrt_expect_runtime_failure(module_name: string, label: string) {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--project-root");
+        sv_push(argv, mrt_fixture_root());
+        sv_push(argv, module_name);
+
+        let rc = run_with_argv(argv);
+        assert(rc != 0, "expected runtime failure: " + label + "");
+    }
+
+    printl_ss("[PASS]", label);
+}
+
+/**
+ * Tests runtime-failure preconditions in child processes.
+ */
+func test_runtime_failures() {
+    printl_s("== Runtime failure fixtures ==");
+    mrt_expect_runtime_failure("math_emod_zero_divisor", "emod divisor precondition");
+    mrt_expect_runtime_failure("math_div_floor_zero_divisor", "div_floor divisor precondition");
+    mrt_expect_runtime_failure("math_div_ceil_unrepresentable", "div_ceil representability precondition");
+    mrt_expect_runtime_failure("math_align_up_zero_alignment", "align_up alignment precondition");
+    mrt_expect_runtime_failure("math_clamp_invalid_bounds", "clamp bound ordering precondition");
+    mrt_expect_runtime_failure("math_div_ui_zero_divisor", "div_ui divisor precondition");
+    mrt_expect_runtime_failure("math_emod_l_zero_divisor", "emod_l divisor precondition");
+    mrt_expect_runtime_failure("math_align_up_ul_zero_alignment", "align_up_ul alignment precondition");
+}
+
+/**
+ * Tests the L1-only wide integer std.integer fixture through the Stage 1 compiler.
+ */
+func test_l1_wide_integer_fixture() {
+    printl_s("== L1 wide integer fixture ==");
+    mrt_expect_run_success("wide_math_main", "uint/long/ulong std.integer helpers");
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    test_runtime_failures();
+    test_l1_wide_integer_fixture();
+    printl_s("math_runtime_compile_test: all tests passed");
+}

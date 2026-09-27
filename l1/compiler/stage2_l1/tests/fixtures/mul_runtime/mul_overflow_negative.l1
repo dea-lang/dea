@@ -1,0 +1,11 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module mul_overflow_negative;
+
+func main() -> int {
+    let value: int = -46341 * -46341;
+    return value;
+}

@@ -1,0 +1,16 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module alias_cycle_main;
+
+type A = B;
+type B = A;
+
+/**
+ * Main entry point for the module.
+ */
+func main() -> int {
+    return 0;
+}

@@ -1,0 +1,27 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_slice_escape_err;
+
+struct Holder {
+    items: int[];
+}
+
+enum Box {
+    Empty;
+    Full(payload: int[]);
+}
+
+let garr: int[3] = [1, 2, 3];
+let g: int[] = garr;
+
+func bad_ret() -> int[] {
+    let a: int[2] = [1, 2];
+    return a;
+}
+
+func main() -> int {
+    return 0;
+}

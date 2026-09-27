@@ -1,0 +1,156 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module mul_runtime_test;
+
+import std.assert;
+import std.io;
+import std.text;
+import std.vector;
+
+import l1c_lib;
+import support.driver_inputs;
+
+/**
+ * Return the fixture root used for overflow child modules.
+ *
+ * Fixtures live under a subdirectory so the top-level Stage 2 test runners do
+ * not discover them as standalone tests.
+ *
+ * @return Repo-local fixture directory.
+ */
+func mrt_overflow_fixture_root() -> string {
+    return "compiler/stage2_l1/tests/fixtures/mul_runtime";
+}
+
+/**
+ * Assert one valid multiplication case.
+ *
+ * @param label Human-readable case label.
+ * @param actual Computed product.
+ * @param expected Expected product.
+ */
+func mrt_expect_eq(label: string, actual: int, expected: int) {
+    assert(actual == expected, "multiplication mismatch: " + label);
+    printl_ss("[PASS]", label);
+}
+
+/**
+ * Compile and run one child fixture that must fail with multiplication overflow.
+ *
+ * @param module_name Temporary module name.
+ * @param label Human-readable case label.
+ */
+func mrt_expect_overflow(module_name: string, label: string) {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--project-root");
+        sv_push(argv, mrt_overflow_fixture_root());
+        sv_push(argv, module_name);
+
+        let rc = run_with_argv(argv);
+        assert(rc != 0, "expected runtime overflow failure: " + label);
+    }
+
+    printl_ss("[PASS]", label);
+}
+
+/**
+ * Tests multiplication cases involving zero.
+ */
+func test_zero_cases() {
+    printl_s("== Zero cases ==");
+    mrt_expect_eq("0 * 0", 0 * 0, 0);
+    mrt_expect_eq("0 * 1", 0 * 1, 0);
+    mrt_expect_eq("1 * 0", 1 * 0, 0);
+    mrt_expect_eq("0 * -1", 0 * -1, 0);
+    mrt_expect_eq("-1 * 0", -1 * 0, 0);
+    mrt_expect_eq("0 * INT32_MAX", 0 * 2147483647, 0);
+    mrt_expect_eq("INT32_MIN * 0", -2147483648 * 0, 0);
+}
+
+/**
+ * Tests multiplication of positive numbers.
+ */
+func test_positive_positive() {
+    printl_s("== Positive * positive ==");
+    mrt_expect_eq("1 * 1", 1 * 1, 1);
+    mrt_expect_eq("2 * 3", 2 * 3, 6);
+    mrt_expect_eq("1000 * 1000", 1000 * 1000, 1000000);
+    mrt_expect_eq("46340 * 46340", 46340 * 46340, 2147395600);
+}
+
+/**
+ * Tests multiplication of negative numbers.
+ */
+func test_negative_negative() {
+    printl_s("== Negative * negative ==");
+    mrt_expect_eq("-1 * -1", -1 * -1, 1);
+    mrt_expect_eq("-2 * -3", -2 * -3, 6);
+    mrt_expect_eq("-1000 * -1000", -1000 * -1000, 1000000);
+    mrt_expect_eq("-46340 * -46340", -46340 * -46340, 2147395600);
+}
+
+/**
+ * Tests multiplication with mixed signs.
+ */
+func test_mixed_signs() {
+    printl_s("== Mixed signs ==");
+    mrt_expect_eq("1 * -1", 1 * -1, -1);
+    mrt_expect_eq("-1 * 1", -1 * 1, -1);
+    mrt_expect_eq("2 * -3", 2 * -3, -6);
+    mrt_expect_eq("-3 * 2", -3 * 2, -6);
+    mrt_expect_eq("10 * -10", 10 * -10, -100);
+    mrt_expect_eq("-10 * 10", -10 * 10, -100);
+    mrt_expect_eq("46340 * -46340", 46340 * -46340, -2147395600);
+    mrt_expect_eq("-46340 * 46340", -46340 * 46340, -2147395600);
+}
+
+/**
+ * Tests edge cases around INT32 limits.
+ */
+func test_edge_cases() {
+    printl_s("== Edge cases ==");
+    mrt_expect_eq("INT32_MAX * 1", 2147483647 * 1, 2147483647);
+    mrt_expect_eq("1 * INT32_MAX", 1 * 2147483647, 2147483647);
+    mrt_expect_eq("INT32_MAX * -1", 2147483647 * -1, -2147483647);
+    mrt_expect_eq("-1 * INT32_MAX", -1 * 2147483647, -2147483647);
+    mrt_expect_eq("INT32_MIN * 1", -2147483648 * 1, -2147483648);
+    mrt_expect_eq("1 * INT32_MIN", 1 * -2147483648, -2147483648);
+}
+
+/**
+ * Tests positive overflow cases in child processes.
+ */
+func test_overflow_positive() {
+    printl_s("== Positive overflow cases ==");
+    mrt_expect_overflow("mul_overflow_positive", "46341 * 46341 should overflow");
+    mrt_expect_overflow("mul_overflow_max_times_two", "INT32_MAX * 2 should overflow");
+    mrt_expect_overflow("mul_overflow_large", "100000 * 100000 should overflow");
+}
+
+/**
+ * Tests negative and mixed-sign overflow cases in child processes.
+ */
+func test_overflow_negative() {
+    printl_s("== Negative overflow cases ==");
+    mrt_expect_overflow("mul_overflow_negative", "-46341 * -46341 should overflow");
+    mrt_expect_overflow("mul_underflow_mixed", "46341 * -46341 should overflow");
+    mrt_expect_overflow("mul_int32_min_times_minus_one", "INT32_MIN * -1 should overflow");
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    test_zero_cases();
+    test_positive_positive();
+    test_negative_negative();
+    test_mixed_signs();
+    test_edge_cases();
+    test_overflow_positive();
+    test_overflow_negative();
+    printl_s("mul_runtime_test: all tests passed");
+}

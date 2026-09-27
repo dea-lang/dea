@@ -1,0 +1,38 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module slice_trace_main;
+
+import std.string;
+
+func first_len(s: string[]) -> int {
+    return len_s(s[0]);
+}
+
+func make_strings() -> string[2] {
+    let arr: string[2] = [concat_s("r", "1"), concat_s("r", "2")];
+    return arr;
+}
+
+func main() -> int {
+    let arr: string[2] = [concat_s("a", "1"), concat_s("b", "2")];
+    let view: string[] = arr;
+    let part = slice(arr, 0, 1);
+    let transient: string[] = make_strings();
+    let transient_part = slice(make_strings(), 0, 1);
+    if (first_len(view) != 2) {
+        return 1;
+    }
+    if (len(part) != 1) {
+        return 2;
+    }
+    if (first_len(transient) != 2) {
+        return 3;
+    }
+    if (first_len(transient_part) != 2) {
+        return 4;
+    }
+    return 0;
+}

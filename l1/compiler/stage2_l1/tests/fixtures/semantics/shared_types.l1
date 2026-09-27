@@ -1,0 +1,48 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module shared_types;
+
+type IntAlias = int;
+
+/**
+ * Represents the Point structure.
+ */
+struct Point {
+    x: int;
+    y: int;
+}
+
+/**
+ * Defines the OptionInt enumeration.
+ */
+enum OptionInt {
+    None;
+    Some(value: int);
+}
+
+/**
+ * Constructs a Point.
+ *
+ * @param x The x coordinate.
+ * @param y The y coordinate.
+ * @return A `Point` with the provided coordinates.
+ */
+func make_point(x: int, y: int) -> Point {
+    return Point(x, y);
+}
+
+/**
+ * Constructs an OptionInt containing a value.
+ *
+ * @param v The payload to wrap.
+ * @return `Some(v)`.
+ */
+func make_some(v: int) -> OptionInt {
+    return Some(v);
+}
+
+let default_point = Point(1, 2);
+let default_count: IntAlias = 3;

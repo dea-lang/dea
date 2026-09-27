@@ -1,0 +1,14 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_string_relational_err;
+
+func err_string_int_lt(a: string, b: int) -> bool {
+    return a < b; // TYP-0170
+}
+
+func err_int_string_ge(a: int, b: string) -> bool {
+    return a >= b; // TYP-0170
+}

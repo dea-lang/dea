@@ -1,0 +1,107 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module util.path;
+
+import std.path;
+import std.string;
+
+/**
+ * Check whether a byte is a path separator.
+ *
+ * @param c Byte to inspect.
+ * @return `true` if `c` is `/` or `\\`.
+ */
+func up_is_sep(c: byte) -> bool {
+    return is_sep(c);
+}
+
+/**
+ * Check whether a path is absolute.
+ *
+ * @param path Path string to inspect.
+ * @return `true` for POSIX absolute paths and Windows drive-rooted paths.
+ */
+func up_is_absolute(path: string) -> bool {
+    return is_absolute(path);
+}
+
+/**
+ * Find the last path separator in a string.
+ *
+ * @param path Path string to inspect.
+ * @return Index of the last separator, or `-1` if none is present.
+ */
+func up_find_last_sep(path: string) -> int {
+    let n = len_s(path);
+    let last = -1;
+    for (let i = 0; i < n; i = i + 1) {
+        if (is_sep(char_at_s(path, i))) {
+            last = i;
+        }
+    }
+    return last;
+}
+
+/**
+ * Check whether a path has a parent component.
+ *
+ * @param path Path string to inspect.
+ * @return `true` if the path contains a separator.
+ */
+func up_has_parent(path: string) -> bool {
+    return has_parent(path);
+}
+
+/**
+ * Return the last component of a path.
+ *
+ * @param path Path string to inspect.
+ * @return Basename with trailing separators ignored.
+ */
+func up_basename(path: string) -> string {
+    return basename(path);
+}
+
+/**
+ * Return the parent directory of a path.
+ *
+ * @param path Path string to inspect.
+ * @return Parent directory, or `.` when the path has no parent.
+ */
+func up_parent(path: string) -> string {
+    return parent(path);
+}
+
+/**
+ * Check whether a path ends with `.l1`.
+ *
+ * @param path Path string to inspect.
+ * @return `true` if `path` has the `.l1` suffix.
+ */
+func up_is_l1_file(path: string) -> bool {
+    return has_extension(path, ".l1");
+}
+
+/**
+ * Return a path basename without the `.l1` suffix when present.
+ *
+ * @param path Path string to inspect.
+ * @return Basename stem.
+ */
+func up_stem(path: string) -> string {
+    return stem(path);
+}
+
+/**
+ * Join a root path and relative path with one separator.
+ *
+ * @param root Root directory path.
+ * @param rel Relative path to append.
+ * @return Combined path.
+ */
+func up_join(root: string, rel: string) -> string {
+    return join(root, rel);
+}

@@ -1,0 +1,15 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_nullable_assignment;
+
+func assign_non_nullable_into_nullable(x: int) -> int? {
+    let y: int? = x;
+    return y;
+}
+
+func assign_nullable_into_non_nullable(x: int?) {
+    let y: int = x; // TYP-0310
+}

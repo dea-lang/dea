@@ -3,8 +3,8 @@
 ## Port the L1 compiler to self-hosted Stage 2
 
 - Date: 2026-07-11
-- Last reviewed: 2026-09-07
-- Status: Draft
+- Last reviewed: 2026-09-27
+- Status: In progress
 - Title: Port the L1 compiler to self-hosted Stage 2
 - Kind: Feature
 - Scope: Shared
@@ -18,7 +18,7 @@
   through the first fixed point, and defer L1-native source divergence to separately reviewed follow-up work.
 - Target status:
   - L1 Stage 1 semantic and diagnostic oracle: Implemented
-  - L1 Stage 2 self-hosted compiler: Pending
+  - L1 Stage 2 self-hosted compiler: Implemented; local and Docker validation recorded; supported-host CI pending
 - Subsystem: Compiler bootstrap / Stage 2 port / parity validation
 - Modules:
   - `l1/compiler/stage1_l0/src/`
@@ -56,7 +56,75 @@ The two-stage architecture in [docs/decisions/0001-two-stage-architecture.md][tw
 authoritative. Stage 1 is the bootstrap entrypoint and behavioral oracle; Stage 2 is a port, not an independent language
 implementation.
 
-## Current State and Feasibility Evidence
+## Implementation Evidence (2026-09-27)
+
+- Native control: `/usr/bin/clang`, Apple Clang 17.0.0 on macOS Intel; the required `--no-default-config` probe passed.
+- The pre-port normal Stage 1 suite passed all 84 cases. The default Stage 1 trace sweep passed all 46 cases and both
+  declared child fixtures; environment, example, and tooling checks also passed.
+- All 120 production modules were ported with exact normalized source identity; the sole production text difference is
+  the Stage 2 identity string in `cli_args/help`.
+- The Stage 1-built Stage 2 native artifact reports its Stage 2 identity and checks and runs `hello`, producing all 25
+  greetings. Focused Stage 1/Stage 2 observable parity passed.
+- All 47 ported implementation tests pass Stage 1 semantic checking after two harness-only adaptations: filesystem
+  metadata unwraps use `long`, and the local name `opaque` is renamed `opaque_surface`. Existing L1 fixtures retain
+  their exact bytes; duplicate L0/L1 math fixtures collapse to their already-identical L1 versions.
+- The complete Stage 2 normal suite passed all 68 cases: 47 implementation tests and 21 compiler-facing Python tests.
+  All four examples pass explicit Stage 2 checking without warnings or errors.
+- All 18 changed shared integration tests passed again against Stage 1. Its unchanged production and trace coverage are
+  reused from the pre-port full validation; runtime build-configuration and compiler-environment regressions also pass.
+- Native normalization and builder tooling regressions passed fourteen focused tests, including pinned TinyCC runtime
+  object inputs. The runtime build-configuration regression now exercises space-bearing paths together with its existing
+  backslash-path case. Make preserves each runtime target and prerequisite as one path on supported Make versions.
+- The default Stage 2 trace sweep passed all 46 cases and both declared child fixtures, with zero leaked objects or
+  strings. This includes the compiler-library trace with more than 20 million events.
+- Environment validation passed for both stage selections, alias preservation across rebuilds, Bash/zsh stackability,
+  and custom build directories containing spaces.
+- Generations A, B, and C built successfully. Their inventories contain the same 137 retained C translation units,
+  comprising 118 reachable compiler modules, 18 bundled modules, and the wrapper; B and C match byte for byte.
+  `util.demangler` is covered by its ported implementation test; the other preserved module outside the entrypoint
+  closure, `util.path`, passes explicit Stage 1 and Stage 2 semantic checks. The normalized B/C native artifacts also
+  match under the established L0 policy. Compiler C passed all 68 normal cases, all four example checks, and the `hello`
+  execution smoke check. Successful bootstrap artifacts were removed automatically.
+- Linux Docker uses GCC 12.2.0 in the repo-owned Bookworm environment. All 84 Stage 1 normal cases are covered: the
+  initial run passed 83, then the Make help listing was corrected and its failed regression passed on rerun. The updated
+  runtime build-configuration regression also passed with space-containing paths.
+- The Linux Stage 2 normal run passed 67 cases and reported one 20-second ASan execution timeout in `vector_aliasing`.
+  Its unchanged focused rerun passed. An empty GCC ASan C program reproduced the same timeout, while all eight empty
+  non-PIE compatibility probes passed. Logs are retained under `l1/build/dea/stage2-validation-failures/`; no compiler
+  or sanitizer-test behavior was changed.
+- The remaining Linux `test-all` gates reused the completed compiler builds and normal-suite results. Environment
+  stackability, stage switching, alias preservation, all four examples, existing tooling checks, and all fourteen new
+  tooling regressions passed. Both 46-case default trace sweeps and both stages' two child fixtures passed with zero
+  leaked objects or strings.
+- Local validation is complete, with the Linux ASan environment exception recorded above. Supported-host CI evidence is
+  the remaining closure gate; no remote push or workflow dispatch is part of this local implementation.
+
+The initial snapshot deliberately retains blank-line trailing whitespace from Stage 1 in `parser/expr`, two
+implementation tests, and the named-argument typing fixtures. The ordinary staged whitespace check reports those
+inherited lines. Their bytes are verified against the source snapshot; the remaining staged diff must pass the ordinary
+check. A second check disables only blank-at-end-of-line reporting for those copied files. No production or fixture
+formatting change is folded into this port.
+
+## Current Branch Refresh (2026-09-27)
+
+This is the highest-priority L1 completion plan. The current source baseline has 120 production modules and 50,953
+lines, 47 L0 implementation tests, and 37 Python tests. The September 7 inventory below is historical evidence only. The
+source decomposition is complete; no new stdlib feature or L1-native compiler refactoring is a prerequisite.
+
+The port now requires both common filesystem/process support and native preparation support. Fingerprint symbols remain
+runtime-owned. Retained C is a directory of exact translation units, not one C file. Explicit `use-dev-stage1` and
+`use-dev-stage2` commands select the alias; build and test commands preserve the selected stage.
+
+Validation runs use supported toolchains with recorded executable/version evidence. `test` covers both normal stage
+suites and parity; `test-all` adds both default trace suites and independently selected child fixtures. `test-ci` adds
+strict triple bootstrap. Full local validation, Linux Docker validation, and supported-host CI evidence are closure
+gates. Remote CI dispatch and pushes are separate authorization boundaries, so this plan remains active while that
+evidence is pending. The existing ADR Impact record remains applicable; update ADR-0001's Related Plans when this plan
+closes.
+
+## Historical State and Feasibility Evidence (2026-09-07)
+
+The following records the pre-port state and does not describe the implemented September 27 snapshot.
 
 1. `l1/compiler/stage1_l0/` is the only committed L1 compiler implementation. Its production sources are written in L0
    and built by the upstream L0 Stage 2 compiler.
@@ -79,7 +147,7 @@ passes semantic checks and a native Clang build after the fingerprint bridge rep
 lifecycle, stage identity, artifact construction, test ownership, deterministic fixed-point validation, CI, and
 documentation. A runnable native feasibility compiler does not establish a current self-hosting fixed point.
 
-## Settled Stage 1 Source Baseline
+## Historical Stage 1 Source Baseline (2026-09-07)
 
 The 2026-09-07 decomposition establishes explicit canonical state/model imports and acyclic subsystem dependencies.
 `expr_types.expr` retains its recursive inference algorithm, while `backend.lower` retains the joint
@@ -147,7 +215,7 @@ The implementation adds the following repo-local development surface:
 - `make -C l1 triple-test`
 - `build/dea/bin/l1c-stage2`
 - `build/dea/bin/l1c-stage2.native`
-- optional `build/dea/bin/l1c-stage2.c` when retained C is requested
+- optional `build/dea/bin/l1c-stage2.native.dea-c/` when retained C is requested
 
 The Stage 2 CLI exposes the same modes, options, exit meanings, and environment behavior as Stage 1. Its fallback
 identity is:
@@ -190,9 +258,10 @@ This plan adds no install, distribution, release, or docs-publishing interface.
    behavior rather than introducing a parallel artifact layout.
 2. Make `build-stage2` depend on a current repo-local Stage 1 compiler and the L1 runtime archives.
 3. Invoke `l1c-stage1 --build -Rp compiler/stage2_l1/src -o <build>/bin/l1c-stage2.native l1c`, adding `--keep-c` when
-   requested. Compile `l1/compiler/stage1_l0/support/compiler_support.c` and pass its object through `--foreign-object`:
-   the runtime archive supplies both fingerprint bridge symbols, while common support supplies compiler-private
-   filesystem and process helpers. The Stage 1-only `support/interface_fingerprint.c` is excluded from the Stage 2 link.
+   requested. Compile `compiler_support.c` and `preparation_support.c` from `l1/compiler/stage1_l0/support/` and pass
+   their objects through `--foreign-object`: the runtime archive supplies both fingerprint bridge symbols, while common
+   support supplies compiler-private filesystem and process helpers. The Stage 1-only `support/interface_fingerprint.c`
+   is excluded from the Stage 2 link.
 4. Generate POSIX and Windows Stage 2 wrappers that set repo-relative `L1_HOME` and `L1_BUILD_DIR` consistently with
    Stage 1.
 5. Add stage-aware alias selection so `use-dev-stage2` points `l1c` at `l1c-stage2` and `use-dev-stage1` remains the
@@ -218,11 +287,13 @@ This plan adds no install, distribution, release, or docs-publishing interface.
 1. Build the first Stage 2 compiler through trusted Stage 1 with retained C enabled in an isolated build directory.
 2. Use the first Stage 2 compiler to build the second Stage 2 compiler from the committed Stage 2 source tree.
 3. Use the second Stage 2 compiler to build the third Stage 2 compiler from the same source tree.
-4. Compare second and third retained C byte-for-byte on every supported host compiler.
+4. Compare the complete relative file inventory and every byte of the second and third retained `.dea-c/` trees,
+   including `__dea_wrapper.c`, on every supported host compiler. Do not normalize C.
 5. Pin one host C compiler and append deterministic compiler/linker flags before native comparison.
 6. Compare normalized second and third native artifacts on stable toolchains. Keep the existing documented exceptions:
    retain the C comparison but skip native identity for `tcc` and for Windows PE output.
-7. Run `--version` and a normal example through the third compiler after identity checks succeed.
+7. Run the complete Stage 2 normal suite, example checks, `--version`, and a normal example through the third compiler
+   after identity checks succeed.
 8. Keep compact logs, hashes, sizes, and a short retained-C diff on failure. Clean successful artifacts unless the
    caller requests retention.
 
@@ -231,8 +302,9 @@ This plan adds no install, distribution, release, or docs-publishing interface.
 1. Add the new build, stage-selection, normal-test, trace-test, and triple-test targets to the L1 Makefile and help
    output.
 2. Make `check-examples` use Stage 2 directly and include Stage 1 plus Stage 2 validation in `test-all`.
-3. Extend the L1 CI matrix to build and test Stage 2 on the currently supported Linux, macOS, and Windows paths, with
-   slow trace coverage remaining opt-in.
+3. Make `test-ci` include `test-all` and `triple-test`; keep triple bootstrap outside local `test-all`. Extend the L1 CI
+   matrix to build and test Stage 2 on the currently supported Linux, macOS, and Windows paths, with slow trace coverage
+   remaining opt-in.
 4. Update [l1/docs/reference/architecture.md][architecture], [l1/docs/project-status.md][project-status],
    [l1/docs/roadmap.md][roadmap], the L1 README, and level-local contributor guidance to describe the implemented stage
    structure and commands.

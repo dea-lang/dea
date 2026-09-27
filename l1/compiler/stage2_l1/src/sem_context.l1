@@ -1,0 +1,409 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module sem_context;
+
+import std.hashmap;
+import std.text;
+import std.vector;
+import util.diag;
+
+import ast;
+import driver.state;
+import locals;
+import name_resolver.state;
+
+import types;
+
+/**
+ * Defines the VarRefResolution enumeration.
+ */
+enum VarRefResolution {
+    VAR_RES_LOCAL;
+    VAR_RES_MODULE;
+}
+
+/**
+ * Represents the AnalysisResult structure.
+ */
+struct AnalysisResult {
+    driver_state: DriverState*;
+    diags: DiagCollector*;
+    names: NameResolution*?;
+    signatures: SignatureTables*?;
+    locals_result: LocalsResult*?;
+    expr_types: StringPtrMap*;         // key (module::expr_id) -> Type*
+    var_ref_resolution: StringIntMap*; // key (module::expr_id) -> VarRefResolution
+    intrinsic_targets: StringPtrMap*;  // key (module::expr_id) -> Type*
+}
+
+/**
+ * Replace one owned type-map entry with a clone of `ty`.
+ *
+ * Analysis type maps own their values.  Centralizing replacement here keeps
+ * insert and overwrite paths symmetric: an existing value is freed exactly
+ * once, while the caller retains ownership of `ty`.
+ *
+ * @param map Owned `Type*` value map.
+ * @param key Entry key.
+ * @param ty Borrowed type to clone into the map.
+ */
+func analysis_owned_type_map_put(map: StringPtrMap*, key: string, ty: Type*) {
+    let replacement = type_clone(ty);
+    let old = spm_get(map, key);
+    if (old != null) {
+        type_free(old as Type*);
+    }
+    spm_put(map, key, replacement as void*);
+}
+
+/**
+ * Free an analysis result and all owned semantic tables.
+ *
+ * @param self Analysis result to free.
+ */
+func analysis_result_free(self: AnalysisResult*) {
+    if (self.locals_result != null) {
+        locals_free(self.locals_result as LocalsResult*);
+    }
+    if (self.signatures != null) {
+        sig_tables_free(self.signatures as SignatureTables*);
+    }
+    if (self.names != null) {
+        nr_free(self.names as NameResolution*);
+    }
+
+    for (let i = 0; i < spm_capacity(self.expr_types); i = i + 1) {
+        if (spm_slot_occupied(self.expr_types, i)) {
+            type_free(spm_slot_value(self.expr_types, i) as Type*);
+        }
+    }
+    spm_free(self.expr_types);
+
+    sim_free(self.var_ref_resolution);
+
+    for (let intrinsic_i = 0; intrinsic_i < spm_capacity(self.intrinsic_targets); intrinsic_i = intrinsic_i + 1) {
+        if (spm_slot_occupied(self.intrinsic_targets, intrinsic_i)) {
+            type_free(spm_slot_value(self.intrinsic_targets, intrinsic_i) as Type*);
+        }
+    }
+    spm_free(self.intrinsic_targets);
+
+    diag_free(self.diags);
+    driver_state_free(self.driver_state);
+    drop self;
+}
+
+/**
+ * Report whether analysis produced any errors.
+ *
+ * @param self Analysis result to inspect.
+ * @return `true` if the diagnostic collector contains an error.
+ */
+func analysis_has_errors(self: AnalysisResult*) -> bool {
+    return diag_has_errors(self.diags);
+}
+
+/**
+ * Return the number of diagnostics produced by analysis.
+ *
+ * @param self Analysis result to inspect.
+ * @return Total diagnostic count.
+ */
+func analysis_diag_count(self: AnalysisResult*) -> int {
+    return diag_count(self.diags);
+}
+
+/**
+ * Return a diagnostic from the analysis result.
+ *
+ * @param self Analysis result to inspect.
+ * @param index Zero-based diagnostic index.
+ * @return Diagnostic at `index`.
+ */
+func analysis_diag_get(self: AnalysisResult*, index: int) -> Diagnostic* {
+    return diag_get(self.diags, index);
+}
+
+/**
+ * Return source filenames captured during driver analysis.
+ *
+ * @param self Analysis result to inspect.
+ * @return Vector of source filenames.
+ */
+func analysis_source_names(self: AnalysisResult*) -> StringVector* {
+    return self.driver_state.source_names;
+}
+
+/**
+ * Return source texts captured during driver analysis.
+ *
+ * @param self Analysis result to inspect.
+ * @return Vector of source texts aligned with `analysis_source_names`.
+ */
+func analysis_source_texts(self: AnalysisResult*) -> StringVector* {
+    return self.driver_state.source_texts;
+}
+
+/**
+ * Return the name-resolution tables, if available.
+ *
+ * @param self Analysis result to inspect.
+ * @return Name-resolution result, or `null` if analysis stopped earlier.
+ */
+func analysis_name_resolution(self: AnalysisResult*) -> NameResolution*? {
+    return self.names;
+}
+
+/**
+ * Return the signature tables, if available.
+ *
+ * @param self Analysis result to inspect.
+ * @return Signature tables, or `null` if analysis stopped earlier.
+ */
+func analysis_signature_tables(self: AnalysisResult*) -> SignatureTables*? {
+    return self.signatures;
+}
+
+/**
+ * Return locals-resolution results, if available.
+ *
+ * @param self Analysis result to inspect.
+ * @return Locals result, or `null` if analysis stopped earlier.
+ */
+func analysis_locals(self: AnalysisResult*) -> LocalsResult*? {
+    return self.locals_result;
+}
+
+/**
+ * Report whether any type stored in one map uses builtin floating-point types.
+ *
+ * @param map Type map to inspect.
+ * @return `true` when any stored type mentions `float` or `double`.
+ */
+func analysis_type_map_uses_floating_point(map: StringPtrMap*) -> bool {
+    for (let i = 0; i < spm_capacity(map); i = i + 1) {
+        if (spm_slot_occupied(map, i) && type_contains_builtin_real(spm_slot_value(map, i) as Type*)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Report whether any stored struct field type uses builtin floating-point types.
+ *
+ * @param map Struct-info map to inspect.
+ * @return `true` when any stored field type mentions `float` or `double`.
+ */
+func analysis_struct_infos_use_floating_point(map: StringPtrMap*) -> bool {
+    for (let i = 0; i < spm_capacity(map); i = i + 1) {
+        if (!spm_slot_occupied(map, i)) {
+            continue;
+        }
+        let info = spm_slot_value(map, i) as StructInfo*;
+        for (let field_i = 0; field_i < vec_size(info.fields); field_i = field_i + 1) {
+            let field = ptr_vec_get(info.fields, field_i) as StructFieldInfo*;
+            if (type_contains_builtin_real(field.field_type)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * Report whether any stored enum payload type uses builtin floating-point types.
+ *
+ * @param map Enum-info map to inspect.
+ * @return `true` when any stored payload type mentions `float` or `double`.
+ */
+func analysis_enum_infos_use_floating_point(map: StringPtrMap*) -> bool {
+    for (let i = 0; i < spm_capacity(map); i = i + 1) {
+        if (!spm_slot_occupied(map, i)) {
+            continue;
+        }
+        let info = spm_slot_value(map, i) as EnumInfo*;
+        for (let variant_i = 0; variant_i < vec_size(info.variants); variant_i = variant_i + 1) {
+            let variant = ptr_vec_get(info.variants, variant_i) as EnumVariantInfo*;
+            for (let field_i = 0; field_i < vec_size(variant.field_types); field_i = field_i + 1) {
+                if (type_contains_builtin_real(ptr_vec_get(variant.field_types, field_i) as Type*)) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * Report whether an analyzed compilation unit uses the `sys.real` module.
+ *
+ * @param self Analysis result to inspect.
+ * @return `true` when `sys.real` is a loaded source unit or active interface.
+ */
+func analysis_uses_sys_real(self: AnalysisResult*) -> bool {
+    return driver_find_unit(self.driver_state, "sys.real") != null ||
+        driver_find_interface(self.driver_state, "sys.real") != null;
+}
+
+/**
+ * Report whether an analyzed compilation unit uses builtin floating-point support.
+ *
+ * @param self Analysis result to inspect.
+ * @return `true` when any resolved type or expression mentions `float` or `double`.
+ */
+func analysis_uses_floating_point(self: AnalysisResult*) -> bool {
+    if (self.signatures != null) {
+        let tables = self.signatures as SignatureTables*;
+        if (analysis_type_map_uses_floating_point(tables.func_types) ||
+            analysis_type_map_uses_floating_point(tables.let_types) ||
+            analysis_struct_infos_use_floating_point(tables.struct_infos) ||
+            analysis_enum_infos_use_floating_point(tables.enum_infos))
+        {
+            return true;
+        }
+    }
+    return analysis_type_map_uses_floating_point(self.expr_types) ||
+           analysis_type_map_uses_floating_point(self.intrinsic_targets);
+}
+
+/**
+ * Build the storage key used for per-expression analysis tables.
+ *
+ * @param module_name Owning module name.
+ * @param expr_id Expression id.
+ * @return Key in `module::id` form.
+ */
+func analysis_expr_key(module_name: string, expr_id: ExprId) -> string {
+    return module_name + "::" + int_to_string(expr_id);
+}
+
+/**
+ * Return a cloned resolved expression type when present.
+ *
+ * @param self Analysis result to inspect.
+ * @param module_name Owning module name.
+ * @param expr_id Expression id.
+ * @return Cloned expression type, or `null` when absent.
+ */
+func analysis_get_expr_type(self: AnalysisResult*, module_name: string, expr_id: ExprId) -> Type*? {
+    let value = spm_get(self.expr_types, analysis_expr_key(module_name, expr_id));
+    if (value == null) {
+        return null;
+    }
+    return type_clone(value as Type*);
+}
+
+/**
+ * Return a cloned intrinsic target type when present.
+ *
+ * @param self Analysis result to inspect.
+ * @param module_name Owning module name.
+ * @param expr_id Expression id.
+ * @return Cloned target type, or `null` when absent.
+ */
+func analysis_get_intrinsic_target(self: AnalysisResult*, module_name: string, expr_id: ExprId) -> Type*? {
+    let value = spm_get(self.intrinsic_targets, analysis_expr_key(module_name, expr_id));
+    if (value == null) {
+        return null;
+    }
+    return type_clone(value as Type*);
+}
+
+/**
+ * Return the stored variable-resolution kind when present.
+ *
+ * @param self Analysis result to inspect.
+ * @param module_name Owning module name.
+ * @param expr_id Expression id.
+ * @return Stored resolution kind as an `int`, or `null` when absent.
+ */
+func analysis_get_var_ref_resolution(self: AnalysisResult*, module_name: string, expr_id: ExprId) -> int? {
+    let value = sim_get(self.var_ref_resolution, analysis_expr_key(module_name, expr_id));
+    if (value == null) {
+        return null;
+    }
+    return value;
+}
+
+/**
+ * Report whether a type is directly ARC-managed.
+ *
+ * @param ty Type to inspect.
+ * @return `true` when `ty` is a `string`.
+ */
+func analysis_is_arc_type(ty: Type*) -> bool {
+    return type_is_builtin(ty, "string");
+}
+
+/**
+ * Report whether a type transitively contains ARC-managed data.
+ *
+ * @param self Analysis result providing resolved struct/enum metadata.
+ * @param ty Type to inspect.
+ * @return `true` when values of `ty` need ARC cleanup.
+ */
+func analysis_has_arc_data(self: AnalysisResult*, ty: Type*) -> bool {
+    if (analysis_is_arc_type(ty)) {
+        return true;
+    }
+
+    if (ord(ty.kind) == ord(TY_STRUCT)) {
+        if (self.signatures == null) {
+            return false;
+        }
+        let key = ty.module_name + "::" + ty.name;
+        let info_value = spm_get((self.signatures as SignatureTables*).struct_infos, key);
+        if (info_value == null) {
+            return false;
+        }
+
+        let info = info_value as StructInfo*;
+        for (let i = 0; i < vec_size(info.fields); i = i + 1) {
+            let field = ptr_vec_get(info.fields, i) as StructFieldInfo*;
+            if (analysis_has_arc_data(self, field.field_type)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    if (ord(ty.kind) == ord(TY_ENUM)) {
+        if (self.signatures == null) {
+            return false;
+        }
+        let key2 = ty.module_name + "::" + ty.name;
+        let info_value2 = spm_get((self.signatures as SignatureTables*).enum_infos, key2);
+        if (info_value2 == null) {
+            return false;
+        }
+
+        let info2 = info_value2 as EnumInfo*;
+        for (let i = 0; i < vec_size(info2.variants); i = i + 1) {
+            let variant = ptr_vec_get(info2.variants, i) as EnumVariantInfo*;
+            for (let j = 0; j < vec_size(variant.field_types); j = j + 1) {
+                if (analysis_has_arc_data(self, ptr_vec_get(variant.field_types, j) as Type*)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    if (ord(ty.kind) == ord(TY_NULLABLE)) {
+        let inner = ty.inner as Type*;
+        if (ord(inner.kind) == ord(TY_POINTER)) {
+            return false;
+        }
+        return analysis_has_arc_data(self, inner);
+    }
+
+    if (ord(ty.kind) == ord(TY_ARRAY)) {
+        return analysis_has_arc_data(self, ty.inner as Type*);
+    }
+
+    return false;
+}

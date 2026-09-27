@@ -1,0 +1,10 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module opaque_non_type_err;
+
+export opaque { value };
+
+let value: int = 1;

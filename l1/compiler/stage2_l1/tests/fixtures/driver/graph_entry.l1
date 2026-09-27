@@ -1,0 +1,14 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module graph_entry;
+
+import graph.provider;
+import graph.unused;
+import graph.provider;
+
+func main() -> int {
+    return 0;
+}

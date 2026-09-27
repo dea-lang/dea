@@ -1,0 +1,73 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module name_resolver;
+
+import std.hashmap;
+import std.hashset;
+import std.vector;
+import util.diag;
+import ast;
+import driver.state;
+import name_resolver.collect;
+import name_resolver.imports;
+import name_resolver.interface;
+import name_resolver.state;
+
+/**
+ * Build module environments and resolve opened imports.
+ *
+ * @param driver_state Parsed driver state.
+ * @param diags Diagnostic collector.
+ * @return Name-resolution result containing per-module environments.
+ */
+func nr_resolve(driver_state: DriverState*, diags: DiagCollector*) -> NameResolution* {
+    let result = new NameResolution(
+        ptr_vec_create(driver_unit_count(driver_state) + driver_interface_count(driver_state) + 1),
+        spm_create(),
+        ptr_vec_create(16),
+        ss_create()
+    );
+
+    for (let i = 0; i < driver_unit_count(driver_state); i = i + 1) {
+        let unit = driver_unit_get(driver_state, i);
+        if (unit.parse_result.root_module == null) {
+            continue;
+        }
+
+        let module_ptr = unit.parse_result.root_module as Module*;
+        let env = nr_make_env(module_ptr);
+        ptr_vec_push(result.envs, env as void*);
+        spm_put(result.by_name, env.module_name, env as void*);
+    }
+
+    for (let iface_i = 0; iface_i < driver_interface_count(driver_state); iface_i = iface_i + 1) {
+        let iface = driver_interface_get(driver_state, iface_i);
+        if (spm_get(result.by_name, iface.module_name) != null) {
+            continue;
+        }
+        let iface_env = nr_make_interface_env(iface, diags);
+        ptr_vec_push(result.envs, iface_env as void*);
+        spm_put(result.by_name, iface_env.module_name, iface_env as void*);
+    }
+
+    let dea_env = nr_make_dea_env();
+    ptr_vec_push(result.envs, dea_env as void*);
+    spm_put(result.by_name, dea_env.module_name, dea_env as void*);
+
+    for (let env_i = 0; env_i < vec_size(result.envs); env_i = env_i + 1) {
+        nr_collect_locals(ptr_vec_get(result.envs, env_i) as ModuleEnv*, diags);
+    }
+
+    for (let export_i = 0; export_i < vec_size(result.envs); export_i = export_i + 1) {
+        nr_compute_exports(ptr_vec_get(result.envs, export_i) as ModuleEnv*, diags);
+    }
+
+    for (let import_i = 0; import_i < vec_size(result.envs); import_i = import_i + 1) {
+        nr_open_imports(result, ptr_vec_get(result.envs, import_i) as ModuleEnv*, diags);
+    }
+
+    return result;
+}

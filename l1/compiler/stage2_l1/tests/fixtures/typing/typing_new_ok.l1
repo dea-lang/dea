@@ -1,0 +1,28 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_new_ok;
+
+struct Point {
+    x: int;
+    y: int;
+}
+
+enum Result {
+    Ok(value: int);
+    Err(code: int);
+}
+
+func exercise_new_forms() {
+    let zero_paren = new Point();
+    let zero_bare = new Point;
+    let full = new Point(1, 2);
+    let ok = new Ok(7);
+
+    drop zero_paren;
+    drop zero_bare;
+    drop full;
+    drop ok;
+}

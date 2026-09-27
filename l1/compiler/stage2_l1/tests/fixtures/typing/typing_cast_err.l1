@@ -1,0 +1,22 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_cast_err;
+
+func bad_int_to_int_ptr() -> int* {
+    return 1 as int*; // TYP-0230
+}
+
+func bad_int_to_void_ptr() -> void* {
+    return 1 as void*; // TYP-0230
+}
+
+func bad_null_to_int_ptr() -> int* {
+    return null as int*; // TYP-0230
+}
+
+func bad_null_to_void_ptr() -> void* {
+    return null as void*; // TYP-0230
+}

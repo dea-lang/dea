@@ -12,6 +12,7 @@ import json
 from functools import partial
 import os
 from pathlib import Path
+from support.compiler_subject import selected_native
 import shutil
 import re
 import subprocess
@@ -52,7 +53,7 @@ def toolchain_fixture(root: Path, env: dict[str, str]) -> Path:
     for relative in ("interfaces", "include"):
         shutil.copytree(stage1_compiler().parent.parent / relative, build / relative)
     native = fixture / "l1c.native"
-    shutil.copy2(stage1_compiler().parent / "l1c-stage1.native", native)
+    shutil.copy2(selected_native(stage1_compiler().parent / "l1c-stage1.native"), native)
     env.update(L1_HOME=str(home), L1_BUILD_DIR=str(build))
     return native
 

@@ -24,6 +24,10 @@ AR ?= ar
 L1_RUNTIME_CC ?= $(if $(strip $(L1_CC)),$(L1_CC),$(or $(shell if command -v clang >/dev/null 2>&1; then printf '%s' clang; elif command -v gcc >/dev/null 2>&1; then printf '%s' gcc; elif command -v cc >/dev/null 2>&1; then printf '%s' cc; fi),$(if $(filter-out undefined default,$(origin CC)),$(CC))))
 L1_TCC_OBJ_CC ?= $(or $(shell if command -v tcc >/dev/null 2>&1; then printf '%s' tcc; fi),$(if $(filter-out undefined default,$(origin TCC)),$(TCC)))
 L1_TCC_OBJ_CC_IS_EXPLICIT := $(if $(filter file,$(origin L1_TCC_OBJ_CC)),,yes)
+empty :=
+space := $(empty) $(empty)
+# Escape paths only in Make targets and prerequisites; recipes use quoted raw paths.
+make-path = $(subst $(space),\$(space),$(1))
 RUNTIME_ROOT := compiler/shared/runtime
 RUNTIME_BUILD_DIR := $(L1_BUILD_DIR)/runtime
 RUNTIME_TCC_BUILD_DIR := $(RUNTIME_BUILD_DIR)/tcc
@@ -33,14 +37,14 @@ RUNTIME_SOURCE_NAMES := dea_rt_panic.c dea_rt_sys.c dea_rt_math.c dea_rt_rand.c 
 RUNTIME_TRACED_SOURCE_NAMES := dea_rt_trace.c $(RUNTIME_SOURCE_NAMES)
 RUNTIME_SOURCES := $(addprefix $(RUNTIME_ROOT)/src/,$(RUNTIME_SOURCE_NAMES))
 RUNTIME_HEADERS := $(wildcard $(RUNTIME_ROOT)/include/*.h $(RUNTIME_ROOT)/internal/*.h)
-RUNTIME_DEFAULT_OBJS := $(patsubst %.c,$(RUNTIME_BUILD_DIR)/default/%.o,$(RUNTIME_SOURCE_NAMES))
-RUNTIME_TRACED_OBJS := $(patsubst %.c,$(RUNTIME_BUILD_DIR)/traced/%.o,$(RUNTIME_TRACED_SOURCE_NAMES))
-RUNTIME_UNCHECKED_OBJS := $(patsubst %.c,$(RUNTIME_BUILD_DIR)/unchecked/%.o,$(RUNTIME_SOURCE_NAMES))
-RUNTIME_CHECK_BASIC_OBJS := $(patsubst %.c,$(RUNTIME_BUILD_DIR)/check_basic/%.o,$(RUNTIME_SOURCE_NAMES))
-RUNTIME_TCC_DEFAULT_OBJS := $(patsubst %.c,$(RUNTIME_TCC_BUILD_DIR)/default/%.o,$(RUNTIME_SOURCE_NAMES))
-RUNTIME_TCC_TRACED_OBJS := $(patsubst %.c,$(RUNTIME_TCC_BUILD_DIR)/traced/%.o,$(RUNTIME_TRACED_SOURCE_NAMES))
-RUNTIME_TCC_UNCHECKED_OBJS := $(patsubst %.c,$(RUNTIME_TCC_BUILD_DIR)/unchecked/%.o,$(RUNTIME_SOURCE_NAMES))
-RUNTIME_TCC_CHECK_BASIC_OBJS := $(patsubst %.c,$(RUNTIME_TCC_BUILD_DIR)/check_basic/%.o,$(RUNTIME_SOURCE_NAMES))
+RUNTIME_DEFAULT_OBJS := $(patsubst %.c,$(call make-path,$(RUNTIME_BUILD_DIR))/default/%.o,$(RUNTIME_SOURCE_NAMES))
+RUNTIME_TRACED_OBJS := $(patsubst %.c,$(call make-path,$(RUNTIME_BUILD_DIR))/traced/%.o,$(RUNTIME_TRACED_SOURCE_NAMES))
+RUNTIME_UNCHECKED_OBJS := $(patsubst %.c,$(call make-path,$(RUNTIME_BUILD_DIR))/unchecked/%.o,$(RUNTIME_SOURCE_NAMES))
+RUNTIME_CHECK_BASIC_OBJS := $(patsubst %.c,$(call make-path,$(RUNTIME_BUILD_DIR))/check_basic/%.o,$(RUNTIME_SOURCE_NAMES))
+RUNTIME_TCC_DEFAULT_OBJS := $(patsubst %.c,$(call make-path,$(RUNTIME_TCC_BUILD_DIR))/default/%.o,$(RUNTIME_SOURCE_NAMES))
+RUNTIME_TCC_TRACED_OBJS := $(patsubst %.c,$(call make-path,$(RUNTIME_TCC_BUILD_DIR))/traced/%.o,$(RUNTIME_TRACED_SOURCE_NAMES))
+RUNTIME_TCC_UNCHECKED_OBJS := $(patsubst %.c,$(call make-path,$(RUNTIME_TCC_BUILD_DIR))/unchecked/%.o,$(RUNTIME_SOURCE_NAMES))
+RUNTIME_TCC_CHECK_BASIC_OBJS := $(patsubst %.c,$(call make-path,$(RUNTIME_TCC_BUILD_DIR))/check_basic/%.o,$(RUNTIME_SOURCE_NAMES))
 # Each object variant depends on a content-sensitive configuration stamp. The
 # stamp recipe runs on every make invocation but preserves its mtime when the
 # compiler/flags/mode content is identical, keeping incremental builds cheap.
@@ -56,7 +60,7 @@ RUNTIME_DEFAULT_LIB := $(RUNTIME_LIB_DIR)/libdea_rt.a
 RUNTIME_TRACED_LIB := $(RUNTIME_LIB_DIR)/libdea_rt_traced.a
 RUNTIME_UNCHECKED_LIB := $(RUNTIME_LIB_DIR)/libdea_rt_unchecked.a
 RUNTIME_CHECK_BASIC_LIB := $(RUNTIME_LIB_DIR)/libdea_rt_check_basic.a
-RUNTIME_PUBLIC_HEADERS := $(RUNTIME_INCLUDE_DIR)/dea_rt.h $(RUNTIME_INCLUDE_DIR)/l1_real.h
+RUNTIME_PUBLIC_HEADERS := $(call make-path,$(RUNTIME_INCLUDE_DIR))/dea_rt.h $(call make-path,$(RUNTIME_INCLUDE_DIR))/l1_real.h
 RUNTIME_CFLAGS ?= -O2 -std=c99
 RUNTIME_TUNING_CFLAGS := $(if $(strip $(L1_RT_QUARANTINE_MAX_BYTES)),-D_RT_QUARANTINE_MAX_BYTES=$(L1_RT_QUARANTINE_MAX_BYTES)) $(if $(strip $(L1_RT_QUARANTINE_MAX_COUNT)),-D_RT_QUARANTINE_MAX_COUNT=$(L1_RT_QUARANTINE_MAX_COUNT))
 RUNTIME_INCLUDE_FLAGS := -I$(RUNTIME_ROOT)/include -I$(RUNTIME_ROOT)/internal
@@ -73,7 +77,7 @@ help:
 		'  build-stage1       Build the L1 compiler, public headers, and verified bundled semantic interfaces.' \
 		'  use-dev-stage1     Build and switch the repo-local `l1c` alias to Stage 1.' \
 		'  test               Run the default L1 validation suite without the dedicated trace sweep.' \
-		'  test-ci            Run hosted-CI validation with the full normal and default trace checks.' \
+		'  test-ci            Run both stages, default traces, and strict triple bootstrap.' \
 		'  test-all           Run the full L1 validation suite, including parent and child trace checks.' \
 		'  test-docker        Run the full L1 validation suite under the repo-owned Linux container (POSIX reference path).' \
 		'  test-stage1        Run the L1 Stage 1 `.l0` implementation tests with the built repo-local compiler.' \
@@ -85,7 +89,7 @@ help:
 		'  test-stage1-trace-children' \
 		'                     Build, run, and analyze L1 child runtime fixtures independently; TESTS selects fixture names.' \
 		'  test-env           Validate stackable L0/L1 repo-local env script activation.' \
-		'  check-examples     Validate all `examples/*.l1` sources with the repo-local Stage 1 compiler; fail on warnings or errors.' \
+		'  check-examples     Validate all `examples/*.l1` sources with the repo-local Stage 2 compiler; fail on warnings or errors.' \
 		'  bench-runtime      Benchmark the checked runtime allocation tracker across C compilers and quarantine settings (informational; not part of `test-all`). Variables: `BENCH_CC="tcc clang gcc-16"`, `BENCH_SCALE=<n>`, `BENCH_RUNS=<n>`.' \
 		'  bench-link-provenance' \
 		'                     Benchmark standalone-link provenance validation across chain and DAG shapes (informational; not part of `test-all`). Variables: `BENCH_PROVENANCE_SHAPES=<csv>`, `BENCH_PROVENANCE_SIZES=<csv>`, `BENCH_PROVENANCE_WARMUPS=<n>`, `BENCH_PROVENANCE_RUNS=<n>`, `BENCH_PROVENANCE_JSON=<path>`, `BENCH_PROVENANCE_COMPARE=<path>`.' \
@@ -120,9 +124,9 @@ help:
 		'' \
 		'Generated L1 program variables:' \
 		'  L1_CC=<compiler>' \
-		'                     C compiler used by `l1c --build/--run`; also defaults `L1_RUNTIME_CC` when set.' \
+		'                     C compiler for Stage 2 construction and `l1c --build/--run`; also defaults `L1_RUNTIME_CC` when set.' \
 		'  L1_CFLAGS=<flags>' \
-		'                     C flags used by `l1c --build/--run` for generated L1 programs; does not configure the compiler binary.' \
+		'                     C flags used for generated L1 programs, including Stage 2 construction; Stage 1 uses the upstream construction flags above.' \
 		'' \
 		'Runtime archive variables:' \
 		'  L1_RUNTIME_CC=<compiler>' \
@@ -136,11 +140,11 @@ help:
 		'' \
 		'Test variables:' \
 		'  TESTS=""' \
-		'                     Optional Stage 1 test names for `test-stage1` and trace targets; forwarded by `make docker` when set.' \
+		'                     Optional test names for the selected stage and trace targets; forwarded by `make docker` when set.' \
 		'  L1_TEST_JOBS=<n>' \
 		'                     Optional normal-test parallelism override; forwarded by `make docker` when set.' \
 		'  L1_TRACE_TEST_JOBS=<n>' \
-		'                     Override parallelism for `test-stage1-trace*`; when unset, trace runs follow the normal default job policy.' \
+		'                     Override parallelism for either stage trace suite; when unset, trace runs follow the normal default job policy.' \
 		'  L1_TRACE_ARTIFACT_DIR=<dir>' \
 		'                     Optional trace artifact directory. Local trace runs write artifacts there; `make docker` bind-mounts the host directory and preserves artifacts across `docker run --rm`.' \
 		'' \
@@ -154,8 +158,16 @@ help:
 		'  DOCKER_L0_CC=<compiler>' \
 		'                     Legacy compatibility selector used when the canonical Docker compiler selector is unset.' \
 		'' \
+		'Stage 2 development targets:' \
+		'  build-stage2 / use-dev-stage2  Build or select the self-hosted compiler.' \
+		'  test-stage2 / test-stage2-trace  Normal and default trace suites.' \
+		'  test-stage2-trace-smoke / test-stage2-trace-all / test-stage2-trace-children' \
+		'  test-stage-parity   Compare Stage 1 and Stage 2 observable behavior.' \
+		'  triple-test        Strict retained-C/native fixed point and final compiler tests.' \
+		'  test-ci            Both full stage suites plus triple-test.' \
+		'' \
 		'Default local bootstrap flow:' \
-		'  1. `make use-dev-stage1`  # auto-prepares ../l0 Stage 2 if needed' \
+		'  1. `make use-dev-stage2`  # auto-prepares ../l0 Stage 2 if needed' \
 		'  2. `source build/dea/bin/l1-env.sh`' \
 		'  3. `l1c --help`'
 
@@ -176,34 +188,34 @@ _ensure-bootstrap-l0-stage2:
 		exit 1; \
 	fi
 
-$(RUNTIME_BUILD_DIR)/default:
+$(call make-path,$(RUNTIME_BUILD_DIR))/default:
 	@mkdir -p "$@"
 
-$(RUNTIME_BUILD_DIR)/traced:
+$(call make-path,$(RUNTIME_BUILD_DIR))/traced:
 	@mkdir -p "$@"
 
-$(RUNTIME_BUILD_DIR)/unchecked:
+$(call make-path,$(RUNTIME_BUILD_DIR))/unchecked:
 	@mkdir -p "$@"
 
-$(RUNTIME_BUILD_DIR)/check_basic:
+$(call make-path,$(RUNTIME_BUILD_DIR))/check_basic:
 	@mkdir -p "$@"
 
-$(RUNTIME_TCC_BUILD_DIR)/default:
+$(call make-path,$(RUNTIME_TCC_BUILD_DIR))/default:
 	@mkdir -p "$@"
 
-$(RUNTIME_TCC_BUILD_DIR)/traced:
+$(call make-path,$(RUNTIME_TCC_BUILD_DIR))/traced:
 	@mkdir -p "$@"
 
-$(RUNTIME_TCC_BUILD_DIR)/unchecked:
+$(call make-path,$(RUNTIME_TCC_BUILD_DIR))/unchecked:
 	@mkdir -p "$@"
 
-$(RUNTIME_TCC_BUILD_DIR)/check_basic:
+$(call make-path,$(RUNTIME_TCC_BUILD_DIR))/check_basic:
 	@mkdir -p "$@"
 
-$(RUNTIME_LIB_DIR):
+$(call make-path,$(RUNTIME_LIB_DIR)):
 	@mkdir -p "$@"
 
-$(RUNTIME_INCLUDE_DIR):
+$(call make-path,$(RUNTIME_INCLUDE_DIR)):
 	@mkdir -p "$@"
 
 FORCE:
@@ -224,70 +236,61 @@ define write-runtime-build-config
 	fi
 endef
 
-$(RUNTIME_DEFAULT_CONFIG): FORCE | $(RUNTIME_BUILD_DIR)/default
+$(call make-path,$(RUNTIME_DEFAULT_CONFIG)): FORCE | $(call make-path,$(RUNTIME_BUILD_DIR))/default
 	$(call write-runtime-build-config,$(L1_RUNTIME_CC),$(RUNTIME_TUNING_CFLAGS),default)
 
-$(RUNTIME_TRACED_CONFIG): FORCE | $(RUNTIME_BUILD_DIR)/traced
+$(call make-path,$(RUNTIME_TRACED_CONFIG)): FORCE | $(call make-path,$(RUNTIME_BUILD_DIR))/traced
 	$(call write-runtime-build-config,$(L1_RUNTIME_CC),$(RUNTIME_TUNING_CFLAGS),DEA_TRACE_ARC DEA_TRACE_MEMORY)
 
-$(RUNTIME_UNCHECKED_CONFIG): FORCE | $(RUNTIME_BUILD_DIR)/unchecked
+$(call make-path,$(RUNTIME_UNCHECKED_CONFIG)): FORCE | $(call make-path,$(RUNTIME_BUILD_DIR))/unchecked
 	$(call write-runtime-build-config,$(L1_RUNTIME_CC),,DEA_RT_UNCHECKED)
 
-$(RUNTIME_CHECK_BASIC_CONFIG): FORCE | $(RUNTIME_BUILD_DIR)/check_basic
+$(call make-path,$(RUNTIME_CHECK_BASIC_CONFIG)): FORCE | $(call make-path,$(RUNTIME_BUILD_DIR))/check_basic
 	$(call write-runtime-build-config,$(L1_RUNTIME_CC),$(RUNTIME_TUNING_CFLAGS),DEA_RT_CHECK_BASIC)
 
-$(RUNTIME_TCC_DEFAULT_CONFIG): FORCE | $(RUNTIME_TCC_BUILD_DIR)/default
+$(call make-path,$(RUNTIME_TCC_DEFAULT_CONFIG)): FORCE | $(call make-path,$(RUNTIME_TCC_BUILD_DIR))/default
 	$(call write-runtime-build-config,$(L1_TCC_OBJ_CC),$(RUNTIME_TUNING_CFLAGS),default)
 
-$(RUNTIME_TCC_TRACED_CONFIG): FORCE | $(RUNTIME_TCC_BUILD_DIR)/traced
+$(call make-path,$(RUNTIME_TCC_TRACED_CONFIG)): FORCE | $(call make-path,$(RUNTIME_TCC_BUILD_DIR))/traced
 	$(call write-runtime-build-config,$(L1_TCC_OBJ_CC),$(RUNTIME_TUNING_CFLAGS),DEA_TRACE_ARC DEA_TRACE_MEMORY)
 
-$(RUNTIME_TCC_UNCHECKED_CONFIG): FORCE | $(RUNTIME_TCC_BUILD_DIR)/unchecked
+$(call make-path,$(RUNTIME_TCC_UNCHECKED_CONFIG)): FORCE | $(call make-path,$(RUNTIME_TCC_BUILD_DIR))/unchecked
 	$(call write-runtime-build-config,$(L1_TCC_OBJ_CC),,DEA_RT_UNCHECKED)
 
-$(RUNTIME_TCC_CHECK_BASIC_CONFIG): FORCE | $(RUNTIME_TCC_BUILD_DIR)/check_basic
+$(call make-path,$(RUNTIME_TCC_CHECK_BASIC_CONFIG)): FORCE | $(call make-path,$(RUNTIME_TCC_BUILD_DIR))/check_basic
 	$(call write-runtime-build-config,$(L1_TCC_OBJ_CC),$(RUNTIME_TUNING_CFLAGS),DEA_RT_CHECK_BASIC)
 
-$(RUNTIME_BUILD_DIR)/default/%.o: $(RUNTIME_ROOT)/src/%.c $(RUNTIME_HEADERS) $(RUNTIME_DEFAULT_CONFIG) | $(RUNTIME_BUILD_DIR)/default
-	"$(L1_RUNTIME_CC)" $(RUNTIME_CFLAGS) $(RUNTIME_TUNING_CFLAGS) $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
+# Explicit object rules preserve space-bearing roots on supported Make versions.
+define runtime-object-rule
+$(call make-path,$(1)/$(2)/$(3:.c=.o)): $(RUNTIME_ROOT)/src/$(3) $(RUNTIME_HEADERS) $(call make-path,$(6)) | $(call make-path,$(1)/$(2))
+	"$(4)" $(RUNTIME_CFLAGS) $(5) $(RUNTIME_INCLUDE_FLAGS) -c "$$<" -o "$$@"
+endef
 
-$(RUNTIME_BUILD_DIR)/traced/%.o: $(RUNTIME_ROOT)/src/%.c $(RUNTIME_HEADERS) $(RUNTIME_TRACED_CONFIG) | $(RUNTIME_BUILD_DIR)/traced
-	"$(L1_RUNTIME_CC)" $(RUNTIME_CFLAGS) $(RUNTIME_TUNING_CFLAGS) -DDEA_TRACE_ARC -DDEA_TRACE_MEMORY $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
+$(foreach source,$(RUNTIME_SOURCE_NAMES),$(eval $(call runtime-object-rule,$(RUNTIME_BUILD_DIR),default,$(source),$(L1_RUNTIME_CC),$(RUNTIME_TUNING_CFLAGS),$(RUNTIME_DEFAULT_CONFIG))))
+$(foreach source,$(RUNTIME_TRACED_SOURCE_NAMES),$(eval $(call runtime-object-rule,$(RUNTIME_BUILD_DIR),traced,$(source),$(L1_RUNTIME_CC),$(RUNTIME_TUNING_CFLAGS) -DDEA_TRACE_ARC -DDEA_TRACE_MEMORY,$(RUNTIME_TRACED_CONFIG))))
+$(foreach source,$(RUNTIME_SOURCE_NAMES),$(eval $(call runtime-object-rule,$(RUNTIME_BUILD_DIR),unchecked,$(source),$(L1_RUNTIME_CC),-DDEA_RT_UNCHECKED,$(RUNTIME_UNCHECKED_CONFIG))))
+$(foreach source,$(RUNTIME_SOURCE_NAMES),$(eval $(call runtime-object-rule,$(RUNTIME_BUILD_DIR),check_basic,$(source),$(L1_RUNTIME_CC),$(RUNTIME_TUNING_CFLAGS) -DDEA_RT_CHECK_BASIC,$(RUNTIME_CHECK_BASIC_CONFIG))))
+$(foreach source,$(RUNTIME_SOURCE_NAMES),$(eval $(call runtime-object-rule,$(RUNTIME_TCC_BUILD_DIR),default,$(source),$(L1_TCC_OBJ_CC),$(RUNTIME_TUNING_CFLAGS),$(RUNTIME_TCC_DEFAULT_CONFIG))))
+$(foreach source,$(RUNTIME_TRACED_SOURCE_NAMES),$(eval $(call runtime-object-rule,$(RUNTIME_TCC_BUILD_DIR),traced,$(source),$(L1_TCC_OBJ_CC),$(RUNTIME_TUNING_CFLAGS) -DDEA_TRACE_ARC -DDEA_TRACE_MEMORY,$(RUNTIME_TCC_TRACED_CONFIG))))
+$(foreach source,$(RUNTIME_SOURCE_NAMES),$(eval $(call runtime-object-rule,$(RUNTIME_TCC_BUILD_DIR),unchecked,$(source),$(L1_TCC_OBJ_CC),-DDEA_RT_UNCHECKED,$(RUNTIME_TCC_UNCHECKED_CONFIG))))
+$(foreach source,$(RUNTIME_SOURCE_NAMES),$(eval $(call runtime-object-rule,$(RUNTIME_TCC_BUILD_DIR),check_basic,$(source),$(L1_TCC_OBJ_CC),$(RUNTIME_TUNING_CFLAGS) -DDEA_RT_CHECK_BASIC,$(RUNTIME_TCC_CHECK_BASIC_CONFIG))))
 
-$(RUNTIME_BUILD_DIR)/unchecked/%.o: $(RUNTIME_ROOT)/src/%.c $(RUNTIME_HEADERS) $(RUNTIME_UNCHECKED_CONFIG) | $(RUNTIME_BUILD_DIR)/unchecked
-	"$(L1_RUNTIME_CC)" $(RUNTIME_CFLAGS) -DDEA_RT_UNCHECKED $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
+$(call make-path,$(RUNTIME_DEFAULT_LIB)): $(RUNTIME_DEFAULT_OBJS) | $(call make-path,$(RUNTIME_LIB_DIR))
+	$(AR) rcs "$@" $(foreach source,$(RUNTIME_SOURCE_NAMES),"$(RUNTIME_BUILD_DIR)/default/$(source:.c=.o)")
 
-$(RUNTIME_BUILD_DIR)/check_basic/%.o: $(RUNTIME_ROOT)/src/%.c $(RUNTIME_HEADERS) $(RUNTIME_CHECK_BASIC_CONFIG) | $(RUNTIME_BUILD_DIR)/check_basic
-	"$(L1_RUNTIME_CC)" $(RUNTIME_CFLAGS) $(RUNTIME_TUNING_CFLAGS) -DDEA_RT_CHECK_BASIC $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
+$(call make-path,$(RUNTIME_TRACED_LIB)): $(RUNTIME_TRACED_OBJS) | $(call make-path,$(RUNTIME_LIB_DIR))
+	$(AR) rcs "$@" $(foreach source,$(RUNTIME_TRACED_SOURCE_NAMES),"$(RUNTIME_BUILD_DIR)/traced/$(source:.c=.o)")
 
-$(RUNTIME_TCC_BUILD_DIR)/default/%.o: $(RUNTIME_ROOT)/src/%.c $(RUNTIME_HEADERS) $(RUNTIME_TCC_DEFAULT_CONFIG) | $(RUNTIME_TCC_BUILD_DIR)/default
-	"$(L1_TCC_OBJ_CC)" $(RUNTIME_CFLAGS) $(RUNTIME_TUNING_CFLAGS) $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
+$(call make-path,$(RUNTIME_UNCHECKED_LIB)): $(RUNTIME_UNCHECKED_OBJS) | $(call make-path,$(RUNTIME_LIB_DIR))
+	$(AR) rcs "$@" $(foreach source,$(RUNTIME_SOURCE_NAMES),"$(RUNTIME_BUILD_DIR)/unchecked/$(source:.c=.o)")
 
-$(RUNTIME_TCC_BUILD_DIR)/traced/%.o: $(RUNTIME_ROOT)/src/%.c $(RUNTIME_HEADERS) $(RUNTIME_TCC_TRACED_CONFIG) | $(RUNTIME_TCC_BUILD_DIR)/traced
-	"$(L1_TCC_OBJ_CC)" $(RUNTIME_CFLAGS) $(RUNTIME_TUNING_CFLAGS) -DDEA_TRACE_ARC -DDEA_TRACE_MEMORY $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
+$(call make-path,$(RUNTIME_CHECK_BASIC_LIB)): $(RUNTIME_CHECK_BASIC_OBJS) | $(call make-path,$(RUNTIME_LIB_DIR))
+	$(AR) rcs "$@" $(foreach source,$(RUNTIME_SOURCE_NAMES),"$(RUNTIME_BUILD_DIR)/check_basic/$(source:.c=.o)")
 
-$(RUNTIME_TCC_BUILD_DIR)/unchecked/%.o: $(RUNTIME_ROOT)/src/%.c $(RUNTIME_HEADERS) $(RUNTIME_TCC_UNCHECKED_CONFIG) | $(RUNTIME_TCC_BUILD_DIR)/unchecked
-	"$(L1_TCC_OBJ_CC)" $(RUNTIME_CFLAGS) -DDEA_RT_UNCHECKED $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
-
-$(RUNTIME_TCC_BUILD_DIR)/check_basic/%.o: $(RUNTIME_ROOT)/src/%.c $(RUNTIME_HEADERS) $(RUNTIME_TCC_CHECK_BASIC_CONFIG) | $(RUNTIME_TCC_BUILD_DIR)/check_basic
-	"$(L1_TCC_OBJ_CC)" $(RUNTIME_CFLAGS) $(RUNTIME_TUNING_CFLAGS) -DDEA_RT_CHECK_BASIC $(RUNTIME_INCLUDE_FLAGS) -c "$<" -o "$@"
-
-$(RUNTIME_DEFAULT_LIB): $(RUNTIME_DEFAULT_OBJS) | $(RUNTIME_LIB_DIR)
-	$(AR) rcs "$@" $(foreach obj,$(RUNTIME_DEFAULT_OBJS),"$(obj)")
-
-$(RUNTIME_TRACED_LIB): $(RUNTIME_TRACED_OBJS) | $(RUNTIME_LIB_DIR)
-	$(AR) rcs "$@" $(foreach obj,$(RUNTIME_TRACED_OBJS),"$(obj)")
-
-$(RUNTIME_UNCHECKED_LIB): $(RUNTIME_UNCHECKED_OBJS) | $(RUNTIME_LIB_DIR)
-	$(AR) rcs "$@" $(foreach obj,$(RUNTIME_UNCHECKED_OBJS),"$(obj)")
-
-$(RUNTIME_CHECK_BASIC_LIB): $(RUNTIME_CHECK_BASIC_OBJS) | $(RUNTIME_LIB_DIR)
-	$(AR) rcs "$@" $(foreach obj,$(RUNTIME_CHECK_BASIC_OBJS),"$(obj)")
-
-$(RUNTIME_INCLUDE_DIR)/dea_rt.h: $(RUNTIME_ROOT)/include/dea_rt.h | $(RUNTIME_INCLUDE_DIR)
+$(call make-path,$(RUNTIME_INCLUDE_DIR))/dea_rt.h: $(RUNTIME_ROOT)/include/dea_rt.h | $(call make-path,$(RUNTIME_INCLUDE_DIR))
 	cp "$<" "$@"
 
-$(RUNTIME_INCLUDE_DIR)/l1_real.h: $(RUNTIME_ROOT)/include/l1_real.h | $(RUNTIME_INCLUDE_DIR)
+$(call make-path,$(RUNTIME_INCLUDE_DIR))/l1_real.h: $(RUNTIME_ROOT)/include/l1_real.h | $(call make-path,$(RUNTIME_INCLUDE_DIR))
 	cp "$<" "$@"
 
 ifeq ($(strip $(L1_TCC_OBJ_CC)),)
@@ -299,7 +302,7 @@ else
 runtime-tcc-objects: $(RUNTIME_TCC_DEFAULT_OBJS) $(RUNTIME_TCC_TRACED_OBJS) $(RUNTIME_TCC_UNCHECKED_OBJS) $(RUNTIME_TCC_CHECK_BASIC_OBJS)
 endif
 
-runtime: $(RUNTIME_DEFAULT_LIB) $(RUNTIME_TRACED_LIB) $(RUNTIME_UNCHECKED_LIB) $(RUNTIME_CHECK_BASIC_LIB) $(RUNTIME_PUBLIC_HEADERS) runtime-tcc-objects
+runtime: $(call make-path,$(RUNTIME_DEFAULT_LIB)) $(call make-path,$(RUNTIME_TRACED_LIB)) $(call make-path,$(RUNTIME_UNCHECKED_LIB)) $(call make-path,$(RUNTIME_CHECK_BASIC_LIB)) $(RUNTIME_PUBLIC_HEADERS) runtime-tcc-objects
 
 bench-runtime:
 	$(PYTHON) ./scripts/bench_runtime.py $(if $(strip $(BENCH_CC)),--cc "$(BENCH_CC)") $(if $(strip $(BENCH_SCALE)),--scale "$(BENCH_SCALE)") $(if $(strip $(BENCH_RUNS)),--runs "$(BENCH_RUNS)")
@@ -325,6 +328,11 @@ build-stage1: venv $(RUNTIME_PUBLIC_HEADERS) _ensure-bootstrap-l0-stage2
 	@"$(L1_BUILD_DIR)/bin/l1c-stage1" --version
 
 use-dev-stage1: build-stage1
+
+use-dev-stage2: build-stage2
+
+use-dev-stage1 use-dev-stage2:
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(PYTHON)" scripts/select_stage.py $(if $(filter use-dev-stage2,$@),2,1)
 	@printf '\n------------------------------------------------------------------------------\n'
 ifeq ($(OS),Windows_NT)
 	@cmd_env_path="$$(cygpath -w "$$(realpath "$(L1_BUILD_DIR)/bin/l1-env.cmd")")"; \
@@ -379,7 +387,7 @@ _print-test-compiler-env:
 	print_cc_role L0_CC "$$(configured_cc L0_CC)" "$$l0_cc" \
 		'L0 compiler used by the upstream l0c-stage2 for .l0 test harnesses'; \
 	print_cc_role L1_CC "$$(configured_cc L1_CC)" "$$l1_cc" \
-		'C compiler used by l1c --build/--run for L1 fixture snippets'; \
+		'C compiler for Stage 2 construction, .l1 implementation tests, and L1 fixture snippets'; \
 	print_cc_role L1_RUNTIME_CC "$$(configured_cc L1_RUNTIME_CC)" "$(L1_RUNTIME_CC)" \
 		'C compiler used for repo-local L1 runtime archives'
 
@@ -401,17 +409,52 @@ test-stage1-trace-children: venv build-stage1 runtime _print-test-compiler-env
 test-env: venv
 	"$(VENV_PYTHON)" ./tests/test_env_stackability.py
 
-check-examples: build-stage1
-	"$(PYTHON)" ../scripts/check_examples.py --compiler "$(L1_BUILD_DIR)/bin/l1c-stage1" --examples-dir examples --extension .l1 --label "L1 Stage 1"
+build-stage2: build-stage1 runtime
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" \
+	L1_COMPILER_RT_CHECK_BASIC="$(L1_COMPILER_RT_CHECK_BASIC)" \
+	L1_COMPILER_RT_UNCHECKED="$(L1_COMPILER_RT_UNCHECKED)" \
+	L1_COMPILER_RT_QUARANTINE_MAX_BYTES="$(L1_COMPILER_RT_QUARANTINE_MAX_BYTES)" \
+	L1_COMPILER_RT_QUARANTINE_MAX_COUNT="$(L1_COMPILER_RT_QUARANTINE_MAX_COUNT)" \
+	"$(PYTHON)" scripts/build_stage2_l1c.py
+	@"$(L1_BUILD_DIR)/bin/l1c-stage2" --version
 
-test: test-stage1 test-env check-examples test-docker-wine-runner
+test-stage2: venv build-stage2 _print-test-compiler-env
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" compiler/stage2_l1/scripts/run_tests.py $(TESTS)
 
-test-all: test test-stage1-trace
+test-stage2-trace: venv build-stage2 _print-test-compiler-env
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" compiler/stage2_l1/scripts/run_trace_tests.py $(TESTS)
+
+test-stage2-trace-smoke: venv build-stage2 _print-test-compiler-env
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" compiler/stage2_l1/scripts/run_trace_tests.py $(TRACE_SMOKE_TESTS)
+
+test-stage2-trace-all: venv build-stage2 _print-test-compiler-env
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" compiler/stage2_l1/scripts/run_trace_tests.py --include-slow $(TESTS)
+
+test-stage2-trace-children: venv build-stage2 _print-test-compiler-env
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" compiler/stage2_l1/scripts/run_trace_tests.py --children $(TESTS)
+
+test-stage-parity: build-stage2
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" compiler/stage2_l1/tests/stage_parity_test.py
+
+test-stage2-tooling: venv
+	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_stage2_tooling.py tests/test_bootstrap_identity.py
+
+triple-test: build-stage1 runtime
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" scripts/triple_bootstrap.py
+
+check-examples: build-stage2
+	"$(PYTHON)" ../scripts/check_examples.py --compiler "$(L1_BUILD_DIR)/bin/l1c-stage2" --examples-dir examples --extension .l1 --label "L1 Stage 2"
+
+test: test-stage1 test-stage2 test-env check-examples test-docker-wine-runner test-stage2-tooling
+
+test-all: test test-stage1-trace test-stage2-trace
 	# Parent TESTS selectors do not filter the independently declared child fixtures.
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_trace_tests.py --children
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage2_l1/scripts/run_trace_tests.py --children
 
-# Hosted CI uses the full default trace sweep on every supported platform.
+# Hosted CI includes the strict fixed point; local full validation keeps it explicit.
 test-ci: test-all
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" scripts/triple_bootstrap.py
 
 test-docker:
 	$(MAKE) docker CMD=test-all
@@ -424,6 +467,7 @@ clean:
 	rm -f ./a.out ./a.exe
 	rm -f ./compiler/stage1_l0/a.out ./compiler/stage1_l0/a.exe
 	rm -f ./compiler/stage1_l0/tests/.tmp*
+	rm -f ./compiler/stage2_l1/tests/.tmp*
 
 docker:
 	@if [ -z "$(CMD)" ]; then \
@@ -462,3 +506,5 @@ docker-wine-image:
 
 test-docker-wine-runner:
 	$(HOST_PYTHON) tests/test_docker_wine.py
+
+.PHONY: build-stage2 use-dev-stage2 test-stage2 test-stage2-trace test-stage2-trace-smoke test-stage2-trace-all test-stage2-trace-children test-stage-parity test-stage2-tooling triple-test

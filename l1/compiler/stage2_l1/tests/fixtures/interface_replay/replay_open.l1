@@ -1,0 +1,25 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module replay_open;
+
+import replay_provider;
+
+func main() -> int {
+    let p: Point = Point(x: 1, y: 2);
+    let p2: PointAlias = make_point(py: 4, px: 3);
+    let shade: Shade = Rgb(blue: 3, red: 1, green: 2);
+    let msg: Message = Text(value: "hi");
+    let maybe_point: Point? = current;
+    let maybe_handle: Handle*? = null;
+    let borrowed: Handle*? = borrow(handle: maybe_handle);
+    let score: int = mix(point: p2, color: shade);
+    let c_value: int = c_score(value: score);
+    let collected: int = collect(1, 2, 3);
+    if (maybe_point == null || borrowed == null) {
+        return c_value + collected + origin_x + weights[1] + p.x;
+    }
+    return c_value + collected + origin_x + weights[1] + p.y;
+}

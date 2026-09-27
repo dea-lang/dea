@@ -1,0 +1,51 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_float_err;
+
+struct Pair {
+    a: float;
+}
+
+func take_float(x: float) -> float {
+    return x;
+}
+
+func bad_return(d: double) -> float {
+    return d; // TYP-0315
+}
+
+func bad_assign(d: double) {
+    let x: float = 0.0f;
+    x = d; // TYP-0311
+}
+
+func bad_call(d: double) -> float {
+    return take_float(d); // TYP-0312
+}
+
+func bad_struct(d: double) -> Pair {
+    return Pair(d); // TYP-0313
+}
+
+func bad_binary(i: int, f: float) -> float {
+    return i + f; // TYP-0170
+}
+
+func bad_mod(f: float) -> int {
+    return f % 2.0f; // TYP-0170
+}
+
+func bad_div_mixed(i: int, d: double) -> double {
+    return i / d; // TYP-0170
+}
+
+func bad_mod_mixed(i: int, d: double) -> int {
+    return i % d; // TYP-0170
+}
+
+func bad_cast(b: bool) -> double {
+    return b as double; // TYP-0230
+}

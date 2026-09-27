@@ -1,0 +1,915 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module interface_projection;
+
+import std.hashmap;
+import std.hashset;
+import std.assert;
+import std.string;
+import std.text;
+import std.vector;
+import util.diag;
+import util.numbers;
+import ast;
+import dea_prelude;
+import driver.state;
+
+import interface_fingerprint;
+import interface_literal;
+import mi_utils;
+import module_interface;
+import module_graph;
+import name_resolver.query;
+import name_resolver.state;
+import sem_context;
+import signatures.tables;
+import symbols;
+import type_resolve.const_value;
+import type_resolve.lookup;
+import type_resolve.ref;
+import types;
+
+/**
+ * Abort on an internal interface-projection error from a string-returning
+ * helper.
+ *
+ * @param message ICE message to report.
+ * @return Dummy return used only to satisfy control-flow typing.
+ */
+func mi_ice_string(message: string) -> string {
+    assert(false, message);
+    return "";
+}
+
+/**
+ * Build the qualified name string for a var-ref expression.
+ *
+ * @param node Expression node of kind EX_VAR_REF.
+ * @return Qualified name as a string.
+ */
+func mi_var_ref_name(node: ExprNode*) -> string {
+    if (node.module_path == null) {
+        return node.text_value;
+    }
+    let path = node.module_path as StringVector*;
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < sv_size(path); i = i + 1) {
+            if (i > 0) {
+                sb_append(sb, ".");
+            }
+            sb_append(sb, sv_get(path, i));
+        }
+        sb_append(sb, "::");
+        sb_append(sb, node.text_value);
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Build the canonical interface spelling for one resolved variable reference.
+ *
+ * Cross-module names use the provider's canonical module identity regardless
+ * of whether source lookup used an open, selective, or aliased import.
+ * Enum-variant literals retain the variant symbol itself; dependency manifests
+ * normalize that symbol separately to the owning enum. Same-module references
+ * remain unqualified.
+ *
+ * @param nr Name-resolution data used to resolve provider identity.
+ * @param env Module environment owning the expression.
+ * @param node Expression node of kind EX_VAR_REF.
+ * @return Canonical literal symbol spelling.
+ */
+func mi_resolved_var_ref_name(nr: NameResolution*, env: ModuleEnv*, node: ExprNode*) -> string {
+    let sym_opt = tr_symbol_lookup(nr, env, node.text_value, node.module_path, node.name_qualifier);
+    if (sym_opt == null) {
+        return mi_var_ref_name(node);
+    }
+    let sym = sym_opt as Symbol*;
+    if (!nr_is_cross_module_symbol(env.module_name, sym)) {
+        return sym.name;
+    }
+    return sym.module_name + "::" + sym.name;
+}
+
+/**
+ * Return whether an expression is a supported cast wrapped in parentheses.
+ *
+ * @param arena Expression arena.
+ * @param expr_id Expression to inspect.
+ * @return `true` when the expression's outer value is a cast.
+ */
+func mi_expr_is_const_cast(arena: ExprArena*, expr_id: ExprId) -> bool {
+    let node = expr_arena_get(arena, expr_id);
+    if (ord(node.kind) == ord(EX_PAREN)) {
+        return mi_expr_is_const_cast(arena, node.expr_a);
+    }
+    return ord(node.kind) == ord(EX_CAST);
+}
+
+/**
+ * Format one semantically checked bigint for an interface literal.
+ *
+ * @param text Canonical bigint digits with optional leading `-`.
+ * @param base Numeric base carried by the bigint payload.
+ * @return Canonical decimal spelling.
+ */
+func mi_format_checked_bigint(text: string, base: int) -> string {
+    let canonical = bigint_to_canonical_decimal(text, base);
+    if (canonical == null) {
+        return mi_ice_string("[ICE-1400] interface projection received an out-of-domain bigint literal");
+    }
+    return canonical as string;
+}
+
+/**
+ * Format an evaluated scalar constant as a canonical interface literal.
+ *
+ * @param value Evaluated constant value.
+ * @return Target-typed literal spelling.
+ */
+func mi_format_const_value(value: ConstValue*) -> string {
+    match (value.kind) {
+        CV_INT => { return il_format_int(value.int_value); }
+        CV_OTHER_INT => { return il_format_int(value.int_value); }
+        CV_BIGINT => { return mi_format_checked_bigint(value.text_value, value.base_value); }
+        CV_BYTE => { return il_format_byte(value.int_value); }
+        CV_BOOL => { return il_format_bool(value.bool_value); }
+        CV_STRING => { return il_format_string(value.text_value); }
+        CV_FLOAT => { return value.text_value; }
+        CV_DOUBLE => { return value.text_value; }
+        CV_NULL => { return "null"; }
+    }
+}
+
+/**
+ * Recursive literal formatter operating on an already-resolved arena.
+ *
+ * @param nr Name-resolution data used to canonicalize provider identities.
+ * @param env Module environment owning the expression.
+ * @param arena Expression arena.
+ * @param expr_id Expression to format.
+ * @return Canonical literal text.
+ */
+func mi_format_literal_in(nr: NameResolution*, env: ModuleEnv*, arena: ExprArena*, expr_id: ExprId) -> string {
+    let node = expr_arena_get(arena, expr_id);
+    match (node.kind) {
+        EX_INT => {
+            return il_format_int(node.int_value);
+        }
+        EX_BIGINT => {
+            return mi_format_checked_bigint(node.text_value, node.base_value);
+        }
+        EX_FLOAT => {
+            return node.text_value;
+        }
+        EX_DOUBLE => {
+            return node.text_value;
+        }
+        EX_BYTE => {
+            return il_format_byte(node.int_value);
+        }
+        EX_STRING => {
+            return il_format_string(node.text_value);
+        }
+        EX_BOOL => {
+            return il_format_bool(node.bool_value);
+        }
+        EX_NULL => {
+            return "null";
+        }
+        EX_VAR_REF => {
+            return mi_resolved_var_ref_name(nr, env, node);
+        }
+        EX_ARRAY_LITERAL => {
+            with (let sb2 = sb_create() => sb_free(sb2)) {
+                sb_append(sb2, "[");
+                let ids2 = node.ids as VectorBase*;
+                for (let j = 0; j < vec_size(ids2); j = j + 1) {
+                    if (j > 0) {
+                        sb_append(sb2, ", ");
+                    }
+                    sb_append(sb2, mi_format_literal_in(nr, env, arena, id_vec_get(ids2, j)));
+                }
+                sb_append(sb2, "]");
+                return sb_to_string(sb2);
+            }
+        }
+        EX_CALL => {
+            let callee = expr_arena_get(arena, node.expr_a);
+            let callee_name = mi_resolved_var_ref_name(nr, env, callee);
+            if (node.ids == null || vec_size(node.ids as VectorBase*) == 0) {
+                return callee_name + "()";
+            }
+            with (let sb = sb_create() => sb_free(sb)) {
+                sb_append(sb, callee_name);
+                sb_append(sb, "(");
+                let ids = node.ids as VectorBase*;
+                for (let i = 0; i < vec_size(ids); i = i + 1) {
+                    if (i > 0) {
+                        sb_append(sb, ", ");
+                    }
+                    sb_append(sb, mi_format_literal_in(nr, env, arena, id_vec_get(ids, i)));
+                }
+                sb_append(sb, ")");
+                return sb_to_string(sb);
+            }
+        }
+        _ => {
+            return mi_ice_string("[ICE-1400] mi_format_literal_in: unsupported expression kind in interface const literal");
+        }
+    }
+}
+
+/**
+ * Format a compile-time-constant expression as its canonical literal text.
+ *
+ * @param driver_state Driver state holding parsed ASTs.
+ * @param nr Name-resolution data used to canonicalize provider identities.
+ * @param env Module environment owning the expression.
+ * @param module_name Module owning the expression.
+ * @param expr_id Expression to format.
+ * @return Canonical literal text.
+ */
+func mi_format_literal(driver_state: DriverState*, nr: NameResolution*, env: ModuleEnv*, module_name: string,
+                       expr_id: ExprId) -> string {
+    let unit = driver_find_unit(driver_state, module_name) as DriverUnit*;
+    let pr = unit.parse_result;
+    let arena = pr.expr_arena;
+    return mi_format_literal_in(nr, env, arena, expr_id);
+}
+
+/**
+ * Return whether a dependency vector already contains one canonical symbol.
+ *
+ * @param entries Vector of `InterfaceDepEntry*` values.
+ * @param provider_module Canonical provider module name.
+ * @param symbol_name Canonical provider symbol name.
+ * @return `true` when the dependency is already present.
+ */
+func mi_has_dep(entries: VectorBase*, provider_module: string, symbol_name: string) -> bool {
+    for (let i = 0; i < vec_size(entries); i = i + 1) {
+        let entry = ptr_vec_get(entries, i) as InterfaceDepEntry*;
+        if (entry.provider_module == provider_module && entry.symbol_name == symbol_name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Add one hash-free dependency entry for later provider-wide population.
+ *
+ * @param result Analysis result retained by the shared collection signature.
+ * @param this_module Module being projected.
+ * @param provider_module Canonical provider module name.
+ * @param symbol_name Canonical provider symbol name.
+ * @param out Destination vector of `InterfaceDepEntry*` values.
+ */
+func mi_add_dep(result: AnalysisResult*, this_module: string, provider_module: string,
+                symbol_name: string, out: VectorBase*) {
+    if (provider_module == this_module || dea_is_virtual_module_name(provider_module) ||
+        mi_has_dep(out, provider_module, symbol_name)) {
+        return;
+    }
+    ptr_vec_push(out, new InterfaceDepEntry(provider_module, symbol_name, "") as void*);
+}
+
+/**
+ * Add one resolved symbol as a canonical dependency entry.
+ *
+ * @param result Analysis result providing selected provider metadata.
+ * @param this_module Module being projected.
+ * @param sym Resolved provider-owned symbol.
+ * @param out Destination vector of `InterfaceDepEntry*` values.
+ */
+func mi_add_symbol_dep(result: AnalysisResult*, this_module: string, sym: Symbol*, out: VectorBase*) {
+    if (!nr_is_cross_module_symbol(this_module, sym)) {
+        return;
+    }
+    mi_add_dep(result, this_module, sym.module_name, nr_dependency_symbol_name(sym), out);
+}
+
+/**
+ * Collect cross-module nominal type references reachable from a resolved type tree.
+ *
+ * This fallback is used only for inferred public binding types, for which no
+ * parsed `TypeRef` exists. Explicit public types are walked from their parsed
+ * form so imported type-alias identities are preserved.
+ *
+ * @param result Analysis result providing selected provider metadata.
+ * @param ty Type tree to inspect.
+ * @param this_module Dotted name of the module being projected.
+ * @param out Destination vector of `InterfaceDepEntry*`.
+ */
+func mi_collect_type_refs(result: AnalysisResult*, ty: Type*, this_module: string, out: VectorBase*) {
+    let kind = ord(ty.kind);
+    if (kind == ord(TY_STRUCT) || kind == ord(TY_ENUM)) {
+        if (ty.module_name != "" && ty.module_name != this_module) {
+            mi_add_dep(result, this_module, ty.module_name, ty.name, out);
+        }
+        return;
+    }
+    if (kind == ord(TY_POINTER) || kind == ord(TY_NULLABLE) || kind == ord(TY_ARRAY) ||
+        kind == ord(TY_SLICE)) {
+        mi_collect_type_refs(result, ty.inner as Type*, this_module, out);
+        return;
+    }
+    if (kind == ord(TY_FUNC)) {
+        let params = ty.params as VectorBase*;
+        for (let i = 0; i < vec_size(params); i = i + 1) {
+            mi_collect_type_refs(result, ptr_vec_get(params, i) as Type*, this_module, out);
+        }
+        mi_collect_type_refs(result, ty.result as Type*, this_module, out);
+    }
+}
+
+/**
+ * Collect public dependencies from one parsed type reference.
+ *
+ * Imported aliases are recorded by alias identity instead of being replaced
+ * by their resolved nominal target. Same-module aliases are followed so a
+ * private helper alias cannot hide a public cross-module dependency.
+ *
+ * @param result Analysis result providing semantic and provider metadata.
+ * @param nr Name-resolution tables.
+ * @param env Module environment owning the parsed reference.
+ * @param tref Parsed type reference to walk.
+ * @param this_module Module being projected.
+ * @param out Destination `require` vector.
+ * @param seen_aliases Same-module aliases currently being expanded.
+ */
+func mi_collect_public_type_ref_in(result: AnalysisResult*, nr: NameResolution*, env: ModuleEnv*, tref: TypeRef*,
+                                   this_module: string, out: VectorBase*, seen_aliases: StringSet*) {
+    if (tref.func_params != null) {
+        let params = tref.func_params as VectorBase*;
+        for (let i = 0; i < vec_size(params); i = i + 1) {
+            mi_collect_public_type_ref_in(result, nr, env, ptr_vec_get(params, i) as TypeRef*, this_module, out,
+                seen_aliases);
+        }
+        if (tref.func_result != null) {
+            mi_collect_public_type_ref_in(result, nr, env, tref.func_result as TypeRef*, this_module, out,
+                seen_aliases);
+        }
+    } else if (!(tref.module_path == null && type_is_builtin_name(tref.name))) {
+        let sym_opt = tr_symbol_lookup(nr, env, tref.name, tref.module_path, null);
+        if (sym_opt != null) {
+            let sym = sym_opt as Symbol*;
+            if (nr_is_cross_module_symbol(this_module, sym)) {
+                mi_add_symbol_dep(result, this_module, sym, out);
+            } else if (sym.module_name == this_module && ord(sym.kind) == ord(SYM_TYPE_ALIAS) &&
+                       sym.decl_ptr != null) {
+                let alias_key = sym.module_name + "::" + sym.name;
+                if (!ss_has(seen_aliases, alias_key)) {
+                    ss_add(seen_aliases, alias_key);
+                    let alias_decl = sym.decl_ptr as TypeAliasDecl*;
+                    mi_collect_public_type_ref_in(result, nr, env, alias_decl.target, this_module, out,
+                        seen_aliases);
+                    ss_remove(seen_aliases, alias_key);
+                }
+            }
+        }
+    }
+
+    if (tref.suffixes != null) {
+        let suffixes = tref.suffixes as VectorBase*;
+        let unit = driver_find_unit(result.driver_state, this_module);
+        if (unit != null) {
+            let arena = (unit as DriverUnit*).parse_result.expr_arena;
+            for (let suffix_i = 0; suffix_i < vec_size(suffixes); suffix_i = suffix_i + 1) {
+                let suffix = ptr_vec_get(suffixes, suffix_i) as TypeSuffix*;
+                if (suffix.array_len_expr >= 0) {
+                    mi_collect_value_refs(result, nr, env, arena, suffix.array_len_expr, this_module, out);
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Collect public dependencies from one parsed type reference.
+ *
+ * @param result Analysis result providing semantic and provider metadata.
+ * @param nr Name-resolution tables.
+ * @param env Module environment owning the parsed reference.
+ * @param tref Parsed type reference to walk.
+ * @param this_module Module being projected.
+ * @param out Destination `require` vector.
+ */
+func mi_collect_public_type_ref(result: AnalysisResult*, nr: NameResolution*, env: ModuleEnv*, tref: TypeRef*,
+                                this_module: string, out: VectorBase*) {
+    with (let seen_aliases = ss_create() => ss_free(seen_aliases)) {
+        mi_collect_public_type_ref_in(result, nr, env, tref, this_module, out, seen_aliases);
+    }
+}
+
+/**
+ * Collect cross-module symbol references reachable from a constant-value
+ * expression tree.
+ *
+ * @param result Analysis result providing selected provider metadata.
+ * @param nr Name resolution for symbol lookups.
+ * @param env Owning module environment.
+ * @param arena Expression arena owning the value tree.
+ * @param expr_id Expression to inspect.
+ * @param this_module Dotted name of the module being projected.
+ * @param out Destination vector of `InterfaceDepEntry*`.
+ */
+func mi_collect_value_refs(result: AnalysisResult*, nr: NameResolution*, env: ModuleEnv*, arena: ExprArena*,
+                           expr_id: ExprId, this_module: string, out: VectorBase*) {
+    if (expr_id < 0) {
+        return;
+    }
+    let node = expr_arena_get(arena, expr_id);
+    if (ord(node.kind) == ord(EX_VAR_REF)) {
+        let sym_opt = tr_symbol_lookup(nr, env, node.text_value, node.module_path, node.name_qualifier);
+        if (sym_opt != null) {
+            mi_add_symbol_dep(result, this_module, sym_opt as Symbol*, out);
+        }
+    }
+    if (node.type_ref != null) {
+        mi_collect_public_type_ref(result, nr, env, node.type_ref as TypeRef*, this_module, out);
+    }
+    if (node.expr_a >= 0) {
+        mi_collect_value_refs(result, nr, env, arena, node.expr_a, this_module, out);
+    }
+    if (node.expr_b >= 0) {
+        mi_collect_value_refs(result, nr, env, arena, node.expr_b, this_module, out);
+    }
+    if (node.expr_c >= 0) {
+        mi_collect_value_refs(result, nr, env, arena, node.expr_c, this_module, out);
+    }
+    if (node.ids != null) {
+        let ids = node.ids as VectorBase*;
+        for (let i = 0; i < vec_size(ids); i = i + 1) {
+            mi_collect_value_refs(result, nr, env, arena, id_vec_get(ids, i), this_module, out);
+        }
+    }
+}
+
+/**
+ * Convenience wrapper around `mi_collect_value_refs` that looks up the
+ * source unit's expression arena via the driver state.
+ *
+ * @param result Analysis result providing selected provider metadata.
+ * @param nr Name resolution for symbol lookups.
+ * @param env Owning module environment.
+ * @param module_name Module owning the expression.
+ * @param expr_id Expression to inspect.
+ * @param out Destination vector of `InterfaceDepEntry*`.
+ */
+func mi_collect_value_refs_for(result: AnalysisResult*, nr: NameResolution*, env: ModuleEnv*,
+                                module_name: string, expr_id: ExprId, out: VectorBase*) {
+    let unit = driver_find_unit(result.driver_state, module_name) as DriverUnit*;
+    let pr = unit.parse_result;
+    mi_collect_value_refs(result, nr, env, pr.expr_arena, expr_id, module_name, out);
+}
+
+/**
+ * Collect parameter names from a function symbol's declaration.
+ *
+ * @param sym Function symbol.
+ * @return New StringVector containing the parameter names in declaration order.
+ */
+func mi_collect_param_names(sym: Symbol*) -> StringVector* {
+    let names = sv_create(4);
+    if (sym.decl_ptr == null) {
+        return names;
+    }
+    let decl = sym.decl_ptr as FuncDecl*;
+    for (let i = 0; i < vec_size(decl.params); i = i + 1) {
+        let param = ptr_vec_get(decl.params, i) as Param*;
+        sv_push(names, param.name);
+    }
+    return names;
+}
+
+/**
+ * Return the resolved source `main` type that owns a module's `I5entry`.
+ *
+ * A source entry is a non-extern function named `main` with no parameters.
+ * Visibility is intentionally irrelevant: private eligible `main` functions
+ * still own the compiler-generated entry bridge.
+ *
+ * @param result Completed semantic analysis result.
+ * @param module_name Canonical source module name.
+ * @return Borrowed entry function type, or `null` when no bridge is emitted.
+ */
+func analysis_module_entry_type(result: AnalysisResult*, module_name: string) -> Type*? {
+    if (result.signatures == null) {
+        return null;
+    }
+    let unit = driver_find_unit(result.driver_state, module_name);
+    if (unit == null || (unit as DriverUnit*).parse_result.root_module == null) {
+        return null;
+    }
+    let root = (unit as DriverUnit*).parse_result.root_module as Module*;
+    for (let i = 0; i < vec_size(root.decls); i = i + 1) {
+        let top = ptr_vec_get(root.decls, i) as TopLevelDecl*;
+        if (ord(top.kind) != ord(TD_FUNC)) {
+            continue;
+        }
+        let decl = top.data as FuncDecl*;
+        if (decl.name != "main" || decl.is_extern) {
+            continue;
+        }
+        let func_type = sig_lookup_func_type(
+            result.signatures as SignatureTables*, module_name, decl.name);
+        assert(func_type != null, "[ICE-1150] missing FuncType for " + module_name + "." + decl.name);
+        if (vec_size((func_type as Type*).params as VectorBase*) != 0) {
+            return null;
+        }
+        return func_type as Type*;
+    }
+    return null;
+}
+
+/**
+ * Project source direct imports into canonical interface lifecycle imports.
+ *
+ * The graph retains exact declaration order and duplicates. This helper owns
+ * the separate stable first-occurrence view, omits compiler-synthesized
+ * virtual providers, and leaves provider fingerprints empty for the later
+ * shared expectation-population phase.
+ *
+ * @param result Completed analysis result.
+ * @param module_name Canonical source consumer module.
+ * @return Owned `InterfaceModuleImport*` vector, or `null` on guard failure.
+ */
+func mi_project_module_imports(result: AnalysisResult*, module_name: string) -> VectorBase*? {
+    let graph = driver_graph(result.driver_state);
+    let node_opt = mg_find_node(graph, module_name);
+    if (node_opt == null) {
+        diag_error(result.diags, "SignatureResolver", "SIG-0283",
+            "cannot project direct imports for missing module '" + module_name + "'",
+            "<interface:" + module_name + ">", 0, 0, 0, 0);
+        return null;
+    }
+    let node = node_opt as ModuleGraphNode*;
+    let imports = ptr_vec_create(mg_node_direct_import_count(node));
+    with (let seen = ss_create() => ss_free(seen)) {
+        for (let i = 0; i < mg_node_direct_import_count(node); i = i + 1) {
+            let provider_name = mg_node_direct_import_get(node, i);
+            let provider_opt = mg_find_node(graph, provider_name);
+            if (provider_opt == null) {
+                mi_module_import_vec_free(imports);
+                diag_error(result.diags, "SignatureResolver", "SIG-0283",
+                    "cannot project missing direct-import provider '" + provider_name + "' for module '" +
+                        module_name + "'",
+                    "<interface:" + module_name + ">", 0, 0, 0, 0);
+                return null;
+            }
+            let provider = provider_opt as ModuleGraphNode*;
+            if (ord(provider.origin.kind) == ord(MOK_VIRTUAL) || !ss_add(seen, provider_name)) {
+                continue;
+            }
+            ptr_vec_push(imports, new InterfaceModuleImport(provider_name, "") as void*);
+        }
+    }
+    return imports;
+}
+
+/**
+ * Project the exported surface of an analyzed module without assigning or
+ * recursively populating fingerprints.
+ *
+ * @param result Analysis result to project from.
+ * @param module_name Module whose exports to project.
+ * @return Projected interface, or `null` on guard failure.
+ */
+func mi_project_surface(result: AnalysisResult*, module_name: string) -> ModuleInterface*? {
+    if (result.names == null || result.signatures == null) {
+        return null;
+    }
+
+    let active_interface = driver_find_projection_interface(result.driver_state, module_name);
+    if (active_interface != null) {
+        return miu_clone_interface(active_interface as ModuleInterface*);
+    }
+
+    let nr = result.names as NameResolution*;
+    let sigs = result.signatures as SignatureTables*;
+
+    let env_opt = nr_env_find(nr, module_name);
+    if (env_opt == null) {
+        return null;
+    }
+    let env = env_opt as ModuleEnv*;
+
+    let module_imports = mi_project_module_imports(result, module_name);
+    if (module_imports == null) {
+        return null;
+    }
+    let has_entry = analysis_module_entry_type(result, module_name) != null;
+    let require_entries = ptr_vec_create(4);
+    let link_entries = ptr_vec_create(4);
+    let struct_infos = ptr_vec_create(4);
+    let enum_infos = ptr_vec_create(4);
+    let alias_entries = ptr_vec_create(4);
+    let func_entries = ptr_vec_create(8);
+    let let_entries = ptr_vec_create(8);
+
+    with (let keys = nr_module_env_export_keys(env) => sv_free(keys)) {
+        sv_sort(keys);
+        for (let i = 0; i < sv_size(keys); i = i + 1) {
+            let key = sv_get(keys, i);
+            let sym_opt = spm_get(env.exports, key);
+            if (sym_opt == null) {
+                continue;
+            }
+            let sym = sym_opt as Symbol*;
+
+            match (sym.kind) {
+                SYM_ENUM_VARIANT => {
+                }
+                SYM_TYPE_ALIAS => {
+                    if (sym.resolved_type == null) {
+                        continue;
+                    }
+                    let alias_ty = type_clone(sym.resolved_type as Type*);
+                    assert(sym.decl_ptr != null, "source alias symbol must retain its declaration");
+                    let alias_decl = sym.decl_ptr as TypeAliasDecl*;
+                    mi_collect_public_type_ref(result, nr, env, alias_decl.target, module_name,
+                        require_entries);
+                    let entry = new InterfaceAliasEntry(key, alias_ty);
+                    ptr_vec_push(alias_entries, entry as void*);
+                }
+                SYM_STRUCT => {
+                    let info_opt = sig_lookup_struct_info(sigs, module_name, key);
+                    if (info_opt == null) {
+                        continue;
+                    }
+                    let cloned_struct = miu_clone_struct_info(info_opt as StructInfo*);
+                    if (!cloned_struct.is_opaque) {
+                        assert(sym.decl_ptr != null, "source struct symbol must retain its declaration");
+                        let struct_decl = sym.decl_ptr as StructDecl*;
+                        for (let fi = 0; fi < vec_size(struct_decl.fields); fi = fi + 1) {
+                            let field_decl = ptr_vec_get(struct_decl.fields, fi) as FieldDecl*;
+                            mi_collect_public_type_ref(result, nr, env, field_decl.type_ref, module_name,
+                                require_entries);
+                        }
+                    }
+                    ptr_vec_push(struct_infos, cloned_struct as void*);
+                }
+                SYM_ENUM => {
+                    let info_opt = sig_lookup_enum_info(sigs, module_name, key);
+                    if (info_opt == null) {
+                        continue;
+                    }
+                    let cloned_enum = miu_clone_enum_info(info_opt as EnumInfo*);
+                    if (!cloned_enum.is_opaque) {
+                        assert(sym.decl_ptr != null, "source enum symbol must retain its declaration");
+                        let enum_decl = sym.decl_ptr as EnumDecl*;
+                        for (let vi = 0; vi < vec_size(enum_decl.variants); vi = vi + 1) {
+                            let variant_decl = ptr_vec_get(enum_decl.variants, vi) as EnumVariant*;
+                            for (let vfi = 0; vfi < vec_size(variant_decl.fields); vfi = vfi + 1) {
+                                let field_decl2 = ptr_vec_get(variant_decl.fields, vfi) as FieldDecl*;
+                                mi_collect_public_type_ref(result, nr, env, field_decl2.type_ref, module_name,
+                                    require_entries);
+                            }
+                        }
+                    }
+                    ptr_vec_push(enum_infos, cloned_enum as void*);
+                }
+                SYM_FUNC => {
+                    let ty_opt = sig_lookup_func_type(sigs, module_name, key);
+                    if (ty_opt == null) {
+                        continue;
+                    }
+                    let func_ty = type_clone(ty_opt as Type*);
+                    assert(sym.decl_ptr != null, "source function symbol must retain its declaration");
+                    let func_decl = sym.decl_ptr as FuncDecl*;
+                    for (let pi = 0; pi < vec_size(func_decl.params); pi = pi + 1) {
+                        let param = ptr_vec_get(func_decl.params, pi) as Param*;
+                        mi_collect_public_type_ref(result, nr, env, param.type_ref, module_name,
+                            require_entries);
+                    }
+                    mi_collect_public_type_ref(result, nr, env, func_decl.return_type, module_name,
+                        require_entries);
+                    let param_names = mi_collect_param_names(sym);
+                    let entry = new InterfaceFuncEntry(key, param_names, func_ty, sym.is_extern);
+                    ptr_vec_push(func_entries, entry as void*);
+                }
+                SYM_LET => {
+                    let ty_opt = sig_lookup_let_type(sigs, module_name, key);
+                    if (ty_opt == null) {
+                        continue;
+                    }
+                    let let_ty = type_clone(ty_opt as Type*);
+                    assert(sym.decl_ptr != null, "source let symbol must retain its declaration");
+                    let decl = sym.decl_ptr as LetDecl*;
+                    if (decl.type_ref != null) {
+                        mi_collect_public_type_ref(result, nr, env, decl.type_ref as TypeRef*, module_name,
+                            require_entries);
+                    } else {
+                        mi_collect_type_refs(result, let_ty, module_name, require_entries);
+                    }
+                    let is_const = decl.is_const;
+                    let literal = "";
+                    if (is_const) {
+                        mi_collect_value_refs_for(result, nr, env, module_name, decl.value, require_entries);
+                        let folded_scalar = false;
+                        with (let ctx = tr_const_eval_context_create(result.driver_state, sigs, nr, result.diags) =>
+                              tr_const_eval_context_free(ctx)) {
+                            let value = tr_const_eval_expr(ctx, env, decl.value);
+                            if (value != null) {
+                                literal = mi_format_const_value(value as ConstValue*);
+                                tr_const_value_free(value as ConstValue*);
+                                folded_scalar = true;
+                            }
+                        }
+                        if (!folded_scalar) {
+                            literal = mi_format_literal(result.driver_state, nr, env, module_name, decl.value);
+                        }
+                    }
+                    let entry = new InterfaceLetEntry(key, let_ty, is_const, literal);
+                    ptr_vec_push(let_entries, entry as void*);
+                }
+            }
+        }
+    }
+
+    for (let ref_i = 0; ref_i < nr_resolved_symbol_count(nr); ref_i = ref_i + 1) {
+        let ref = nr_resolved_symbol_get(nr, ref_i);
+        if (ref.consumer_module != module_name ||
+            mi_has_dep(require_entries, ref.provider_module, ref.symbol_name)) {
+            continue;
+        }
+        mi_add_dep(result, module_name, ref.provider_module, ref.symbol_name, link_entries);
+    }
+
+    return new ModuleInterface(module_name, "", has_entry, module_imports as VectorBase*, require_entries,
+        link_entries, struct_infos, enum_infos, alias_entries, func_entries, let_entries);
+}
+
+/**
+ * Find one provider fingerprint in an indexed cache.
+ *
+ * @param provider_indices Cached provider-name-to-index map.
+ * @param fingerprints Cached tagged fingerprints indexed by `provider_indices`.
+ * @param provider_module Provider module to find.
+ * @return Cached fingerprint, or `null` when absent.
+ */
+func mi_cached_provider_fingerprint(provider_indices: StringIntMap*, fingerprints: StringVector*,
+                                    provider_module: string) -> string? {
+    let provider_index = sim_get(provider_indices, provider_module);
+    if (provider_index == null) {
+        return null;
+    }
+    return sv_get(fingerprints, provider_index as int);
+}
+
+/**
+ * Return a selected provider's verified or source-projected fingerprint.
+ *
+ * Source providers are projected without recursively filling their own
+ * dependency manifests because dependencies are excluded from the canonical
+ * fingerprint input.
+ *
+ * @param result Analysis result providing graph and semantic metadata.
+ * @param provider_module Canonical provider module name.
+ * @return Tagged provider fingerprint, or `""` after a diagnosed failure.
+ */
+func mi_compute_provider_fingerprint(result: AnalysisResult*, provider_module: string) -> string {
+    let selected = driver_provider_fingerprint(result.driver_state, provider_module);
+    if (selected != "") {
+        return selected;
+    }
+
+    let projected = mi_project_surface(result, provider_module);
+    if (projected == null) {
+        diag_error(result.diags, "SignatureResolver", "SIG-0283",
+            "cannot project provider interface surface for module '" + provider_module + "'",
+            "<interface:" + provider_module + ">", 0, 0, 0, 0);
+        return "";
+    }
+    let provider = projected as ModuleInterface*;
+    if (!ifp_assign(provider, result.diags, "<interface:" + provider_module + ">")) {
+        mi_free(provider);
+        return "";
+    }
+    let fingerprint = slice_s(provider.fingerprint, 0, len_s(provider.fingerprint));
+    mi_free(provider);
+    return fingerprint;
+}
+
+/**
+ * Return and cache one provider fingerprint for dependency population.
+ *
+ * @param result Analysis result providing provider metadata.
+ * @param provider_indices Cached provider-name-to-index map.
+ * @param fingerprints Cached provider fingerprints.
+ * @param provider_module Provider module to resolve.
+ * @return Tagged provider fingerprint, or `""` after a diagnosed failure.
+ */
+func mi_provider_fingerprint_cached(result: AnalysisResult*, provider_indices: StringIntMap*,
+                                    fingerprints: StringVector*, provider_module: string) -> string {
+    let cached = mi_cached_provider_fingerprint(provider_indices, fingerprints, provider_module);
+    if (cached != null) {
+        return cached as string;
+    }
+    let fingerprint = mi_compute_provider_fingerprint(result, provider_module);
+    sim_put(provider_indices, provider_module, sv_size(fingerprints));
+    sv_push(fingerprints, fingerprint);
+    return fingerprint;
+}
+
+/**
+ * Populate one dependency tier with provider-wide fingerprints.
+ *
+ * @param result Analysis result providing provider metadata.
+ * @param entries Dependency entries to update.
+ * @param provider_indices Shared provider-name-to-index cache.
+ * @param fingerprints Shared fingerprint cache.
+ * @return `true` when every provider fingerprint was available.
+ */
+func mi_populate_dependency_fingerprints(result: AnalysisResult*, entries: VectorBase*,
+                                         provider_indices: StringIntMap*, fingerprints: StringVector*) -> bool {
+    let ok = true;
+    for (let i = 0; i < vec_size(entries); i = i + 1) {
+        let entry = ptr_vec_get(entries, i) as InterfaceDepEntry*;
+        let fingerprint = mi_provider_fingerprint_cached(
+            result, provider_indices, fingerprints, entry.provider_module);
+        if (fingerprint == "") {
+            ok = false;
+        } else {
+            entry.provider_fingerprint = fingerprint;
+        }
+    }
+    return ok;
+}
+
+/**
+ * Populate ordered module-import provider expectations through a shared cache.
+ *
+ * @param result Analysis result providing provider metadata.
+ * @param entries Ordered `InterfaceModuleImport*` entries to update.
+ * @param provider_indices Shared provider-name-to-index cache.
+ * @param fingerprints Shared fingerprint cache.
+ * @return `true` when every provider fingerprint was available.
+ */
+func mi_populate_module_import_fingerprints(result: AnalysisResult*, entries: VectorBase*,
+                                            provider_indices: StringIntMap*,
+                                            fingerprints: StringVector*) -> bool {
+    let ok = true;
+    for (let i = 0; i < vec_size(entries); i = i + 1) {
+        let entry = ptr_vec_get(entries, i) as InterfaceModuleImport*;
+        let fingerprint = mi_provider_fingerprint_cached(
+            result, provider_indices, fingerprints, entry.provider_module);
+        if (fingerprint == "") {
+            ok = false;
+        } else {
+            entry.provider_fingerprint = fingerprint;
+        }
+    }
+    return ok;
+}
+
+/**
+ * Populate all operational provider expectations using one provider cache.
+ *
+ * @param result Analysis result providing selected provider metadata.
+ * @param mi Interface whose import, require, and link records are updated.
+ * @return `true` when every provider expectation was populated and coherent.
+ */
+func mi_populate_provider_fingerprints(result: AnalysisResult*, mi: ModuleInterface*) -> bool {
+    with (let provider_indices = sim_create() => sim_free(provider_indices),
+          let fingerprints = sv_create(4) => sv_free(fingerprints)) {
+        let imports_ok = mi_populate_module_import_fingerprints(
+            result, mi.module_imports, provider_indices, fingerprints);
+        let require_ok = mi_populate_dependency_fingerprints(
+            result, mi.require_entries, provider_indices, fingerprints);
+        let link_ok = mi_populate_dependency_fingerprints(
+            result, mi.link_entries, provider_indices, fingerprints);
+        return imports_ok && require_ok && link_ok &&
+            ifp_validate_dependencies(mi, result.diags, "<interface:" + mi.module_name + ">");
+    }
+}
+
+/**
+ * Project a complete operational interface with canonical fingerprints.
+ *
+ * @param result Analysis result to project from.
+ * @param module_name Module whose exports to project.
+ * @return Projected interface, or `null` after a diagnosed guard failure.
+ */
+func mi_project(result: AnalysisResult*, module_name: string) -> ModuleInterface*? {
+    let projected = mi_project_surface(result, module_name);
+    if (projected == null) {
+        return null;
+    }
+    let mi = projected as ModuleInterface*;
+    let filename = "<interface:" + module_name + ">";
+    if (!ifp_assign(mi, result.diags, filename)) {
+        mi_free(mi);
+        return null;
+    }
+
+    if (!mi_populate_provider_fingerprints(result, mi)) {
+        mi_free(mi);
+        return null;
+    }
+    return mi;
+}

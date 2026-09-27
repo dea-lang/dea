@@ -1,0 +1,35 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_new_err;
+
+struct Point {
+    x: int;
+    y: int;
+}
+
+enum Result {
+    Ok(value: int);
+}
+
+enum Color {
+    Red();
+    Blue();
+}
+
+func err_new_struct_partial() {
+    let p = new Point(1); // TYP-0283
+    drop p;
+}
+
+func err_new_variant_bad_payload() {
+    let r = new Ok(true); // TYP-0314
+    drop r;
+}
+
+func err_new_enum_without_variant() {
+    let c = new Color(); // TYP-0281
+    drop c;
+}

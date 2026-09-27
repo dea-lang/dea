@@ -1,0 +1,202 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module cli_args.link;
+
+import std.string;
+import std.text;
+import std.vector;
+import util.diag;
+import cli_args.model;
+
+/**
+ * Count ordered operands with one CLI classification.
+ *
+ * @param opts Parsed CLI options.
+ * @param kind Operand kind to count.
+ * @return Number of matching operands.
+ */
+func cli_count_link_operands(opts: CliOptions*, kind: LinkOperandKind) -> int {
+    let count = 0;
+    for (let i = 0; i < cli_link_operands_count(opts.link_operands); i = i + 1) {
+        if (ord(cli_link_operands_get(opts.link_operands, i).kind) == ord(kind)) {
+            count = count + 1;
+        }
+    }
+    return count;
+}
+
+/**
+ * Return whether one operand kind is an explicit external-link control.
+ *
+ * @param kind Operand kind to classify.
+ * @return `true` for libraries, search paths, rpaths, and raw link arguments.
+ */
+func cli_is_external_link_operand_kind(kind: LinkOperandKind) -> bool {
+    return ord(kind) == ord(LOK_LIBRARY) ||
+        ord(kind) == ord(LOK_LIBRARY_SEARCH) ||
+        ord(kind) == ord(LOK_RPATH) ||
+        ord(kind) == ord(LOK_LINK_ARG);
+}
+
+/** Return whether parsed options contain any external-link control. */
+func cli_has_external_link_operands(opts: CliOptions*) -> bool {
+    for (let i = 0; i < cli_link_operands_count(opts.link_operands); i = i + 1) {
+        if (cli_is_external_link_operand_kind(
+                cli_link_operands_get(opts.link_operands, i).kind)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/** Return whether one raw word delegates argument selection to an opaque file. */
+func cli_link_arg_has_opaque_indirection(value: string) -> bool {
+    if (starts_with_s(value, "@") || value == "-filelist" ||
+        starts_with_s(value, "-filelist=") || value == "--config" ||
+        starts_with_s(value, "--config=") ||
+        value == "--config-user-dir" ||
+        starts_with_s(value, "--config-user-dir=") ||
+        value == "--config-system-dir" ||
+        starts_with_s(value, "--config-system-dir=") ||
+        value == "-specs" || starts_with_s(value, "-specs=") ||
+        value == "--specs" || starts_with_s(value, "--specs=")) {
+        return true;
+    }
+    if (!starts_with_s(value, "-Wl,")) {
+        return false;
+    }
+    with (
+        let parts = split_s(
+            slice_s(value, len_s("-Wl,"), len_s(value)), ",") =>
+            sv_free(parts)
+    ) {
+        for (let i = 0; i < sv_size(parts); i = i + 1) {
+            let part = sv_get(parts, i);
+            if (starts_with_s(part, "@") || part == "-filelist" ||
+                starts_with_s(part, "-filelist=")) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/** Return whether a linker option consumes an object-suffixed output word. */
+func cli_link_arg_allows_object_suffixed_value(option: string) -> bool {
+    let lowered = to_lower_s(option);
+    return lowered == "-map" || lowered == "-mapfile" ||
+        lowered == "-map-file" || lowered == "-o" ||
+        lowered == "--output" || lowered == "-dependency_info" ||
+        lowered == "-object_path_lto" || lowered == "-install_name" ||
+        lowered == "-rpath";
+}
+
+/** Return whether one word has a relocatable-object terminal suffix. */
+func cli_link_arg_has_relocatable_suffix(value: string) -> bool {
+    let lowered = to_lower_s(value);
+    return ends_with_s(lowered, ".o") || ends_with_s(lowered, ".obj");
+}
+
+/** Return whether one inline option assigns an object-suffixed output path. */
+func cli_link_arg_is_inline_object_output(value: string) -> bool {
+    let lowered = to_lower_s(value);
+    return starts_with_s(lowered, "-o=") ||
+        (starts_with_s(lowered, "-o") && len_s(lowered) > len_s("-o")) ||
+        starts_with_s(lowered, "--output=") ||
+        starts_with_s(lowered, "-map=") ||
+        starts_with_s(lowered, "-mapfile=") ||
+        starts_with_s(lowered, "-map-file=") ||
+        starts_with_s(lowered, "-dependency_info=") ||
+        starts_with_s(lowered, "-object_path_lto=");
+}
+
+/** Return whether one raw host-driver word carries a relocatable object. */
+func cli_link_arg_is_relocatable(value: string) -> bool {
+    if (starts_with_s(value, "-Wl,")) {
+        with (
+            let parts = split_s(
+                slice_s(value, len_s("-Wl,"), len_s(value)), ",") =>
+                sv_free(parts)
+        ) {
+            for (let i = 0; i < sv_size(parts); i = i + 1) {
+                let part = sv_get(parts, i);
+                if (!cli_link_arg_has_relocatable_suffix(part) ||
+                    cli_link_arg_is_inline_object_output(part) ||
+                    (i > 0 && cli_link_arg_allows_object_suffixed_value(
+                        sv_get(parts, i - 1)))) {
+                    continue;
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+    if (cli_link_arg_is_inline_object_output(value)) {
+        return false;
+    }
+    return cli_link_arg_has_relocatable_suffix(value);
+}
+
+/**
+ * Append one required nonempty link-operand value.
+ *
+ * @param opts Parsed CLI options.
+ * @param diags Diagnostic collector.
+ * @param kind Operand classification.
+ * @param option Exact option spelling used for diagnostics.
+ * @param value Candidate value.
+ * @return `true` when the value was recorded.
+ */
+func cli_record_link_operand(
+    opts: CliOptions*,
+    diags: DiagCollector*,
+    kind: LinkOperandKind,
+    option: string,
+    value: string
+) -> bool {
+    if (is_empty_s(value)) {
+        cli_emit_error(
+            diags,
+            "L1C-2003",
+            "missing value for option '" + option + "'"
+        );
+        return false;
+    }
+    if (ord(kind) == ord(LOK_LINK_ARG) &&
+        cli_link_arg_has_opaque_indirection(value)) {
+        cli_emit_error(
+            diags,
+            "L1C-2071",
+            "raw link argument must not use response, object-file-list, or " +
+                "driver-config indirection: '" +
+                value + "'"
+        );
+        return false;
+    }
+    if (ord(kind) == ord(LOK_LIBRARY) &&
+        cli_link_arg_has_relocatable_suffix(value)) {
+        cli_emit_error(
+            diags,
+            "L1C-2071",
+            "library option must not name a relocatable object; use a " +
+                "positional Dea object or '--foreign-object': '" + value + "'"
+        );
+        return false;
+    }
+    if (ord(kind) == ord(LOK_LINK_ARG) &&
+        cli_link_arg_is_relocatable(value)) {
+        cli_emit_error(
+            diags,
+            "L1C-2071",
+            "raw link argument must not supply a relocatable object: '" +
+                value + "'; use a positional Dea '.o' with its sibling '.l1m', " +
+                "or '--foreign-object' for a caller-asserted foreign object"
+        );
+        return false;
+    }
+    cli_link_operands_push(opts.link_operands, kind, value);
+    return true;
+}

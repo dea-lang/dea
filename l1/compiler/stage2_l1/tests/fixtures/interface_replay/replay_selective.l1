@@ -1,0 +1,15 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module replay_selective;
+
+import Point, PointAlias, Shade, Rgb, make_point, mix, origin_x from replay_provider;
+
+func main() -> int {
+    let p: PointAlias = make_point(px: 10, py: 11);
+    let shade: Shade = Rgb(red: 12, green: 13, blue: 14);
+    let copied: Point = p;
+    return mix(point: copied, color: shade) + origin_x;
+}

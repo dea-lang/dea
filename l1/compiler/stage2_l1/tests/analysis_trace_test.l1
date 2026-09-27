@@ -1,0 +1,56 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module analysis_trace_test;
+
+import std.io;
+import std.assert;
+
+import analysis;
+import sem_context;
+import source_paths;
+import util.log;
+
+/**
+ * Returns the root directory for test fixtures.
+ *
+ * @return The driver fixture directory used by this test.
+ */
+func fixture_root() -> string {
+    return "compiler/stage2_l1/tests/fixtures/driver";
+}
+
+/**
+ * Creates and configures source search paths for testing.
+ *
+ * @return Source search paths rooted at the driver fixtures directory.
+ */
+func make_paths() -> SourceSearchPaths* {
+    let sp = sp_create();
+    sp_add_project_root(sp, fixture_root());
+    return sp;
+}
+
+/**
+ * Tests test_analysis_ok_main.
+ */
+func test_analysis_ok_main() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "ok_main", cfg);
+        assert(!analysis_has_errors(result), "expected no analysis errors for ok_main");
+        assert(analysis_diag_count(result) == 0, "expected zero diagnostics for ok_main");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    test_analysis_ok_main();
+    printl_s("analysis_trace_test: all tests passed");
+}

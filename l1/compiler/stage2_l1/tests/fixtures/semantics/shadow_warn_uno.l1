@@ -1,0 +1,13 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module shadow_warn_uno;
+
+/**
+ * Defines one imported `Red` variant.
+ */
+enum Color {
+    Red;
+}

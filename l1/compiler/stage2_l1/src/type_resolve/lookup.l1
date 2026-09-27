@@ -1,0 +1,326 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module type_resolve.lookup;
+
+import std.text;
+import std.vector;
+import util.diag;
+import ast;
+import name_resolver.query;
+import name_resolver.state;
+import symbols;
+import types;
+
+/**
+ * Build a fully qualified type-resolution key.
+ *
+ * @param module_name Defining module name.
+ * @param name Symbol name within the module.
+ * @return Key in `module::name` form.
+ */
+func tr_key(module_name: string, name: string) -> string {
+    return module_name + "::" + name;
+}
+
+/**
+ * Join a parsed module path into dotted form.
+ *
+ * @param path Vector of module-path components.
+ * @return Dotted module name.
+ */
+func tr_module_from_path(path: StringVector*) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < sv_size(path); i = i + 1) {
+            if (i > 0) {
+                sb_append(sb, ".");
+            }
+            sb_append(sb, sv_get(path, i));
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Format the fully qualified display name for one parsed type reference.
+ *
+ * @param tref Parsed type reference to render.
+ * @return Display string including module path and name qualifier segments.
+ */
+func tr_type_ref_full_name(tref: TypeRef*) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        if (tref.module_path != null) {
+            let mp = tref.module_path as StringVector*;
+            for (let i = 0; i < sv_size(mp); i = i + 1) {
+                if (i > 0) {
+                    sb_append(sb, ".");
+                }
+                sb_append(sb, sv_get(mp, i));
+            }
+            if (sv_size(mp) > 0) {
+                sb_append(sb, "::");
+            }
+        }
+        if (tref.name_qualifier != null) {
+            let nq = tref.name_qualifier as StringVector*;
+            for (let i = 0; i < sv_size(nq); i = i + 1) {
+                sb_append(sb, sv_get(nq, i));
+                sb_append(sb, "::");
+            }
+        }
+        sb_append(sb, tref.name);
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Format the direct type name suggestion for one parsed type reference.
+ *
+ * @param tref Parsed type reference to simplify.
+ * @return Display string omitting enum-style qualifier segments.
+ */
+func tr_type_ref_simple_name(tref: TypeRef*) -> string {
+    if (tref.module_path == null) {
+        return tref.name;
+    }
+    return tr_module_from_path(tref.module_path as StringVector*) + "::" + tref.name;
+}
+
+/**
+ * Collect imported module names contributing one ambiguous type name.
+ *
+ * @param nr Name-resolution result containing all module environments.
+ * @param env Current module environment.
+ * @param name Ambiguous imported type name.
+ * @return Sorted module names that provide the ambiguous type.
+ */
+func tr_ambiguous_type_modules(nr: NameResolution*, env: ModuleEnv*, name: string) -> StringVector* {
+    let modules = sv_create(4);
+    for (let i = 0; i < nr_env_count(nr); i = i + 1) {
+        let candidate = nr_env_get(nr, i);
+        if (!nr_module_env_imports_module(env, candidate.module_name)) {
+            continue;
+        }
+        if (nr_module_env_local(candidate, name) == null) {
+            continue;
+        }
+        sv_push(modules, candidate.module_name);
+    }
+    sv_sort(modules);
+    return modules;
+}
+
+/**
+ * Format one quoted module list for ambiguous-type diagnostics.
+ *
+ * @param modules Sorted module names contributing an ambiguity.
+ * @return String like `a', 'b`.
+ */
+func tr_format_ambiguous_modules(modules: StringVector*) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < sv_size(modules); i = i + 1) {
+            if (i > 0) {
+                sb_append(sb, "', '");
+            }
+            sb_append(sb, sv_get(modules, i));
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Format the disambiguation hints for one ambiguous type name.
+ *
+ * @param modules Sorted module names contributing an ambiguity.
+ * @param name Ambiguous type name.
+ * @return String like `'a::T' or 'b::T'`.
+ */
+func tr_format_ambiguous_hints(modules: StringVector*, name: string) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < sv_size(modules); i = i + 1) {
+            if (i > 0) {
+                sb_append(sb, " or ");
+            }
+            sb_append(sb, "'");
+            sb_append(sb, sv_get(modules, i));
+            sb_append(sb, "::");
+            sb_append(sb, name);
+            sb_append(sb, "'");
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Emit a type-resolution diagnostic for a source span.
+ *
+ * @param diags Diagnostic collector.
+ * @param code Diagnostic code.
+ * @param message Diagnostic message.
+ * @param filename Source filename.
+ * @param span Source span to highlight.
+ */
+func tr_diag_error(diags: DiagCollector*, code: string, message: string, filename: string, span: Span) {
+    diag_error(diags, "TypeResolver", code, message, filename, span.start_line, span.start_column, span.end_line,
+        span.end_column);
+}
+
+/**
+ * Free an optional resolved type.
+ *
+ * @param ty Optional type to free.
+ */
+func tr_type_free_opt(ty: Type*?) {
+    if (ty != null) {
+        type_free(ty as Type*);
+    }
+}
+
+/**
+ * Record and return one successful symbol-lookup result.
+ *
+ * Keeping this operation at the `tr_symbol_lookup` boundary ensures every
+ * semantic caller contributes to the same canonical dependency ledger.
+ *
+ * @param nr Name-resolution data receiving the lookup record.
+ * @param env Consumer module environment.
+ * @param sym Optional resolved symbol.
+ * @return `sym` unchanged.
+ */
+func tr_symbol_lookup_result(nr: NameResolution*, env: ModuleEnv*, sym: Symbol*?) -> Symbol*? {
+    if (sym != null) {
+        nr_record_resolved_symbol(nr, env, sym as Symbol*);
+    }
+    return sym;
+}
+
+/**
+ * Classifies one qualified semantic lookup prefix.
+ */
+enum SymbolLookupTargetKind {
+    SLT_LOCAL;
+    SLT_EXPORTS;
+    SLT_UNKNOWN_MODULE;
+    SLT_NOT_IMPORTED;
+}
+
+/**
+ * Describes the borrowed environment and visibility selected by a qualifier.
+ */
+struct SymbolLookupTarget {
+    kind: SymbolLookupTargetKind;
+    env: ModuleEnv*?;
+}
+
+/**
+ * Classify the target selected by one qualified lookup prefix.
+ *
+ * This helper is ledger-neutral: it resolves an alias, the current module, or
+ * an imported canonical namespace without recording a symbol use. It also
+ * distinguishes an unavailable imported module from a namespace that the
+ * consumer never imported.
+ *
+ * @param nr Name-resolution data containing module environments.
+ * @param env Current module environment.
+ * @param target_module Parsed dotted module path or local import alias.
+ * @return Lookup target with a borrowed environment when one is available.
+ */
+func tr_symbol_lookup_target(nr: NameResolution*, env: ModuleEnv*, target_module: string) -> SymbolLookupTarget {
+    let alias_env = nr_module_env_alias_target(env, target_module);
+    if (alias_env != null) {
+        return SymbolLookupTarget(SLT_EXPORTS, alias_env);
+    }
+    if (target_module == env.module_name) {
+        return SymbolLookupTarget(SLT_LOCAL, env);
+    }
+    if (nr_module_env_qualifies_module(env, target_module)) {
+        let qualified_env = nr_env_find(nr, target_module);
+        if (qualified_env == null) {
+            return SymbolLookupTarget(SLT_UNKNOWN_MODULE, null);
+        }
+        return SymbolLookupTarget(SLT_EXPORTS, qualified_env);
+    }
+    if (nr_module_env_imports_module(env, target_module) && nr_env_find(nr, target_module) == null) {
+        return SymbolLookupTarget(SLT_UNKNOWN_MODULE, null);
+    }
+    return SymbolLookupTarget(SLT_NOT_IMPORTED, null);
+}
+
+/**
+ * Resolve a symbol visible from a module environment.
+ *
+ * @param nr Name-resolution data containing module environments.
+ * @param env Current module environment.
+ * @param name Unqualified symbol name.
+ * @param module_path Optional parsed module path for cross-module lookup.
+ * @param name_qualifier Optional enum-variant qualifier.
+ * @return Resolved symbol, or `null` if lookup fails.
+ */
+func tr_symbol_lookup(nr: NameResolution*, env: ModuleEnv*, name: string, module_path: StringVector*?,
+                       name_qualifier: StringVector*?) -> Symbol*? {
+    if (module_path == null) {
+        if (name_qualifier == null) {
+            if (nr_module_env_is_ambiguous(env, name)) {
+                return null;
+            }
+            return tr_symbol_lookup_result(nr, env, nr_module_env_all(env, name));
+        }
+
+        if (sv_size(name_qualifier as StringVector*) != 1) {
+            return null;
+        }
+
+        let sym = nr_module_env_all(env, name);
+        if (sym == null) {
+            return null;
+        }
+        let s = sym as Symbol*;
+        if (ord(s.kind) != ord(SYM_ENUM_VARIANT)) {
+            return null;
+        }
+        if (s.owner_name != sv_get(name_qualifier as StringVector*, 0)) {
+            return null;
+        }
+        return tr_symbol_lookup_result(nr, env, s);
+    }
+
+    let target_module = tr_module_from_path(module_path as StringVector*);
+    let lookup_target = tr_symbol_lookup_target(nr, env, target_module);
+    if (lookup_target.env == null) {
+        return null;
+    }
+    let target = lookup_target.env as ModuleEnv*;
+    let use_exports = ord(lookup_target.kind) == ord(SLT_EXPORTS);
+
+    if (name_qualifier == null) {
+        if (use_exports) {
+            return tr_symbol_lookup_result(nr, env,
+                nr_map_symbol_get(target.exports, name));
+        }
+        return tr_symbol_lookup_result(nr, env, nr_module_env_local(target, name));
+    }
+
+    if (sv_size(name_qualifier as StringVector*) != 1) {
+        return null;
+    }
+
+    let sym2: Symbol*? = null;
+    if (use_exports) {
+        sym2 = nr_map_symbol_get(target.exports, name);
+    } else {
+        sym2 = nr_module_env_local(target, name);
+    }
+    if (sym2 == null) {
+        return null;
+    }
+    let s2 = sym2 as Symbol*;
+    if (ord(s2.kind) != ord(SYM_ENUM_VARIANT)) {
+        return null;
+    }
+    if (s2.owner_name != sv_get(name_qualifier as StringVector*, 0)) {
+        return null;
+    }
+    return tr_symbol_lookup_result(nr, env, s2);
+}

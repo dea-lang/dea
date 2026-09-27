@@ -1,8 +1,8 @@
 # Dea/L<sub>1</sub>
 
-This subtree contains the active bootstrap compiler for Dea/L1 inside the Dea monorepo.
+This subtree contains the bootstrap and self-hosted compilers for Dea/L1 inside the Dea monorepo.
 
-The canonical project overview lives in [README.md][root-readme]. Run L1 bootstrap commands from this directory.
+The canonical project overview lives in [README.md][root-readme]. Run L1 development commands from this directory.
 L1-local stable documentation lives under [l1/docs/][docs], while L1-local plans and other lifecycle artifacts live
 under [l1/work/][work].
 
@@ -10,7 +10,7 @@ The subtree also includes minimal example programs at [examples/][examples].
 
 Useful local documents:
 
-- [l1/docs/project-status.md][project-status] for the current L1 bootstrap implementation status
+- [l1/docs/project-status.md][project-status] for the current L1 implementation status
 - [l1/docs/roadmap.md][roadmap] for the live L1 direction document
 - [l1/docs/user/linking.md][linking] for external native-library and foreign-object linking
 - [l1/docs/reference/stdlib-preparation.md][preparation] for bundled interfaces and on-demand native support
@@ -22,11 +22,11 @@ the L1-language fixture programs exercised by the bootstrap compiler tests. The 
 its implementation tests are `.l0` sources and are built or run with the upstream `l0c-stage2` toolchain during
 bootstrap.
 
-The current Stage 1 driver supports per-module generated C, compile-only `.o + .l1m` artifact pairs, verified standalone
+Both compiler stages support per-module generated C, compile-only `.o + .l1m` artifact pairs, verified standalone
 linking with ordered interface discovery, and multi-compilation-unit build/run across mixed source/interface graphs.
 Link-involving modes also accept one ordered stream of explicit foreign objects, external libraries, search paths,
-rpaths, and raw host-driver words. These are bootstrap capabilities; L1 does not yet have a self-hosted Stage 2 compiler
-or install/dist/release workflow.
+rpaths, and raw host-driver words. Stage 2 is the mechanical L1 port of the Stage 1 oracle. L1 has no
+install/dist/release workflow yet.
 
 `make build-stage1` supplies public runtime headers and the complete verified bundled interface set under
 `$L1_BUILD_DIR/interfaces/`. Build/run/link prepare matching native stdlib/runtime support on demand in one local cache.
@@ -44,19 +44,25 @@ when Clang coverage is needed. Older Clang is reserved for isolated compatibilit
 [l1/work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md][legacy-clang-plan]. That Draft plan
 does not yet provide legacy support; this requirement remains in effect until support is implemented and documented.
 
-Current Stage 1 validation combines the `.l0` implementation test suite under `compiler/stage1_l0/tests/` with
-warning-free latest-stage `--check` coverage for `examples/*.l1`. Exact generated-C golden-file parity is not part of
-the active L1 Stage 1 contract.
+Stage 1 validation combines the `.l0` implementation test suite under `compiler/stage1_l0/tests/` with warning-free
+latest-stage `--check` coverage for `examples/*.l1`. Exact generated-C golden-file parity is not part of the active L1
+Stage 1 contract.
+
+Stage 2 compiles and runs its own `.l1` implementation tests and shares compiler-facing Python integration coverage.
+`make test` exercises both stages; `make test-all` adds both default trace suites and their child fixtures.
+`make triple-test` checks the strict retained-C and native fixed point and tests the final self-built compiler. Hosted
+`make test-ci` includes that fixed-point gate. `make use-dev-stage1` switches back to the bootstrap compiler; ordinary
+builds and tests preserve the selected alias.
 
 Minimal local workflow:
 
 ```bash
-make use-dev-stage1
+make use-dev-stage2
 source build/dea/bin/l1-env.sh
 l1c --version
 ```
 
-`make use-dev-stage1` auto-prepares the default repo-local upstream `../l0/build/dea/bin/l0c-stage2` when needed.
+`make use-dev-stage2` auto-prepares the default repo-local upstream `../l0/build/dea/bin/l0c-stage2` when needed.
 
 To use an explicit upstream L0 compiler instead of the repo-local default, set `L1_BOOTSTRAP_L0C=/path/to/l0c` when
 running `make build-stage1`.

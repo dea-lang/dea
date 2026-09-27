@@ -1,0 +1,15 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_let_diag_tail_err;
+
+/**
+ * Triggers follow-on `let` diagnostics after primary failures.
+ */
+func err_let_diag_tail() -> int {
+    let a: Missing = 1; // TYP-0040
+    let b = missing_value; // TYP-0051
+    return 0;
+}

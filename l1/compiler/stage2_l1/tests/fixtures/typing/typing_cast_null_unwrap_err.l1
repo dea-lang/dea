@@ -1,0 +1,10 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_cast_null_unwrap_err;
+
+func unwrap_const_null_pointer() -> int* {
+    return (null as int*?) as int*; // TYP-0701
+}

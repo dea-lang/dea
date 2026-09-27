@@ -1,0 +1,138 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module parser;
+
+import lexer;
+import tokens;
+import ast;
+import util.diag;
+import parser.state;
+import parser.decl;
+
+/**
+ * Represents the ParseResult structure.
+ */
+struct ParseResult {
+    root_module: Module*?;
+    expr_arena: ExprArena*;
+    stmt_arena: StmtArena*;
+    pattern_arena: PatternArena*;
+    diags: DiagCollector*;
+}
+
+/**
+ * Free a public parse result and all owned AST arenas.
+ *
+ * @param self Parse result to free.
+ */
+func parse_result_free(self: ParseResult*) {
+    if (self.root_module != null) {
+        module_free(self.root_module as Module*);
+    }
+    expr_arena_free(self.expr_arena);
+    stmt_arena_free(self.stmt_arena);
+    pattern_arena_free(self.pattern_arena);
+    diag_free(self.diags);
+    drop self;
+}
+
+/**
+ * Report whether parsing produced any errors.
+ *
+ * @param self Parse result to inspect.
+ * @return `true` if the parse diagnostics contain an error.
+ */
+func parse_has_errors(self: ParseResult*) -> bool {
+    return diag_has_errors(self.diags);
+}
+
+/**
+ * Return the number of diagnostics produced during parsing.
+ *
+ * @param self Parse result to inspect.
+ * @return Total diagnostic count.
+ */
+func parse_diag_count(self: ParseResult*) -> int {
+    return diag_count(self.diags);
+}
+
+/**
+ * Return a parse diagnostic by index.
+ *
+ * @param self Parse result to inspect.
+ * @param index Zero-based diagnostic index.
+ * @return Diagnostic at `index`.
+ */
+func parse_diag_get(self: ParseResult*, index: int) -> Diagnostic* {
+    return diag_get(self.diags, index);
+}
+
+/**
+ * Convert the internal parser result to the public parse-result type.
+ *
+ * @param self Internal parse result to consume.
+ * @return Public parse result owning the same AST arenas and diagnostics.
+ */
+func impl_result_to_public(self: ImplParseResult*) -> ParseResult* {
+    let result = new ParseResult(
+        self.root_module,
+        self.expr_arena,
+        self.stmt_arena,
+        self.pattern_arena,
+        self.diags
+    );
+    drop self;
+    return result;
+}
+
+/**
+ * Parse a module from an existing token stream.
+ *
+ * @param tokens Token stream to parse.
+ * @param filename Source filename used in diagnostics.
+ * @return Parse result for the module.
+ */
+func parse_module_tokens(tokens: TokenVector, filename: string) -> ParseResult* {
+    let impl = parser.decl::impl_parse_module_tokens(tokens, filename);
+    return impl_result_to_public(impl);
+}
+
+/**
+ * Parse a module from an existing token stream and free the token buffer.
+ *
+ * @param tokens Token stream to parse.
+ * @param filename Source filename used in diagnostics.
+ * @return Parse result for the module.
+ */
+func parse_module_tokens_owned(tokens: TokenVector, filename: string) -> ParseResult* {
+    let impl = parser.decl::impl_parse_module_tokens(tokens, filename);
+    tv_free(tokens);
+    return impl_result_to_public(impl);
+}
+
+/**
+ * Convert lexer diagnostics into a public parse result and free the lexer state.
+ *
+ * @param ls Lexer state holding diagnostics.
+ * @param filename Source filename used in diagnostics.
+ * @return Parse result containing the copied lexer diagnostics.
+ */
+func parse_lex_error_result(ls: LexerState*, filename: string) -> ParseResult* {
+    let impl = parser.decl::ps_lex_error_result(ls, filename);
+    return impl_result_to_public(impl);
+}
+
+/**
+ * Lex and parse a module from source text.
+ *
+ * @param source Source text to parse.
+ * @param filename Source filename used in diagnostics.
+ * @return Parse result for the module.
+ */
+func parse_module_source(source: string, filename: string) -> ParseResult* {
+    let impl = parser.decl::impl_parse_module_source(source, filename);
+    return impl_result_to_public(impl);
+}

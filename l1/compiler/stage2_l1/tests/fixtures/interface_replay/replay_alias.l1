@@ -1,0 +1,14 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module replay_alias;
+
+import replay_provider as rp;
+
+func main() -> int {
+    let p: rp::Point = rp::Point(y: 8, x: 7);
+    let shade: rp::Shade = rp::Rgb(green: 5, blue: 6, red: 4);
+    return rp::mix(color: shade, point: p) + rp::origin_x;
+}

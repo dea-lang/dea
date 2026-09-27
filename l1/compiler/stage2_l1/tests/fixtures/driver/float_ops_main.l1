@@ -1,0 +1,22 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module float_ops_main;
+
+func main() -> int {
+    let lhs: float = 8.0f;
+    let rhs: float = 2.0f;
+    let diff: float = lhs - rhs;
+    let prod: float = rhs * 4.0f;
+    let quot: double = 9.0 / 2.0;
+    let narrowed: float = quot as float;
+    let widened: double = lhs as double;
+    let from_int: double = 7 as double;
+    let back_to_int: int = from_int as int;
+    if (diff == 6.0f && prod == 8.0f && quot > 4.0 && narrowed > 4.0f && widened == 8.0 && back_to_int == 7) {
+        return 21;
+    }
+    return 0;
+}

@@ -1,0 +1,42 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module shadow_warn_main;
+
+import shadow_warn_uno;
+import shadow_warn_due;
+
+/**
+ * Defines the local `Red` that shadows imported variants.
+ */
+enum MyColor {
+    Zero;
+    Red;
+}
+
+/**
+ * Resolves the imported variant through module qualification.
+ *
+ * @param c Imported color value.
+ * @return The tag of the local `Red` variant.
+ */
+func describe(c: shadow_warn_uno::Color) -> int {
+    match (c) {
+        shadow_warn_uno::Red => {
+            return ord(Red);
+        }
+    }
+}
+
+/**
+ * Main entry point for qualified-variant shadowing tests.
+ */
+func main() -> int {
+    let c: shadow_warn_uno::Color = shadow_warn_uno::Red;
+    if (describe(c) == 1) {
+        return 13;
+    }
+    return 14;
+}

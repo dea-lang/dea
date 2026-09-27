@@ -1,0 +1,36 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module same_type_struct_cast_main;
+
+import std.io;
+
+struct Token {
+    payload: string;
+    offset: int;
+}
+
+func get(x: int) -> Token? {
+    if (x % 2 == 0) {
+        return null;
+    }
+    return Token("hello", 0);
+}
+
+func pl(t: Token) -> string {
+    return t.payload;
+}
+
+func main() -> int {
+    let t2: Token? = get(1);
+
+    if (t2 != null) {
+        let t3: Token = t2 as Token;
+        printl_ss("token payload is:", pl(t3 as Token));
+        return 0;
+    }
+
+    return 1;
+}

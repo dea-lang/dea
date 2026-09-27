@@ -1,0 +1,13 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module no_main;
+
+/**
+ * Helper function used by missing-main tests.
+ */
+func helper() -> int {
+    return 0;
+}

@@ -1,0 +1,30 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_variadic_ok;
+
+type VariadicInt = func(int, int...) -> int;
+
+func sum(base: int, values: int...) -> int {
+    let total = base;
+    let i = 0;
+    while (i < len(values)) {
+        total = total + values[i];
+        i = i + 1;
+    }
+    return total;
+}
+
+func forward(base: int, values: int...) -> int {
+    return sum(base, values...);
+}
+
+func main() -> int {
+    let cb: VariadicInt = sum;
+    let values: int[3] = [2, 3, 4];
+    let all = slice(values);
+    return sum(1) + sum(1, 2, 3) + cb(1, 2, 3) +
+        forward(1, all...) + sum(1, values...);
+}

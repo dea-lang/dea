@@ -1,0 +1,37 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_pointer_identity_ok;
+
+struct T {
+    val: int;
+}
+
+func get_t() -> T* {
+    return new T(0);
+}
+
+func ok_pointer_identity() {
+    let t1: T* = new T(1);
+    let t2: T* = new T(2);
+
+    // same type T* local
+    let b1: bool = t1 == t2;
+    let b2: bool = t1 != t2;
+
+    // same type T* local and function returned T*
+    let b3: bool = t1 == get_t();
+    let b4: bool = get_t() != t2;
+
+    // void* comparisons
+    let v1: void* = t1 as void*;
+    let v2: void* = t2 as void*;
+    let b5: bool = v1 == v2;
+    let b6: bool = v1 != v2;
+
+    // control flow
+    if (t1 == t2) {}
+    while (t1 != t2) { break; }
+}

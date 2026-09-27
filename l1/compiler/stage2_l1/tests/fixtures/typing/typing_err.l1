@@ -1,0 +1,72 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_err;
+
+/**
+ * Triggers a binary-operator type mismatch.
+ */
+func err_binary_mismatch() {
+    let x: int = 1 + true; // TYP-0170
+}
+
+/**
+ * Triggers a let-initializer type mismatch.
+ */
+func err_assign_mismatch() {
+    let x: int = "hello"; // TYP-0310
+}
+
+/**
+ * Triggers an assignment-statement type mismatch.
+ */
+func err_reassign_mismatch() {
+    let x: int = 0;
+    x = "hello"; // TYP-0311
+}
+
+/**
+ * Triggers an unknown-identifier error.
+ */
+func err_unknown_id() {
+    let x = unknown_var; // TYP-0159
+}
+
+/**
+ * Represents the Point structure.
+ */
+struct Point { x: int; y: int; }
+
+/**
+ * Triggers an unknown-struct-field error.
+ */
+func err_struct_field() {
+    let p = Point(1, 2);
+    let z = p.z; // TYP-0221
+}
+
+/**
+ * Triggers a constructor arity mismatch.
+ */
+func err_call_args() {
+    let p = Point(1); // TYP-0191
+}
+
+/**
+ * Triggers a return type mismatch.
+ *
+ * @return An `int`, even though the body returns a string.
+ */
+func err_return_type() -> int {
+    return "not an int"; // TYP-0315
+}
+
+/**
+ * Triggers a non-boolean `if` condition error.
+ */
+func err_if_cond() {
+    if (123) { // TYP-0070
+    }
+}

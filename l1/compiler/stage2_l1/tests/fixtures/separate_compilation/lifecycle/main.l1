@@ -1,0 +1,26 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module lifecycle.main;
+
+import lifecycle.provider;
+import lifecycle.side_effect;
+
+extern func rt_string_concat(a: string, b: string) -> string;
+extern func lifecycle_record(tag: int) -> int;
+extern func lifecycle_verify() -> int;
+
+let main_state: string = rt_string_concat("main", "-state");
+let main_step: int = lifecycle_record(4);
+
+func main() -> int {
+    if (lifecycle_verify() != 0) {
+        return 90;
+    }
+    if (lifecycle.provider::value() != 3 || main_step != 4) {
+        return 91;
+    }
+    return 0;
+}

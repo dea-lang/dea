@@ -1,0 +1,20 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module lifecycle.provider;
+
+export value;
+
+import lifecycle.leaf as leaf;
+
+extern func rt_string_concat(a: string, b: string) -> string;
+extern func lifecycle_record(tag: int) -> int;
+
+let provider_state: string = rt_string_concat("provider", "-state");
+let provider_step: int = lifecycle_record(2);
+
+func value() -> int {
+    return leaf::value() + provider_step;
+}

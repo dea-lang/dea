@@ -1,0 +1,38 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_large_int_literal_overflow;
+
+func bad_uint_high() -> uint {
+    return 4294967296; // TYP-0700
+}
+
+func bad_uint_negative() -> uint {
+    return -1; // TYP-0700
+}
+
+func bad_long_high() -> long {
+    return 9223372036854775808; // TYP-0700
+}
+
+func bad_long_low() -> long {
+    return -(9223372036854775809); // TYP-0700
+}
+
+func bad_ulong_high() -> ulong {
+    return 18446744073709551616; // TYP-0700
+}
+
+func bad_ulong_negative() -> ulong {
+    return -1; // TYP-0700
+}
+
+func bad_uint_hex_high() {
+    let u: uint = 0x100000000; // TYP-0700
+}
+
+func bad_ulong_binary_high() {
+    let u: ulong = 0b10000000000000000000000000000000000000000000000000000000000000000; // TYP-0700
+}

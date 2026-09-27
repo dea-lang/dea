@@ -1,0 +1,13 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module shadow_warn_due;
+
+/**
+ * Defines a second imported `Red` variant.
+ */
+enum Shape {
+    Red;
+}

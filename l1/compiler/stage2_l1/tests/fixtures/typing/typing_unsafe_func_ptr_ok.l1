@@ -1,0 +1,23 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_unsafe_func_ptr_ok;
+
+unsafe func bump(x: int) -> int {
+    return x + 1;
+}
+
+func invoke(cb: unsafe func(int) -> int, value: int) -> int {
+    return cb(value);
+}
+
+func main() -> int {
+    let cb: unsafe func(int) -> int = bump;
+    let opt: (unsafe func(int) -> int)? = cb;
+    if (opt == null) {
+        return 0;
+    }
+    return invoke(cb, 4);
+}

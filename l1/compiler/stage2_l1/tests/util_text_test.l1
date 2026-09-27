@@ -1,0 +1,1008 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+module util_text_test;
+
+import std.io;
+import std.string;
+import std.unit;
+import std.assert;
+import std.vector;
+
+import std.text;
+
+/**
+ * Helper function to print a labeled boolean value.
+ *
+ * @param label The label to print.
+ * @param val The value to process.
+ */
+func print_bool(label: string, val: bool) {
+    if (val) {
+        printl_ss(label, "true");
+    } else {
+        printl_ss(label, "false");
+    }
+}
+
+/**
+ * Tests test_is_space.
+ */
+func test_is_space() {
+    printl_s("=== Test is_space ===");
+
+    print_bool("  is_space(' '):", is_space(' '));
+    print_bool("  is_space('\\t'):", is_space('\t'));
+    print_bool("  is_space('\\n'):", is_space('\n'));
+    print_bool("  is_space('\\r'):", is_space('\r'));
+    print_bool("  is_space('a'):", is_space('a'));
+    print_bool("  is_space('0'):", is_space('0'));
+    print_bool("  is_space('!'):", is_space('!'));
+
+    assert(is_space(' '), "Expected is_space(' ') to be true");
+    assert(is_space('\t'), "Expected is_space('\\t') to be true");
+    assert(is_space('\n'), "Expected is_space('\\n') to be true");
+    assert(!is_space('a'), "Expected is_space('a') to be false");
+    assert(!is_space('0'), "Expected is_space('0') to be false");
+    assert(!is_space('!'), "Expected is_space('!') to be false");
+
+    printl_s("is_space tests passed!\n");
+}
+
+/**
+ * Tests test_is_digit.
+ */
+func test_is_digit() {
+    printl_s("=== Test is_digit ===");
+
+    print_bool("  is_digit('0'):", is_digit('0'));
+    print_bool("  is_digit('5'):", is_digit('5'));
+    print_bool("  is_digit('9'):", is_digit('9'));
+    print_bool("  is_digit('a'):", is_digit('a'));
+    print_bool("  is_digit('Z'):", is_digit('Z'));
+    print_bool("  is_digit(' '):", is_digit(' '));
+
+    printl_s("is_digit tests passed!\n");
+}
+
+/**
+ * Tests test_is_alpha.
+ */
+func test_is_alpha() {
+    printl_s("=== Test is_alpha ===");
+
+    print_bool("  is_alpha('a'):", is_alpha('a'));
+    print_bool("  is_alpha('z'):", is_alpha('z'));
+    print_bool("  is_alpha('A'):", is_alpha('A'));
+    print_bool("  is_alpha('Z'):", is_alpha('Z'));
+    print_bool("  is_alpha('m'):", is_alpha('m'));
+    print_bool("  is_alpha('0'):", is_alpha('0'));
+    print_bool("  is_alpha(' '):", is_alpha(' '));
+    print_bool("  is_alpha('_'):", is_alpha('_'));
+
+    assert(is_alpha('a'), "Expected is_alpha('a') to be true");
+    assert(is_alpha('z'), "Expected is_alpha('z') to be true");
+    assert(is_alpha('A'), "Expected is_alpha('A') to be true");
+    assert(is_alpha('Z'), "Expected is_alpha('Z') to be true");
+    assert(is_alpha('m'), "Expected is_alpha('m') to be true");
+    assert(!is_alpha('0'), "Expected is_alpha('0') to be false");
+    assert(!is_alpha(' '), "Expected is_alpha(' ') to be false");
+    assert(!is_alpha('_'), "Expected is_alpha('_') to be false");
+
+    printl_s("is_alpha tests passed!\n");
+}
+
+/**
+ * Tests test_is_alnum.
+ */
+func test_is_alnum() {
+    printl_s("=== Test is_alnum ===");
+
+    print_bool("  is_alnum('a'):", is_alnum('a'));
+    print_bool("  is_alnum('Z'):", is_alnum('Z'));
+    print_bool("  is_alnum('5'):", is_alnum('5'));
+    print_bool("  is_alnum('_'):", is_alnum('_'));
+    print_bool("  is_alnum(' '):", is_alnum(' '));
+
+    assert(is_alnum('a'), "Expected is_alnum('a') to be true");
+    assert(is_alnum('Z'), "Expected is_alnum('Z') to be true");
+    assert(is_alnum('5'), "Expected is_alnum('5') to be true");
+    assert(!is_alnum('_'), "Expected is_alnum('_') to be false");
+    assert(!is_alnum(' '), "Expected is_alnum(' ') to be false");
+
+    printl_s("is_alnum tests passed!\n");
+}
+
+/**
+ * Tests test_to_digit.
+ */
+func test_to_digit() {
+    printl_s("=== Test to_digit ===");
+
+    printl_si("  to_digit('0'):", to_digit('0'));
+    printl_si("  to_digit('1'):", to_digit('1'));
+    printl_si("  to_digit('5'):", to_digit('5'));
+    printl_si("  to_digit('9'):", to_digit('9'));
+
+    assert(to_digit('0') == 0, "Expected to_digit('0') to be 0");
+    assert(to_digit('1') == 1, "Expected to_digit('1') to be 1");
+    assert(to_digit('5') == 5, "Expected to_digit('5') to be 5");
+    assert(to_digit('9') == 9, "Expected to_digit('9') to be 9");
+
+    printl_s("to_digit tests passed!\n");
+}
+
+/**
+ * Tests test_to_upper.
+ */
+func test_to_upper() {
+    printl_s("=== Test to_upper ===");
+
+    printl_si("  to_upper('a') (expect 65):", to_upper('a'));
+    printl_si("  to_upper('z') (expect 90):", to_upper('z'));
+    printl_si("  to_upper('A') (expect 65):", to_upper('A'));
+    printl_si("  to_upper('5') (expect 53):", to_upper('5'));
+
+    assert(to_upper('a') == 'A', "Expected to_upper('a') to be 'A'");
+    assert(to_upper('z') == 'Z', "Expected to_upper('z') to be 'Z'");
+    assert(to_upper('A') == 'A', "Expected to_upper('A') to be 'A'");
+    assert(to_upper('5') == '5', "Expected to_upper('5') to be '5'");
+
+    printl_s("to_upper tests passed!\n");
+}
+
+/**
+ * Tests test_to_lower.
+ */
+func test_to_lower() {
+    printl_s("=== Test to_lower ===");
+
+    printl_si("  to_lower('A') (expect 97):", to_lower('A'));
+    printl_si("  to_lower('Z') (expect 122):", to_lower('Z'));
+    printl_si("  to_lower('a') (expect 97):", to_lower('a'));
+    printl_si("  to_lower('5') (expect 53):", to_lower('5'));
+
+    assert(to_lower('A') == 'a', "Expected to_lower('A') to be 'a'");
+    assert(to_lower('Z') == 'z', "Expected to_lower('Z') to be 'z'");
+    assert(to_lower('a') == 'a', "Expected to_lower('a') to be 'a'");
+    assert(to_lower('5') == '5', "Expected to_lower('5') to be '5'");
+
+    printl_s("to_lower tests passed!\n");
+}
+
+/**
+ * Tests test_string_buffer.
+ */
+func test_string_buffer() {
+    printl_s("=== Test StringBuffer ===");
+
+    printl_s("Creating StringBuffer...");
+    let sb = sb_create();
+
+    printl_s("Appending strings: 'Hello', ', ', 'World', '!'...");
+    sb_append(sb, "Hello");
+    sb_append(sb, ", ");
+    sb_append(sb, "World");
+    sb_append(sb, "!");
+
+    printl_si("  sb_size:", sb_size(sb));
+
+    let result = sb_to_string(sb);
+    printl_ss("  sb_to_string:", result);
+
+    assert(result == "Hello, World!", "Expected sb_to_string() to be 'Hello, World!'");
+
+    sb_free(sb);
+    printl_s("StringBuffer tests passed!\n");
+}
+
+/**
+ * Tests test_string_buffer_empty.
+ */
+func test_string_buffer_empty() {
+    printl_s("=== Test StringBuffer (empty) ===");
+
+    let sb = sb_create();
+    printl_si("  empty sb_size:", sb_size(sb));
+    let result = sb_to_string(sb);
+    printl_ss("  empty sb_to_string:", result);
+    printl_si("  result length:", len_s(result));
+
+    assert(sb_size(sb) == 0, "Expected empty sb_size() to be 0");
+    assert(result == "", "Expected empty sb_to_string() to be ''");
+
+    sb_free(sb);
+    printl_s("Empty StringBuffer tests passed!\n");
+}
+
+/**
+ * Tests test_char_buffer.
+ */
+func test_char_buffer() {
+    printl_s("=== Test CharBuffer ===");
+
+    printl_s("Creating CharBuffer...");
+    let cb = cb_create();
+
+    printl_s("Appending chars: 'H', 'e', 'l', 'l', 'o'...");
+    cb_append(cb, 'H');
+    cb_append(cb, 'e');
+    cb_append(cb, 'l');
+    cb_append(cb, 'l');
+    cb_append(cb, 'o');
+
+    printl_si("  cb_size:", cb_size(cb));
+
+    let result = cb_to_string(cb);
+    printl_ss("  cb_to_string:", result);
+
+    assert(result == "Hello", "Expected cb_to_string() to be 'Hello'");
+
+    cb_free(cb);
+    printl_s("CharBuffer tests passed!\n");
+}
+
+/**
+ * Tests converting an empty CharBuffer without reading a reserved vector slot.
+ */
+func test_char_buffer_empty() {
+    let cb = cb_create();
+    assert(cb_size(cb) == 0, "Expected new CharBuffer to be empty");
+    assert(cb_to_string(cb) == "", "Expected empty CharBuffer conversion");
+    cb_free(cb);
+}
+
+/**
+ * Tests test_char_buffer_clear.
+ */
+func test_char_buffer_clear() {
+    printl_s("=== Test CharBuffer clear ===");
+
+    let cb = cb_create();
+    cb_append(cb, 'A');
+    cb_append(cb, 'B');
+    cb_append(cb, 'C');
+    printl_si("  size before clear:", cb_size(cb));
+
+    printl_s("Clearing buffer...");
+    cb_clear(cb);
+    printl_si("  size after clear:", cb_size(cb));
+    assert(cb_to_string(cb) == "", "Expected cleared CharBuffer conversion to be empty");
+
+    printl_s("Appending 'X', 'Y' after clear...");
+    cb_append(cb, 'X');
+    cb_append(cb, 'Y');
+    printl_si("  size after new appends:", cb_size(cb));
+
+    let result = cb_to_string(cb);
+    printl_ss("  cb_to_string:", result);
+
+    assert(result == "XY", "Expected cb_to_string() to be 'XY' after clear and append");
+
+    cb_free(cb);
+    printl_s("CharBuffer clear tests passed!\n");
+}
+
+/**
+ * Tests test_repeat_s.
+ */
+func test_repeat_s() {
+    printl_s("=== Test repeat_s ===");
+
+    let r1 = repeat_s("ab", 3);
+    printl_ss("  repeat_s('ab', 3):", r1);
+
+    let r2 = repeat_s("x", 5);
+    printl_ss("  repeat_s('x', 5):", r2);
+
+    let r3 = repeat_s("hello", 0);
+    printl_ss("  repeat_s('hello', 0):", r3);
+    printl_si("    (length):", len_s(r3));
+
+    let r4 = repeat_s("!", 1);
+    printl_ss("  repeat_s('!', 1):", r4);
+
+    assert(r1 == "ababab", "Expected repeat_s('ab', 3) to be 'ababab'");
+    assert(r2 == "xxxxx", "Expected repeat_s('x', 5) to be 'xxxxx'");
+    assert(r3 == "", "Expected repeat_s('hello', 0) to be ''");
+    assert(r4 == "!", "Expected repeat_s('!', 1) to be '!'");
+
+    printl_s("repeat_s tests passed!\n");
+}
+
+/**
+ * Tests test_trim_s.
+ */
+func test_trim_s() {
+    printl_s("=== Test trim_s ===");
+
+    let t1 = trim_s("  hello  ");
+    printl_s("  trim_s('  hello  '): '" + t1 + "'");
+
+    let t2 = trim_s("no spaces");
+    printl_s("  trim_s('no spaces'): '" + t2 + "'");
+
+    let t3 = trim_s("   ");
+    printl_s("  trim_s('   '): '" + t3 + "'");
+    printl_si("    (length):", len_s(t3));
+
+    let t4 = trim_s("\t\n  spaced \n\t");
+    printl_s("  trim_s('\\t\\n  spaced \\n\\t'): '" + t4 + "'");
+
+    let t5 = trim_s("");
+    printl_s("  trim_s(''): '" + t5 + "'");
+    printl_si("    (length):", len_s(t5));
+
+    assert(t1 == "hello", "Expected trim_s('  hello  ') to be 'hello'");
+    assert(t2 == "no spaces", "Expected trim_s('no spaces') to be 'no spaces'");
+    assert(t3 == "", "Expected trim_s('   ') to be ''");
+    assert(t4 == "spaced", "Expected trim_s('\\t\\n  spaced \\n\\t') to be 'spaced'");
+    assert(t5 == "", "Expected trim_s('') to be ''");
+
+    printl_s("trim_s tests passed!\n");
+}
+
+/**
+ * Tests test_is_empty_s.
+ */
+func test_is_empty_s() {
+    printl_s("=== Test is_empty_s ===");
+
+    assert(is_empty_s(""), "Expected is_empty_s('') to be true");
+    assert(!is_empty_s(" "), "Expected is_empty_s(' ') to be false");
+    assert(!is_empty_s("x"), "Expected is_empty_s('x') to be false");
+
+    printl_s("is_empty_s tests passed!\n");
+}
+
+/**
+ * Tests test_split_s.
+ */
+func test_split_s() {
+    printl_s("=== Test split_s ===");
+
+    with (let p1 = split_s("a,b,c", ",") => sv_free(p1)) {
+        assert(sv_size(p1) == 3, "Expected split_s('a,b,c', ',') to return 3 parts");
+        assert(sv_get(p1, 0) == "a", "Expected first part to be 'a'");
+        assert(sv_get(p1, 1) == "b", "Expected second part to be 'b'");
+        assert(sv_get(p1, 2) == "c", "Expected third part to be 'c'");
+    }
+
+    with (let p2 = split_s("a,,b", ",") => sv_free(p2)) {
+        assert(sv_size(p2) == 3, "Expected split_s('a,,b', ',') to keep empty middle item");
+        assert(sv_get(p2, 0) == "a", "Expected first part to be 'a'");
+        assert(sv_get(p2, 1) == "", "Expected second part to be empty");
+        assert(sv_get(p2, 2) == "b", "Expected third part to be 'b'");
+    }
+
+    with (let p3 = split_s(",a,", ",") => sv_free(p3)) {
+        assert(sv_size(p3) == 3, "Expected split_s(',a,', ',') to keep edge empties");
+        assert(sv_get(p3, 0) == "", "Expected first part to be empty");
+        assert(sv_get(p3, 1) == "a", "Expected middle part to be 'a'");
+        assert(sv_get(p3, 2) == "", "Expected last part to be empty");
+    }
+
+    with (let p4 = split_s("", ",") => sv_free(p4)) {
+        assert(sv_size(p4) == 1, "Expected split_s('', ',') to return one empty part");
+        assert(sv_get(p4, 0) == "", "Expected only part to be empty");
+    }
+
+    with (let p5 = split_s("a--b----c", "--") => sv_free(p5)) {
+        assert(sv_size(p5) == 4, "Expected split_s('a--b----c', '--') to return 4 parts");
+        assert(sv_get(p5, 0) == "a", "Expected first part to be 'a'");
+        assert(sv_get(p5, 1) == "b", "Expected second part to be 'b'");
+        assert(sv_get(p5, 2) == "", "Expected third part to be empty");
+        assert(sv_get(p5, 3) == "c", "Expected fourth part to be 'c'");
+    }
+
+    printl_s("split_s tests passed!\n");
+}
+
+/**
+ * Tests test_find_last_s.
+ */
+func test_find_last_s() {
+    printl_s("=== Test find_last_s ===");
+
+    assert(find_last_s("banana", "ana") == 3, "Expected find_last_s('banana', 'ana') to be 3");
+    assert(find_last_s("banana", "ban") == 0, "Expected find_last_s('banana', 'ban') to be 0");
+    assert(find_last_s("banana", "") == 6, "Expected find_last_s('banana', '') to be 6");
+    assert(find_last_s("banana", "zzz") == -1, "Expected find_last_s('banana', 'zzz') to be -1");
+    assert(find_last_s("aaaa", "aa") == 2, "Expected find_last_s('aaaa', 'aa') to be 2");
+
+    printl_s("find_last_s tests passed!\n");
+}
+
+/**
+ * Tests test_lines_s.
+ */
+func test_lines_s() {
+    printl_s("=== Test lines_s ===");
+
+    with (let l1 = lines_s("") => sv_free(l1)) {
+        assert(sv_size(l1) == 0, "Expected lines_s('') to return empty vector");
+    }
+
+    with (let l2 = lines_s("a\n") => sv_free(l2)) {
+        assert(sv_size(l2) == 1, "Expected lines_s('a\\n') to return one line");
+        assert(sv_get(l2, 0) == "a", "Expected first line to be 'a'");
+    }
+
+    with (let l3 = lines_s("a\n\nb") => sv_free(l3)) {
+        assert(sv_size(l3) == 3, "Expected lines_s('a\\n\\nb') to keep middle empty line");
+        assert(sv_get(l3, 0) == "a", "Expected first line to be 'a'");
+        assert(sv_get(l3, 1) == "", "Expected second line to be empty");
+        assert(sv_get(l3, 2) == "b", "Expected third line to be 'b'");
+    }
+
+    with (let l4 = lines_s("a\r\nb\r\n") => sv_free(l4)) {
+        assert(sv_size(l4) == 2, "Expected lines_s('a\\r\\nb\\r\\n') to return two lines");
+        assert(sv_get(l4, 0) == "a", "Expected first CRLF line to be 'a'");
+        assert(sv_get(l4, 1) == "b", "Expected second CRLF line to be 'b'");
+    }
+
+    with (let l5 = lines_s("x\r") => sv_free(l5)) {
+        assert(sv_size(l5) == 1, "Expected lines_s('x\\r') to return one line");
+        assert(sv_get(l5, 0) == "x", "Expected trailing CR to be stripped");
+    }
+
+    printl_s("lines_s tests passed!\n");
+}
+
+/**
+ * Tests test_join_s.
+ */
+func test_join_s() {
+    printl_s("=== Test join_s ===");
+
+    with (let empty = sv_create(0) => sv_free(empty)) {
+        assert(join_s(empty, ",") == "", "Expected join_s(empty, ',') to be empty");
+    }
+
+    with (let one = sv_create(1) => sv_free(one)) {
+        sv_push(one, "one");
+        assert(join_s(one, ",") == "one", "Expected join_s(singleton, ',') to return the item");
+    }
+
+    with (let many = sv_create(3) => sv_free(many)) {
+        sv_push(many, "a");
+        sv_push(many, "b");
+        sv_push(many, "c");
+        assert(join_s(many, "--") == "a--b--c", "Expected join_s(['a','b','c'], '--') to be 'a--b--c'");
+    }
+
+    with (let with_empty = sv_create(3) => sv_free(with_empty)) {
+        sv_push(with_empty, "a");
+        sv_push(with_empty, "");
+        sv_push(with_empty, "b");
+        assert(join_s(with_empty, ",") == "a,,b", "Expected join_s(['a','','b'], ',') to be 'a,,b'");
+    }
+
+    printl_s("join_s tests passed!\n");
+}
+
+/**
+ * Tests test_replace_s.
+ */
+func test_replace_s() {
+    printl_s("=== Test replace_s ===");
+
+    assert(replace_s("banana", "na", "X") == "baXX", "Expected replace_s('banana', 'na', 'X') to be 'baXX'");
+    assert(replace_s("aaaa", "aa", "b") == "bb", "Expected non-overlapping replace in 'aaaa'");
+    assert(replace_s("abc", "z", "q") == "abc", "Expected replace_s with missing pattern to return original");
+    assert(replace_s("foo", "o", "oo") == "foooo", "Expected replace_s('foo', 'o', 'oo') to expand");
+    assert(replace_s("abcabc", "abc", "") == "", "Expected replace_s('abcabc', 'abc', '') to be empty");
+
+    printl_s("replace_s tests passed!\n");
+}
+
+/**
+ * Tests test_to_upper_s.
+ */
+func test_to_upper_s() {
+    printl_s("=== Test to_upper_s ===");
+
+    let u1 = to_upper_s("hello");
+    printl_ss("  to_upper_s('hello'):", u1);
+
+    let u2 = to_upper_s("Hello World");
+    printl_ss("  to_upper_s('Hello World'):", u2);
+
+    let u3 = to_upper_s("ALREADY UPPER");
+    printl_ss("  to_upper_s('ALREADY UPPER'):", u3);
+
+    let u4 = to_upper_s("123abc");
+    printl_ss("  to_upper_s('123abc'):", u4);
+
+    let u5 = to_upper_s("");
+    printl_ss("  to_upper_s(''):", u5);
+    printl_si("    (length):", len_s(u5));
+
+    assert(u1 == "HELLO", "Expected to_upper_s('hello') to be 'HELLO'");
+    assert(u2 == "HELLO WORLD", "Expected to_upper_s('Hello World') to be 'HELLO WORLD'");
+    assert(u3 == "ALREADY UPPER", "Expected to_upper_s('ALREADY UPPER') to be 'ALREADY UPPER'");
+    assert(u4 == "123ABC", "Expected to_upper_s('123abc') to be '123ABC'");
+    assert(u5 == "", "Expected to_upper_s('') to be ''");
+
+    printl_s("to_upper_s tests passed!\n");
+}
+
+/**
+ * Tests test_to_lower_s.
+ */
+func test_to_lower_s() {
+    printl_s("=== Test to_lower_s ===");
+
+    let l1 = to_lower_s("HELLO");
+    printl_ss("  to_lower_s('HELLO'):", l1);
+
+    let l2 = to_lower_s("Hello World");
+    printl_ss("  to_lower_s('Hello World'):", l2);
+
+    let l3 = to_lower_s("already lower");
+    printl_ss("  to_lower_s('already lower'):", l3);
+
+    let l4 = to_lower_s("123ABC");
+    printl_ss("  to_lower_s('123ABC'):", l4);
+
+    let l5 = to_lower_s("");
+    printl_ss("  to_lower_s(''):", l5);
+    printl_si("    (length):", len_s(l5));
+
+    assert(l1 == "hello", "Expected to_lower_s('HELLO') to be 'hello'");
+    assert(l2 == "hello world", "Expected to_lower_s('Hello World') to be 'hello world'");
+    assert(l3 == "already lower", "Expected to_lower_s('already lower') to be 'already lower'");
+    assert(l4 == "123abc", "Expected to_lower_s('123ABC') to be '123abc'");
+    assert(l5 == "", "Expected to_lower_s('') to be ''");
+
+    printl_s("to_lower_s tests passed!\n");
+}
+
+/**
+ * Tests test_is_digit_base.
+ */
+func test_is_digit_base() {
+    printl_s("=== Test is_digit_base ===");
+
+    assert(is_digit_base('0', 2), "Expected is_digit_base('0', 2) to be true");
+    assert(is_digit_base('1', 2), "Expected is_digit_base('1', 2) to be true");
+    assert(!is_digit_base('2', 2), "Expected is_digit_base('2', 2) to be false");
+
+    assert(is_digit_base('9', 10), "Expected is_digit_base('9', 10) to be true");
+    assert(!is_digit_base('a', 10), "Expected is_digit_base('a', 10) to be false");
+
+    assert(is_digit_base('a', 16), "Expected is_digit_base('a', 16) to be true");
+    assert(is_digit_base('F', 16), "Expected is_digit_base('F', 16) to be true");
+    assert(!is_digit_base('g', 16), "Expected is_digit_base('g', 16) to be false");
+    assert(!is_digit_base('-', 16), "Expected is_digit_base('-', 16) to be false");
+
+    printl_s("is_digit_base tests passed!\n");
+}
+
+/**
+ * Tests test_to_digit_base.
+ */
+func test_to_digit_base() -> Unit? {
+    printl_s("=== Test to_digit_base ===");
+
+    let d1 = to_digit_base('1', 2)?;
+    let d2 = to_digit_base('7', 8)?;
+    let d3 = to_digit_base('9', 10)?;
+    let d4 = to_digit_base('a', 16)?;
+    let d5 = to_digit_base('F', 16)?;
+
+    assert(d1 == 1, "Expected to_digit_base('1', 2) to be 1");
+    assert(d2 == 7, "Expected to_digit_base('7', 8) to be 7");
+    assert(d3 == 9, "Expected to_digit_base('9', 10) to be 9");
+    assert(d4 == 10, "Expected to_digit_base('a', 16) to be 10");
+    assert(d5 == 15, "Expected to_digit_base('F', 16) to be 15");
+
+    assert(to_digit_base('2', 2) == null, "Expected to_digit_base('2', 2) to be null");
+    assert(to_digit_base('8', 8) == null, "Expected to_digit_base('8', 8) to be null");
+    assert(to_digit_base('g', 16) == null, "Expected to_digit_base('g', 16) to be null");
+    assert(to_digit_base('-', 16) == null, "Expected to_digit_base('-', 16) to be null");
+
+    printl_s("to_digit_base tests passed!\n");
+    return std.unit::present();
+}
+
+/**
+ * Tests test_string_to_int_base_valid.
+ */
+func test_string_to_int_base_valid() -> Unit? {
+    printl_s("=== Test string_to_int_base (valid) ===");
+
+    let v1 = string_to_int_base("101101", 2)?;
+    let v2 = string_to_int_base("-101101", 2)?;
+    let v3 = string_to_int_base("777", 8)?;
+    let v4 = string_to_int_base("00000123", 10)?;
+    let v5 = string_to_int_base("-00000123", 10)?;
+    let v6 = string_to_int_base("7fffffff", 16)?;
+    let v7 = string_to_int_base("-80000000", 16)?;
+    let v8 = string_to_int_base("A", 16)?;
+    let v9 = string_to_int_base("0000", 2)?;
+    let v10 = string_to_int_base("-0000", 16)?;
+
+    assert(v1 == 45, "Expected string_to_int_base('101101', 2) to be 45");
+    assert(v2 == -45, "Expected string_to_int_base('-101101', 2) to be -45");
+    assert(v3 == 511, "Expected string_to_int_base('777', 8) to be 511");
+    assert(v4 == 123, "Expected string_to_int_base('00000123', 10) to be 123");
+    assert(v5 == -123, "Expected string_to_int_base('-00000123', 10) to be -123");
+    assert(v6 == 2147483647, "Expected string_to_int_base('7fffffff', 16) to be 2147483647");
+    assert(v7 == -2147483648, "Expected string_to_int_base('-80000000', 16) to be -2147483648");
+    assert(v8 == 10, "Expected string_to_int_base('A', 16) to be 10");
+    assert(v9 == 0, "Expected string_to_int_base('0000', 2) to be 0");
+    assert(v10 == 0, "Expected string_to_int_base('-0000', 16) to be 0");
+
+    printl_s("string_to_int_base valid tests passed!\n");
+    return std.unit::present();
+}
+
+/**
+ * Tests test_string_to_int_base_invalid.
+ */
+func test_string_to_int_base_invalid() {
+    printl_s("=== Test string_to_int_base (invalid) ===");
+
+    assert(string_to_int_base("", 10) == null, "Expected string_to_int_base('', 10) to be null");
+    assert(string_to_int_base("-", 10) == null, "Expected string_to_int_base('-', 10) to be null");
+    assert(string_to_int_base("+1", 10) == null, "Expected string_to_int_base('+1', 10) to be null");
+    assert(string_to_int_base("2", 2) == null, "Expected string_to_int_base('2', 2) to be null");
+    assert(string_to_int_base("08", 8) == null, "Expected string_to_int_base('08', 8) to be null");
+    assert(string_to_int_base("1g", 16) == null, "Expected string_to_int_base('1g', 16) to be null");
+    assert(string_to_int_base("0x10", 16) == null, "Expected string_to_int_base('0x10', 16) to be null");
+    assert(string_to_int_base("--1", 10) == null, "Expected string_to_int_base('--1', 10) to be null");
+    assert(string_to_int_base(" 1", 10) == null, "Expected string_to_int_base(' 1', 10) to be null");
+    assert(string_to_int_base("1 ", 10) == null, "Expected string_to_int_base('1 ', 10) to be null");
+
+    printl_s("string_to_int_base invalid tests passed!\n");
+}
+
+/**
+ * Tests test_string_to_int_base_limits.
+ */
+func test_string_to_int_base_limits() -> Unit? {
+    printl_s("=== Test string_to_int_base (limits) ===");
+
+    let dec_max = string_to_int_base("2147483647", 10)?;
+    let dec_min = string_to_int_base("-2147483648", 10)?;
+    let bin_max = string_to_int_base("1111111111111111111111111111111", 2)?;
+    let bin_min = string_to_int_base("-10000000000000000000000000000000", 2)?;
+
+    assert(dec_max == 2147483647, "Expected decimal INT_MAX parse");
+    assert(dec_min == -2147483648, "Expected decimal INT_MIN parse");
+    assert(bin_max == 2147483647, "Expected binary INT_MAX parse");
+    assert(bin_min == -2147483648, "Expected binary INT_MIN parse");
+
+    assert(string_to_int_base("2147483648", 10) == null, "Expected decimal overflow to return null");
+    assert(string_to_int_base("-2147483649", 10) == null, "Expected decimal underflow to return null");
+    assert(string_to_int_base("80000000", 16) == null, "Expected hex overflow to return null");
+    assert(string_to_int_base("-80000001", 16) == null, "Expected hex underflow to return null");
+    assert(string_to_int_base("10000000000000000000000000000000", 2) == null, "Expected binary overflow to return null");
+    assert(string_to_int_base("-10000000000000000000000000000001", 2) == null, "Expected binary underflow to return null");
+
+    printl_s("string_to_int_base limits tests passed!\n");
+    return std.unit::present();
+}
+
+/**
+ * Tests test_bool_string_conversions.
+ */
+func test_bool_string_conversions() -> Unit? {
+    printl_s("=== Test bool string conversions ===");
+
+    let s_true = bool_to_string(true);
+    let s_false = bool_to_string(false);
+    assert(s_true == "true", "Expected bool_to_string(true) to be 'true'");
+    assert(s_false == "false", "Expected bool_to_string(false) to be 'false'");
+
+    let b_true = string_to_bool("true")?;
+    let b_false = string_to_bool("false")?;
+    assert(b_true, "Expected string_to_bool('true') to be true");
+    assert(!b_false, "Expected string_to_bool('false') to be false");
+
+    assert(string_to_bool("True") == null, "Expected string_to_bool('True') to be null");
+    assert(string_to_bool("FALSE") == null, "Expected string_to_bool('FALSE') to be null");
+    assert(string_to_bool("") == null, "Expected string_to_bool('') to be null");
+    assert(string_to_bool("0") == null, "Expected string_to_bool('0') to be null");
+    assert(string_to_bool("yes") == null, "Expected string_to_bool('yes') to be null");
+
+    printl_s("bool string conversion tests passed!\n");
+    return std.unit::present();
+}
+
+/**
+ * Tests test_byte_string_conversions.
+ */
+func test_byte_string_conversions() -> Unit? {
+    printl_s("=== Test byte string conversions ===");
+
+    let b0 = 0 as byte;
+    let b255 = 255 as byte;
+    let s0 = byte_to_string(b0);
+    let s255 = byte_to_string(b255);
+    let shex = byte_to_string_base(b255, 16);
+    let sbin = byte_to_string_base(b255, 2);
+
+    assert(s0 == "0", "Expected byte_to_string(0) to be '0'");
+    assert(s255 == "255", "Expected byte_to_string(255) to be '255'");
+    assert(shex == "ff", "Expected byte_to_string_base(255, 16) to be 'ff'");
+    assert(sbin == "11111111", "Expected byte_to_string_base(255, 2) to be '11111111'");
+
+    let p0 = string_to_byte("0")?;
+    let p255 = string_to_byte("255")?;
+    let phex = string_to_byte_base("ff", 16)?;
+    let pbin = string_to_byte_base("11111111", 2)?;
+
+    assert((p0 as int) == 0, "Expected string_to_byte('0') to be 0");
+    assert((p255 as int) == 255, "Expected string_to_byte('255') to be 255");
+    assert((phex as int) == 255, "Expected string_to_byte_base('ff', 16) to be 255");
+    assert((pbin as int) == 255, "Expected string_to_byte_base('11111111', 2) to be 255");
+
+    assert(string_to_byte("256") == null, "Expected string_to_byte('256') to be null");
+    assert(string_to_byte("-1") == null, "Expected string_to_byte('-1') to be null");
+    assert(string_to_byte_base("1ff", 16) == null, "Expected string_to_byte_base('1ff', 16) to be null");
+    assert(string_to_byte_base("gg", 16) == null, "Expected string_to_byte_base('gg', 16) to be null");
+    assert(string_to_byte("") == null, "Expected string_to_byte('') to be null");
+
+    printl_s("byte string conversion tests passed!\n");
+    return std.unit::present();
+}
+
+/**
+ * Tests test_string_to_int.
+ */
+func test_string_to_int() -> Unit? {
+    printl_s("=== Test string_to_int ===");
+
+    let s1 = "12345";
+    let v1 = string_to_int(s1)?;
+    printl_si("  string_to_int('" + s1 + "'):", v1);
+
+    let s2 = "-6789";
+    let v2 = string_to_int(s2)?;
+    printl_si("  string_to_int('" + s2 + "'):", v2);
+
+    let s3 = "0";
+    let v3 = string_to_int(s3)?;
+    printl_si("  string_to_int('" + s3 + "'):", v3);
+
+    // INT_MIN
+    let s4 = "-2147483648"; // INT_MIN
+    let v4 = string_to_int(s4)?;
+    printl_si("  string_to_int('" + s4 + "'):", v4);
+
+    // INT_MAX
+    let s7 = "2147483647"; // INT_MAX
+    let v7 = string_to_int(s7)?;
+    printl_si("  string_to_int('" + s7 + "'):", v7);
+
+    // check underflow
+    let s6 = "-2147483649"; // INT_MIN - 1
+    let v6 = string_to_int(s6);
+    if (v6 == null) {
+        printl_s("  string_to_int('" + s6 + "'): null (underflow) OK");
+    }
+
+    // check overflow
+    let s5 = "2147483648"; // INT_MAX + 1
+    let v5 = string_to_int(s5);
+    if (v5 == null) {
+        printl_s("  string_to_int('" + s5 + "'): null (overflow) OK");
+    }
+
+    let s8 = "9999999999"; // definitely overflow
+    let v8 = string_to_int(s8);
+    if (v8 == null) {
+        printl_s("  string_to_int('" + s8 + "'): null (overflow) OK");
+    }
+
+    let s9 = "-9999999999"; // definitely underflow
+    let v9 = string_to_int(s9);
+    if (v9 == null) {
+        printl_s("  string_to_int('" + s9 + "'): null (underflow) OK");
+    }
+
+    assert(v1 == 12345, "Expected string_to_int('12345') to be 12345");
+    assert(v2 == -6789, "Expected string_to_int('-6789') to be -6789");
+    assert(v3 == 0, "Expected string_to_int('0') to be 0");
+    assert(v4 == -2147483648, "Expected string_to_int('-2147483648') to be -2147483648");
+    assert(v7 == 2147483647, "Expected string_to_int('2147483647') to be 2147483647");
+    assert(v6 == null, "Expected string_to_int('-2147483649') to be null (underflow)");
+    assert(v5 == null, "Expected string_to_int('2147483648') to be null (overflow)");
+    assert(v8 == null, "Expected string_to_int('9999999999') to be null (overflow)");
+    assert(v9 == null, "Expected string_to_int('-9999999999') to be null (underflow)");
+
+    printl_s("string_to_int tests passed!\n");
+
+    return std.unit::present();
+}
+
+/**
+ * Tests test_int_to_string.
+ */
+func test_int_to_string() {
+    printl_s("=== Test int_to_string ===");
+
+    let i1 = 12345;
+    let s1 = int_to_string(i1);
+    print_si("  int_to_string(", i1);
+    printl_ss("):", int_to_string(i1));
+
+    let i2 = -6789;
+    let s2 = int_to_string(i2);
+    print_si("  int_to_string(", i2);
+    printl_ss("):", int_to_string(i2));
+
+    let i3 = 0;
+    let s3 = int_to_string(i3);
+    print_si("  int_to_string(", i3);
+    printl_ss("):", int_to_string(i3));
+
+    let i4 = -2147483648; // INT_MIN
+    let s4 = int_to_string(i4);
+    print_si("  int_to_string(", i4);
+    printl_ss("):", int_to_string(i4));
+
+    let i5 = 2147483647; // INT_MAX
+    let s5 = int_to_string(i5);
+    print_si("  int_to_string(", i5);
+    printl_ss("):", int_to_string(i5));
+
+    assert(s1 == "12345", "Expected int_to_string(12345) to be '12345'");
+    assert(s2 == "-6789", "Expected int_to_string(-6789) to be '-6789'");
+    assert(s3 == "0", "Expected int_to_string(0) to be '0'");
+    assert(s4 == "-2147483648", "Expected int_to_string(-2147483648) to be '-2147483648'");
+    assert(s5 == "2147483647", "Expected int_to_string(2147483647) to be '2147483647'");
+
+    printl_s("int_to_string tests passed!\n");
+}
+
+// test int_to_hex_string
+/**
+ * Tests test_int_to_hex_string.
+ */
+func test_int_to_hex_string() {
+    printl_s("=== Test int_to_hex_string ===");
+
+    let i1 = 255;
+    let s1 = int_to_hex_string(i1);
+    print_si("  int_to_hex_string(", i1);
+    printl_ss("):", s1);
+
+    let i2 = 4095;
+    let s2 = int_to_hex_string(i2);
+    print_si("  int_to_hex_string(", i2);
+    printl_ss("):", s2);
+
+    let i3 = 0;
+    let s3 = int_to_hex_string(i3);
+    print_si("  int_to_hex_string(", i3);
+    printl_ss("):", s3);
+
+    let i4 = 305419896; // 0x12345678
+    let s4 = int_to_hex_string(i4);
+    print_si("  int_to_hex_string(", i4);
+    printl_ss("):", s4);
+
+    let i5 = -1; // negative number
+    let s5 = int_to_hex_string(i5);
+    print_si("  int_to_hex_string(", i5);
+    printl_ss("):", s5);
+
+    let i6 = -2147483648; // INT_MIN
+    let s6 = int_to_hex_string(i6);
+    print_si("  int_to_hex_string(", i6);
+    printl_ss("):", s6);
+
+    assert(s1 == "ff", "Expected int_to_hex_string(255) to be 'ff'");
+    assert(s2 == "fff", "Expected int_to_hex_string(4095) to be 'fff'");
+    assert(s3 == "0", "Expected int_to_hex_string(0) to be '0'");
+    assert(s4 == "12345678", "Expected int_to_hex_string(305419896) to be '12345678'");
+    assert(s5 == "-1", "Expected int_to_hex_string(-1) to be '-1'");
+    assert(s6 == "-80000000", "Expected int_to_hex_string(-2147483648) to be '-80000000'");
+
+    printl_s("int_to_hex_string tests passed!\n");
+}
+
+/**
+ * Tests test_int_to_bin_string.
+ */
+func test_int_to_bin_string() {
+    printl_s("=== Test int_to_bin_string ===");
+
+    let i1 = 5;
+    let s1 = int_to_bin_string(i1);
+    print_si("  int_to_bin_string(", i1);
+    printl_ss("):", s1);
+
+    let i2 = 10;
+    let s2 = int_to_bin_string(i2);
+    print_si("  int_to_bin_string(", i2);
+    printl_ss("):", s2);
+
+    let i3 = 0;
+    let s3 = int_to_bin_string(i3);
+    print_si("  int_to_bin_string(", i3);
+    printl_ss("):", s3);
+
+    let i4 = -1; // negative number
+    let s4 = int_to_bin_string(i4);
+    print_si("  int_to_bin_string(", i4);
+    printl_ss("):", s4);
+
+    let i5 = -2147483648; // INT_MIN
+    let s5 = int_to_bin_string(i5);
+    print_si("  int_to_bin_string(", i5);
+    printl_ss("):", s5);
+
+    assert(s1 == "101", "Expected int_to_bin_string(5) to be '101'");
+    assert(s2 == "1010", "Expected int_to_bin_string(10) to be '1010'");
+    assert(s3 == "0", "Expected int_to_bin_string(0) to be '0'");
+    assert(s4 == "-1", "Expected int_to_bin_string(-1) to be '-1'");
+    assert(s5 == "-10000000000000000000000000000000", "Expected int_to_bin_string(-2147483648) to be '-10000000000000000000000000000000'");
+
+    printl_s("int_to_bin_string tests passed!\n");
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() -> int {
+    printl_s("==========================================");
+    printl_s("      String Utilities Test Suite");
+    printl_s("==========================================\n");
+
+    // Character classification
+    test_is_space();
+    test_is_digit();
+    test_is_alpha();
+    test_is_alnum();
+
+    // Character manipulation
+    test_to_digit();
+    test_to_upper();
+    test_to_lower();
+
+    // StringBuffer
+    test_string_buffer();
+    test_string_buffer_empty();
+
+    // CharBuffer
+    test_char_buffer();
+    test_char_buffer_empty();
+    test_char_buffer_clear();
+
+    // String utilities
+    test_repeat_s();
+    test_trim_s();
+    test_is_empty_s();
+    test_split_s();
+    test_find_last_s();
+    test_lines_s();
+    test_join_s();
+    test_replace_s();
+    test_to_upper_s();
+    test_to_lower_s();
+
+    // String <-> int conversions
+    test_is_digit_base();
+    test_to_digit_base();
+    test_string_to_int_base_valid();
+    test_string_to_int_base_invalid();
+    test_string_to_int_base_limits();
+    test_bool_string_conversions();
+    test_byte_string_conversions();
+    test_string_to_int();
+    test_int_to_string();
+    test_int_to_bin_string();
+    test_int_to_hex_string();
+
+    printl_s("==========================================");
+    printl_s("  All String Utility tests passed!");
+    printl_s("==========================================");
+
+    return 0;
+}

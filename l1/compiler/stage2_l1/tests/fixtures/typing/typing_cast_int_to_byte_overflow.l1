@@ -1,0 +1,14 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_cast_int_to_byte_overflow;
+
+func cast_int_to_byte_too_large() -> byte {
+    return 300 as byte; // TYP-0700
+}
+
+func cast_int_to_byte_negative() -> byte {
+    return (-1) as byte; // TYP-0700
+}

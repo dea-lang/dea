@@ -1,0 +1,71 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_nullable_identity_ok;
+
+struct T {
+    val: int;
+}
+
+func get_int_opt() -> int? {
+    return 42;
+}
+
+func get_t_ptr_opt() -> T*? {
+    return new T(0);
+}
+
+func ok_nullable_identity() {
+    let a: int? = 5;
+    let b: int? = 10;
+    let c: int? = null;
+
+    // same type int?
+    let b1: bool = a == b;
+    let b2: bool = a != b;
+    let b3: bool = a == c;
+    let b4: bool = c == null;
+
+    // mixed with null (existing rule)
+    let b5: bool = a == null;
+    let b6: bool = null != b;
+
+    // string?
+    let s1: string? = "hello";
+    let s2: string? = "world";
+    let s3: string? = null;
+    let b7: bool = s1 == s2;
+    let b8: bool = s1 != s3;
+    let b9: bool = s3 == null;
+
+    // T*?
+    let t1: T*? = new T(1);
+    let t2: T*? = new T(2);
+    let t3: T*? = null;
+    let b10: bool = t1 == t2;
+    let b11: bool = t1 != t3;
+    let b12: bool = t3 == null;
+
+    // mixed with get_int_opt
+    let b13: bool = a == get_int_opt();
+    let b14: bool = get_t_ptr_opt() != t2;
+
+    // bool?, float?, double?
+    let bo1: bool? = true;
+    let bo2: bool? = false;
+    let b15: bool = bo1 == bo2;
+
+    let f1: float? = 1.0f;
+    let f2: float? = 2.0f;
+    let b16: bool = f1 == f2;
+
+    let d1: double? = 1.0;
+    let d2: double? = 2.0;
+    let b17: bool = d1 == d2;
+
+    // control flow
+    if (a == b) {}
+    while (s1 != s2) { break; }
+}

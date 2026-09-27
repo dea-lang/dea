@@ -1,0 +1,17 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module repeated_missing_entry;
+
+import missing.fanout;
+
+/**
+ * Entry point for repeated missing-provider resolution coverage.
+ *
+ * @return Zero.
+ */
+func main() -> int {
+    return 0;
+}

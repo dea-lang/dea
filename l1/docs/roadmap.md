@@ -11,8 +11,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 
 ## Current position
 
-- `compiler/stage1_l0/` is the only implemented L1 compiler today.
-- `compiler/stage2_l1/` is a placeholder for a future self-hosted L1 compiler.
+- `compiler/stage1_l0/` is the bootstrap compiler and semantic/diagnostic oracle.
+- `compiler/stage2_l1/` implements the mechanical L1 port, with explicit build, selection, test, and fixed-point
+  targets.
 - Stage 1 uses 120 phase/ownership modules with explicit canonical state imports. The settled layout and its two
   recursive-kernel exceptions are documented in [l1/docs/reference/architecture.md][compiler-architecture].
 - The current L1 runtime and stdlib inputs live under `compiler/shared/runtime/` and `compiler/shared/l1/stdlib/`.
@@ -45,7 +46,14 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   when persistent reuse is unavailable. See [l1/docs/reference/stdlib-preparation.md][preparation-contract].
 - L1 local development defaults to the repo-local upstream L0 Stage 2 compiler at `../l0/build/dea/bin/l0c-stage2`, or
   an explicit `L1_BOOTSTRAP_L0C` override.
-- L1 triple-bootstrap is not part of the current Stage 1 contract.
+- Strict L1 triple-bootstrap runs through `make triple-test` and is required by `make test-ci`.
+
+## Stage 2 Completion Priority
+
+The mechanical Stage 2 port is the highest-priority L1 completion effort. The active shared plan tracks parity, the
+strict self-hosting fixed point, and supported-host evidence. New stdlib APIs, L1-native compiler refactoring,
+performance experiments, and delivery workflows are not prerequisites. Select Stage 2 with `make use-dev-stage2`;
+`make test-ci` runs both stages and strict triple bootstrap.
 
 ## Roadmap assumptions
 
@@ -54,8 +62,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - L1 work stays in `l1/` unless it is genuinely Dea-wide or shared with L0; shared work belongs under root `work/`.
 - Closed plans document shipped L1 baseline decisions. Draft plans and active initiatives describe intended work, not
   implemented behavior.
-- Any future `stage2_l1` implementation should preserve the L1 language/runtime decisions documented in
-  [design-decisions] unless the reference set is deliberately updated.
+- The `stage2_l1` implementation must preserve the L1 language/runtime decisions documented in [design-decisions] unless
+  the reference set is deliberately updated.
 - L1-defined source symbols use the unified recursive LBI grammar from
   [2026-05-11-unified-lbi-mangling-noref][unified-lbi-mangling]: value symbols use `N` terminals with trailing function
   type components where needed, nominal types use `S` / `E`, and compiler-generated module lifecycle helpers use `I`.

@@ -1,0 +1,326 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module backend.coerce;
+
+import ast;
+
+import c_emitter.expr;
+import c_emitter.state;
+import c_emitter.stmt;
+import c_emitter.types;
+import types;
+import backend.lifetime;
+import backend.state;
+
+/**
+ * Finalize a lowered call argument using its post-conversion type.
+ *
+ * @param self Backend state to update.
+ * @param arg_id Source argument expression id.
+ * @param c_arg Lowered argument expression.
+ * @param lowered_ty Type of `c_arg` after contextual conversion.
+ * @param is_out_of_order Whether the argument must be stabilized for reordering.
+ * @return Lowered argument expression or a materialized temporary.
+ */
+func be_finalize_lowered_call_arg(
+    self: Backend*,
+    arg_id: ExprId,
+    c_arg: string,
+    lowered_ty: Type*,
+    is_out_of_order: bool
+) -> string {
+    let result = c_arg;
+    if (be_should_materialize_arc_temp(self, arg_id, lowered_ty)) {
+        result = be_materialize_arc_temp(self, result, lowered_ty);
+    }
+    if (is_out_of_order) {
+        let arg_tmp = cem_fresh_tmp(self.emitter, "arg");
+        cem_emit_temp_decl(self.emitter, cem_emit_type(lowered_ty), arg_tmp, result);
+        result = arg_tmp;
+    }
+    return result;
+}
+
+/**
+ * Stabilize one reordered constructor argument using its post-conversion type.
+ *
+ * @param self Backend state to update.
+ * @param c_arg Lowered argument expression.
+ * @param lowered_ty Type of `c_arg` after contextual conversion.
+ * @param is_out_of_order Whether the argument must be stabilized for reordering.
+ * @return Lowered argument expression or a materialized temporary.
+ */
+func be_finalize_lowered_constructor_arg(
+    self: Backend*,
+    c_arg: string,
+    lowered_ty: Type*,
+    is_out_of_order: bool
+) -> string {
+    let result = c_arg;
+    if (is_out_of_order) {
+        let arg_tmp = cem_fresh_tmp(self.emitter, "arg");
+        cem_emit_temp_decl(self.emitter, cem_emit_type(lowered_ty), arg_tmp, result);
+        result = arg_tmp;
+    }
+    return result;
+}
+
+/**
+ * Return whether a type behaves like an integer.
+ *
+ * @param ty Type to inspect.
+ * @return `true` for implemented integer builtins.
+ */
+func be_is_int_assignable(ty: Type*?) -> bool {
+    if (ty == null) {
+        return false;
+    }
+    return type_is_builtin(ty as Type*, "tiny") || type_is_builtin(ty as Type*, "byte") ||
+           type_is_builtin(ty as Type*, "short") || type_is_builtin(ty as Type*, "ushort") ||
+           type_is_builtin(ty as Type*, "int") || type_is_builtin(ty as Type*, "uint") ||
+           type_is_builtin(ty as Type*, "long") || type_is_builtin(ty as Type*, "ulong");
+}
+
+func be_is_signed_int(ty: Type*) -> bool {
+    return type_is_builtin(ty, "tiny") || type_is_builtin(ty, "short") ||
+           type_is_builtin(ty, "int") || type_is_builtin(ty, "long");
+}
+
+func be_is_legacy_checked_cast_source(ty: Type*) -> bool {
+    return type_is_builtin(ty, "tiny") || type_is_builtin(ty, "byte") ||
+           type_is_builtin(ty, "short") || type_is_builtin(ty, "ushort") ||
+           type_is_builtin(ty, "int");
+}
+
+/**
+ * Return the byte width of an integer builtin.
+ *
+ * @param ty Type to inspect.
+ * @return Byte width for supported integer types.
+ */
+func be_int_type_size(ty: Type*) -> int {
+    if (type_is_builtin(ty, "tiny")) {
+        return 1;
+    }
+    if (type_is_builtin(ty, "byte")) {
+        return 1;
+    }
+    if (type_is_builtin(ty, "short")) {
+        return 2;
+    }
+    if (type_is_builtin(ty, "ushort")) {
+        return 2;
+    }
+    if (type_is_builtin(ty, "int")) {
+        return 4;
+    }
+    if (type_is_builtin(ty, "uint")) {
+        return 4;
+    }
+    if (type_is_builtin(ty, "long")) {
+        return 8;
+    }
+    if (type_is_builtin(ty, "ulong")) {
+        return 8;
+    }
+    return 0;
+}
+
+/**
+ * Return the minimum representable value for an integer builtin.
+ *
+ * @param ty Type to inspect.
+ * @return Minimum value for supported integer types.
+ */
+func be_int_type_min(ty: Type*) -> int {
+    if (type_is_builtin(ty, "tiny")) return -128;
+    if (type_is_builtin(ty, "byte")) return 0;
+    if (type_is_builtin(ty, "short")) return -32768;
+    if (type_is_builtin(ty, "ushort")) return 0;
+    return -2147483648;
+}
+
+/**
+ * Return the maximum representable value for an integer builtin.
+ *
+ * @param ty Type to inspect.
+ * @return Maximum value for supported integer types.
+ */
+func be_int_type_max(ty: Type*) -> int {
+    if (type_is_builtin(ty, "tiny")) return 127;
+    if (type_is_builtin(ty, "byte")) return 255;
+    if (type_is_builtin(ty, "short")) return 32767;
+    if (type_is_builtin(ty, "ushort")) return 65535;
+    return 2147483647;
+}
+
+/**
+ * Check whether every source value fits in a destination integer type.
+ *
+ * @param dst Destination type.
+ * @param src Source type.
+ * @return `true` when no runtime check is needed.
+ */
+func be_int_range_contains(dst: Type*, src: Type*) -> bool {
+    let dst_size = be_int_type_size(dst);
+    let src_size = be_int_type_size(src);
+    let dst_signed = be_is_signed_int(dst);
+    let src_signed = be_is_signed_int(src);
+    if (dst_size == 0 || src_size == 0) {
+        return false;
+    }
+    if (dst_signed == src_signed) {
+        return dst_size >= src_size;
+    }
+    if (dst_signed && !src_signed) {
+        return dst_size > src_size;
+    }
+    return false;
+}
+
+/**
+ * Check whether an implicit integer widening is supported.
+ *
+ * @param dst Destination type.
+ * @param src Source type.
+ * @return `true` if `src` can widen into `dst`.
+ */
+func be_can_widen_int(dst: Type*, src: Type*) -> bool {
+    if (type_is_builtin(dst, "short") && type_is_builtin(src, "tiny")) return true;
+    if (type_is_builtin(dst, "long") && type_is_builtin(src, "tiny")) return true;
+    if (type_is_builtin(dst, "int") && type_is_builtin(src, "tiny")) return true;
+    if (type_is_builtin(dst, "short") && type_is_builtin(src, "byte")) return true;
+    if (type_is_builtin(dst, "ushort") && type_is_builtin(src, "byte")) return true;
+    if (type_is_builtin(dst, "int") && type_is_builtin(src, "byte")) return true;
+    if (type_is_builtin(dst, "uint") && type_is_builtin(src, "byte")) return true;
+    if (type_is_builtin(dst, "long") && type_is_builtin(src, "byte")) return true;
+    if (type_is_builtin(dst, "ulong") && type_is_builtin(src, "byte")) return true;
+    if (type_is_builtin(dst, "int") && type_is_builtin(src, "short")) return true;
+    if (type_is_builtin(dst, "long") && type_is_builtin(src, "short")) return true;
+    if (type_is_builtin(dst, "int") && type_is_builtin(src, "ushort")) return true;
+    if (type_is_builtin(dst, "uint") && type_is_builtin(src, "ushort")) return true;
+    if (type_is_builtin(dst, "long") && type_is_builtin(src, "ushort")) return true;
+    if (type_is_builtin(dst, "ulong") && type_is_builtin(src, "ushort")) return true;
+    if (type_is_builtin(dst, "long") && type_is_builtin(src, "int")) return true;
+    if (type_is_builtin(dst, "long") && type_is_builtin(src, "uint")) return true;
+    if (type_is_builtin(dst, "ulong") && type_is_builtin(src, "uint")) return true;
+    return false;
+}
+
+func be_common_int_type(left: Type*, right: Type*) -> Type*? {
+    if (!be_is_int_assignable(left) || !be_is_int_assignable(right)) {
+        return null;
+    }
+    if ((type_is_builtin(left, "tiny") || type_is_builtin(left, "byte") || type_is_builtin(left, "short") ||
+         type_is_builtin(left, "ushort") || type_is_builtin(left, "int")) &&
+        (type_is_builtin(right, "tiny") || type_is_builtin(right, "byte") || type_is_builtin(right, "short") ||
+         type_is_builtin(right, "ushort") || type_is_builtin(right, "int"))) {
+        return type_builtin_int();
+    }
+    if ((type_is_builtin(left, "byte") || type_is_builtin(left, "ushort") || type_is_builtin(left, "uint")) &&
+        (type_is_builtin(right, "byte") || type_is_builtin(right, "ushort") || type_is_builtin(right, "uint"))) {
+        return type_builtin_uint();
+    }
+    if ((type_is_builtin(left, "tiny") || type_is_builtin(left, "byte") || type_is_builtin(left, "short") ||
+         type_is_builtin(left, "ushort") || type_is_builtin(left, "int") || type_is_builtin(left, "uint") ||
+         type_is_builtin(left, "long")) &&
+        (type_is_builtin(right, "tiny") || type_is_builtin(right, "byte") || type_is_builtin(right, "short") ||
+         type_is_builtin(right, "ushort") || type_is_builtin(right, "int") || type_is_builtin(right, "uint") ||
+         type_is_builtin(right, "long"))) {
+        return type_builtin_long();
+    }
+    if ((type_is_builtin(left, "byte") || type_is_builtin(left, "ushort") || type_is_builtin(left, "uint") ||
+         type_is_builtin(left, "ulong")) &&
+        (type_is_builtin(right, "byte") || type_is_builtin(right, "ushort") || type_is_builtin(right, "uint") ||
+         type_is_builtin(right, "ulong"))) {
+        return type_builtin_ulong();
+    }
+    return null;
+}
+
+/**
+ * Convert a lowered expression to an expected type when required.
+ *
+ * @param c_expr Lowered source expression.
+ * @param natural_ty Natural source type.
+ * @param expected Expected destination type.
+ * @return Lowered expression converted as needed.
+ */
+func be_convert_expr_with_expected_type(c_expr: string, natural_ty: Type*?, expected: Type*) -> string {
+    if (natural_ty == null) {
+        return c_expr;
+    }
+
+    let natural = natural_ty as Type*;
+    if (type_equals(natural, expected)) {
+        return c_expr;
+    }
+
+    if (ord(expected.kind) == ord(TY_NULLABLE)) {
+        let inner = expected.inner as Type*;
+        let payload = be_convert_expr_with_expected_type(c_expr, natural, inner);
+        if (be_is_int_assignable(inner) && be_is_int_assignable(natural) && !type_equals(inner, natural) &&
+            !be_can_widen_int(inner, natural)) {
+            payload = cem_emit_cast(cem_emit_type(inner), c_expr);
+        }
+        return cem_emit_some_value_for_nullable(expected, payload);
+    }
+
+    if (be_can_widen_int(expected, natural)) {
+        return cem_emit_widen_int(c_expr, natural, expected);
+    }
+
+    return c_expr;
+}
+
+/**
+ * Convert a lowered place expression to an expected owned destination type.
+ *
+ * @param self Backend state to update.
+ * @param c_expr Lowered source expression.
+ * @param natural Natural source type.
+ * @param expected Expected destination type.
+ * @param place_like Whether `c_expr` references existing storage.
+ * @return Converted C expression, retaining copied owned data when needed.
+ */
+func be_convert_owned_c_expr_with_expected_type(self: Backend*, c_expr: string, natural: Type*, expected: Type*,
+                                                place_like: bool) -> string {
+    if (type_equals(natural, expected)) {
+        if (place_like) {
+            return be_emit_copy_expr_with_retains(self, c_expr, expected);
+        }
+        return c_expr;
+    }
+
+    if (ord(expected.kind) == ord(TY_NULLABLE)) {
+        let inner = expected.inner as Type*;
+        let payload = be_convert_owned_c_expr_with_expected_type(self, c_expr, natural, inner, place_like);
+        if (be_is_int_assignable(inner) && be_is_int_assignable(natural) && !type_equals(inner, natural) &&
+            !be_can_widen_int(inner, natural)) {
+            payload = cem_emit_cast(cem_emit_type(inner), c_expr);
+        }
+        return cem_emit_some_value_for_nullable(expected, payload);
+    }
+
+    return be_convert_expr_with_expected_type(c_expr, natural, expected);
+}
+
+/**
+ * Report whether an array-to-slice conversion applies for a slice target.
+ *
+ * @param self Backend state to inspect.
+ * @param expr_id Source expression.
+ * @param expected Expected destination type.
+ * @return `true` when `expected` is a slice and the source is an array.
+ */
+func be_needs_array_to_slice(self: Backend*, expr_id: ExprId, expected: Type*) -> bool {
+    if (ord(expected.kind) != ord(TY_SLICE)) {
+        return false;
+    }
+    with (let natural_ty = be_expr_type(self, expr_id) => type_free_opt(natural_ty)) {
+        return natural_ty != null && ord((natural_ty as Type*).kind) == ord(TY_ARRAY);
+    }
+}

@@ -1,0 +1,19 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module unsafe_signature_main;
+
+unsafe func apply(cb: unsafe func(int) -> int, value: int) -> int {
+    return cb(value);
+}
+
+func wrap(cb: unsafe func(int) -> int) -> unsafe func(int) -> int {
+    return cb;
+}
+
+func main(cb: unsafe func(int) -> int) -> int {
+    let chosen: unsafe func(int) -> int = wrap(cb);
+    return apply(chosen, 1);
+}

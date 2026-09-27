@@ -1,0 +1,56 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module codegen_options;
+
+import cli_args.model;
+
+/**
+ * Represents backend and emitter options that affect generated C text.
+ */
+struct CodegenOptions {
+    emit_line_directives: bool;
+    trace_arc: bool;
+    trace_memory: bool;
+    rt_unchecked: bool;
+    rt_check_basic: bool;
+}
+
+/**
+ * Create codegen options with Stage 1-aligned defaults.
+ *
+ * @return New codegen options object.
+ */
+func cg_options_create() -> CodegenOptions* {
+    return new CodegenOptions(true, false, false, false, false);
+}
+
+/**
+ * Create code-generation settings from one parsed CLI invocation.
+ *
+ * Keeping this projection in one place makes every caller of the per-module
+ * backend consume the same byte-affecting option set.
+ *
+ * @param opts Parsed CLI options to project.
+ * @return New code-generation settings object.
+ */
+func cg_options_from_cli(opts: CliOptions*) -> CodegenOptions* {
+    return new CodegenOptions(
+        !opts.no_line_directives,
+        opts.trace_arc,
+        opts.trace_memory,
+        opts.unchecked,
+        opts.check_basic
+    );
+}
+
+/**
+ * Free a codegen-options object.
+ *
+ * @param self Options object to free.
+ */
+func cg_options_free(self: CodegenOptions*) {
+    drop self;
+}

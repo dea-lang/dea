@@ -1,0 +1,62 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_float_ok;
+
+struct Pair {
+    a: float;
+    b: double;
+}
+
+func take_float(x: float) -> float {
+    return x;
+}
+
+func take_double(x: double) -> double {
+    return x;
+}
+
+func widen_return(x: float) -> double {
+    return x;
+}
+
+func numeric_casts() -> int {
+    let a: float = 1 as float;
+    let b: double = a as double;
+    let c: int = a as int;
+    let d: float = b as float;
+    let e: double = 7 as double;
+    return c + (b as int) + (d as int) + (e as int);
+}
+
+func arithmetic_ops() -> double {
+    let add: double = 8.0 + 1.0;
+    let sub: float = 8.0f - 3.0f;
+    let mul: float = 2.0f * 4.0f;
+    let div: double = 9.0 / 2.0;
+    if (add > div && sub == 5.0f && mul != 0.0f) {
+        return div + (sub as double) + (mul as double);
+    }
+    return 0.0;
+}
+
+func literals_and_calls() -> double {
+    let a: float = 1.0f;
+    let b: double = 2.0;
+    let c: float = 3; // Preserved direct integer-literal exception in typed real contexts.
+    let d: double = -4; // Preserved direct integer-literal exception in typed real contexts.
+    let e: float = take_float(5); // Preserved direct integer-literal exception for typed real call arguments.
+    let f: double = take_double(a);
+    let pair = Pair(6.0f, 7.0);
+    let neg: float = -a;
+    let sum: double = a + b;
+    let diff: double = pair.b - b;
+    let mul: float = neg * c;
+    let div: double = pair.b / b;
+    if (sum >= f && pair.b == 7.0 && diff == 5.0 && mul != 0.0f && div > 3.0) {
+        return widen_return(e) + sum + pair.a + pair.b + diff + div + arithmetic_ops();
+    }
+    return d;
+}

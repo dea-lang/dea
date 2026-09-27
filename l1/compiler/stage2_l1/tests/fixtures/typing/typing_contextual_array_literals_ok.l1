@@ -1,0 +1,65 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_contextual_array_literals_ok;
+
+struct Bucket {
+    values: int[3];
+}
+
+enum Payload {
+    Row(values: int[3]);
+    Matrix(values: int[2][3]);
+}
+
+func sum3(values: int[3]) -> int {
+    return values[0] + values[1] + values[2];
+}
+
+func first(rows: int[2][3]) -> int {
+    return rows[0][0];
+}
+
+func get2(values: int[3]) -> int {
+    return values[2];
+}
+
+func make_row() -> int[3] {
+    return [7, 8, 9];
+}
+
+func make_parenthesized_row() -> int[3] {
+    return ((([10, 11, 12])));
+}
+
+func exercise_contexts() -> int {
+    let local: int[3] = [1, 2, 3];
+    local = [4, 5, 6];
+    let parenthesized_local: int[3] = ((([9, 8, 7])));
+    parenthesized_local = ((([6, 5, 4])));
+
+    let bucket = Bucket([1, 2, 3]);
+    let parenthesized_bucket = Bucket(((([9, 8, 7]))));
+    let heap_bucket = new Bucket([4, 5, 6]);
+    let parenthesized_heap_bucket = new Bucket(((([6, 5, 4]))));
+    let row = Row([1, 2, 3]);
+    let parenthesized_row = Row(((([9, 8, 7]))));
+    let heap_row = new Row([4, 5, 6]);
+    let parenthesized_heap_row = new Row(((([6, 5, 4]))));
+    let matrix = Matrix([[1, 2, 3], [4, 5, 6]]);
+    let parenthesized_matrix = Matrix((([(([9, 8, 7])), (([6, 5, 4]))])));
+    let returned = make_row();
+    let parenthesized_returned = make_parenthesized_row();
+
+    drop heap_bucket;
+    drop parenthesized_heap_bucket;
+    drop heap_row;
+    drop parenthesized_heap_row;
+
+    return sum3([1, 2, 3]) + sum3((([9, 8, 7]))) + first([[1, 2, 3], [4, 5, 6]]) +
+        first((([(([9, 8, 7])), (([6, 5, 4]))]))) + get2([1, 2]) + get2((([3, 4]))) +
+        local[0] + parenthesized_local[0] + bucket.values[0] + parenthesized_bucket.values[0] +
+        returned[0] + parenthesized_returned[0];
+}

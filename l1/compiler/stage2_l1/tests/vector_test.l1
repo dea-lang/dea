@@ -1,0 +1,443 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+module vector_test;
+
+import std.assert;
+import std.io;
+import std.string;
+import std.vector;
+
+/**
+ * Tests test_vec_create.
+ */
+func test_vec_create() {
+    printl_s("=== Test vec_create ===");
+
+    // Test creating vector with int elements
+    printl_s("Creating vector for int elements (capacity 4)...");
+    let vec_int = vec_create(sizeof(int), 4);
+    printl_si("  size:", vec_size(vec_int));
+    printl_si("  capacity:", vec_capacity(vec_int));
+    vec_free(vec_int);
+    printl_s("  Freed int vector.");
+
+    // Test creating vector with byte elements
+    printl_s("Creating vector for byte elements (capacity 8)...");
+    let vec_byte = vec_create(sizeof(byte), 8);
+    printl_si("  size:", vec_size(vec_byte));
+    printl_si("  capacity:", vec_capacity(vec_byte));
+    vec_free(vec_byte);
+    printl_s("  Freed byte vector.");
+
+    printl_s("vec_create tests passed!\n");
+}
+
+/**
+ * Tests test_vec_push_and_grow.
+ */
+func test_vec_push_and_grow() {
+    printl_s("=== Test vec_push and vec_grow ===");
+
+    // Create small vector to test growth
+    printl_s("Creating int vector with initial capacity 2...");
+    let vec = vec_create(sizeof(int), 2);
+    printl_si("  initial size:", vec_size(vec));
+    printl_si("  initial capacity:", vec_capacity(vec));
+
+    // Push elements manually using vec_push
+    printl_s("Pushing 5 elements (should trigger resize)...");
+    for (let i = 0; i < 5; i = i + 1) {
+        let dest = vec_push(vec) as int*;
+        *dest = (i + 1) * 10;
+        printl_ii(i, (i + 1) * 10);
+    }
+
+    printl_si("  final size:", vec_size(vec));
+    printl_si("  final capacity:", vec_capacity(vec));
+
+    // Read back values
+    printl_s("Reading values back...");
+    for (let after_zap_i = 0; after_zap_i < vec_size(vec); after_zap_i = after_zap_i + 1) {
+        let val = vec_get(vec, after_zap_i) as int*;
+        printl_ii(after_zap_i, *val);
+    }
+
+    vec_free(vec);
+    printl_s("vec_push tests passed!\n");
+}
+
+/**
+ * Tests test_vec_push_int.
+ */
+func test_vec_push_int() {
+    printl_s("=== Test vec_push_int ===");
+
+    let vec = vec_create(sizeof(int), 4);
+    printl_s("Pushing integers: 100, 200, 300...");
+    vec_push_int(vec, 100);
+    vec_push_int(vec, 200);
+    vec_push_int(vec, 300);
+
+    printl_si("  size:", vec_size(vec));
+
+    printl_s("Reading back...");
+    for (let after_zap_i = 0; after_zap_i < vec_size(vec); after_zap_i = after_zap_i + 1) {
+        let val = vec_get(vec, after_zap_i) as int*;
+        printl_ii(after_zap_i, *val);
+    }
+
+    vec_free(vec);
+    printl_s("vec_push_int tests passed!\n");
+}
+
+/**
+ * Tests test_vec_push_byte.
+ */
+func test_vec_push_byte() {
+    printl_s("=== Test vec_push_byte ===");
+
+    let vec = vec_create(sizeof(byte), 4);
+    printl_s("Pushing bytes: 'A', 'B', 'C', 'D'...");
+    vec_push_byte(vec, 'A');
+    vec_push_byte(vec, 'B');
+    vec_push_byte(vec, 'C');
+    vec_push_byte(vec, 'D');
+
+    printl_si("  size:", vec_size(vec));
+
+    printl_s("Reading back (A=65, B=66, C=67, D=68)...");
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        let val = vec_get(vec, i) as byte*;
+        printl_ii(i, *val);
+    }
+
+    vec_free(vec);
+    printl_s("vec_push_byte tests passed!\n");
+}
+
+/**
+ * Tests aliased and external bulk byte pushes.
+ */
+func test_vec_push_bytes_aliasing() {
+    let base_growth = vec_create(sizeof(byte), 2);
+    vec_push_byte(base_growth, 'A');
+    vec_push_byte(base_growth, 'B');
+    let base_source = base_growth.arr.data as byte*;
+    vec_push_bytes(base_growth, base_source, 2);
+    assert(vec_size(base_growth) == 4, "base-alias growth length mismatch");
+    assert(*(vec_get(base_growth, 2) as byte*) == 'A', "base-alias growth byte 0 mismatch");
+    assert(*(vec_get(base_growth, 3) as byte*) == 'B', "base-alias growth byte 1 mismatch");
+    vec_free(base_growth);
+
+    let interior_growth = vec_create(sizeof(byte), 4);
+    vec_push_byte(interior_growth, 'A');
+    vec_push_byte(interior_growth, 'B');
+    vec_push_byte(interior_growth, 'C');
+    vec_push_byte(interior_growth, 'D');
+    let interior_source = vec_get(interior_growth, 1) as byte*;
+    vec_push_bytes(interior_growth, interior_source, 2);
+    assert(vec_size(interior_growth) == 6, "interior-alias growth length mismatch");
+    assert(*(vec_get(interior_growth, 4) as byte*) == 'B', "interior-alias growth byte 0 mismatch");
+    assert(*(vec_get(interior_growth, 5) as byte*) == 'C', "interior-alias growth byte 1 mismatch");
+    vec_free(interior_growth);
+
+    let no_growth = vec_create(sizeof(byte), 8);
+    vec_push_byte(no_growth, 'W');
+    vec_push_byte(no_growth, 'X');
+    vec_push_byte(no_growth, 'Y');
+    vec_push_byte(no_growth, 'Z');
+    let no_growth_source = vec_get(no_growth, 1) as byte*;
+    vec_push_bytes(no_growth, no_growth_source, 2);
+    assert(vec_size(no_growth) == 6, "interior-alias no-growth length mismatch");
+    assert(*(vec_get(no_growth, 4) as byte*) == 'X', "interior-alias no-growth byte 0 mismatch");
+    assert(*(vec_get(no_growth, 5) as byte*) == 'Y', "interior-alias no-growth byte 1 mismatch");
+    vec_free(no_growth);
+
+    let external = vec_create(sizeof(byte), 3);
+    vec_push_byte(external, 'Q');
+    vec_push_byte(external, 'R');
+    vec_push_byte(external, 'S');
+    let destination = vec_create(sizeof(byte), 1);
+    vec_push_bytes(destination, external.arr.data as byte*, 3);
+    assert(vec_size(destination) == 3, "external-source length mismatch");
+    assert(*(vec_get(destination, 0) as byte*) == 'Q', "external-source byte 0 mismatch");
+    assert(*(vec_get(destination, 1) as byte*) == 'R', "external-source byte 1 mismatch");
+    assert(*(vec_get(destination, 2) as byte*) == 'S', "external-source byte 2 mismatch");
+    vec_free(destination);
+    vec_free(external);
+
+    printl_s("vec_push_bytes aliasing tests passed!\n");
+}
+
+/**
+ * Tests test_vec_push_bool.
+ */
+func test_vec_push_bool() {
+    printl_s("=== Test vec_push_bool ===");
+
+    let vec = vec_create(sizeof(bool), 4);
+    printl_s("Pushing bools: true, false, true, false...");
+    vec_push_bool(vec, true);
+    vec_push_bool(vec, false);
+    vec_push_bool(vec, true);
+    vec_push_bool(vec, false);
+
+    printl_si("  size:", vec_size(vec));
+
+    printl_s("Reading back...");
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        let val = vec_get(vec, i) as bool*;
+        printl_ib(i, *val);
+    }
+
+    vec_free(vec);
+    printl_s("vec_push_bool tests passed!\n");
+}
+
+/**
+ * Tests test_vec_push_ptr.
+ */
+func test_vec_push_ptr() {
+    printl_s("=== Test vec_push_ptr ===");
+
+    // Create some values to point to
+    let v1 = new int;
+    *v1 = 1000;
+    let v2 = new int;
+    *v2 = 2000;
+    let v3 = new int;
+    *v3 = 3000;
+
+    let vec = vec_create(sizeof(void*), 4);
+    printl_s("Pushing pointers to [1000, 2000, 3000]...");
+    vec_push_ptr(vec, v1 as void*);
+    vec_push_ptr(vec, v2 as void*);
+    vec_push_ptr(vec, v3 as void*);
+
+    printl_si("  size:", vec_size(vec));
+
+    printl_s("Reading and dereferencing pointers...");
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        let ptr_ptr = vec_get(vec, i) as int**;
+        printl_ii(i, **ptr_ptr);
+    }
+
+    vec_free(vec);
+    drop v1;
+    drop v2;
+    drop v3;
+    printl_s("vec_push_ptr tests passed!\n");
+}
+
+/**
+ * Tests test_vec_reserve.
+ */
+func test_vec_reserve() {
+    printl_s("=== Test vec_reserve ===");
+
+    let vec = vec_create(sizeof(int), 2);
+    printl_si("  initial capacity:", vec_capacity(vec));
+
+    printl_s("Reserving capacity for 100 elements...");
+    vec_reserve(vec, 100);
+    printl_si("  new capacity:", vec_capacity(vec));
+    printl_si("  size (should still be 0):", vec_size(vec));
+    assert(vec_size(vec) == 0, "vec_reserve must not change logical length");
+    assert(vec_capacity(vec) == 100, "vec_reserve must grow physical capacity");
+
+    // Push some elements to verify it works
+    printl_s("Pushing 10 elements...");
+    for (let i = 0; i < 10; i = i + 1) {
+        vec_push_int(vec, i);
+    }
+    printl_si("  size after push:", vec_size(vec));
+    printl_si("  capacity (should still be 100):", vec_capacity(vec));
+    assert(vec_size(vec) == 10, "pushes after reserve must grow logical length");
+    assert(vec_capacity(vec) == 100, "pushes within reserved storage must preserve capacity");
+    vec_check(vec, 9);
+    assert(*(vec_get(vec, 9) as int*) == 9, "last logical element must remain accessible");
+
+    vec_free(vec);
+    printl_s("vec_reserve tests passed!\n");
+}
+
+/**
+ * Tests test_vec_zap.
+ */
+func test_vec_zap() {
+    printl_s("=== Test vec_zap ===");
+
+    let vec = vec_create(sizeof(int), 4);
+    printl_s("Pushing values: 111, 222, 333...");
+    vec_push_int(vec, 111);
+    vec_push_int(vec, 222);
+    vec_push_int(vec, 333);
+
+    printl_s("Before zap:");
+    for (let read_i = 0; read_i < vec_size(vec); read_i = read_i + 1) {
+        let val = vec_get(vec, read_i) as int*;
+        printl_ii(read_i, *val);
+    }
+
+    printl_s("Zapping index 1...");
+    vec_zap(vec, 1);
+
+    printl_s("After zap:");
+    for (let after_zap_i = 0; after_zap_i < vec_size(vec); after_zap_i = after_zap_i + 1) {
+        let val = vec_get(vec, after_zap_i) as int*;
+        printl_ii(after_zap_i, *val);
+    }
+
+    vec_free(vec);
+    printl_s("vec_zap tests passed!\n");
+}
+
+/**
+ * Tests test_vec_clear.
+ */
+func test_vec_clear() {
+    printl_s("=== Test vec_clear ===");
+
+    let vec = vec_create(sizeof(int), 4);
+    printl_s("Pushing 5 values...");
+    for (let i = 0; i < 5; i = i + 1) {
+        vec_push_int(vec, i * 100);
+    }
+    printl_si("  size before clear:", vec_size(vec));
+    printl_si("  capacity before clear:", vec_capacity(vec));
+
+    printl_s("Clearing vector...");
+    vec_clear(vec);
+    printl_si("  size after clear:", vec_size(vec));
+    printl_si("  capacity after clear:", vec_capacity(vec));
+    assert(vec_size(vec) == 0, "vec_clear must reset logical length");
+    assert(vec_capacity(vec) == 1, "vec_clear must retain one backing slot");
+
+    // Push again to verify it still works
+    printl_s("Pushing 2 new values after clear...");
+    vec_push_int(vec, 999);
+    vec_push_int(vec, 888);
+    printl_si("  size:", vec_size(vec));
+
+    printl_s("Reading values:");
+    for (let clear_read_i = 0; clear_read_i < vec_size(vec); clear_read_i = clear_read_i + 1) {
+        let val = vec_get(vec, clear_read_i) as int*;
+        printl_ii(clear_read_i, *val);
+    }
+
+    vec_free(vec);
+    printl_s("vec_clear tests passed!\n");
+}
+
+/**
+ * Tests test_many_elements.
+ */
+func test_many_elements() {
+    printl_s("=== Test many elements (growth stress test) ===");
+
+    let vec = vec_create(sizeof(int), 1);
+    printl_s("Starting with capacity 1, pushing 100 elements...");
+
+    for (let i = 0; i < 100; i = i + 1) {
+        vec_push_int(vec, i);
+    }
+
+    printl_si("  final size:", vec_size(vec));
+    printl_si("  final capacity:", vec_capacity(vec));
+
+    // Verify first and last few values
+    printl_s("Verifying values...");
+    let v0 = vec_get(vec, 0) as int*;
+    printl_si("  vec[0]:", *v0);
+    let v1 = vec_get(vec, 1) as int*;
+    printl_si("  vec[1]:", *v1);
+    let v98 = vec_get(vec, 98) as int*;
+    printl_si("  vec[98]:", *v98);
+    let v99 = vec_get(vec, 99) as int*;
+    printl_si("  vec[99]:", *v99);
+
+    vec_free(vec);
+    printl_s("Many elements test passed!\n");
+}
+
+/**
+ * Tests test_vi_sort.
+ */
+func test_vi_sort() {
+    printl_s("=== Test vi_sort ===");
+
+    let empty = vec_create(sizeof(int), 1);
+    vi_sort(empty);
+    assert(vec_size(empty) == 0, "vi_sort: empty vector size should remain 0");
+    vec_free(empty);
+
+    let single = vec_create(sizeof(int), 1);
+    vec_push_int(single, 42);
+    vi_sort(single);
+    assert(vec_size(single) == 1, "vi_sort: single vector size should remain 1");
+    assert(*(vec_get(single, 0) as int*) == 42, "vi_sort: single value should remain unchanged");
+    vec_free(single);
+
+    let vec = vec_create(sizeof(int), 8);
+    vec_push_int(vec, 7);
+    vec_push_int(vec, -2);
+    vec_push_int(vec, 0);
+    vec_push_int(vec, 7);
+    vec_push_int(vec, 11);
+    vec_push_int(vec, -5);
+    vec_push_int(vec, 3);
+    vi_sort(vec);
+
+    assert(vec_size(vec) == 7, "vi_sort: size should remain unchanged");
+    assert(*(vec_get(vec, 0) as int*) == -5, "vi_sort: index 0 mismatch");
+    assert(*(vec_get(vec, 1) as int*) == -2, "vi_sort: index 1 mismatch");
+    assert(*(vec_get(vec, 2) as int*) == 0, "vi_sort: index 2 mismatch");
+    assert(*(vec_get(vec, 3) as int*) == 3, "vi_sort: index 3 mismatch");
+    assert(*(vec_get(vec, 4) as int*) == 7, "vi_sort: index 4 mismatch");
+    assert(*(vec_get(vec, 5) as int*) == 7, "vi_sort: index 5 mismatch");
+    assert(*(vec_get(vec, 6) as int*) == 11, "vi_sort: index 6 mismatch");
+    vec_free(vec);
+
+    let sorted = vec_create(sizeof(int), 4);
+    vec_push_int(sorted, 1);
+    vec_push_int(sorted, 2);
+    vec_push_int(sorted, 3);
+    vec_push_int(sorted, 4);
+    vi_sort(sorted);
+    assert(*(vec_get(sorted, 0) as int*) == 1, "vi_sort: sorted index 0 mismatch");
+    assert(*(vec_get(sorted, 1) as int*) == 2, "vi_sort: sorted index 1 mismatch");
+    assert(*(vec_get(sorted, 2) as int*) == 3, "vi_sort: sorted index 2 mismatch");
+    assert(*(vec_get(sorted, 3) as int*) == 4, "vi_sort: sorted index 3 mismatch");
+    vec_free(sorted);
+
+    printl_s("vi_sort tests passed!\n");
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    printl_s("======================================");
+    printl_s("       VectorBase Test Suite");
+    printl_s("======================================\n");
+
+    test_vec_create();
+    test_vec_push_and_grow();
+    test_vec_push_int();
+    test_vec_push_byte();
+    test_vec_push_bytes_aliasing();
+    test_vec_push_bool();
+    test_vec_push_ptr();
+    test_vec_reserve();
+    test_vec_zap();
+    test_vec_clear();
+    test_many_elements();
+    test_vi_sort();
+
+    printl_s("======================================");
+    printl_s("   All VectorBase tests passed!");
+    printl_s("======================================");
+}

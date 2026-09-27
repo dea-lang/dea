@@ -1,0 +1,77 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module nullable_identity_main;
+
+struct T {
+    val: int;
+}
+
+func main() -> int {
+    // int?
+    let a: int? = 5;
+    let b: int? = 10;
+    let c: int? = null;
+
+    if (!(a == a)) { return 1; }
+    if (!(a != b)) { return 2; }
+    if (!(a != c)) { return 3; }
+    if (!(c == null)) { return 4; }
+    if (a == b) { return 5; }
+    if (a == c) { return 6; }
+    if (c != null) { return 7; }
+
+    // string?
+    let s1: string? = "hello";
+    let s2: string? = "world";
+    let s3: string? = null;
+    let s1_copy: string? = "hello";
+
+    if (!(s1 == s1)) { return 8; }
+    if (!(s1 == s1_copy)) { return 9; }
+    if (!(s1 != s2)) { return 10; }
+    if (!(s1 != s3)) { return 11; }
+    if (!(s3 == null)) { return 12; }
+    if (s1 == s2) { return 13; }
+    if (s1 == s3) { return 14; }
+
+    // T*?
+    let t1: T*? = new T(1);
+    let t2: T*? = new T(2);
+    let t3: T*? = null;
+    let t1_alias: T*? = t1;
+
+    if (!(t1 == t1)) { return 15; }
+    if (!(t1 == t1_alias)) { return 16; }
+    if (!(t1 != t2)) { return 17; }
+    if (!(t1 != t3)) { return 18; }
+    if (!(t3 == null)) { return 19; }
+    if (t1 == t2) { return 20; }
+    if (t1 == t3) { return 21; }
+
+    // bool?, float?, double?
+    let bo1: bool? = true;
+    let bo2: bool? = false;
+    let bo3: bool? = null;
+    if (!(bo1 == bo1)) { return 22; }
+    if (!(bo1 != bo2)) { return 23; }
+    if (!(bo1 != bo3)) { return 24; }
+
+    let f1: float? = 1.0f;
+    let f2: float? = 2.0f;
+    let f3: float? = null;
+    if (!(f1 == f1)) { return 25; }
+    if (!(f1 != f2)) { return 26; }
+    if (!(f1 != f3)) { return 27; }
+
+    let d1: double? = 1.0;
+    let d2: double? = 2.0;
+    let d3: double? = null;
+    if (!(d1 == d1)) { return 28; }
+    if (!(d1 != d2)) { return 29; }
+    if (!(d1 != d3)) { return 30; }
+
+    return 0;
+}

@@ -1,0 +1,67 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module expr_types;
+
+import std.vector;
+import ast;
+import driver.state;
+import locals;
+import name_resolver.query;
+import name_resolver.state;
+import sem_context;
+import expr_types.liveness;
+import expr_types.state;
+import expr_types.stmt;
+
+/**
+ * Run expression and statement type checking for the analysis result.
+ *
+ * Resolved top-level initializers remain safe to check after an earlier
+ * semantic error. Function bodies are checked only when this pass starts with
+ * a clean diagnostic state.
+ *
+ * @param result Analysis result to populate with expression types and diagnostics.
+ */
+func expr_types_check(result: AnalysisResult*) {
+    let check_function_bodies = !analysis_has_errors(result);
+    let checker = new ExpressionTypeChecker(result, "", null, null, null, null, null, ptr_vec_create(4),
+        ptr_vec_create(4), ptr_vec_create(4), 0, false, false, false, false, null, null);
+
+    for (let i = 0; i < driver_unit_count(result.driver_state); i = i + 1) {
+        let unit = driver_unit_get(result.driver_state, i);
+        if (unit.parse_result.root_module == null) continue;
+
+        checker.current_unit = unit;
+        let root = unit.parse_result.root_module as Module*;
+        checker.current_module = root.name;
+        let current_env = nr_env_find(result.names as NameResolution*, checker.current_module);
+        if (current_env == null) {
+            continue;
+        }
+        checker.current_env = current_env as ModuleEnv*;
+
+        etc_check_top_level_initializers(checker, root);
+
+        if (!check_function_bodies) {
+            continue;
+        }
+        let locals = result.locals_result as LocalsResult*;
+        for (let j = 0; j < locals_env_count(locals); j = j + 1) {
+            let env = locals_env_get(locals, j);
+            if (env.module_name == checker.current_module) {
+                etc_check_function(checker, env);
+            }
+        }
+    }
+
+    etc_alive_scope_stack_free(checker.alive_scopes);
+    etc_alive_scope_stack_free(checker.decl_scopes);
+    if (checker.decl_scope_defs != null) {
+        vec_free(checker.decl_scope_defs as VectorBase*);
+    }
+    etc_cleanup_header_guard_stack_free(checker.cleanup_header_guard_stack);
+    drop checker;
+}

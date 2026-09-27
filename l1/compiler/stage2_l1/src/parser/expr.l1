@@ -1,0 +1,815 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module parser.expr;
+
+
+import std.vector;
+
+import tokens;
+import ast;
+import builtin_types;
+import parser.cursor;
+import parser.state;
+import parser.token_value;
+import parser.type_ref;
+
+/* ---------------------------------
+   Expression parsing
+   --------------------------------- */
+
+/**
+ * Check whether the current token is a builtin type name.
+ *
+ * @param self Parser state to inspect.
+ * @return `true` if the current token names a builtin type.
+ */
+func ps_is_builtin_type_name(self: ParserState*) -> bool {
+    if (!ps_check_ident(self)) {
+        return false;
+    }
+    return builtin_type_name_is_known(token_ident_text(ps_peek(self)) as string);
+}
+
+/**
+ * Check whether the current token sequence can only start a type.
+ *
+ * @param self Parser state to inspect.
+ * @return `true` if the lookahead unambiguously starts a type reference.
+ */
+func ps_is_unambiguous_type_start(self: ParserState*) -> bool {
+    if (ps_is_builtin_type_name(self)) {
+        return true;
+    }
+
+    if (!ps_check_ident(self)) {
+        return false;
+    }
+
+    let saved = self.index;
+    ps_advance(self); // identifier
+    let after_first = self.index;
+    while (ps_match(self, ord(TT_DOT))) {
+        if (!ps_check_ident(self)) {
+            self.index = saved;
+            return false;
+        }
+        ps_advance(self);
+    }
+    if (ps_match(self, ord(TT_DOUBLE_COLON))) {
+        if (!ps_check_ident(self)) {
+            self.index = saved;
+            return false;
+        }
+        ps_advance(self);
+        while (ps_match(self, ord(TT_DOUBLE_COLON))) {
+            if (!ps_check_ident(self)) {
+                self.index = saved;
+                return false;
+            }
+            ps_advance(self);
+        }
+    } else {
+        self.index = after_first;
+    }
+
+    let has_suffix = false;
+    while (ps_check(self, ord(TT_STAR)) || ps_check(self, ord(TT_QUESTION))) {
+        has_suffix = true;
+        ps_advance(self);
+    }
+
+    let at_boundary = ps_check(self, ord(TT_RPAREN)) || ps_check(self, ord(TT_COMMA));
+
+    self.index = saved;
+    return has_suffix && at_boundary;
+}
+
+/**
+ * Report whether a parsed type reference includes an array suffix.
+ *
+ * @param tref Type reference to inspect.
+ * @return `true` if an array suffix was parsed.
+ */
+func ps_type_ref_has_array_suffix(tref: TypeRef*) -> bool {
+    if (tref.suffixes == null) {
+        return false;
+    }
+    let suffixes = tref.suffixes as VectorBase*;
+    for (let i = 0; i < vec_size(suffixes); i = i + 1) {
+        let suffix = ptr_vec_get(suffixes, i) as TypeSuffix*;
+        if (ord(suffix.kind) == ord(TS_ARRAY)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Return whether lookahead can start an array constructor type-call.
+ *
+ * @param self Parser state to inspect without consuming.
+ * @return `true` for `T[N](`-shaped prefixes.
+ */
+func ps_looks_like_array_constructor_start(self: ParserState*) -> bool {
+    let saved = self.index;
+    if (!ps_check_ident(self)) {
+        return false;
+    }
+    ps_advance(self);
+    while (ps_match(self, ord(TT_DOT))) {
+        if (!ps_check_ident(self)) {
+            self.index = saved;
+            return false;
+        }
+        ps_advance(self);
+    }
+    while (ps_match(self, ord(TT_DOUBLE_COLON))) {
+        if (!ps_check_ident(self)) {
+            self.index = saved;
+            return false;
+        }
+        ps_advance(self);
+    }
+    let has_array = false;
+    while (ps_check(self, ord(TT_STAR)) || ps_check(self, ord(TT_QUESTION)) ||
+           ps_check(self, ord(TT_LBRACKET))) {
+        if (ps_match(self, ord(TT_LBRACKET))) {
+            if (ps_check_int(self)) {
+                ps_advance(self);
+            } else if (ps_check_ident(self)) {
+                ps_advance(self);
+                while (ps_match(self, ord(TT_DOT))) {
+                    if (!ps_check_ident(self)) {
+                        self.index = saved;
+                        return false;
+                    }
+                    ps_advance(self);
+                }
+                while (ps_match(self, ord(TT_DOUBLE_COLON))) {
+                    if (!ps_check_ident(self)) {
+                        self.index = saved;
+                        return false;
+                    }
+                    ps_advance(self);
+                }
+            } else {
+                self.index = saved;
+                return false;
+            }
+            if (!ps_match(self, ord(TT_RBRACKET))) {
+                self.index = saved;
+                return false;
+            }
+            has_array = true;
+        } else {
+            ps_advance(self);
+        }
+    }
+    let result = has_array && ps_check(self, ord(TT_LPAREN));
+    self.index = saved;
+    return result;
+}
+
+/**
+ * Parse one call argument.
+ *
+ * @param self Parser state to advance.
+ * @return Parsed argument expression, or `null` on error.
+ */
+func ps_parse_call_argument(self: ParserState*) -> ExprId? {
+    let start = ps_span_start(self);
+    if (ps_is_unambiguous_type_start(self)) {
+        let type_ref = ps_parse_type(self)?;
+        let node = expr_node_create(EX_TYPE, ps_extend_span(self, start));
+        node.type_ref = type_ref;
+        return expr_arena_add(self.expr_arena, node);
+    }
+    return ps_parse_expr(self);
+}
+
+/**
+ * Parse an expression.
+ *
+ * @param self Parser state to advance.
+ * @return Parsed expression, or `null` on error.
+ */
+func ps_parse_expr(self: ParserState*) -> ExprId? {
+    return ps_parse_or_expr(self);
+}
+
+/**
+ * Parse a logical-or expression.
+ *
+ * @param self Parser state to advance.
+ * @return Parsed logical-or expression, or `null` on error.
+ */
+func ps_parse_or_expr(self: ParserState*) -> ExprId? {
+    let start = ps_span_start(self);
+    let expr = ps_parse_and_expr(self)?;
+
+    let current = expr;
+    while (ps_match(self, ord(TT_OROR))) {
+        let op_tok = ps_last(self);
+        let right = ps_parse_and_expr(self)?;
+
+        let node = expr_node_create(EX_BINARY, ps_extend_span(self, start));
+        node.text_value = token_to_string(op_tok);
+        node.expr_a = current;
+        node.expr_b = right;
+        current = expr_arena_add(self.expr_arena, node);
+    }
+    return current;
+}
+
+/**
+ * Parse a logical-and expression.
+ *
+ * @param self Parser state to advance.
+ * @return Parsed logical-and expression, or `null` on error.
+ */
+func ps_parse_and_expr(self: ParserState*) -> ExprId? {
+    let start = ps_span_start(self);
+    let expr = ps_parse_bit_or_expr(self)?;
+
+    let current = expr;
+    while (ps_match(self, ord(TT_ANDAND))) {
+        let op_tok = ps_last(self);
+        let right = ps_parse_bit_or_expr(self)?;
+
+        let node = expr_node_create(EX_BINARY, ps_extend_span(self, start));
+        node.text_value = token_to_string(op_tok);
+        node.expr_a = current;
+        node.expr_b = right;
+        current = expr_arena_add(self.expr_arena, node);
+    }
+    return current;
+}
+
+/**
+ * Parse a bitwise-or expression.
+ *
+ * @param self Parser state to advance.
+ * @return Parsed bitwise-or expression, or `null` on error.
+ */
+func ps_parse_bit_or_expr(self: ParserState*) -> ExprId? {
+    let start = ps_span_start(self);
+    let expr = ps_parse_bit_xor_expr(self)?;
+
+    let current = expr;
+    while (ps_match(self, ord(TT_PIPE))) {
+        let op_tok = ps_last(self);
+        let right = ps_parse_bit_xor_expr(self)?;
+
+        let node = expr_node_create(EX_BINARY, ps_extend_span(self, start));
+        node.text_value = token_to_string(op_tok);
+        node.expr_a = current;
+        node.expr_b = right;
+        current = expr_arena_add(self.expr_arena, node);
+    }
+    return current;
+}
+
+/**
+ * Parse a bitwise-xor expression.
+ *
+ * @param self Parser state to advance.
+ * @return Parsed bitwise-xor expression, or `null` on error.
+ */
+func ps_parse_bit_xor_expr(self: ParserState*) -> ExprId? {
+    let start = ps_span_start(self);
+    let expr = ps_parse_bit_and_expr(self)?;
+
+    let current = expr;
+    while (ps_match(self, ord(TT_CARET))) {
+        let op_tok = ps_last(self);
+        let right = ps_parse_bit_and_expr(self)?;
+
+        let node = expr_node_create(EX_BINARY, ps_extend_span(self, start));
+        node.text_value = token_to_string(op_tok);
+        node.expr_a = current;
+        node.expr_b = right;
+        current = expr_arena_add(self.expr_arena, node);
+    }
+    return current;
+}
+
+/**
+ * Parse a bitwise-and expression.
+ *
+ * @param self Parser state to advance.
+ * @return Parsed bitwise-and expression, or `null` on error.
+ */
+func ps_parse_bit_and_expr(self: ParserState*) -> ExprId? {
+    let start = ps_span_start(self);
+    let expr = ps_parse_equality_expr(self)?;
+
+    let current = expr;
+    while (ps_match(self, ord(TT_AMP))) {
+        let op_tok = ps_last(self);
+        let right = ps_parse_equality_expr(self)?;
+
+        let node = expr_node_create(EX_BINARY, ps_extend_span(self, start));
+        node.text_value = token_to_string(op_tok);
+        node.expr_a = current;
+        node.expr_b = right;
+        current = expr_arena_add(self.expr_arena, node);
+    }
+    return current;
+}
+
+/**
+ * Parse an equality expression.
+ *
+ * @param self Parser state to advance.
+ * @return Parsed equality expression, or `null` on error.
+ */
+func ps_parse_equality_expr(self: ParserState*) -> ExprId? {
+    let start = ps_span_start(self);
+    let expr = ps_parse_rel_expr(self)?;
+
+    let current = expr;
+    while (ps_match_any2(self, ord(TT_EQEQ), ord(TT_NE))) {
+        let op_tok = ps_last(self);
+        let right = ps_parse_rel_expr(self)?;
+
+        let node = expr_node_create(EX_BINARY, ps_extend_span(self, start));
+        node.text_value = token_to_string(op_tok);
+        node.expr_a = current;
+        node.expr_b = right;
+        current = expr_arena_add(self.expr_arena, node);
+    }
+    return current;
+}
+
+/**
+ * Parse a relational expression.
+ *
+ * @param self Parser state to advance.
+ * @return Parsed relational expression, or `null` on error.
+ */
+func ps_parse_rel_expr(self: ParserState*) -> ExprId? {
+    let start = ps_span_start(self);
+    let expr = ps_parse_shift_expr(self)?;
+
+    let current = expr;
+    while (ps_match_any4(self, ord(TT_LT), ord(TT_GT), ord(TT_LE), ord(TT_GE))) {
+        let op_tok = ps_last(self);
+        let right = ps_parse_shift_expr(self)?;
+
+        let node = expr_node_create(EX_BINARY, ps_extend_span(self, start));
+        node.text_value = token_to_string(op_tok);
+        node.expr_a = current;
+        node.expr_b = right;
+        current = expr_arena_add(self.expr_arena, node);
+    }
+    return current;
+}
+
+/**
+ * Parse a shift expression.
+ *
+ * @param self Parser state to advance.
+ * @return Parsed shift expression, or `null` on error.
+ */
+func ps_parse_shift_expr(self: ParserState*) -> ExprId? {
+    let start = ps_span_start(self);
+    let expr = ps_parse_add_expr(self)?;
+
+    let current = expr;
+    while (ps_match_any2(self, ord(TT_LSHIFT), ord(TT_RSHIFT))) {
+        let op_tok = ps_last(self);
+        let right = ps_parse_add_expr(self)?;
+
+        let node = expr_node_create(EX_BINARY, ps_extend_span(self, start));
+        node.text_value = token_to_string(op_tok);
+        node.expr_a = current;
+        node.expr_b = right;
+        current = expr_arena_add(self.expr_arena, node);
+    }
+    return current;
+}
+
+/**
+ * Parse additive expressions.
+ *
+ * @param self Parser state to advance.
+ * @return The parsed additive expression, or `null` on error.
+ */
+func ps_parse_add_expr(self: ParserState*) -> ExprId? {
+    let start = ps_span_start(self);
+    let expr = ps_parse_mul_expr(self)?;
+
+    let current = expr;
+    while (ps_match_any2(self, ord(TT_PLUS), ord(TT_MINUS))) {
+        let op_tok = ps_last(self);
+        let right = ps_parse_mul_expr(self)?;
+
+        let node = expr_node_create(EX_BINARY, ps_extend_span(self, start));
+        node.text_value = token_to_string(op_tok);
+        node.expr_a = current;
+        node.expr_b = right;
+        current = expr_arena_add(self.expr_arena, node);
+    }
+    return current;
+}
+
+/**
+ * Parse a multiplicative expression.
+ *
+ * @param self Parser state to advance.
+ * @return Parsed multiplicative expression, or `null` on error.
+ */
+func ps_parse_mul_expr(self: ParserState*) -> ExprId? {
+    let start = ps_span_start(self);
+    let expr = ps_parse_unary_expr(self)?;
+
+    let current = expr;
+    while (ps_match_any3(self, ord(TT_STAR), ord(TT_SLASH), ord(TT_MODULO))) {
+        let op_tok = ps_last(self);
+        let right = ps_parse_unary_expr(self)?;
+
+        let node = expr_node_create(EX_BINARY, ps_extend_span(self, start));
+        node.text_value = token_to_string(op_tok);
+        node.expr_a = current;
+        node.expr_b = right;
+        current = expr_arena_add(self.expr_arena, node);
+    }
+    return current;
+}
+
+/**
+ * Parse a unary expression.
+ *
+ * @param self Parser state to advance.
+ * @return Parsed unary expression, or `null` on error.
+ */
+func ps_parse_unary_expr(self: ParserState*) -> ExprId? {
+    let start = ps_span_start(self);
+
+    if (ps_match(self, ord(TT_BANG))) {
+        let op_tok = ps_last(self);
+        let operand = ps_parse_unary_expr(self)?;
+
+        let node = expr_node_create(EX_UNARY, ps_extend_span(self, start));
+        node.text_value = token_to_string(op_tok);
+        node.expr_a = operand;
+        return expr_arena_add(self.expr_arena, node);
+    }
+    if (ps_match(self, ord(TT_MINUS))) {
+        let op_tok = ps_last(self);
+        let operand = ps_parse_unary_expr(self)?;
+
+        let node = expr_node_create(EX_UNARY, ps_extend_span(self, start));
+        node.text_value = token_to_string(op_tok);
+        node.expr_a = operand;
+        return expr_arena_add(self.expr_arena, node);
+    }
+    if (ps_match(self, ord(TT_STAR))) {
+        let op_tok = ps_last(self);
+        let operand = ps_parse_unary_expr(self)?;
+
+        let node = expr_node_create(EX_UNARY, ps_extend_span(self, start));
+        node.text_value = token_to_string(op_tok);
+        node.expr_a = operand;
+        return expr_arena_add(self.expr_arena, node);
+    }
+
+    if (ps_match(self, ord(TT_TILDE))) {
+        let op_tok = ps_last(self);
+        let operand = ps_parse_unary_expr(self)?;
+
+        let node = expr_node_create(EX_UNARY, ps_extend_span(self, start));
+        node.text_value = token_to_string(op_tok);
+        node.expr_a = operand;
+        return expr_arena_add(self.expr_arena, node);
+    }
+
+    return ps_parse_cast_expr(self);
+}
+
+/**
+ * Parse a cast expression.
+ *
+ * @param self Parser state to advance.
+ * @return Parsed cast expression, or `null` on error.
+ */
+func ps_parse_cast_expr(self: ParserState*) -> ExprId? {
+    let start = ps_span_start(self);
+    let expr = ps_parse_postfix_expr(self)?;
+    if (ps_match(self, ord(TT_AS))) {
+        let target_type = ps_parse_type(self)?;
+        let node = expr_node_create(EX_CAST, ps_extend_span(self, start));
+        node.expr_a = expr;
+        node.type_ref = target_type;
+        return expr_arena_add(self.expr_arena, node);
+    }
+    return expr;
+}
+
+/**
+ * Parse a postfix expression.
+ *
+ * @param self Parser state to advance.
+ * @return Parsed postfix expression, or `null` on error.
+ */
+func ps_parse_postfix_expr(self: ParserState*) -> ExprId? {
+    let start = ps_span_start(self);
+    let primary = ps_parse_primary_expr(self)?;
+    let current = primary;
+
+    while (true) {
+        if (ps_match(self, ord(TT_LPAREN))) {
+            with (let args: VectorBase*? = id_vec_create(4) => id_vec_free(args),
+                  let labels: StringVector*? = sv_create(4) => sv_free_opt(labels)) {
+                let any_named = false;
+                let any_pos = false;
+                let has_spread = false;
+                if (!ps_check(self, ord(TT_RPAREN))) {
+                    while (true) {
+                        let label: string = "";
+                        if (tok_is_ident(ps_peek(self)) && tok_is(ps_peek_logical_ahead(self, 1), ord(TT_COLON))) {
+                            label = token_ident_text(ps_peek(self)) as string;
+                            ps_advance(self); // consume ident
+                            ps_advance(self); // consume colon
+                            any_named = true;
+                        } else {
+                            any_pos = true;
+                        }
+                        
+                        if (any_named && any_pos) {
+                            ps_emit_error(self, "PAR-0550", "cannot mix named and positional arguments", ps_peek(self));
+                            return null;
+                        }
+
+                        let arg = ps_parse_call_argument(self)?;
+                        id_vec_push(args as VectorBase*, arg);
+                        sv_push(labels as StringVector*, label);
+
+                        if (ps_match(self, ord(TT_ELLIPSIS))) {
+                            has_spread = true;
+                            if (!ps_check(self, ord(TT_RPAREN))) {
+                                ps_emit_error(self, "PAR-0521", "spread argument must be final", ps_peek(self));
+                                return null;
+                            }
+                        }
+
+                        if (!ps_match(self, ord(TT_COMMA))) {
+                            break;
+                        }
+                    }
+                }
+                ps_expect(self, ord(TT_RPAREN), "PAR-0210", "expected ')' after arguments")?;
+
+                let node = expr_node_create(EX_CALL, ps_extend_span(self, start));
+                node.expr_a = current;
+                node.ids = args as VectorBase*;
+                node.has_spread_arg = has_spread;
+                args = null;
+                if (any_named) {
+                    node.arg_labels = labels as StringVector*;
+                    labels = null;
+                }
+                current = expr_arena_add(self.expr_arena, node);
+                continue;
+            }
+        }
+
+        if (ps_match(self, ord(TT_LBRACKET))) {
+            let index = ps_parse_expr(self)?;
+            ps_expect(self, ord(TT_RBRACKET), "PAR-0211", "expected ']' after index")?;
+
+            let node = expr_node_create(EX_INDEX, ps_extend_span(self, start));
+            node.expr_a = current;
+            node.expr_b = index;
+            current = expr_arena_add(self.expr_arena, node);
+            continue;
+        }
+
+        if (ps_match(self, ord(TT_DOT))) {
+            let field_tok = ps_expect_ident(self, "PAR-0212", "expected field name after '.'")?;
+
+            let node = expr_node_create(EX_FIELD, ps_extend_span(self, start));
+            node.expr_a = current;
+            node.text_value = token_ident_text(field_tok) as string;
+            current = expr_arena_add(self.expr_arena, node);
+            continue;
+        }
+
+        if (ps_match(self, ord(TT_QUESTION))) {
+            let node = expr_node_create(EX_TRY, ps_extend_span(self, start));
+            node.expr_a = current;
+            current = expr_arena_add(self.expr_arena, node);
+            continue;
+        }
+
+        break;
+    }
+
+    return current;
+}
+
+/**
+ * Parse a primary expression.
+ *
+ * @param self Parser state to advance.
+ * @return Parsed primary expression, or `null` on error.
+ */
+func ps_parse_primary_expr(self: ParserState*) -> ExprId? {
+    let start = ps_span_start(self);
+    let tok = ps_peek(self);
+
+    if (ps_check(self, ord(TT_LBRACKET))) {
+        ps_advance(self);
+        with (let elems: VectorBase*? = id_vec_create(4) => id_vec_free(elems)) {
+            if (!ps_check(self, ord(TT_RBRACKET))) {
+                while (true) {
+                    let elem = ps_parse_expr(self)?;
+                    id_vec_push(elems as VectorBase*, elem);
+                    if (!ps_match(self, ord(TT_COMMA))) {
+                        break;
+                    }
+                    if (ps_check(self, ord(TT_RBRACKET))) {
+                        break;
+                    }
+                }
+            }
+            ps_expect(self, ord(TT_RBRACKET), "PAR-0622", "expected ']' after array literal")?;
+            let node = expr_node_create(EX_ARRAY_LITERAL, ps_extend_span(self, start));
+            node.ids = elems as VectorBase*;
+            elems = null;
+            return expr_arena_add(self.expr_arena, node);
+        }
+    }
+
+    if (ps_looks_like_array_constructor_start(self)) {
+        let saved = self.index;
+        let parsed_type = ps_parse_type(self);
+        if (parsed_type != null) {
+            let type_ref = parsed_type as TypeRef*;
+            if (ps_type_ref_has_array_suffix(type_ref) && ps_match(self, ord(TT_LPAREN))) {
+                with (let args: VectorBase*? = id_vec_create(2) => id_vec_free(args),
+                      let owned_type: TypeRef*? = type_ref => type_ref_free(owned_type)) {
+                    if (!ps_check(self, ord(TT_RPAREN))) {
+                        while (true) {
+                            let arg = ps_parse_call_argument(self)?;
+                            id_vec_push(args as VectorBase*, arg);
+                            if (!ps_match(self, ord(TT_COMMA))) {
+                                break;
+                            }
+                        }
+                    }
+                    ps_expect(self, ord(TT_RPAREN), "PAR-0623", "expected ')' after array constructor arguments")?;
+                    let node = expr_node_create(EX_ARRAY_CONSTRUCTOR, ps_extend_span(self, start));
+                    node.type_ref = owned_type as TypeRef*;
+                    node.ids = args as VectorBase*;
+                    owned_type = null;
+                    args = null;
+                    return expr_arena_add(self.expr_arena, node);
+                }
+            }
+            type_ref_free(type_ref);
+        }
+        self.index = saved;
+    }
+
+    if (ps_match(self, ord(TT_NEW))) {
+        let parsed_type = ps_parse_type(self)?;
+        with (let type_ref: TypeRef*? = parsed_type => type_ref_free(type_ref),
+              let args: VectorBase*? = null => id_vec_free(args),
+              let labels: StringVector*? = null => sv_free_opt(labels)) {
+            let any_named = false;
+            if (ps_match(self, ord(TT_LPAREN))) {
+                args = id_vec_create(4);
+                labels = sv_create(4);
+                let any_pos = false;
+                if (!ps_check(self, ord(TT_RPAREN))) {
+                    while (true) {
+                        let label: string = "";
+                        if (tok_is_ident(ps_peek(self)) && tok_is(ps_peek_logical_ahead(self, 1), ord(TT_COLON))) {
+                            label = token_ident_text(ps_peek(self)) as string;
+                            ps_advance(self); // consume ident
+                            ps_advance(self); // consume colon
+                            any_named = true;
+                        } else {
+                            any_pos = true;
+                        }
+
+                        if (any_named && any_pos) {
+                            ps_emit_error(self, "PAR-0550", "cannot mix named and positional arguments", ps_peek(self));
+                            return null;
+                        }
+
+                        let arg = ps_parse_call_argument(self)?;
+                        id_vec_push(args as VectorBase*, arg);
+                        sv_push(labels as StringVector*, label);
+
+                        if (!ps_match(self, ord(TT_COMMA))) {
+                            break;
+                        }
+                    }
+                }
+                ps_expect(self, ord(TT_RPAREN), "PAR-0223", "expected ')' after arguments to 'new'")?;
+            }
+
+            let node = expr_node_create(EX_NEW, ps_extend_span(self, start));
+            node.type_ref = type_ref as TypeRef*;
+            if (args == null) {
+                node.ids = id_vec_create(0);
+            } else {
+                node.ids = args as VectorBase*;
+                if (any_named) {
+                    node.arg_labels = labels as StringVector*;
+                    labels = null;
+                }
+            }
+            type_ref = null;
+            args = null;
+            return expr_arena_add(self.expr_arena, node);
+        }
+    }
+
+    if (ps_match_int(self)) {
+        let node = expr_node_create(EX_INT, ps_extend_span(self, start));
+        node.int_value = token_int_value(tok) as int;
+        return expr_arena_add(self.expr_arena, node);
+    }
+
+    if (ps_match_bigint(self)) {
+        let node = expr_node_create(EX_BIGINT, ps_extend_span(self, start));
+        node.text_value = token_bigint_text(tok) as string;
+        node.base_value = token_bigint_base(tok) as int;
+        return expr_arena_add(self.expr_arena, node);
+    }
+
+    if (ps_match_real(self)) {
+        let literal_kind = EX_DOUBLE;
+        if (token_real_is_float(tok)) {
+            literal_kind = EX_FLOAT;
+        }
+        let node = expr_node_create(literal_kind, ps_extend_span(self, start));
+        node.text_value = token_real_text(tok) as string;
+        return expr_arena_add(self.expr_arena, node);
+    }
+
+    if (ps_match_byte(self)) {
+        let node = expr_node_create(EX_BYTE, ps_extend_span(self, start));
+        node.int_value = token_byte_value(tok) as byte;
+        node.text_value = token_byte_text(tok) as string;
+        return expr_arena_add(self.expr_arena, node);
+    }
+
+    if (ps_match_string(self)) {
+        let node = expr_node_create(EX_STRING, ps_extend_span(self, start));
+        node.text_value = token_string_value(tok) as string;
+        return expr_arena_add(self.expr_arena, node);
+    }
+
+    if (ps_match(self, ord(TT_TRUE))) {
+        let node = expr_node_create(EX_BOOL, ps_extend_span(self, start));
+        node.bool_value = true;
+        return expr_arena_add(self.expr_arena, node);
+    }
+
+    if (ps_match(self, ord(TT_FALSE))) {
+        let node = expr_node_create(EX_BOOL, ps_extend_span(self, start));
+        node.bool_value = false;
+        return expr_arena_add(self.expr_arena, node);
+    }
+
+    if (ps_match(self, ord(TT_NULL))) {
+        let node = expr_node_create(EX_NULL, ps_extend_span(self, start));
+        return expr_arena_add(self.expr_arena, node);
+    }
+
+    if (ps_check_ident(self)) {
+        let qualified = ps_try_parse_qualified_name(self);
+        if (qualified != null) {
+            let q = qualified as QualifiedNameResult*;
+            let node = expr_node_create(EX_VAR_REF, ps_extend_span(self, start));
+            node.text_value = token_ident_text(q.name_tok) as string;
+            node.module_path = q.module_path;
+            node.name_qualifier = q.name_qualifier;
+            drop q;
+            return expr_arena_add(self.expr_arena, node);
+        }
+
+        let name_tok = ps_advance(self);
+        let node = expr_node_create(EX_VAR_REF, ps_extend_span(self, start));
+        node.text_value = token_ident_text(name_tok) as string;
+        return expr_arena_add(self.expr_arena, node);
+    }
+
+    if (ps_match(self, ord(TT_LPAREN))) {
+        let inner = ps_parse_expr(self)?;
+        ps_expect(self, ord(TT_RPAREN), "PAR-0224", "expected ')' after expression")?;
+        let node = expr_node_create(EX_PAREN, ps_extend_span(self, start));
+        node.expr_a = inner;
+        return expr_arena_add(self.expr_arena, node);
+    }
+
+    ps_emit_error(self, "PAR-0225", "unexpected token in expression: " + token_to_string(tok), tok);
+    return null;
+}

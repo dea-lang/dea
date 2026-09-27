@@ -1,0 +1,101 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_ok;
+
+/**
+ * Exercises basic literal typing.
+ */
+func test_literals() {
+    let a: int = 123;
+    let b: byte = 'A';
+    let c: bool = true;
+    let d: string = "hello";
+}
+
+/**
+ * Exercises arithmetic and comparison typing.
+ *
+ * @param x The left operand.
+ * @param y The right operand.
+ */
+func test_binary(x: int, y: int) -> int {
+    let sum = x + y;
+    let diff = x - y;
+    let prod = x * y;
+    let ok: bool = (x == y) && (sum > 0);
+    return sum;
+}
+
+/**
+ * Represents the Point structure.
+ */
+struct Point {
+    x: int;
+    y: int;
+}
+
+/**
+ * Exercises struct construction and field access.
+ */
+func test_struct() -> int {
+    let p = Point(1, 2);
+    let px = p.x;
+    let py = p.y;
+    return px + py;
+}
+
+/**
+ * Defines the Status enumeration.
+ */
+enum Status {
+    Idle;
+    Active(code: int);
+}
+
+/**
+ * Exercises enum pattern matching.
+ *
+ * @param s The enum value to inspect.
+ */
+func test_enum(s: Status) -> int {
+    match (s) {
+        Idle => { return 0; }
+        Active(c) => { return c; }
+    }
+}
+
+/**
+ * Exercises enum pattern matching with a wildcard arm.
+ *
+ * @param s The enum value to inspect.
+ * @return The payload when active, otherwise zero.
+ */
+func test_enum_wildcard(s: Status) -> int {
+    match (s) {
+        Active(c) => { return c; }
+        _ => { return 0; }
+    }
+}
+
+/**
+ * Exercises pointer dereference typing.
+ *
+ * @param p The pointer to dereference.
+ */
+func test_ptr(p: int*) -> int {
+    let val = *p;
+    return val;
+}
+
+/**
+ * Exercises byte-to-int widening.
+ *
+ * @param b The byte value to widen.
+ */
+func test_widening(b: byte) -> int {
+    let i: int = b;
+    return i;
+}

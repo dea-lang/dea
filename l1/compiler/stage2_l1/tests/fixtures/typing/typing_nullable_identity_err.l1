@@ -1,0 +1,37 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_nullable_identity_err;
+
+struct T {
+    val: int;
+}
+
+struct U {
+    val: int;
+}
+
+func err_nullable_identity() {
+    let a: int? = 5;
+    let i: int = 5;
+    let s: string? = "hello";
+
+    // T? vs T (same inner type)
+    let b1: bool = a == i; // TYP-0172
+    let b2: bool = i != a; // TYP-0172
+
+    // T? vs U? (different inner types)
+    let b3: bool = a == s; // TYP-0172
+
+    let t: T*? = null;
+    let u: U*? = null;
+
+    // T*? vs U*?
+    let b4: bool = t == u; // TYP-0172
+
+    // nullable structs (unsupported)
+    let t_val: T? = null;
+    let b5: bool = t_val == t_val; // TYP-0173
+}

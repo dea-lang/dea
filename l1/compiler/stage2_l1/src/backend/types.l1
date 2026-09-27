@@ -1,0 +1,587 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module backend.types;
+
+import std.hashmap;
+import std.hashset;
+import std.string;
+import std.vector;
+import ast;
+import c_emitter.declarations;
+import c_emitter.wrappers;
+import driver.state;
+import name_resolver.query;
+import name_resolver.state;
+import signatures.tables;
+import type_resolve.ref;
+import types;
+import backend.state;
+
+/**
+ * Collect visible nominal types referenced by one semantic type.
+ *
+ * Non-target private source types are deliberately excluded: they are not
+ * part of the consumer's ABI surface and must not leak into module output.
+ *
+ * @param self Backend state to inspect.
+ * @param ty Semantic type to traverse.
+ * @param out Required nominal-type keys to update.
+ */
+func be_collect_referenced_type_keys(self: Backend*, ty: Type*, out: StringSet*) {
+    if (ord(ty.kind) == ord(TY_STRUCT) || ord(ty.kind) == ord(TY_ENUM)) {
+        if (be_emits_module_definitions(self, ty.module_name) ||
+            be_is_symbol_exported(self, ty.module_name, ty.name)) {
+            ss_add(out, be_type_key(ty.module_name, ty.name));
+        }
+        return;
+    }
+    if (ord(ty.kind) == ord(TY_POINTER) || ord(ty.kind) == ord(TY_NULLABLE) ||
+        ord(ty.kind) == ord(TY_ARRAY) || ord(ty.kind) == ord(TY_SLICE)) {
+        be_collect_referenced_type_keys(self, ty.inner as Type*, out);
+        return;
+    }
+    if (ord(ty.kind) != ord(TY_FUNC)) {
+        return;
+    }
+    let params = ty.params as VectorBase*;
+    for (let i = 0; i < vec_size(params); i = i + 1) {
+        be_collect_referenced_type_keys(self, ptr_vec_get(params, i) as Type*, out);
+    }
+    be_collect_referenced_type_keys(self, ty.result as Type*, out);
+}
+
+/**
+ * Resolve one target-owned parsed type reference into required nominal keys.
+ *
+ * @param self Backend state to inspect.
+ * @param module_name Module owning the parsed reference.
+ * @param tref Parsed type reference, or `null`.
+ * @param out Required nominal-type keys to update.
+ */
+func be_collect_type_ref_keys(self: Backend*, module_name: string, tref: TypeRef*?, out: StringSet*) {
+    if (tref == null || self.result.signatures == null || self.result.names == null) {
+        return;
+    }
+    let env = nr_env_find(self.result.names as NameResolution*, module_name);
+    if (env == null) {
+        return;
+    }
+    with (let seen = ss_create() => ss_free(seen),
+          let ty: Type*? = tr_resolve_type_ref(
+              self.result.signatures as SignatureTables*,
+              self.result.names as NameResolution*,
+              self.result.driver_state,
+              env as ModuleEnv*,
+              tref as TypeRef*,
+              self.result.diags,
+              seen
+          ) => type_free_opt(ty)) {
+        if (ty != null) {
+            be_collect_referenced_type_keys(self, ty as Type*, out);
+        }
+    }
+}
+
+/**
+ * Collect nominal references from target-owned parsed annotations.
+ *
+ * @param self Backend state to inspect.
+ * @param root Selected source module.
+ * @param out Required nominal-type keys to update.
+ */
+func be_collect_target_ast_type_keys(self: Backend*, root: Module*, out: StringSet*) {
+    for (let decl_i = 0; decl_i < vec_size(root.decls); decl_i = decl_i + 1) {
+        let top = ptr_vec_get(root.decls, decl_i) as TopLevelDecl*;
+        match (top.kind) {
+            TD_FUNC => {
+                let fd = top.data as FuncDecl*;
+                for (let p = 0; p < vec_size(fd.params); p = p + 1) {
+                    be_collect_type_ref_keys(self, root.name, (ptr_vec_get(fd.params, p) as Param*).type_ref, out);
+                }
+                be_collect_type_ref_keys(self, root.name, fd.return_type, out);
+            }
+            TD_STRUCT => {
+                let sd = top.data as StructDecl*;
+                for (let f = 0; f < vec_size(sd.fields); f = f + 1) {
+                    be_collect_type_ref_keys(self, root.name,
+                        (ptr_vec_get(sd.fields, f) as FieldDecl*).type_ref, out);
+                }
+            }
+            TD_ENUM => {
+                let ed = top.data as EnumDecl*;
+                for (let v = 0; v < vec_size(ed.variants); v = v + 1) {
+                    let variant = ptr_vec_get(ed.variants, v) as EnumVariant*;
+                    for (let ef = 0; ef < vec_size(variant.fields); ef = ef + 1) {
+                        be_collect_type_ref_keys(self, root.name,
+                            (ptr_vec_get(variant.fields, ef) as FieldDecl*).type_ref, out);
+                    }
+                }
+            }
+            TD_TYPE_ALIAS => {
+                be_collect_type_ref_keys(self, root.name, (top.data as TypeAliasDecl*).target, out);
+            }
+            TD_LET => {
+                be_collect_type_ref_keys(self, root.name, (top.data as LetDecl*).type_ref, out);
+            }
+        }
+    }
+
+    let unit = be_find_unit(self, root.name);
+    if (unit == null) {
+        return;
+    }
+    let stmts = (unit as DriverUnit*).parse_result.stmt_arena.nodes;
+    for (let stmt_i = 0; stmt_i < vec_size(stmts); stmt_i = stmt_i + 1) {
+        be_collect_type_ref_keys(self, root.name, (ptr_vec_get(stmts, stmt_i) as StmtNode*).type_ref, out);
+    }
+    let exprs = (unit as DriverUnit*).parse_result.expr_arena.nodes;
+    for (let expr_i = 0; expr_i < vec_size(exprs); expr_i = expr_i + 1) {
+        be_collect_type_ref_keys(self, root.name, (ptr_vec_get(exprs, expr_i) as ExprNode*).type_ref, out);
+    }
+}
+
+/**
+ * Compute the nominal type surface required by one module translation unit.
+ *
+ * The set includes all target-owned nominal definitions, visible nominal
+ * references from target code and consumed value signatures, and the
+ * transitive field/payload closure of selected transparent layouts.
+ *
+ * @param self Backend state to inspect.
+ * @param root Selected source module.
+ * @return New owned set of required `module::type` keys.
+ */
+func be_collect_required_type_keys(self: Backend*, root: Module*) -> StringSet* {
+    let required = ss_create();
+    if (self.result.signatures == null) {
+        return required;
+    }
+    let tables = self.result.signatures as SignatureTables*;
+
+    for (let struct_i = 0; struct_i < spm_capacity(tables.struct_infos); struct_i = struct_i + 1) {
+        if (spm_slot_occupied(tables.struct_infos, struct_i)) {
+            let info = spm_slot_value(tables.struct_infos, struct_i) as StructInfo*;
+            if (info.module_name == root.name) {
+                ss_add(required, info.key);
+            }
+        }
+    }
+    for (let enum_i = 0; enum_i < spm_capacity(tables.enum_infos); enum_i = enum_i + 1) {
+        if (spm_slot_occupied(tables.enum_infos, enum_i)) {
+            let info2 = spm_slot_value(tables.enum_infos, enum_i) as EnumInfo*;
+            if (info2.module_name == root.name) {
+                ss_add(required, info2.key);
+            }
+        }
+    }
+
+    for (let func_i = 0; func_i < spm_capacity(tables.func_types); func_i = func_i + 1) {
+        if (spm_slot_occupied(tables.func_types, func_i) &&
+            be_target_includes_value_key(self, spm_slot_key(tables.func_types, func_i))) {
+            be_collect_referenced_type_keys(self, spm_slot_value(tables.func_types, func_i) as Type*, required);
+        }
+    }
+    for (let let_i = 0; let_i < spm_capacity(tables.let_types); let_i = let_i + 1) {
+        if (spm_slot_occupied(tables.let_types, let_i) &&
+            be_target_includes_value_key(self, spm_slot_key(tables.let_types, let_i))) {
+            be_collect_referenced_type_keys(self, spm_slot_value(tables.let_types, let_i) as Type*, required);
+        }
+    }
+    for (let expr_i = 0; expr_i < spm_capacity(self.result.expr_types); expr_i = expr_i + 1) {
+        if (spm_slot_occupied(self.result.expr_types, expr_i) &&
+            starts_with_s(spm_slot_key(self.result.expr_types, expr_i), root.name + "::")) {
+            be_collect_referenced_type_keys(self, spm_slot_value(self.result.expr_types, expr_i) as Type*, required);
+        }
+    }
+    for (let intrinsic_i = 0; intrinsic_i < spm_capacity(self.result.intrinsic_targets); intrinsic_i = intrinsic_i + 1) {
+        if (spm_slot_occupied(self.result.intrinsic_targets, intrinsic_i) &&
+            starts_with_s(spm_slot_key(self.result.intrinsic_targets, intrinsic_i), root.name + "::")) {
+            be_collect_referenced_type_keys(
+                self,
+                spm_slot_value(self.result.intrinsic_targets, intrinsic_i) as Type*,
+                required
+            );
+        }
+    }
+    be_collect_target_ast_type_keys(self, root, required);
+
+    let previous_size = -1;
+    while (previous_size != ss_size(required)) {
+        previous_size = ss_size(required);
+        for (let struct_i2 = 0; struct_i2 < spm_capacity(tables.struct_infos); struct_i2 = struct_i2 + 1) {
+            if (!spm_slot_occupied(tables.struct_infos, struct_i2)) {
+                continue;
+            }
+            let info3 = spm_slot_value(tables.struct_infos, struct_i2) as StructInfo*;
+            if (!ss_has(required, info3.key) || (info3.module_name != root.name && info3.is_opaque)) {
+                continue;
+            }
+            for (let field_i = 0; field_i < vec_size(info3.fields); field_i = field_i + 1) {
+                be_collect_referenced_type_keys(
+                    self,
+                    (ptr_vec_get(info3.fields, field_i) as StructFieldInfo*).field_type,
+                    required
+                );
+            }
+        }
+        for (let enum_i2 = 0; enum_i2 < spm_capacity(tables.enum_infos); enum_i2 = enum_i2 + 1) {
+            if (!spm_slot_occupied(tables.enum_infos, enum_i2)) {
+                continue;
+            }
+            let info4 = spm_slot_value(tables.enum_infos, enum_i2) as EnumInfo*;
+            if (!ss_has(required, info4.key) || (info4.module_name != root.name && info4.is_opaque)) {
+                continue;
+            }
+            for (let variant_i = 0; variant_i < vec_size(info4.variants); variant_i = variant_i + 1) {
+                let variant = ptr_vec_get(info4.variants, variant_i) as EnumVariantInfo*;
+                for (let field_i2 = 0; field_i2 < vec_size(variant.field_types); field_i2 = field_i2 + 1) {
+                    be_collect_referenced_type_keys(
+                        self,
+                        ptr_vec_get(variant.field_types, field_i2) as Type*,
+                        required
+                    );
+                }
+            }
+        }
+    }
+    return required;
+}
+
+/**
+ * Return whether one nominal type belongs to the selected module surface.
+ *
+ * @param self Backend state to inspect.
+ * @param module_name Defining module name.
+ * @param type_name Nominal type name.
+ * @return `true` for a type required by the selected module output.
+ */
+func be_requires_type(self: Backend*, module_name: string, type_name: string) -> bool {
+    return self.required_type_keys != null &&
+        ss_has(self.required_type_keys as StringSet*, be_type_key(module_name, type_name));
+}
+
+/**
+ * Add value-type dependencies for one field type.
+ *
+ * @param ty Type to inspect.
+ * @param deps Dependency set to update.
+ */
+func be_collect_value_type_dependencies(ty: Type*, deps: StringSet*) {
+    if (ord(ty.kind) == ord(TY_POINTER)) {
+        return;
+    }
+    if (ord(ty.kind) == ord(TY_ARRAY)) {
+        be_collect_value_type_dependencies(ty.inner as Type*, deps);
+        return;
+    }
+    if (ord(ty.kind) == ord(TY_NULLABLE)) {
+        let inner = ty.inner as Type*;
+        if (ord(inner.kind) == ord(TY_POINTER)) {
+            return;
+        }
+        be_collect_value_type_dependencies(inner, deps);
+        return;
+    }
+    if (ord(ty.kind) == ord(TY_STRUCT) || ord(ty.kind) == ord(TY_ENUM)) {
+        ss_add(deps, be_type_key(ty.module_name, ty.name));
+        return;
+    }
+}
+
+/**
+ * Collect the value-type dependencies for one user-defined type.
+ *
+ * @param self Backend state to inspect.
+ * @param type_key Type key to inspect.
+ * @param deps Destination set to populate.
+ * @return `true` when the type metadata was found.
+ */
+func be_collect_type_dependencies(self: Backend*, type_key: string, deps: StringSet*) -> bool {
+    if (self.result.signatures == null) {
+        return true;
+    }
+
+    let module_name = be_type_key_module(type_key);
+    let type_name = be_type_key_name(type_key);
+    if (is_empty_s(module_name) || is_empty_s(type_name)) {
+        return false;
+    }
+
+    let struct_info = sig_lookup_struct_info(self.result.signatures as SignatureTables*, module_name, type_name);
+    if (struct_info != null) {
+        let info = struct_info as StructInfo*;
+        for (let i = 0; i < vec_size(info.fields); i = i + 1) {
+            let field = ptr_vec_get(info.fields, i) as StructFieldInfo*;
+            be_collect_value_type_dependencies(field.field_type, deps);
+        }
+        return true;
+    }
+
+    let enum_info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, module_name, type_name);
+    if (enum_info == null) {
+        return false;
+    }
+
+    let info2 = enum_info as EnumInfo*;
+    for (let i = 0; i < vec_size(info2.variants); i = i + 1) {
+        let variant = ptr_vec_get(info2.variants, i) as EnumVariantInfo*;
+        for (let j = 0; j < vec_size(variant.field_types); j = j + 1) {
+            be_collect_value_type_dependencies(ptr_vec_get(variant.field_types, j) as Type*, deps);
+        }
+    }
+    return true;
+}
+
+/**
+ * Free a vector of dependency sets.
+ *
+ * @param sets Optional vector holding `StringSet*` entries.
+ */
+func be_dependency_sets_free(sets: VectorBase*?) {
+    if (sets == null) {
+        return;
+    }
+
+    let dep_sets = sets as VectorBase*;
+    for (let i = 0; i < vec_size(dep_sets); i = i + 1) {
+        ss_free(ptr_vec_get(dep_sets, i) as StringSet*);
+    }
+    vec_free(dep_sets);
+}
+
+/**
+ * Return whether an ordered type-key vector contains one key.
+ *
+ * @param keys Type-key vector to inspect.
+ * @param key Type key to find.
+ * @return `true` when `key` is present.
+ */
+func be_type_keys_contains(keys: StringVector*, key: string) -> bool {
+    for (let i = 0; i < sv_size(keys); i = i + 1) {
+        if (sv_get(keys, i) == key) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Collect all user-defined types in stable source order.
+ *
+ * @param self Backend state to inspect.
+ * @return Ordered vector of type keys.
+ */
+func be_collect_type_keys(self: Backend*) -> StringVector* {
+    let out = sv_create(8);
+
+    with (let seen = ss_create() => ss_free(seen)) {
+        for (let enum_unit_i = 0; enum_unit_i < driver_unit_count(self.result.driver_state); enum_unit_i = enum_unit_i + 1) {
+            let unit = driver_unit_get(self.result.driver_state, enum_unit_i);
+            if (unit.parse_result.root_module == null) {
+                continue;
+            }
+
+            let root = unit.parse_result.root_module as Module*;
+            for (let j = 0; j < vec_size(root.decls); j = j + 1) {
+                let top = ptr_vec_get(root.decls, j) as TopLevelDecl*;
+                if (ord(top.kind) == ord(TD_STRUCT)) {
+                    let decl = top.data as StructDecl*;
+                    let info = sig_lookup_struct_info(self.result.signatures as SignatureTables*, root.name, decl.name);
+                    if (!be_requires_type(self, root.name, decl.name) ||
+                        (!be_emits_module_definitions(self, root.name) &&
+                         (!be_is_symbol_exported(self, root.name, decl.name) ||
+                          (info != null && (info as StructInfo*).is_opaque)))) {
+                        continue;
+                    }
+                    be_push_type_key(out, seen, be_type_key(root.name, decl.name));
+                }
+            }
+        }
+
+        for (let iface_struct_i = 0; iface_struct_i < driver_interface_count(self.result.driver_state); iface_struct_i = iface_struct_i + 1) {
+            let mi = driver_interface_get(self.result.driver_state, iface_struct_i);
+            for (let j2 = 0; j2 < vec_size(mi.struct_infos); j2 = j2 + 1) {
+                let info = ptr_vec_get(mi.struct_infos, j2) as StructInfo*;
+                if (be_requires_type(self, info.module_name, info.name) && !info.is_opaque) {
+                    be_push_type_key(out, seen, be_type_key(info.module_name, info.name));
+                }
+            }
+        }
+
+        for (let i = 0; i < driver_unit_count(self.result.driver_state); i = i + 1) {
+            let unit = driver_unit_get(self.result.driver_state, i);
+            if (unit.parse_result.root_module == null) {
+                continue;
+            }
+
+            let root = unit.parse_result.root_module as Module*;
+            for (let j = 0; j < vec_size(root.decls); j = j + 1) {
+                let top = ptr_vec_get(root.decls, j) as TopLevelDecl*;
+                if (ord(top.kind) == ord(TD_ENUM)) {
+                    let decl2 = top.data as EnumDecl*;
+                    let info3 = sig_lookup_enum_info(self.result.signatures as SignatureTables*, root.name, decl2.name);
+                    if (!be_requires_type(self, root.name, decl2.name) ||
+                        (!be_emits_module_definitions(self, root.name) &&
+                         (!be_is_symbol_exported(self, root.name, decl2.name) ||
+                          (info3 != null && (info3 as EnumInfo*).is_opaque)))) {
+                        continue;
+                    }
+                    be_push_type_key(out, seen, be_type_key(root.name, decl2.name));
+                }
+            }
+        }
+
+        for (let iface_enum_i = 0; iface_enum_i < driver_interface_count(self.result.driver_state); iface_enum_i = iface_enum_i + 1) {
+            let mi2 = driver_interface_get(self.result.driver_state, iface_enum_i);
+            for (let j3 = 0; j3 < vec_size(mi2.enum_infos); j3 = j3 + 1) {
+                let info2 = ptr_vec_get(mi2.enum_infos, j3) as EnumInfo*;
+                if (be_requires_type(self, info2.module_name, info2.name) && !info2.is_opaque) {
+                    be_push_type_key(out, seen, be_type_key(info2.module_name, info2.name));
+                }
+            }
+        }
+    }
+    return out;
+}
+
+/**
+ * Emit user-defined types in dependency order.
+ *
+ * @param self Backend state to update.
+ */
+func be_emit_type_definitions(self: Backend*) {
+    if (self.result.signatures == null) {
+        return;
+    }
+
+    with (let keys = be_collect_type_keys(self) => sv_free(keys),
+          let ordered = sv_create(sv_size(keys)) => sv_free(ordered),
+          let queue = sv_create(sv_size(keys)) => sv_free(queue),
+          let dep_sets: VectorBase*? = ptr_vec_create(sv_size(keys)) => be_dependency_sets_free(dep_sets),
+          let in_degrees: VectorBase*? = id_vec_create(sv_size(keys)) => id_vec_free(in_degrees)) {
+        cem_emit_section_comment(self.emitter, "Type definitions (dependency-ordered)");
+
+        for (let i = 0; i < sv_size(keys); i = i + 1) {
+            let key = sv_get(keys, i);
+            let deps = ss_create();
+            if (!be_collect_type_dependencies(self, key, deps)) {
+                be_ice("[ICE-1341] missing dependency metadata for type key " + key);
+            }
+            ptr_vec_push(dep_sets as VectorBase*, deps as void*);
+
+            let in_degree = 0;
+            for (let j = 0; j < ss_capacity(deps); j = j + 1) {
+                if (ss_slot_occupied(deps, j) && be_type_keys_contains(keys, ss_slot_key(deps, j))) {
+                    in_degree = in_degree + 1;
+                }
+            }
+            id_vec_push(in_degrees as VectorBase*, in_degree);
+            if (in_degree == 0) {
+                sv_push(queue, key);
+            }
+        }
+
+        let queue_index = 0;
+        while (queue_index < sv_size(queue)) {
+            let emitted_key = sv_get(queue, queue_index);
+            queue_index = queue_index + 1;
+            sv_push(ordered, emitted_key);
+
+            for (let i = 0; i < sv_size(keys); i = i + 1) {
+                let degree_ptr = vec_get(in_degrees as VectorBase*, i) as int*;
+                if (*degree_ptr <= 0) {
+                    continue;
+                }
+                let deps2 = ptr_vec_get(dep_sets as VectorBase*, i) as StringSet*;
+                if (!ss_has(deps2, emitted_key)) {
+                    continue;
+                }
+                *degree_ptr = *degree_ptr - 1;
+                if (*degree_ptr == 0) {
+                    sv_push(queue, sv_get(keys, i));
+                }
+            }
+        }
+
+        if (sv_size(ordered) != sv_size(keys)) {
+            be_ice("[ICE-1340] value-type cycle detected in type definitions");
+        }
+
+        for (let ordered_i = 0; ordered_i < sv_size(ordered); ordered_i = ordered_i + 1) {
+            let key = sv_get(ordered, ordered_i);
+            let module_name = be_type_key_module(key);
+            let type_name = be_type_key_name(key);
+
+            let struct_info = sig_lookup_struct_info(self.result.signatures as SignatureTables*, module_name, type_name);
+            if (struct_info != null) {
+                self.current_module = module_name;
+                cem_emit_struct_info(self.emitter, struct_info as StructInfo*);
+                with (let emitted_ty = type_new_struct(module_name, type_name) => type_free(emitted_ty)) {
+                    cem_emit_optional_wrapper_for_defined_type(self.emitter, emitted_ty);
+                    cem_emit_array_wrappers_for_defined_type(self.emitter, emitted_ty);
+                }
+            } else {
+                let enum_info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, module_name, type_name);
+                if (enum_info == null) {
+                    be_ice("[ICE-1050] missing EnumInfo for " + module_name + "." + type_name);
+                }
+                self.current_module = module_name;
+                cem_emit_enum_info(self.emitter, enum_info as EnumInfo*);
+                with (let emitted_ty2 = type_new_enum(module_name, type_name) => type_free(emitted_ty2)) {
+                    cem_emit_optional_wrapper_for_defined_type(self.emitter, emitted_ty2);
+                    cem_emit_array_wrappers_for_defined_type(self.emitter, emitted_ty2);
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Pre-collect fixed-array wrappers needed only by ordinary variadic calls.
+ *
+ * @param self Backend state to inspect.
+ */
+func be_prepare_variadic_pack_wrappers(self: Backend*) {
+    for (let unit_i = 0; unit_i < driver_unit_count(self.result.driver_state); unit_i = unit_i + 1) {
+        let unit = driver_unit_get(self.result.driver_state, unit_i);
+        if (unit.parse_result.root_module == null) {
+            continue;
+        }
+        let root = unit.parse_result.root_module as Module*;
+        if (!be_emits_module_definitions(self, root.name)) {
+            continue;
+        }
+        self.current_module = root.name;
+        self.current_unit = unit;
+        self.current_env = be_find_env(self, root.name);
+        let arena = unit.parse_result.expr_arena;
+        for (let expr_i = 0; expr_i < vec_size(arena.nodes); expr_i = expr_i + 1) {
+            let expr = expr_arena_get(arena, expr_i);
+            if (ord(expr.kind) != ord(EX_CALL) || expr.has_spread_arg) {
+                continue;
+            }
+            with (let callee_ty = be_expr_type(self, expr.expr_a) => type_free_opt(callee_ty)) {
+                if (callee_ty == null || ord((callee_ty as Type*).kind) != ord(TY_FUNC) ||
+                    !(callee_ty as Type*).is_variadic) {
+                    continue;
+                }
+                let params = (callee_ty as Type*).params as VectorBase*;
+                let fixed_count = vec_size(params) - 1;
+                let arg_count = vec_size(expr.ids as VectorBase*);
+                let variadic_count = arg_count - fixed_count;
+                if (variadic_count <= 0) {
+                    continue;
+                }
+                let slice_ty = ptr_vec_get(params, fixed_count) as Type*;
+                with (let pack_ty = type_new_array(type_clone(slice_ty.inner as Type*), variadic_count) => type_free(pack_ty)) {
+                    cem_collect_array_wrappers_from_type(self.emitter, pack_ty);
+                    cem_collect_opt_wrappers_from_type(self.emitter, pack_ty);
+                    cem_collect_func_ptrs_from_type(self.emitter, pack_ty);
+                }
+            }
+        }
+    }
+}

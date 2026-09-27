@@ -1,0 +1,21 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_match_qualified_pattern_err;
+
+enum Color {
+    Red;
+    Blue;
+}
+
+/**
+ * Triggers TYP-0102 for a module-qualified pattern path.
+ */
+func err_match_qualified_pattern(x: Color) -> int {
+    match (x) {
+        Color::Red => { return 1; } // TYP-0102
+        _ => { return 0; }
+    }
+}

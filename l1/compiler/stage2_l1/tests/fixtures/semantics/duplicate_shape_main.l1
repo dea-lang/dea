@@ -1,0 +1,19 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module duplicate_shape_main;
+
+struct Repeated {
+    items: int[];
+    extra: int;
+}
+
+struct Repeated {
+    value: int;
+}
+
+func main() -> int {
+    return 0;
+}

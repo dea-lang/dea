@@ -1,0 +1,237 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module name_resolver.collect;
+
+import std.hashmap;
+import std.hashset;
+import std.string;
+import std.vector;
+import util.diag;
+import ast;
+import dea_prelude;
+import symbols;
+import name_resolver.query;
+import name_resolver.state;
+
+/**
+ * Add a top-level local symbol to a module environment.
+ *
+ * @param env Module environment being populated.
+ * @param diags Diagnostic collector for duplicate-definition errors.
+ * @param name Symbol name.
+ * @param sym Symbol to insert.
+ */
+func nr_define_local(env: ModuleEnv*, diags: DiagCollector*, name: string, sym: Symbol*) {
+    if (spm_has(env.locals, name)) {
+        nr_span_diag_error(
+            diags,
+            "RES-0010",
+            "duplicate top-level definition of '" + name + "' in module '" + env.module_name + "'",
+            env.module_ptr.filename,
+            sym.span
+        );
+        symbol_free(sym);
+        return;
+    }
+
+    spm_put(env.locals, name, sym as void*);
+    spm_put(env.all, name, sym as void*);
+}
+
+/**
+ * Collect locally declared top-level symbols for one module.
+ *
+ * @param env Module environment being populated.
+ * @param diags Diagnostic collector.
+ */
+func nr_collect_locals(env: ModuleEnv*, diags: DiagCollector*) {
+    let mod = env.module_ptr;
+    for (let i = 0; i < vec_size(mod.decls); i = i + 1) {
+        let top = ptr_vec_get(mod.decls, i) as TopLevelDecl*;
+        match (top.kind) {
+            TD_FUNC => {
+                let decl = top.data as FuncDecl*;
+                let sym = symbol_create(decl.name, SYM_FUNC, env.module_name, "", decl as void*, decl.span);
+                sym.is_extern = decl.is_extern;
+                nr_define_local(env, diags, decl.name, sym);
+            }
+            TD_STRUCT => {
+                let decl = top.data as StructDecl*;
+                nr_define_local(env, diags, decl.name,
+                    symbol_create(decl.name, SYM_STRUCT, env.module_name, "", decl as void*, decl.span));
+            }
+            TD_ENUM => {
+                let decl = top.data as EnumDecl*;
+                nr_define_local(env, diags, decl.name,
+                    symbol_create(decl.name, SYM_ENUM, env.module_name, "", decl as void*, decl.span));
+                for (let j = 0; j < vec_size(decl.variants); j = j + 1) {
+                    let variant = ptr_vec_get(decl.variants, j) as EnumVariant*;
+                    nr_define_local(env, diags, variant.name,
+                        symbol_create(variant.name, SYM_ENUM_VARIANT, env.module_name, decl.name, variant as void*,
+                            decl.span));
+                }
+            }
+            TD_TYPE_ALIAS => {
+                let decl = top.data as TypeAliasDecl*;
+                nr_define_local(env, diags, decl.name,
+                    symbol_create(decl.name, SYM_TYPE_ALIAS, env.module_name, "", decl as void*, decl.span));
+            }
+            TD_LET => {
+                let decl = top.data as LetDecl*;
+                let sym2 = symbol_create(decl.name, SYM_LET, env.module_name, "", decl as void*, decl.span);
+                sym2.is_const = decl.is_const;
+                nr_define_local(env, diags, decl.name, sym2);
+            }
+        }
+    }
+}
+
+/**
+ * Return whether a top-level name is exported by default.
+ *
+ * @param name Symbol name.
+ * @return `true` if `name` does not begin with `_`.
+ */
+func nr_default_exports_name(name: string) -> bool {
+    return !starts_with_s(name, "_");
+}
+
+/**
+ * Return whether a parsed export manifest marks a name as opaque.
+ *
+ * @param manifest Export manifest to inspect.
+ * @param name Exported name.
+ * @return `true` when `name` was written with the `opaque` qualifier.
+ */
+func nr_manifest_name_is_opaque(manifest: ExportManifest*, name: string) -> bool {
+    for (let i = 0; i < sv_size(manifest.opaque_names); i = i + 1) {
+        if (sv_get(manifest.opaque_names, i) == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Export the variants of every transparently exported enum.
+ *
+ * Enum variants are derived members of their owning enum's public surface,
+ * not independently exportable top-level declarations.
+ *
+ * @param env Module environment whose base export set is complete.
+ */
+func nr_export_transparent_enum_variants(env: ModuleEnv*) {
+    for (let i = 0; i < spm_capacity(env.locals); i = i + 1) {
+        if (!spm_slot_occupied(env.locals, i)) {
+            continue;
+        }
+        let name = spm_slot_key(env.locals, i);
+        let sym = spm_slot_value(env.locals, i) as Symbol*;
+        if (ord(sym.kind) != ord(SYM_ENUM_VARIANT)) {
+            continue;
+        }
+        let owner = spm_get(env.exports, sym.owner_name);
+        if (owner == null || ord((owner as Symbol*).kind) != ord(SYM_ENUM) ||
+            ss_has(env.opaque_exports, sym.owner_name)) {
+            continue;
+        }
+        spm_put(env.exports, name, sym as void*);
+    }
+}
+
+/**
+ * Compute one module's exported symbol map from its manifest and locals.
+ *
+ * @param env Module environment being populated.
+ * @param diags Diagnostic collector.
+ */
+func nr_compute_exports(env: ModuleEnv*, diags: DiagCollector*) {
+    let manifest = env.module_ptr.export_manifest;
+    if (manifest == null) {
+        for (let i = 0; i < spm_capacity(env.locals); i = i + 1) {
+            if (spm_slot_occupied(env.locals, i)) {
+                let name = spm_slot_key(env.locals, i);
+                let sym = spm_slot_value(env.locals, i) as Symbol*;
+                if (ord(sym.kind) != ord(SYM_ENUM_VARIANT) && nr_default_exports_name(name)) {
+                    spm_put(env.exports, name, sym as void*);
+                }
+            }
+        }
+        nr_export_transparent_enum_variants(env);
+        return;
+    }
+
+    let m = manifest as ExportManifest*;
+    if (m.export_all) {
+        for (let j = 0; j < spm_capacity(env.locals); j = j + 1) {
+            if (spm_slot_occupied(env.locals, j)) {
+                let sym2 = spm_slot_value(env.locals, j) as Symbol*;
+                if (ord(sym2.kind) != ord(SYM_ENUM_VARIANT)) {
+                    spm_put(env.exports, spm_slot_key(env.locals, j), sym2 as void*);
+                }
+            }
+        }
+        nr_export_transparent_enum_variants(env);
+        return;
+    }
+
+    with (let seen = ss_create() => ss_free(seen)) {
+        for (let name_i = 0; name_i < sv_size(m.names); name_i = name_i + 1) {
+            let export_name = sv_get(m.names, name_i);
+            if (ss_has(seen, export_name)) {
+                nr_span_diag_error(
+                    diags,
+                    "RES-0030",
+                    "duplicate name '" + export_name + "' in export manifest",
+                    env.module_ptr.filename,
+                    m.span
+                );
+                continue;
+            }
+            ss_add(seen, export_name);
+
+            let sym = nr_module_env_local(env, export_name);
+            if (sym == null || ord((sym as Symbol*).kind) == ord(SYM_ENUM_VARIANT)) {
+                nr_span_diag_error(
+                    diags,
+                    "RES-0031",
+                    "export manifest names unknown top-level symbol '" + export_name + "' in module '" + env.module_name + "'",
+                    env.module_ptr.filename,
+                    m.span
+                );
+                continue;
+            }
+            spm_put(env.exports, export_name, sym as void*);
+            if (nr_manifest_name_is_opaque(m, export_name)) {
+                let exported_sym = sym as Symbol*;
+                if (ord(exported_sym.kind) == ord(SYM_STRUCT) || ord(exported_sym.kind) == ord(SYM_ENUM)) {
+                    ss_add(env.opaque_exports, export_name);
+                } else {
+                    nr_span_diag_error(
+                        diags,
+                        "RES-0039",
+                        "`opaque` export requires a struct or enum type; '" + export_name + "' is " + symbol_kind_name(exported_sym.kind),
+                        env.module_ptr.filename,
+                        m.span
+                    );
+                }
+            }
+        }
+    }
+    nr_export_transparent_enum_variants(env);
+}
+
+/**
+ * Create the synthesized `dea` module environment.
+ *
+ * @return New owned `dea` environment.
+ */
+func nr_make_dea_env() -> ModuleEnv* {
+    let module_ptr = dea_make_virtual_module();
+    let env = nr_make_owned_env(module_ptr, true);
+    dea_populate_locals(env.locals, env.all);
+    return env;
+}

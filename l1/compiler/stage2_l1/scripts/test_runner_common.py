@@ -1,0 +1,464 @@
+#!/usr/bin/env python3
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 gwz
+#
+
+"""Shared helpers for L1 Stage 2 test runners."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+import subprocess
+import sys
+import threading
+import tempfile
+from contextlib import ExitStack
+from dataclasses import dataclass
+from typing import BinaryIO, Iterable
+
+MONOREPO_SCRIPTS_ROOT = Path(__file__).resolve().parents[4] / "scripts"
+L1_SCRIPTS_ROOT = Path(__file__).resolve().parents[3] / "scripts"
+for scripts_root in (MONOREPO_SCRIPTS_ROOT, L1_SCRIPTS_ROOT):
+    if str(scripts_root) not in sys.path:
+        sys.path.insert(0, str(scripts_root))
+
+from dea_tooling.bootstrap import wrapper_command
+from build_stage2_l1c import build_support_objects
+
+
+# Runtime-only and Stage 1 construction tests remain in the Stage 1 suite.
+SHARED_PYTHON_TESTS = (
+    "l1c_stage1_help_output_test.py",
+    "l1c_stage1_toplet_test.py",
+    "l1c_stage1_build_run_workspace_test.py",
+    "l1c_stage1_cli_warning_test.py",
+    "l1c_stage1_generated_c_identity_test.py",
+    "l1c_stage1_managed_preparation_test.py",
+    "l1c_stage1_preparation_test.py",
+    "l1c_stage1_installed_preparation_test.py",
+    "l1c_stage1_compile_only_test.py",
+    "l1c_stage1_link_set_test.py",
+    "l1c_stage1_build_run_multi_cu_test.py",
+    "l1c_stage1_arc_trace_regression_test.py",
+    "diagnostic_code_parity_test.py",
+    "diagnostic_message_parity_test.py",
+    "io_runtime_test.py",
+    "vector_aliasing_test.py",
+    "runtime_pointer_validation_test.py",
+    "trace_gen_runtime_test.py",
+)
+
+DEFAULT_MAX_JOBS = 12
+CAPTURE_CHUNK_SIZE = 64 * 1024
+SCRIPT_DIR = Path(__file__).resolve().parent
+STAGE_DIR = SCRIPT_DIR.parent
+REPO_ROOT = STAGE_DIR.parent.parent
+MONOREPO_ROOT = REPO_ROOT.parent
+TESTS_DIR = STAGE_DIR / "tests"
+L1_BUILD_DIR_ENV = "L1_BUILD_DIR"
+DEFAULT_L1_BUILD_DIR = "build/dea"
+TRACE_EXCLUDED_STAGE2_TESTS: set[str] = set()
+TRACE_SLOW_STAGE2_TESTS: set[str] = {"math_runtime_compile_test"}
+MATH_RUNTIME_FIXTURE_DIR = TESTS_DIR / "fixtures" / "math_runtime"
+# Tests whose imported implementation modules require the preparation C ABI.
+# A new dependency must be listed here; omitting one fails at native linking.
+PREPARATION_SUPPORT_TESTS = frozenset({
+    "l1c_lib_test", "link_driver_test", "math_runtime_compile_test",
+    "mul_runtime_test", "preparation_test", "slice_trace_test",
+})
+
+
+def repo_venv_bin_dir() -> Path:
+    """Return the repo-local virtualenv executable directory for the host platform."""
+
+    candidates = [
+        MONOREPO_ROOT / ".venv" / "bin",
+        MONOREPO_ROOT / ".venv" / "Scripts",
+    ]
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return candidates[1] if os.name == "nt" else candidates[0]
+
+
+REPO_VENV_BIN = repo_venv_bin_dir()
+
+
+def _repo_venv_python() -> Path:
+    """Return the Python executable inside the repo-local virtualenv."""
+
+    if REPO_VENV_BIN.name == "Scripts":
+        return REPO_VENV_BIN / "python.exe"
+    exe = REPO_VENV_BIN / "python.exe"
+    if exe.is_file():
+        return exe
+    return REPO_VENV_BIN / "python"
+
+
+REPO_VENV_PYTHON = _repo_venv_python()
+
+
+@dataclass(frozen=True)
+class TestCase:
+    """One discovered L1 Stage 2 test case."""
+
+    index: int
+    name: str
+    path: Path
+    kind: str
+
+
+@dataclass(frozen=True)
+class ChildTraceFixture:
+    """One opt-in child executable with required trace event families."""
+
+    index: int
+    name: str
+    path: Path
+    parent_test: str
+    required_families: frozenset[str]
+
+
+CHILD_TRACE_FIXTURES = (
+    ChildTraceFixture(
+        0, "math_int_trace_main", MATH_RUNTIME_FIXTURE_DIR / "math_int_trace_main.l1",
+        "math_runtime_compile_test", frozenset({"mem", "arc"}),
+    ),
+    ChildTraceFixture(
+        1, "wide_math_main", MATH_RUNTIME_FIXTURE_DIR / "wide_math_main.l1",
+        "math_runtime_compile_test", frozenset({"arc"}),
+    ),
+)
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    """Captured subprocess result."""
+
+    returncode: int
+    output: str
+
+
+@dataclass(frozen=True)
+class CapturedProcessResult:
+    """Result of a subprocess streamed directly into artifact files."""
+
+    args: list[str]
+    returncode: int
+    stdout_path: Path | None
+    stderr_path: Path | None
+    stdout_bytes: int
+    stderr_bytes: int
+
+
+def prepend_path(existing_path: str, entries: list[Path]) -> str:
+    """Return `existing_path` with `entries` prepended once each."""
+
+    ordered: list[str] = []
+    seen: set[str] = set()
+
+    for entry in entries:
+        text = str(entry)
+        if text and text not in seen:
+            ordered.append(text)
+            seen.add(text)
+
+    for entry in existing_path.split(os.pathsep):
+        if entry and entry not in seen:
+            ordered.append(entry)
+            seen.add(entry)
+
+    return os.pathsep.join(ordered)
+
+
+def resolve_l1_build_dir_text() -> str:
+    """Return the effective repo-local L1 build directory text."""
+
+    from_env = os.environ.get(L1_BUILD_DIR_ENV, "").strip()
+    if from_env:
+        return from_env
+    return DEFAULT_L1_BUILD_DIR
+
+
+def resolve_repo_path(path_text: str) -> Path:
+    """Resolve one repo-relative or absolute path text against the repo root."""
+
+    raw_path = Path(path_text)
+    if raw_path.is_absolute():
+        return raw_path.resolve(strict=False)
+    return (REPO_ROOT / raw_path).resolve(strict=False)
+
+
+def resolve_l1_build_dir() -> tuple[str, Path]:
+    """Return the effective `L1_BUILD_DIR` text plus resolved path."""
+
+    build_dir_text = resolve_l1_build_dir_text()
+    return build_dir_text, resolve_repo_path(build_dir_text)
+
+
+def subject_compiler(build_dir: Path | None = None) -> Path:
+    """Return the explicit subject, defaulting to the repo Stage 2 artifact."""
+    default = (build_dir or resolve_l1_build_dir()[1]) / "bin/l1c-stage2"
+    return Path(os.environ.get("L1_TEST_COMPILER", str(default))).resolve()
+
+
+def repo_stage2_command() -> list[str]:
+    """Invoke the explicit L1 compiler for self-hosted implementation tests."""
+    return wrapper_command(subject_compiler())
+
+
+def build_repo_test_env(build_dir_text: str, build_dir: Path) -> dict[str, str]:
+    """Return the sanitized repo-local environment for L1 Stage 2 implementation tests."""
+
+    env = os.environ.copy()
+    env[L1_BUILD_DIR_ENV] = build_dir_text
+    env["L0_HOME"] = str(MONOREPO_ROOT / "l0" / "compiler")
+    env["L0_SYSTEM"] = str(MONOREPO_ROOT / "l0" / "compiler" / "shared" / "l0" / "stdlib")
+    env.pop("L0_RUNTIME_INCLUDE", None)
+    env.pop("L0_RUNTIME_LIB", None)
+    env["L1_HOME"] = str(REPO_ROOT / "compiler")
+    env.pop("L1_SYSTEM", None)
+    env.pop("L1_RUNTIME_INCLUDE", None)
+    env.pop("L1_RUNTIME_LIB", None)
+    env["PATH"] = prepend_path(env.get("PATH", ""), [REPO_VENV_BIN, build_dir / "bin"])
+    env["L1_TEST_COMPILER"] = str(subject_compiler())
+    return env
+
+
+def require_repo_stage2_test_env(entrypoint_name: str) -> tuple[Path, str, Path, dict[str, str]]:
+    """Return the repo-local Python path, build dir, and sanitized env."""
+
+    if not REPO_VENV_PYTHON.is_file():
+        raise RuntimeError(
+            f"{entrypoint_name}: missing repo virtual environment at {REPO_VENV_PYTHON}; run `make venv`"
+        )
+
+    build_dir_text, build_dir = resolve_l1_build_dir()
+    stage2_wrapper = subject_compiler()
+    if not stage2_wrapper.is_file():
+        raise RuntimeError(
+            f"{entrypoint_name}: missing repo-local L1 Stage 2 tools under {build_dir}; "
+            f"run `make L1_BUILD_DIR={build_dir_text} build-stage2`"
+        )
+
+    return (
+        REPO_VENV_PYTHON,
+        build_dir_text,
+        build_dir,
+        build_repo_test_env(build_dir_text, build_dir),
+    )
+
+
+def discover_stage2_l1_tests() -> list[TestCase]:
+    """Return discovered L1 Stage 2 implementation tests in deterministic order."""
+
+    cases: list[TestCase] = []
+    index = 0
+    for path in sorted(TESTS_DIR.glob("*.l1")):
+        cases.append(TestCase(index=index, name=path.stem, path=path, kind="l1"))
+        index += 1
+    shared_tests = REPO_ROOT / "compiler/stage1_l0/tests"
+    for name in SHARED_PYTHON_TESTS:
+        path = shared_tests / name
+        cases.append(TestCase(index=index, name=path.name, path=path, kind="python"))
+        index += 1
+    for path in sorted(TESTS_DIR.glob("*_test.py")):
+        cases.append(TestCase(index=index, name=path.name, path=path, kind="python"))
+        index += 1
+    return cases
+
+
+def discover_trace_l1_tests(*, include_slow: bool = False) -> list[TestCase]:
+    """Return trace-eligible `.l1` L1 Stage 2 implementation tests in deterministic order."""
+
+    filtered = [
+        case
+        for case in discover_stage2_l1_tests()
+        if case.kind == "l1"
+        and case.name not in TRACE_EXCLUDED_STAGE2_TESTS
+        and (include_slow or case.name not in TRACE_SLOW_STAGE2_TESTS)
+    ]
+    return [
+        TestCase(index=index, name=case.name, path=case.path, kind=case.kind)
+        for index, case in enumerate(filtered)
+    ]
+
+
+def resolve_job_count() -> int:
+    """Return the worker count for the normal L1 Stage 2 test runner."""
+
+    jobs_text = os.environ.get("L1_TEST_JOBS", "").strip()
+    if jobs_text:
+        try:
+            jobs = int(jobs_text)
+        except ValueError as exc:
+            raise ValueError(f"L1_TEST_JOBS must be a positive integer, got {jobs_text!r}") from exc
+        if jobs < 1:
+            raise ValueError(f"L1_TEST_JOBS must be a positive integer, got {jobs_text!r}")
+        return jobs
+
+    cpu_count = os.cpu_count() or 1
+    return max(1, min(cpu_count, DEFAULT_MAX_JOBS))
+
+
+def resolve_trace_job_count() -> int:
+    """Return the worker count for the L1 Stage 2 trace runner."""
+
+    jobs_text = os.environ.get("L1_TRACE_TEST_JOBS", "").strip()
+    if jobs_text:
+        try:
+            jobs = int(jobs_text)
+        except ValueError as exc:
+            raise ValueError(f"L1_TRACE_TEST_JOBS must be a positive integer, got {jobs_text!r}") from exc
+        if jobs < 1:
+            raise ValueError(f"L1_TRACE_TEST_JOBS must be a positive integer, got {jobs_text!r}")
+        return jobs
+    return resolve_job_count()
+
+
+_support_lock = threading.Lock()
+_support_directory = None
+_support_args = None
+
+
+def stage2_test_support_args(test_path: Path) -> list[str]:
+    """Compile support once per runner, retaining it until all children finish."""
+    global _support_directory, _support_args
+    with _support_lock:
+        if _support_args is None:
+            _support_directory = tempfile.TemporaryDirectory(prefix="l1-stage2-test-support-")
+            _support_args = build_support_objects(Path(_support_directory.name), dict(os.environ))
+    if test_path.stem in PREPARATION_SUPPORT_TESTS:
+        return list(_support_args)
+    return list(_support_args[:2])
+
+
+def build_normal_test_command(case: TestCase, build_dir: Path) -> list[str]:
+    """Return the subprocess command for one normal L1 Stage 2 implementation test."""
+
+    if case.kind == "l1":
+        return [
+            *repo_stage2_command(),
+            "--project-root",
+            "compiler/stage2_l1/src",
+            "--run",
+            *stage2_test_support_args(case.path),
+            str(case.path),
+        ]
+    if case.kind == "python":
+        return [str(REPO_VENV_PYTHON), str(case.path)]
+    raise ValueError(f"Unsupported test kind: {case.kind}")
+
+
+def run_combined_output(command: list[str], *, env: dict[str, str] | None = None) -> CommandResult:
+    """Run one subprocess and capture stdout/stderr as one stream."""
+
+    completed = subprocess.run(
+        command,
+        cwd=REPO_ROOT,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return CommandResult(returncode=completed.returncode, output=completed.stdout)
+
+
+def run_captured_binary_output(
+    command: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str] | None = None,
+    stdout_path: Path | None = None,
+    stderr_path: Path | None = None,
+) -> CapturedProcessResult:
+    """Run one subprocess and stream its binary output into final artifacts."""
+
+    for artifact_path in (stdout_path, stderr_path):
+        if artifact_path is not None:
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
+
+    byte_counts = [0, 0]
+    drain_errors: list[BaseException] = []
+
+    def drain(stream: BinaryIO, artifact_file: BinaryIO, count_index: int) -> None:
+        try:
+            with stream:
+                while chunk := stream.read(CAPTURE_CHUNK_SIZE):
+                    artifact_file.write(chunk)
+                    byte_counts[count_index] += len(chunk)
+        except BaseException as exc:  # Propagate drainer failures on the caller thread.
+            drain_errors.append(exc)
+
+    with ExitStack() as stack:
+        stdout_file = stack.enter_context(stdout_path.open("wb")) if stdout_path is not None else None
+        stderr_file = stack.enter_context(stderr_path.open("wb")) if stderr_path is not None else None
+        process = subprocess.Popen(
+            command,
+            cwd=cwd,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE if stdout_file is not None else subprocess.DEVNULL,
+            stderr=subprocess.PIPE if stderr_file is not None else subprocess.DEVNULL,
+        )
+
+        drainers: list[threading.Thread] = []
+        for stream, artifact_file, count_index in (
+            (process.stdout, stdout_file, 0),
+            (process.stderr, stderr_file, 1),
+        ):
+            if stream is None or artifact_file is None:
+                continue
+            drainer = threading.Thread(target=drain, args=(stream, artifact_file, count_index))
+            drainer.start()
+            drainers.append(drainer)
+
+        returncode = process.wait()
+        for drainer in drainers:
+            drainer.join()
+        if drain_errors:
+            raise OSError(f"failed to drain captured process output: {drain_errors[0]}")
+
+    return CapturedProcessResult(
+        args=command,
+        returncode=returncode,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+        stdout_bytes=byte_counts[0],
+        stderr_bytes=byte_counts[1],
+    )
+
+
+def print_output_block(text: str) -> None:
+    """Print captured output without losing the final line."""
+
+    if not text:
+        return
+
+    sys.stdout.write(text)
+    if not text.endswith("\n"):
+        sys.stdout.write("\n")
+
+
+def first_lines(text: str, limit: int) -> str:
+    """Return at most `limit` lines from `text`."""
+
+    lines = text.splitlines()
+    if len(lines) <= limit:
+        return text
+    return "\n".join(lines[:limit]) + "\n"
+
+
+def summarize_failures(results: Iterable[TestCase]) -> str:
+    """Return a stable one-line failed-test summary."""
+
+    names = [result.name for result in results]
+    if not names:
+        return ""
+    return " ".join(names)

@@ -31,7 +31,7 @@ from the root `pyproject.toml`.
 | Directory  | Description                                                   |
 | ---------- | ------------------------------------------------------------- |
 | `l0/`      | Dea/L0 language, compiler, runtime, docs, examples, and tests |
-| `l1/`      | Dea/L1 bootstrap compiler, runtime, docs, examples, and tests |
+| `l1/`      | Dea/L1 compiler stages, runtime, docs, examples, and tests    |
 | `editors/` | Shared editor grammars, fallback modes, tags, and tests       |
 | `scripts/` | Monorepo-owned automation and shared helper modules           |
 | `docs/`    | Dea-wide and monorepo-wide stable documentation               |
@@ -73,7 +73,8 @@ The following conditions must be met before the first L1 release or snapshot wor
    deliberately prepared L1 release or snapshot.
 
 An `l1-release.yml` or `l1-snapshot.yml` workflow that does not meet these conditions is not valid to add. L1 CI
-validation (via `l1-ci.yml`) remains bootstrap-only until the above prerequisites exist.
+validation (via `l1-ci.yml`) covers both compiler stages and the strict self-hosting fixed point independently of these
+release prerequisites.
 
 ## Working In `l0/`
 
@@ -100,8 +101,8 @@ Third-party notices for shared vendored assets live at [`THIRD_PARTY_NOTICES`](T
 
 ## Working In `l1/`
 
-Dea/L1 currently exists as a bootstrap compiler subtree inside [`l1/`](l1/). From the monorepo root, `cd l1` before
-running L1 bootstrap commands.
+Dea/L1 currently provides bootstrap and self-hosted compiler stages inside [`l1/`](l1/). From the monorepo root, `cd l1`
+before running L1 bootstrap commands.
 
 - L1 subtree pointer: [`l1/README.md`](l1/README.md)
 - L1 AI guidance: [`l1/AGENTS.md`](l1/AGENTS.md)
@@ -111,6 +112,6 @@ Typical local bootstrap flow:
 ```bash
 make venv
 cd l1
-make use-dev-stage1
+make use-dev-stage2
 source build/dea/bin/l1-env.sh
 ```

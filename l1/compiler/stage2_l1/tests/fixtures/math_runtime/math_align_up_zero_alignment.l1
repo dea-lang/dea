@@ -1,0 +1,13 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module math_align_up_zero_alignment;
+
+import std.integer;
+
+func main() -> int {
+    align_up(8, 0);
+    return 0;
+}

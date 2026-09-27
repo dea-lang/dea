@@ -1,0 +1,211 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module parser.interface.types;
+
+import std.text;
+import std.vector;
+import ast;
+import parser.cursor;
+import parser.state;
+import parser.type_ref;
+import tokens;
+import types;
+
+/**
+ * Free an optional type pointer.
+ *
+ * @param ty Optional type to free.
+ */
+func pi_type_free_opt(ty: Type*?) {
+    if (ty != null) {
+        type_free(ty as Type*);
+    }
+}
+
+/**
+ * Free a vector of owned struct-field descriptors.
+ *
+ * @param fields Optional `StructFieldInfo*` vector to free.
+ */
+func pi_field_info_vec_free(fields: VectorBase*?) {
+    if (fields == null) {
+        return;
+    }
+
+    let vec = fields as VectorBase*;
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        let field = ptr_vec_get(vec, i) as StructFieldInfo*;
+        type_free(field.field_type);
+        drop field;
+    }
+    vec_free(vec);
+}
+
+/**
+ * Free a vector of owned enum-variant descriptors.
+ *
+ * @param variants Optional `EnumVariantInfo*` vector to free.
+ */
+func pi_variant_info_vec_free(variants: VectorBase*?) {
+    if (variants == null) {
+        return;
+    }
+
+    let vec = variants as VectorBase*;
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        let variant = ptr_vec_get(vec, i) as EnumVariantInfo*;
+        type_param_vec_free(variant.field_types);
+        sv_free(variant.field_names);
+        drop variant;
+    }
+    vec_free(vec);
+}
+
+/**
+ * Check whether the current token can begin an interface type.
+ *
+ * @param self Parser state to inspect.
+ * @return `true` when the lookahead is a legal type starter.
+ */
+func pi_is_type_start(self: ParserState*) -> bool {
+    return ps_check(self, ord(TT_UNSAFE)) || ps_check(self, ord(TT_FUNC)) || ps_check(self, ord(TT_LPAREN)) ||
+        ps_check_ident(self);
+}
+
+/**
+ * Join a parsed module-path vector into dotted module text.
+ *
+ * @param path Optional module-path vector.
+ * @return Dotted module name, or the empty string.
+ */
+func pi_module_path_text(path: StringVector*?) -> string {
+    if (path == null) {
+        return "";
+    }
+
+    let parts = path as StringVector*;
+    if (sv_size(parts) == 0) {
+        return "";
+    }
+
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < sv_size(parts); i = i + 1) {
+            if (i > 0) {
+                sb_append(sb, ".");
+            }
+            sb_append(sb, sv_get(parts, i));
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Apply pointer and nullable suffixes from a parsed type reference.
+ *
+ * @param base Base type to wrap.
+ * @param tref Parsed type reference carrying suffix metadata.
+ * @return Wrapped type.
+ */
+func pi_apply_type_ref_suffix(base: Type*, tref: TypeRef*) -> Type* {
+    let result = base;
+    if (tref.suffixes != null) {
+        let suffixes = tref.suffixes as VectorBase*;
+        for (let i = 0; i < vec_size(suffixes); i = i + 1) {
+            let suffix = ptr_vec_get(suffixes, i) as TypeSuffix*;
+            if (ord(suffix.kind) == ord(TS_POINTER)) {
+                result = type_new_pointer(result);
+            } else if (ord(suffix.kind) == ord(TS_ARRAY)) {
+                result = type_append_array_dimension(result, suffix.array_len);
+            } else if (ord(suffix.kind) == ord(TS_SLICE) || ord(suffix.kind) == ord(TS_VARIADIC)) {
+                result = type_new_slice(result);
+            } else {
+                result = type_new_nullable(result);
+            }
+        }
+        return result;
+    }
+    for (let i = 0; i < tref.pointer_depth; i = i + 1) {
+        result = type_new_pointer(result);
+    }
+    if (tref.is_nullable) {
+        result = type_new_nullable(result);
+    }
+    return result;
+}
+
+/**
+ * Lower a parsed `TypeRef` tree into the interface `Type` model.
+ *
+ * Unqualified nominal names are provisionally treated as structs and are
+ * normalized against local enum/struct declarations after the full interface
+ * has been parsed.
+ *
+ * @param self Parser state for diagnostics.
+ * @param tref Parsed type reference to lower.
+ * @return Lowered type tree, or `null` on unsupported syntax.
+ */
+func pi_type_from_ref(self: ParserState*, tref: TypeRef*) -> Type*? {
+    if (tref.func_params != null) {
+        with (let params: VectorBase*? = ptr_vec_create(4) => type_param_vec_free(params),
+              let result: Type*? = null => pi_type_free_opt(result)) {
+            let parsed_params = tref.func_params as VectorBase*;
+            for (let i = 0; i < vec_size(parsed_params); i = i + 1) {
+                let param_ty = pi_type_from_ref(self, ptr_vec_get(parsed_params, i) as TypeRef*);
+                if (param_ty == null) {
+                    return null;
+                }
+                ptr_vec_push(params as VectorBase*, param_ty as void*);
+            }
+
+            result = pi_type_from_ref(self, tref.func_result as TypeRef*);
+            if (result == null) {
+                return null;
+            }
+
+            let is_variadic = vec_size(parsed_params) > 0 &&
+                type_ref_is_variadic(ptr_vec_get(parsed_params, vec_size(parsed_params) - 1) as TypeRef*);
+            let func_ty = type_new_func(params as VectorBase*, result as Type*, tref.is_unsafe);
+            if (is_variadic) {
+                func_ty.is_variadic = true;
+            }
+            params = null;
+            result = null;
+            return pi_apply_type_ref_suffix(func_ty, tref);
+        }
+    }
+
+    if (tref.name_qualifier != null) {
+        ps_emit_error(self, "PAR-0572", "Unsupported or unexpected token in interface file", ps_last(self));
+        return null;
+    }
+
+    if (tref.name == "null") {
+        ps_emit_error(self, "PAR-0572", "Unsupported or unexpected token in interface file", ps_last(self));
+        return null;
+    }
+    if (type_is_builtin_name(tref.name)) {
+        return pi_apply_type_ref_suffix(type_new_builtin(tref.name), tref);
+    }
+    return pi_apply_type_ref_suffix(type_new_struct(pi_module_path_text(tref.module_path), tref.name), tref);
+}
+
+/**
+ * Parse a type expression using the shared parser's `TypeRef` machinery.
+ *
+ * @param self Parser state.
+ * @return Parsed type, or `null` on error.
+ */
+func pi_parse_type(self: ParserState*) -> Type*? {
+    if (!pi_is_type_start(self)) {
+        ps_emit_error(self, "PAR-0572", "Unsupported or unexpected token in interface file", ps_peek(self));
+        return null;
+    }
+
+    let parsed = ps_parse_type(self)?;
+    with (let tref: TypeRef*? = parsed => type_ref_free(tref)) {
+        return pi_type_from_ref(self, tref as TypeRef*);
+    }
+}

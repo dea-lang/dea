@@ -1,0 +1,15 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_return_void_in_non_void;
+
+/**
+ * Triggers a bare-return mismatch in a non-void function.
+ *
+ * @return An `int`, even though the body uses `return;`.
+ */
+func err_return_void_in_non_void() -> int {
+    return; // TYP-0315
+}

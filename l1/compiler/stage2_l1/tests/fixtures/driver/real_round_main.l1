@@ -1,0 +1,18 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module real_round_main;
+
+import std.real;
+
+func main() -> int {
+    if (std.real::floor_f(1.5f) != 1.0f) { return 1; }
+    if (std.real::ceil_d(1.5) != 2.0) { return 2; }
+
+    if (std.real::trunc_f(-1.5f) != -1.0f) { return 3; }
+    if (std.real::round_d(1.5) != 2.0) { return 4; }
+
+    return 0;
+}

@@ -1,0 +1,23 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_variadic_err;
+
+func fixed(value: int) -> int {
+    return value;
+}
+
+func collect(prefix: int, values: int...) -> int {
+    return prefix + len(values);
+}
+
+func errors() {
+    let values: int[2] = [1, 2];
+    collect();
+    collect(1, "bad");
+    fixed(values...);
+    collect(1, 2, values...);
+    collect(prefix: 1, values: 2);
+}

@@ -1,0 +1,27 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_with_cleanup_guard_err;
+
+func ok() -> int? {
+    return 1 as int?;
+}
+
+func fail() -> int? {
+    return null;
+}
+
+/**
+ * Triggers TYP-0156 for guarded cleanup-block references.
+ */
+func err_cleanup_guard() -> int? {
+    with (let q: int = ok()?,
+          let p: int = fail()?) {
+    } cleanup {
+        q; // TYP-0156
+        p; // TYP-0156
+    }
+    return 0 as int?;
+}

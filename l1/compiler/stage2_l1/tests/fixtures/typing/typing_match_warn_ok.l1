@@ -1,0 +1,28 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_match_warn_ok;
+
+/**
+ * Defines the State enumeration.
+ */
+enum State {
+    Idle;
+    Busy;
+}
+
+/**
+ * Triggers an unreachable wildcard warning after full explicit coverage.
+ *
+ * @param s The enum value to inspect.
+ * @return A code for the covered state.
+ */
+func warn_match_unreachable_wildcard(s: State) -> int {
+    match (s) {
+        Idle => { return 0; }
+        Busy => { return 1; }
+        _ => { return 2; }
+    }
+}

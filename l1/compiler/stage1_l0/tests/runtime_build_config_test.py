@@ -69,8 +69,8 @@ def build_dir_for_shell_regression(tmp_dir: Path) -> Path:
     """Return a build path that exercises native Windows shell escaping."""
 
     if os.name == "nt":
-        return tmp_dir / "dea"
-    return tmp_dir / r"windows\temp\dea"
+        return tmp_dir / "dea with spaces"
+    return tmp_dir / r"windows\temp\dea with spaces"
 
 
 def require_runtime_build(

@@ -1,0 +1,21 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module real_basic_main;
+
+import std.real;
+
+func main() -> int {
+    if (std.real::abs_f(-2.0f) != 2.0f) { return 1; }
+    if (std.real::abs_d(-2.0) != 2.0) { return 2; }
+
+    if (std.real::sqrt_f(4.0f) != 2.0f) { return 3; }
+    if (std.real::sqrt_d(4.0) != 2.0) { return 4; }
+
+    if (std.real::hypot_f(3.0f, 4.0f) != 5.0f) { return 5; }
+    if (std.real::hypot_d(3.0, 4.0) != 5.0) { return 6; }
+
+    return 0;
+}

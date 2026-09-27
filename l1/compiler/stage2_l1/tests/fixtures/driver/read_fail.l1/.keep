@@ -1,0 +1,1 @@
+This fixture directory intentionally causes read_file() failure for module `read_fail`.

@@ -1,0 +1,15 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module wrong_name;
+
+/**
+ * Provides a simple function in a module whose declared name is intentionally wrong.
+ *
+ * @return `0`.
+ */
+func x() -> int {
+    return 0;
+}

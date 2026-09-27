@@ -1,0 +1,12 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module replay_const_nonint_bound_err;
+
+import replay_provider;
+
+func take(values: int[enabled]) -> int {
+    return 0;
+}

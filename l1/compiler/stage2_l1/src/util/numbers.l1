@@ -1,0 +1,416 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module util.numbers;
+
+import std.string;
+import std.text;
+
+import types;
+
+/**
+ * Convert a real number's components into a string representation.
+ *
+ * @param sig       The significand part of the real number as a string (e.g., "1.23").
+ * @param exp_text  The exponent part of the real number as a string (e.g., "4" for "1.23e4").
+ * @param is_float  Whether the number should be suffixed with 'f' to indicate a float literal.
+ * @return A string representing the full real number literal (e.g., "1.23e-4" or "-1.23f").
+ */
+func realnum_to_string(sig: string, exp_text: string, is_float: bool) -> string {
+    let exp_part = "";
+    if (exp_text != "") {
+        exp_part = "e" + exp_text;
+    }
+    let suffix = "";
+    if (is_float) {
+        suffix = "f";
+    }
+    return sig + exp_part + suffix;
+}
+
+/**
+ * Reconstruct a bigint literal's display string from its canonical value digits and base.
+ *
+ * The value text is the prefix-stripped, lowercase, sign-inclusive form stored in `TT_BIGINT`
+ * (e.g., "-80000001" for base 16). This function prepends the appropriate base prefix after
+ * any leading '-' to produce the source-level spelling (e.g., "-0x80000001").
+ *
+ * @param text  Canonical value digits with optional leading '-'.
+ * @param base  Numeric base (2, 8, 10, or 16).
+ * @return Display string with the base prefix restored.
+ */
+func bigint_to_string(text: string, base: int) -> string {
+    if (base == 10) {
+        return text;
+    }
+    let prefix = "";
+    case (base) {
+        16 => { prefix = "0x"; }
+         8 => { prefix = "0o"; }
+         2 => { prefix = "0b"; }
+    }
+    if (len_s(text) > 0 && char_at_s(text, 0) == '-') {
+        return "-" + prefix + slice_s(text, 1, len_s(text));
+    }
+    return prefix + text;
+}
+
+/**
+ * Check if a given integer value can fit within a 16-bit signed integer range.
+ *
+ * @param value The integer value to check.
+ * @return `true` if the value is between -32768 and 32767 inclusive, `false` otherwise.
+ */
+func fits_in_short(value: int) -> bool {
+    return value >= -32768 && value <= 32767;
+}
+
+/**
+ * Check if a given integer value can fit within a 16-bit unsigned integer range.
+ *
+ * @param value The integer value to check.
+ * @return `true` if the value is between 0 and 65535 inclusive, `false` otherwise.
+ */
+func fits_in_ushort(value: int) -> bool {
+    return value >= 0 && value <= 65535;
+}
+
+/**
+ * Check if a given integer value can fit within an 8-bit signed integer range.
+ *
+ * @param value The integer value to check.
+ * @return `true` if the value is between -128 and 127 inclusive, `false` otherwise.
+ */
+func fits_in_tiny(value: int) -> bool {
+    return value >= -128 && value <= 127;
+}
+
+/**
+ * Check if a given integer value can fit within an 8-bit unsigned integer range.
+ *
+ * @param value The integer value to check.
+ * @return `true` if the value is between 0 and 255 inclusive, `false` otherwise.
+ */
+func fits_in_byte(value: int) -> bool {
+    return value >= 0 && value <= 255;
+}
+
+/**
+ * Check whether a Dea `int` value is representable by a builtin integer type.
+ *
+ * @param dst   Destination builtin integer type.
+ * @param value Dea `int` value.
+ * @return `true` when `value` lies inside the value domain of `dst`.
+ */
+func int_value_fits_builtin(dst: Type*, value: int) -> bool {
+    if (type_is_builtin(dst, "tiny")) return fits_in_tiny(value);
+    if (type_is_builtin(dst, "byte")) return fits_in_byte(value);
+    if (type_is_builtin(dst, "short")) return fits_in_short(value);
+    if (type_is_builtin(dst, "ushort")) return fits_in_ushort(value);
+    if (type_is_builtin(dst, "int")) return true;
+    if (type_is_builtin(dst, "uint")) return value >= 0;
+    if (type_is_builtin(dst, "long")) return true;
+    if (type_is_builtin(dst, "ulong")) return value >= 0;
+    return false;
+}
+
+/**
+ * Report whether a canonical bigint value text carries a leading minus sign.
+ *
+ * @param text Canonical bigint value digits with optional leading '-'.
+ * @return `true` when the first character is '-'.
+ */
+func bigint_is_negative(text: string) -> bool {
+    return len_s(text) > 0 && char_at_s(text, 0) == '-';
+}
+
+/**
+ * Strip the optional sign and leading zeros from a bigint value text.
+ *
+ * @param text Canonical bigint value digits with optional leading '-'.
+ * @return The significant digits, or "0" when the value is zero.
+ */
+func bigint_significant_digits(text: string) -> string {
+    let start = 0;
+    let n = len_s(text);
+    if (bigint_is_negative(text)) {
+        start = 1;
+    }
+    while (start < n && char_at_s(text, start) == '0') {
+        start = start + 1;
+    }
+    if (start >= n) {
+        return "0";
+    }
+    return slice_s(text, start, n);
+}
+
+/**
+ * Compare two unsigned digit strings of the same base by magnitude.
+ *
+ * @param left  Left significant-digit string.
+ * @param right Right significant-digit string.
+ * @return -1, 0, or 1 for `left` less than, equal to, or greater than `right`.
+ */
+func bigint_compare_digits(left: string, right: string) -> int {
+    let left_len = len_s(left);
+    let right_len = len_s(right);
+    if (left_len < right_len) return -1;
+    if (left_len > right_len) return 1;
+    for (let i = 0; i < left_len; i = i + 1) {
+        let left_ch = char_at_s(left, i);
+        let right_ch = char_at_s(right, i);
+        if (left_ch < right_ch) return -1;
+        if (left_ch > right_ch) return 1;
+    }
+    return 0;
+}
+
+/**
+ * Return the inclusive magnitude limit digits for a builtin integer name and base.
+ *
+ * @param dst_name    Destination builtin integer name.
+ * @param base        Numeric base (2, 8, 10, or 16).
+ * @param is_negative Whether the literal is negative, selecting the signed lower bound.
+ * @return The limit digit string, or `null` when the type/sign cannot hold a bigint magnitude.
+ */
+func bigint_limit_text_for_name(dst_name: string, base: int, is_negative: bool) -> string? {
+    if (dst_name == "tiny") {
+        case (base) {
+             2 => { if (is_negative) return "10000000"; return "1111111"; }
+             8 => { if (is_negative) return "200"; return "177"; }
+            10 => { if (is_negative) return "128"; return "127"; }
+            16 => { if (is_negative) return "80"; return "7f"; }
+        }
+        return null;
+    }
+    if (dst_name == "byte") {
+        if (is_negative) return null;
+        case (base) {
+             2 => { return "11111111"; }
+             8 => { return "377"; }
+            10 => { return "255"; }
+            16 => { return "ff"; }
+        }
+        return null;
+    }
+    if (dst_name == "short") {
+        case (base) {
+             2 => { if (is_negative) return "1000000000000000"; return "111111111111111"; }
+             8 => { if (is_negative) return "100000"; return "77777"; }
+            10 => { if (is_negative) return "32768"; return "32767"; }
+            16 => { if (is_negative) return "8000"; return "7fff"; }
+        }
+        return null;
+    }
+    if (dst_name == "ushort") {
+        if (is_negative) return null;
+        case (base) {
+             2 => { return "1111111111111111"; }
+             8 => { return "177777"; }
+            10 => { return "65535"; }
+            16 => { return "ffff"; }
+        }
+        return null;
+    }
+    if (dst_name == "int") {
+        case (base) {
+             2 => { if (is_negative) return "10000000000000000000000000000000"; return "1111111111111111111111111111111"; }
+             8 => { if (is_negative) return "20000000000"; return "17777777777"; }
+            10 => { if (is_negative) return "2147483648"; return "2147483647"; }
+            16 => { if (is_negative) return "80000000"; return "7fffffff"; }
+        }
+        return null;
+    }
+    if (dst_name == "uint") {
+        if (is_negative) return null;
+        case (base) {
+             2 => { return "11111111111111111111111111111111"; }
+             8 => { return "37777777777"; }
+            10 => { return "4294967295"; }
+            16 => { return "ffffffff"; }
+        }
+        return null;
+    }
+    if (dst_name == "long") {
+        if (is_negative) {
+            case (base) {
+                 2 => { return "1000000000000000000000000000000000000000000000000000000000000000"; }
+                 8 => { return "1000000000000000000000"; }
+                10 => { return "9223372036854775808"; }
+                16 => { return "8000000000000000"; }
+            }
+            return null;
+        }
+        case (base) {
+             2 => { return "111111111111111111111111111111111111111111111111111111111111111"; }
+             8 => { return "777777777777777777777"; }
+            10 => { return "9223372036854775807"; }
+            16 => { return "7fffffffffffffff"; }
+        }
+        return null;
+    }
+    if (dst_name == "ulong") {
+        if (is_negative) return null;
+        case (base) {
+             2 => { return "1111111111111111111111111111111111111111111111111111111111111111"; }
+             8 => { return "1777777777777777777777"; }
+            10 => { return "18446744073709551615"; }
+            16 => { return "ffffffffffffffff"; }
+        }
+        return null;
+    }
+    return null;
+}
+
+/**
+ * Return the inclusive magnitude limit digits for a builtin integer type and base.
+ *
+ * @param dst         Destination builtin integer type.
+ * @param base        Numeric base (2, 8, 10, or 16).
+ * @param is_negative Whether the literal is negative, selecting the signed lower bound.
+ * @return The limit digit string, or `null` when the type/sign cannot hold a bigint magnitude.
+ */
+func bigint_limit_text(dst: Type*, base: int, is_negative: bool) -> string? {
+    if (ord(dst.kind) != ord(TY_BUILTIN)) {
+        return null;
+    }
+    return bigint_limit_text_for_name(dst.name, base, is_negative);
+}
+
+/**
+ * Check whether a bigint literal magnitude fits a builtin integer type.
+ *
+ * @param dst  Destination builtin integer type.
+ * @param text Canonical bigint value digits with optional leading '-'.
+ * @param base Numeric base (2, 8, 10, or 16).
+ * @return `true` when the magnitude is within the type domain for the literal sign.
+ */
+func bigint_fits_builtin(dst: Type*, text: string, base: int) -> bool {
+    let limit = bigint_limit_text(dst, base, bigint_is_negative(text));
+    if (limit == null) {
+        return false;
+    }
+    return bigint_compare_digits(bigint_significant_digits(text), limit as string) <= 0;
+}
+
+/**
+ * Validate a canonical bigint payload against its declared base.
+ *
+ * @param text Canonical bigint digits with an optional leading `-`.
+ * @param base Numeric base (2, 8, 10, or 16).
+ * @return `true` when `text` has at least one lowercase digit valid for `base`.
+ */
+func bigint_digits_valid_for_base(text: string, base: int) -> bool {
+    if (base != 2 && base != 8 && base != 10 && base != 16) {
+        return false;
+    }
+    let start = 0;
+    if (bigint_is_negative(text)) {
+        start = 1;
+    }
+    if (start >= len_s(text)) {
+        return false;
+    }
+    for (let i = start; i < len_s(text); i = i + 1) {
+        let digit = -1;
+        let c = char_at_s(text, i);
+        if (c >= '0' && c <= '9') {
+            digit = c - '0';
+        } else if (c >= 'a' && c <= 'f') {
+            digit = 10 + c - 'a';
+        }
+        if (digit < 0 || digit >= base) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Check whether a bigint literal fits at least one implemented L1 integer domain.
+ *
+ * Negative values are bounded by `long`; non-negative values are bounded by
+ * `ulong`. Both checks reuse the builtin range table used by contextual type
+ * checking.
+ *
+ * @param text Canonical bigint digits with optional leading `-`.
+ * @param base Numeric base (2, 8, 10, or 16).
+ * @return `true` when the value is in the implemented 64-bit integer domain.
+ */
+func bigint_fits_implemented_domain(text: string, base: int) -> bool {
+    if (!bigint_digits_valid_for_base(text, base)) {
+        return false;
+    }
+    let negative = bigint_is_negative(text);
+    let dst_name = "ulong";
+    if (negative) {
+        dst_name = "long";
+    }
+    let limit = bigint_limit_text_for_name(dst_name, base, negative);
+    if (limit == null) {
+        return false;
+    }
+    return bigint_compare_digits(bigint_significant_digits(text), limit as string) <= 0;
+}
+
+/**
+ * Convert one implemented-domain bigint payload to canonical decimal spelling.
+ *
+ * Decimal input is normalized directly. Non-decimal multiply-add conversion
+ * runs only after the implemented-domain check has bounded significant input
+ * to at most 64 bits.
+ *
+ * @param text Canonical bigint digits with optional leading `-`.
+ * @param base Numeric base (2, 8, 10, or 16).
+ * @return Canonical decimal spelling, or `null` for invalid or out-of-domain input.
+ */
+func bigint_to_canonical_decimal(text: string, base: int) -> string? {
+    if (!bigint_fits_implemented_domain(text, base)) {
+        return null;
+    }
+
+    let negative = bigint_is_negative(text);
+    let digits = bigint_significant_digits(text);
+    if (base == 10) {
+        if (negative && digits != "0") {
+            return "-" + digits;
+        }
+        return digits;
+    }
+
+    let decimal = "0";
+    for (let i = 0; i < len_s(digits); i = i + 1) {
+        let digit = -1;
+        let c = char_at_s(digits, i);
+        if (c >= '0' && c <= '9') {
+            digit = c - '0';
+        } else if (c >= 'a' && c <= 'f') {
+            digit = 10 + c - 'a';
+        }
+        if (digit < 0 || digit >= base) {
+            return null;
+        }
+        with (let reversed = cb_create() => cb_free(reversed)) {
+            let carry = digit;
+            for (let j = len_s(decimal) - 1; j >= 0; j = j - 1) {
+                let value = (char_at_s(decimal, j) - '0') * base + carry;
+                cb_append(reversed, ('0' + (value % 10)) as byte);
+                carry = value / 10;
+            }
+            while (carry > 0) {
+                cb_append(reversed, ('0' + (carry % 10)) as byte);
+                carry = carry / 10;
+            }
+            cb_reverse(reversed);
+            decimal = cb_to_string(reversed);
+        }
+    }
+
+    if (negative && decimal != "0") {
+        return "-" + decimal;
+    }
+    return decimal;
+}

@@ -14,6 +14,7 @@ import sys
 import tempfile
 import textwrap
 from pathlib import Path
+from support.compiler_subject import selected_compiler
 
 SCRIPTS_ROOT = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS_ROOT) not in sys.path:
@@ -44,7 +45,7 @@ def l1_compiler_path() -> Path:
     build_dir = Path(os.environ.get("L1_BUILD_DIR", "build/dea"))
     if not build_dir.is_absolute():
         build_dir = L1_ROOT / build_dir
-    return resolve_tool(build_dir / "bin" / "l1c-stage1")
+    return resolve_tool(selected_compiler(build_dir / "bin" / "l1c-stage1"))
 
 
 def run_l1_source(module_name: str, source: str) -> subprocess.CompletedProcess[str]:

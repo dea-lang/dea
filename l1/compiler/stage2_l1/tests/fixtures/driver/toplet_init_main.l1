@@ -1,0 +1,18 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module toplet_init_main;
+
+import toplet_init_dep;
+
+let ANSWER: int = bump(toplet_init_dep::get_base());
+
+func bump(x: int) -> int {
+    return x + 3;
+}
+
+func main() -> int {
+    return ANSWER;
+}

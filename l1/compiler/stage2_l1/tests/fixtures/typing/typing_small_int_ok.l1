@@ -1,0 +1,58 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_small_int_ok;
+
+struct Packet {
+    a: tiny;
+    b: byte;
+    c: short;
+    d: ushort;
+}
+
+enum Small {
+    Sample(x: tiny, y: ushort);
+}
+
+func take_tiny(x: tiny) -> int {
+    return x;
+}
+
+func take_short(x: short) -> int {
+    return x;
+}
+
+func take_ushort(x: ushort) -> int {
+    return x;
+}
+
+func contextual_literals() -> int {
+    let a: tiny = -128;
+    let b: byte = 65;
+    let c: short = 32767;
+    let d: ushort = 65535;
+    let e: byte? = 42;
+    let p = Packet(1, 2, 3, 4);
+    let s = Sample(5, 6);
+    return take_tiny(7) + take_short(8) + take_ushort(9) + a + b + c + d;
+}
+
+func widenings(t: tiny, b: byte, s: short, u: ushort) -> int {
+    let a: short = t;
+    let bb: short = b;
+    let c: ushort = b;
+    let i: int = t;
+    let j: int = s;
+    let k: int = u;
+    return i + j + k + a + bb + c;
+}
+
+func explicit_casts(x: int, b: byte, u: ushort, s: short) -> int {
+    let a: tiny = x as tiny;
+    let c: tiny = b as tiny;
+    let d: short = u as short;
+    let e: ushort = s as ushort;
+    return a + c + d + e;
+}

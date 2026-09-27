@@ -1,8 +1,8 @@
 # L1 C Backend Design
 
-Version: 2026-09-11
+Version: 2026-09-27
 
-This is the canonical backend implementation document for the current Dea/L1 bootstrap compiler.
+This is the canonical backend implementation document for both Dea/L1 compiler stages.
 
 Related docs:
 
@@ -15,7 +15,8 @@ Related docs:
 
 ## Overview
 
-Current code generation is implemented only in `compiler/stage1_l0/src/` and is split into:
+Current code generation is implemented in `compiler/stage1_l0/src/` and its mechanical `.l1` port under
+`compiler/stage2_l1/src/`. The Stage 1 module names below identify the corresponding modules in both stages:
 
 - the coarse generation API in `backend.l0` and implementation owners under `backend/`
 - C emission under `c_emitter/`
@@ -368,7 +369,7 @@ result form before returning `0`. It does not initialize runtime arguments or ca
 ## Current Constraints
 
 1. Ordinary `--build` and `--run` compile one module C translation unit per source-backed graph node.
-2. The only implemented backend is the bootstrap backend in `stage1_l0`.
+2. Both compiler stages implement the same C backend; Stage 1 remains the semantic oracle.
 3. The runtime and ABI surface assume a C99-compatible host toolchain.
 4. Optimization is delegated to the host C compiler; backend priority is correctness and explicit lowering.
 5. Standalone link treats every caller and runtime native input as opaque. Native-format, architecture, symbol, and
@@ -398,4 +399,7 @@ Ownership and trace-oriented validation also uses:
 - `run_test_trace.py`
 - `check_trace_log.py`
 
-These tests exercise the current bootstrap compiler implementation, not a self-hosted Stage 2 compiler.
+The Stage 2 suite ports the implementation tests to `.l1` under `compiler/stage2_l1/tests/` and runs the compiler-facing
+Python integration tests against its explicit artifact. Each stage has its own parent and child trace runners.
+`make triple-test` additionally checks exact retained C from consecutive self-builds and runs the normal Stage 2 suite
+through the final self-built compiler.

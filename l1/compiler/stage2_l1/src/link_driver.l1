@@ -1,0 +1,242 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module link_driver;
+
+import std.path;
+import std.vector;
+import util.diag;
+import util.log;
+import build_driver;
+import preparation.consumer;
+import cli_args.model;
+import compiler_filesystem;
+import diag_print;
+import link_driver.inputs;
+import link_driver.model;
+import link_driver.toolchain;
+import link_driver.transaction;
+import link_driver.workspace;
+
+/** Execute public `l1c --link` mode. */
+func ld_cmd_link(opts: CliOptions*, cfg: LogConfig*) -> int {
+    with (let diags = diag_create() => diag_free(diags),
+          let managed = mp_create(opts, cfg, true) => mp_free(managed)) {
+        if (!ld_validate_cli_before_preparation(opts, opts.output as string, true, diags)) {
+            dp_print_collector(diags);
+            return 1;
+        }
+        let plan = ld_prepare_cli_inputs_managed(
+            opts.link_operands, opts.interface_paths, opts.entry_module, managed, diags);
+        if (plan == null) {
+            dp_print_collector(diags);
+            return 1;
+        }
+        let verified = plan as LinkPlan*;
+        if (!mp_runtime(managed, diags)) {
+            dp_print_collector(diags);
+            ld_plan_free(verified);
+            return 1;
+        }
+        let output_path = opts.output as string;
+
+        let valid_output = ld_validate_output(output_path, diags);
+        let compiler = ld_take_compiler(opts, diags);
+        let extra_opts = bd_collect_c_option_words(opts);
+        let runtime_include = ld_runtime_include(opts, diags);
+        let runtime_inputs: StringVector*? = null;
+        let valid_external = true;
+        if (compiler != null) {
+            valid_external = ld_validate_external_link_operands(
+                opts.link_operands, compiler as string, diags);
+            runtime_inputs = ld_runtime_link_inputs(
+                opts, compiler as string, diags);
+        }
+        let valid_aliases = true;
+        let valid_windows_values = true;
+        if (valid_output && runtime_inputs != null && runtime_include != null) {
+            let resolved_include = runtime_include as LinkRuntimeInclude*;
+            valid_aliases = ld_validate_output_aliases(
+                output_path,
+                verified,
+                runtime_inputs as StringVector*,
+                resolved_include.header_path,
+                diags
+            );
+        }
+        if (bd_is_windows() &&
+            compiler != null && runtime_include != null &&
+            runtime_inputs != null) {
+            valid_windows_values = ld_validate_windows_shell_values(
+                compiler as string,
+                extra_opts,
+                (runtime_include as LinkRuntimeInclude*).directory,
+                runtime_inputs as StringVector*,
+                output_path,
+                verified,
+                diags
+            );
+        }
+        if (!valid_output || compiler == null ||
+            runtime_include == null || runtime_inputs == null ||
+            !valid_external || !valid_aliases || !valid_windows_values) {
+            dp_print_collector(diags);
+            if (runtime_inputs != null) {
+                sv_free(runtime_inputs as StringVector*);
+            }
+            if (runtime_include != null) {
+                ld_runtime_include_free(
+                    runtime_include as LinkRuntimeInclude*);
+            }
+            sv_free(extra_opts);
+            ld_plan_free(verified);
+            return 1;
+        }
+
+        let output_parent = parent(output_path);
+        let txn = ld_create_transaction(output_parent, diags);
+        if (txn == null) {
+            dp_print_collector(diags);
+            sv_free(runtime_inputs as StringVector*);
+            ld_runtime_include_free(
+                runtime_include as LinkRuntimeInclude*);
+            sv_free(extra_opts);
+            ld_plan_free(verified);
+            return 1;
+        }
+        let scratch = txn as LinkTransaction*;
+
+        let succeeded = ld_execute_plan(
+            verified,
+            compiler as string,
+            extra_opts,
+            (runtime_include as LinkRuntimeInclude*).directory,
+            runtime_inputs as StringVector*,
+            output_path,
+            scratch,
+            cfg,
+            diags
+        );
+        let cleaned = ld_cleanup_transaction(scratch);
+        if (!cleaned) {
+            ld_error(
+                diags,
+                "L1C-2109",
+                "standalone-link transaction cleanup failed; retained files in " +
+                    scratch.root,
+                scratch.root
+            );
+        }
+
+        if (diag_count(diags) > 0) {
+            dp_print_collector(diags);
+        }
+        ld_transaction_free(scratch);
+        sv_free(runtime_inputs as StringVector*);
+        ld_runtime_include_free(
+            runtime_include as LinkRuntimeInclude*);
+        sv_free(extra_opts);
+        ld_plan_free(verified);
+
+        if (!succeeded || !cleaned) {
+            return 1;
+        }
+        log_info(cfg, "Linked executable: " + output_path);
+        return 0;
+    }
+}
+
+/** Execute multi-compilation-unit `--build` or `--run`. */
+func ld_cmd_build_run(
+    opts: CliOptions*,
+    cfg: LogConfig*,
+    run_program: bool
+) -> int {
+    with (
+        let prepare_diags = diag_create() => diag_free(prepare_diags),
+        let workspace_diags = diag_create() => diag_free(workspace_diags)
+    ) {
+        let prepared = bd_prepare_input(opts, prepare_diags, cfg);
+        if (prepared == null) {
+            dp_print_collector(prepare_diags);
+            return 1;
+        }
+        let prep = prepared as BuildPreparedInput*;
+        let executable = bd_default_exe_name();
+        if (run_program) {
+            executable = "";
+            if (opts.output != null) {
+                diag_warn(
+                    prepare_diags,
+                    "l1c",
+                    "L1C-0017",
+                    "'--output' is ignored in '--run' mode; the executable remains temporary and '--keep-c' uses the canonical module name",
+                    "",
+                    0,
+                    0,
+                    0,
+                    0
+                );
+                dp_print_collector(prepare_diags);
+            }
+        } else if (opts.output != null) {
+            executable = opts.output as string;
+        }
+
+        let retained_c_root: string? = null;
+        if (opts.keep_c) {
+            if (run_program) {
+                retained_c_root = prep.entry_module + ".dea-c";
+            } else {
+                retained_c_root = executable + ".dea-c";
+            }
+        }
+
+        let workspace_tag = "build";
+        if (run_program) {
+            workspace_tag = "run";
+        }
+        let workspace = cfs_workspace_create(
+            workspace_tag, workspace_diags);
+        if (workspace == null) {
+            dp_print_collector(workspace_diags);
+            bd_prepared_input_free(prep);
+            return 1;
+        }
+        let owned_workspace = workspace as CompilerWorkspace*;
+        if (run_program) {
+            executable = cfs_workspace_child(
+                owned_workspace, "program" + bd_exe_suffix());
+        }
+        let primary_status = ld_build_run_in_workspace(
+            opts,
+            cfg,
+            prep,
+            owned_workspace,
+            executable,
+            retained_c_root,
+            run_program
+        );
+        bd_prepared_input_free(prep);
+        let cleanup_ok = cfs_workspace_cleanup(
+            owned_workspace, workspace_diags);
+        if (!cleanup_ok) {
+            dp_print_collector(workspace_diags);
+        }
+        cfs_workspace_free(owned_workspace);
+        return cfs_apply_cleanup_status(
+            primary_status, cleanup_ok);
+    }
+}
+
+/** Execute multi-compilation-unit `--build`. */
+func ld_cmd_build(opts: CliOptions*, cfg: LogConfig*) -> int {
+    return ld_cmd_build_run(opts, cfg, false);
+}
+
+/** Execute multi-compilation-unit `--run`. */
+func ld_cmd_run(opts: CliOptions*, cfg: LogConfig*) -> int {
+    return ld_cmd_build_run(opts, cfg, true);
+}

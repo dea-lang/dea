@@ -1,0 +1,16 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module replay_const_duplicate_case_err;
+
+import replay_provider;
+
+func main() -> int {
+    case (1) {
+        origin_x => return 1;
+        1 => return 2;
+        _ => return 0;
+    }
+}

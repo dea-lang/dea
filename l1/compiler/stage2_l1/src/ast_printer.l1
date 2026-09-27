@@ -1,0 +1,932 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module ast_printer;
+
+import std.io;
+import std.string;
+import std.text;
+import std.vector;
+
+import ast;
+import parser;
+
+/* ---------------------------------
+   Low-level string helpers
+   --------------------------------- */
+
+/**
+ * Return `"True"` or `"False"` for a boolean value.
+ *
+ * @param b Boolean value.
+ * @return String representation matching Python `repr(bool)` style.
+ */
+func ap_bool_str(b: bool) -> string {
+    if (b) { return "True"; }
+    return "False";
+}
+
+/**
+ * Build a span-suffix annotation string ` @sl:sc-el:ec`.
+ *
+ * @param span Source span.
+ * @return Formatted span annotation.
+ */
+func ap_span_suffix(span: Span) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, " @");
+        sb_append_int(sb, span.start_line);
+        sb_append(sb, ":");
+        sb_append_int(sb, span.start_column);
+        sb_append(sb, "-");
+        sb_append_int(sb, span.end_line);
+        sb_append(sb, ":");
+        sb_append_int(sb, span.end_column);
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Build an indentation prefix string (2 spaces per level).
+ *
+ * @param n Indent level.
+ * @return Indentation string.
+ */
+func ap_indent_str(n: int) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < n; i = i + 1) {
+            sb_append(sb, "  ");
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Print a line at the given indent level.
+ *
+ * @param indent Indent level (2 spaces each).
+ * @param text Text to print after the indentation.
+ */
+func ap_print_line(indent: int, text: string) {
+    if (indent == 0) {
+        printl_s(text);
+    } else {
+        printl_s(ap_indent_str(indent) + text);
+    }
+}
+
+/**
+ * Print a child-field label at `indent + 1`.
+ *
+ * @param indent Parent node indent level.
+ * @param name Label name without colon.
+ */
+func ap_print_label(indent: int, name: string) {
+    ap_print_line(indent + 1, name + ":");
+}
+
+/**
+ * Return a single-quoted escaped representation of a string.
+ *
+ * @param s String to quote.
+ * @return Single-quoted escaped string.
+ */
+func ap_quote_string(s: string) -> string {
+    with (let cb = cb_create() => cb_free(cb)) {
+        cb_append_s(cb, "'");
+        for (let i = 0; i < len_s(s); i = i + 1) {
+            let b = char_at_s(s, i);
+            if (b == '\'') {
+                cb_append_s(cb, "\\'");
+                continue;
+            }
+            if (b == '\\') {
+                cb_append_s(cb, "\\\\");
+                continue;
+            }
+            if (b == '\n') {
+                cb_append_s(cb, "\\n");
+                continue;
+            }
+            if (b == '\r') {
+                cb_append_s(cb, "\\r");
+                continue;
+            }
+            if (b == '\t') {
+                cb_append_s(cb, "\\t");
+                continue;
+            }
+            cb_append(cb, b);
+        }
+        cb_append_s(cb, "'");
+        return cb_to_string(cb);
+    }
+}
+
+/**
+ * Build the module qualifier prefix from an optional path vector.
+ *
+ * For a module path `["std", "io"]` this returns `"std.io::"`.
+ * Returns `""` when the path is null or empty.
+ *
+ * @param module_path Optional module path segments.
+ * @return Formatted prefix ending with `"::"`, or empty string.
+ */
+func ap_module_prefix(module_path: StringVector*?) -> string {
+    if (module_path == null) {
+        return "";
+    }
+    let mp = module_path as StringVector*;
+    if (sv_size(mp) == 0) {
+        return "";
+    }
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < sv_size(mp); i = i + 1) {
+            if (i > 0) { sb_append(sb, "."); }
+            sb_append(sb, sv_get(mp, i));
+        }
+        sb_append(sb, "::");
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Build the full qualified name for a variable reference or similar node.
+ *
+ * Combines module_path, name_qualifier segments, and the local name into
+ * a display string like `"std.io::SomeType"` or `"Enum::Variant"`.
+ *
+ * @param text_value Base name.
+ * @param module_path Optional module path segments.
+ * @param name_qualifier Optional name qualifier segments.
+ * @return Fully qualified display name.
+ */
+func ap_full_name(text_value: string, module_path: StringVector*?, name_qualifier: StringVector*?) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        if (module_path != null) {
+            let mp = module_path as StringVector*;
+            for (let i = 0; i < sv_size(mp); i = i + 1) {
+                if (i > 0) { sb_append(sb, "."); }
+                sb_append(sb, sv_get(mp, i));
+            }
+            if (sv_size(mp) > 0) {
+                sb_append(sb, "::");
+            }
+        }
+        if (name_qualifier != null) {
+            let nq = name_qualifier as StringVector*;
+            for (let i = 0; i < sv_size(nq); i = i + 1) {
+                sb_append(sb, sv_get(nq, i));
+                sb_append(sb, "::");
+            }
+        }
+        sb_append(sb, text_value);
+        return sb_to_string(sb);
+    }
+}
+
+/* ---------------------------------
+   TypeRef printer
+   --------------------------------- */
+
+/**
+ * Print a type reference node.
+ *
+ * @param tr Type reference to print.
+ * @param indent Indent level.
+ */
+func ap_print_type_ref(tr: TypeRef*, indent: int) {
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "TypeRef(name=");
+        sb_append(sb, ap_quote_string(ap_module_prefix(tr.module_path) + tr.name));
+        sb_append(sb, ", pointer_depth=");
+        sb_append_int(sb, tr.pointer_depth);
+        sb_append(sb, ", is_nullable=");
+        sb_append(sb, ap_bool_str(tr.is_nullable));
+        sb_append(sb, ", is_unsafe=");
+        sb_append(sb, ap_bool_str(tr.is_unsafe));
+        sb_append(sb, ")");
+        sb_append(sb, ap_span_suffix(tr.span));
+        ap_print_line(indent, sb_to_string(sb));
+    }
+}
+
+/* ---------------------------------
+   Export, Import, Param, FieldDecl, EnumVariant printers
+   --------------------------------- */
+
+/**
+ * Print an export manifest node.
+ *
+ * @param manifest Export manifest to print.
+ * @param indent Indent level.
+ */
+func ap_print_export_manifest(manifest: ExportManifest*, indent: int) {
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "ExportManifest(all=");
+        sb_append(sb, ap_bool_str(manifest.export_all));
+        sb_append(sb, ", names=");
+        sb_append(sb, ap_quote_string(join_s(manifest.names, ",")));
+        sb_append(sb, ")");
+        sb_append(sb, ap_span_suffix(manifest.span));
+        ap_print_line(indent, sb_to_string(sb));
+    }
+}
+
+/**
+ * Print an import node.
+ *
+ * @param imp Import to print.
+ * @param indent Indent level.
+ */
+func ap_print_import(imp: Import*, indent: int) {
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "Import(name=");
+        sb_append(sb, ap_quote_string(imp.name));
+        sb_append(sb, ", kind=");
+        match (imp.kind) {
+            IMPORT_OPEN => { sb_append(sb, "open"); }
+            IMPORT_ALIAS => { sb_append(sb, "alias"); }
+            IMPORT_SELECTIVE => { sb_append(sb, "selective"); }
+        }
+        if (imp.alias != "") {
+            sb_append(sb, ", alias=");
+            sb_append(sb, ap_quote_string(imp.alias));
+        }
+        if (imp.names != null) {
+            sb_append(sb, ", names=");
+            sb_append(sb, ap_quote_string(join_s(imp.names as StringVector*, ",")));
+        }
+        sb_append(sb, ")");
+        sb_append(sb, ap_span_suffix(imp.span));
+        ap_print_line(indent, sb_to_string(sb));
+    }
+}
+
+/**
+ * Print a parameter node, including its type annotation.
+ *
+ * @param p Parameter to print.
+ * @param indent Indent level.
+ */
+func ap_print_param(p: Param*, indent: int) {
+    ap_print_line(indent, "Param(name=" + ap_quote_string(p.name) + ")");
+    ap_print_label(indent, "type_ref");
+    ap_print_type_ref(p.type_ref, indent + 2);
+}
+
+/**
+ * Print a field declaration node.
+ *
+ * @param fd Field declaration to print.
+ * @param indent Indent level.
+ */
+func ap_print_field_decl(fd: FieldDecl*, indent: int) {
+    ap_print_line(indent, "FieldDecl(name=" + ap_quote_string(fd.name) + ")");
+    ap_print_label(indent, "type_ref");
+    ap_print_type_ref(fd.type_ref, indent + 2);
+}
+
+/**
+ * Print an enum variant node, including any payload fields.
+ *
+ * @param ev Enum variant to print.
+ * @param indent Indent level.
+ */
+func ap_print_enum_variant(ev: EnumVariant*, indent: int) {
+    ap_print_line(indent, "EnumVariant(name=" + ap_quote_string(ev.name) + ")");
+    if (vec_size(ev.fields) > 0) {
+        ap_print_label(indent, "fields");
+        for (let i = 0; i < vec_size(ev.fields); i = i + 1) {
+            let fd = ptr_vec_get(ev.fields, i) as FieldDecl*;
+            ap_print_field_decl(fd, indent + 2);
+        }
+    }
+}
+
+/* ---------------------------------
+   Pattern printer
+   --------------------------------- */
+
+/**
+ * Print a pattern node by arena id.
+ *
+ * @param id Pattern id in the arena.
+ * @param pr Parse result providing the pattern arena.
+ * @param indent Indent level.
+ */
+func ap_print_pattern(id: PatternId, pr: ParseResult*, indent: int) {
+    let node = pattern_arena_get(pr.pattern_arena, id);
+    match (node.kind) {
+        PT_WILDCARD => {
+            ap_print_line(indent, "WildcardPattern()" + ap_span_suffix(node.span));
+        }
+        PT_VARIANT => {
+            let full_name = ap_full_name(node.name, node.module_path, node.name_qualifier);
+            with (let sb = sb_create() => sb_free(sb)) {
+                sb_append(sb, "VariantPattern(name=");
+                sb_append(sb, ap_quote_string(full_name));
+                sb_append(sb, ")");
+                sb_append(sb, ap_span_suffix(node.span));
+                ap_print_line(indent, sb_to_string(sb));
+            }
+            if (node.vars != null) {
+                let vars = node.vars as StringVector*;
+                if (sv_size(vars) > 0) {
+                    ap_print_label(indent, "vars");
+                    for (let i = 0; i < sv_size(vars); i = i + 1) {
+                        ap_print_line(indent + 2, ap_quote_string(sv_get(vars, i)));
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* ---------------------------------
+   Expression printer
+   --------------------------------- */
+
+/**
+ * Print an expression node by arena id.
+ *
+ * Recursively prints child expressions and child type references.
+ *
+ * @param id Expression id in the arena.
+ * @param pr Parse result providing the expression arena.
+ * @param indent Indent level.
+ */
+func ap_print_expr(id: ExprId, pr: ParseResult*, indent: int) {
+    let node = expr_arena_get(pr.expr_arena, id);
+    match (node.kind) {
+        EX_INT => {
+            with (let sb = sb_create() => sb_free(sb)) {
+                sb_append(sb, "IntLiteral(value=");
+                sb_append_int(sb, node.int_value);
+                sb_append(sb, ")");
+                sb_append(sb, ap_span_suffix(node.span));
+                ap_print_line(indent, sb_to_string(sb));
+            }
+        }
+        EX_BIGINT => {
+            with (let sb = sb_create() => sb_free(sb)) {
+                sb_append(sb, "BigIntLiteral(text=");
+                sb_append(sb, ap_quote_string(node.text_value));
+                sb_append(sb, ", base=");
+                sb_append_int(sb, node.base_value);
+                sb_append(sb, ")");
+                sb_append(sb, ap_span_suffix(node.span));
+                ap_print_line(indent, sb_to_string(sb));
+            }
+        }
+        EX_FLOAT => {
+            with (let sb = sb_create() => sb_free(sb)) {
+                sb_append(sb, "FloatLiteral(text=");
+                sb_append(sb, ap_quote_string(node.text_value));
+                sb_append(sb, ")");
+                sb_append(sb, ap_span_suffix(node.span));
+                ap_print_line(indent, sb_to_string(sb));
+            }
+        }
+        EX_DOUBLE => {
+            with (let sb = sb_create() => sb_free(sb)) {
+                sb_append(sb, "DoubleLiteral(text=");
+                sb_append(sb, ap_quote_string(node.text_value));
+                sb_append(sb, ")");
+                sb_append(sb, ap_span_suffix(node.span));
+                ap_print_line(indent, sb_to_string(sb));
+            }
+        }
+        EX_BYTE => {
+            with (let sb = sb_create() => sb_free(sb)) {
+                sb_append(sb, "ByteLiteral(value=");
+                sb_append_int(sb, node.int_value);
+                sb_append(sb, ")");
+                sb_append(sb, ap_span_suffix(node.span));
+                ap_print_line(indent, sb_to_string(sb));
+            }
+        }
+        EX_STRING => {
+            with (let sb = sb_create() => sb_free(sb)) {
+                sb_append(sb, "StringLiteral(value=");
+                sb_append(sb, ap_quote_string(node.text_value));
+                sb_append(sb, ")");
+                sb_append(sb, ap_span_suffix(node.span));
+                ap_print_line(indent, sb_to_string(sb));
+            }
+        }
+        EX_BOOL => {
+            with (let sb = sb_create() => sb_free(sb)) {
+                sb_append(sb, "BoolLiteral(value=");
+                sb_append(sb, ap_bool_str(node.bool_value));
+                sb_append(sb, ")");
+                sb_append(sb, ap_span_suffix(node.span));
+                ap_print_line(indent, sb_to_string(sb));
+            }
+        }
+        EX_NULL => {
+            ap_print_line(indent, "NullLiteral()" + ap_span_suffix(node.span));
+        }
+        EX_VAR_REF => {
+            let full_name = ap_full_name(node.text_value, node.module_path, node.name_qualifier);
+            with (let sb = sb_create() => sb_free(sb)) {
+                sb_append(sb, "VarRef(name=");
+                sb_append(sb, ap_quote_string(full_name));
+                sb_append(sb, ")");
+                sb_append(sb, ap_span_suffix(node.span));
+                ap_print_line(indent, sb_to_string(sb));
+            }
+        }
+        EX_NEW => {
+            let tr = node.type_ref as TypeRef*;
+            let full_name = ap_full_name(tr.name, node.module_path, node.name_qualifier);
+            with (let sb = sb_create() => sb_free(sb)) {
+                sb_append(sb, "NewExpr(type_name=");
+                sb_append(sb, ap_quote_string(full_name));
+                sb_append(sb, ")");
+                sb_append(sb, ap_span_suffix(node.span));
+                ap_print_line(indent, sb_to_string(sb));
+            }
+            if (node.ids != null) {
+                let args = node.ids as VectorBase*;
+                if (vec_size(args) > 0) {
+                    ap_print_label(indent, "args");
+                    for (let i = 0; i < vec_size(args); i = i + 1) {
+                        ap_print_expr(id_vec_get(args, i), pr, indent + 2);
+                    }
+                }
+            }
+        }
+        EX_UNARY => {
+            with (let sb = sb_create() => sb_free(sb)) {
+                sb_append(sb, "UnaryOp(op=");
+                sb_append(sb, ap_quote_string(node.text_value));
+                sb_append(sb, ")");
+                sb_append(sb, ap_span_suffix(node.span));
+                ap_print_line(indent, sb_to_string(sb));
+            }
+            ap_print_label(indent, "operand");
+            ap_print_expr(node.expr_a, pr, indent + 2);
+        }
+        EX_BINARY => {
+            with (let sb = sb_create() => sb_free(sb)) {
+                sb_append(sb, "BinaryOp(op=");
+                sb_append(sb, ap_quote_string(node.text_value));
+                sb_append(sb, ")");
+                sb_append(sb, ap_span_suffix(node.span));
+                ap_print_line(indent, sb_to_string(sb));
+            }
+            ap_print_label(indent, "left");
+            ap_print_expr(node.expr_a, pr, indent + 2);
+            ap_print_label(indent, "right");
+            ap_print_expr(node.expr_b, pr, indent + 2);
+        }
+        EX_CALL => {
+            ap_print_line(indent, "CallExpr()" + ap_span_suffix(node.span));
+            ap_print_label(indent, "callee");
+            ap_print_expr(node.expr_a, pr, indent + 2);
+            if (node.ids != null) {
+                let args = node.ids as VectorBase*;
+                if (vec_size(args) > 0) {
+                    ap_print_label(indent, "args");
+                    for (let i = 0; i < vec_size(args); i = i + 1) {
+                        ap_print_expr(id_vec_get(args, i), pr, indent + 2);
+                    }
+                }
+            }
+        }
+        EX_INDEX => {
+            ap_print_line(indent, "IndexExpr()" + ap_span_suffix(node.span));
+            ap_print_label(indent, "collection");
+            ap_print_expr(node.expr_a, pr, indent + 2);
+            ap_print_label(indent, "index");
+            ap_print_expr(node.expr_b, pr, indent + 2);
+        }
+        EX_FIELD => {
+            with (let sb = sb_create() => sb_free(sb)) {
+                sb_append(sb, "FieldAccess(field=");
+                sb_append(sb, ap_quote_string(node.text_value));
+                sb_append(sb, ")");
+                sb_append(sb, ap_span_suffix(node.span));
+                ap_print_line(indent, sb_to_string(sb));
+            }
+            ap_print_label(indent, "base");
+            ap_print_expr(node.expr_a, pr, indent + 2);
+        }
+        EX_PAREN => {
+            ap_print_line(indent, "ParenExpr()" + ap_span_suffix(node.span));
+            ap_print_label(indent, "expr");
+            ap_print_expr(node.expr_a, pr, indent + 2);
+        }
+        EX_CAST => {
+            ap_print_line(indent, "CastExpr()" + ap_span_suffix(node.span));
+            ap_print_label(indent, "expr");
+            ap_print_expr(node.expr_a, pr, indent + 2);
+            ap_print_label(indent, "target_type");
+            ap_print_type_ref(node.type_ref as TypeRef*, indent + 2);
+        }
+        EX_TRY => {
+            ap_print_line(indent, "TryExpr()" + ap_span_suffix(node.span));
+            ap_print_label(indent, "expr");
+            ap_print_expr(node.expr_a, pr, indent + 2);
+        }
+        EX_TYPE => {
+            ap_print_line(indent, "TypeExpr()" + ap_span_suffix(node.span));
+            ap_print_label(indent, "type_ref");
+            ap_print_type_ref(node.type_ref as TypeRef*, indent + 2);
+        }
+        EX_ARRAY_LITERAL => {
+            ap_print_line(indent, "ArrayLiteral()" + ap_span_suffix(node.span));
+            if (node.ids != null) {
+                let elems = node.ids as VectorBase*;
+                for (let i = 0; i < vec_size(elems); i = i + 1) {
+                    ap_print_expr(id_vec_get(elems, i), pr, indent + 2);
+                }
+            }
+        }
+        EX_ARRAY_CONSTRUCTOR => {
+            ap_print_line(indent, "ArrayConstructor()" + ap_span_suffix(node.span));
+            ap_print_label(indent, "type_ref");
+            ap_print_type_ref(node.type_ref as TypeRef*, indent + 2);
+            if (node.ids != null) {
+                let args = node.ids as VectorBase*;
+                for (let i2 = 0; i2 < vec_size(args); i2 = i2 + 1) {
+                    ap_print_expr(id_vec_get(args, i2), pr, indent + 2);
+                }
+            }
+        }
+    }
+}
+
+/* ---------------------------------
+   Statement printer
+   --------------------------------- */
+
+/**
+ * Print a statement node by arena id.
+ *
+ * Recursively prints child statements, expressions, and patterns.
+ *
+ * @param id Statement id in the arena.
+ * @param pr Parse result providing all AST arenas.
+ * @param indent Indent level.
+ */
+func ap_print_stmt(id: StmtId, pr: ParseResult*, indent: int) {
+    let node = stmt_arena_get(pr.stmt_arena, id);
+    match (node.kind) {
+        ST_BLOCK => {
+            ap_print_line(indent, "Block()" + ap_span_suffix(node.span));
+            if (node.ids != null) {
+                let stmts = node.ids as VectorBase*;
+                if (vec_size(stmts) > 0) {
+                    ap_print_label(indent, "stmts");
+                    for (let i = 0; i < vec_size(stmts); i = i + 1) {
+                        ap_print_stmt(id_vec_get(stmts, i), pr, indent + 2);
+                    }
+                }
+            }
+        }
+        ST_LET => {
+            with (let sb = sb_create() => sb_free(sb)) {
+                sb_append(sb, "LetStmt(name=");
+                sb_append(sb, ap_quote_string(node.name));
+                sb_append(sb, ")");
+                sb_append(sb, ap_span_suffix(node.span));
+                ap_print_line(indent, sb_to_string(sb));
+            }
+            if (node.type_ref != null) {
+                ap_print_label(indent, "type");
+                ap_print_type_ref(node.type_ref as TypeRef*, indent + 2);
+            }
+            ap_print_label(indent, "value");
+            ap_print_expr(node.expr_a, pr, indent + 2);
+        }
+        ST_ASSIGN => {
+            ap_print_line(indent, "AssignStmt()" + ap_span_suffix(node.span));
+            ap_print_label(indent, "target");
+            ap_print_expr(node.expr_a, pr, indent + 2);
+            ap_print_label(indent, "value");
+            ap_print_expr(node.expr_b, pr, indent + 2);
+        }
+        ST_EXPR => {
+            ap_print_line(indent, "ExprStmt()" + ap_span_suffix(node.span));
+            ap_print_label(indent, "expr");
+            ap_print_expr(node.expr_a, pr, indent + 2);
+        }
+        ST_IF => {
+            ap_print_line(indent, "IfStmt()" + ap_span_suffix(node.span));
+            ap_print_label(indent, "cond");
+            ap_print_expr(node.expr_a, pr, indent + 2);
+            ap_print_label(indent, "then_stmt");
+            ap_print_stmt(node.stmt_a, pr, indent + 2);
+            if (node.stmt_b != invalid_stmt_id()) {
+                ap_print_label(indent, "else_stmt");
+                ap_print_stmt(node.stmt_b, pr, indent + 2);
+            }
+        }
+        ST_WHILE => {
+            ap_print_line(indent, "WhileStmt()" + ap_span_suffix(node.span));
+            ap_print_label(indent, "cond");
+            ap_print_expr(node.expr_a, pr, indent + 2);
+            ap_print_label(indent, "body");
+            ap_print_stmt(node.stmt_a, pr, indent + 2);
+        }
+        ST_FOR => {
+            ap_print_line(indent, "ForStmt()" + ap_span_suffix(node.span));
+            if (node.stmt_a != invalid_stmt_id()) {
+                ap_print_label(indent, "init");
+                ap_print_stmt(node.stmt_a, pr, indent + 2);
+            }
+            if (node.expr_a != invalid_expr_id()) {
+                ap_print_label(indent, "cond");
+                ap_print_expr(node.expr_a, pr, indent + 2);
+            }
+            if (node.stmt_b != invalid_stmt_id()) {
+                ap_print_label(indent, "update");
+                ap_print_stmt(node.stmt_b, pr, indent + 2);
+            }
+            ap_print_label(indent, "body");
+            ap_print_stmt(node.stmt_c, pr, indent + 2);
+        }
+        ST_RETURN => {
+            ap_print_line(indent, "ReturnStmt()" + ap_span_suffix(node.span));
+            if (node.expr_a != invalid_expr_id()) {
+                ap_print_label(indent, "value");
+                ap_print_expr(node.expr_a, pr, indent + 2);
+            }
+        }
+        ST_DROP => {
+            with (let sb = sb_create() => sb_free(sb)) {
+                sb_append(sb, "DropStmt(name=");
+                sb_append(sb, ap_quote_string(node.name));
+                sb_append(sb, ")");
+                sb_append(sb, ap_span_suffix(node.span));
+                ap_print_line(indent, sb_to_string(sb));
+            }
+        }
+        ST_MATCH => {
+            ap_print_line(indent, "MatchStmt()" + ap_span_suffix(node.span));
+            ap_print_label(indent, "expr");
+            ap_print_expr(node.expr_a, pr, indent + 2);
+            if (node.match_arms != null) {
+                let arms = node.match_arms as VectorBase*;
+                if (vec_size(arms) > 0) {
+                    ap_print_label(indent, "arms");
+                    for (let i = 0; i < vec_size(arms); i = i + 1) {
+                        let arm = ptr_vec_get(arms, i) as MatchArm*;
+                        ap_print_line(indent + 2, "MatchArm()" + ap_span_suffix(arm.span));
+                        ap_print_label(indent + 2, "pattern");
+                        ap_print_pattern(arm.pattern, pr, indent + 4);
+                        ap_print_label(indent + 2, "body");
+                        ap_print_stmt(arm.body, pr, indent + 4);
+                    }
+                }
+            }
+        }
+        ST_CASE => {
+            ap_print_line(indent, "CaseStmt()" + ap_span_suffix(node.span));
+            ap_print_label(indent, "expr");
+            ap_print_expr(node.expr_a, pr, indent + 2);
+            if (node.case_arms != null) {
+                let arms = node.case_arms as VectorBase*;
+                if (vec_size(arms) > 0) {
+                    ap_print_label(indent, "arms");
+                    for (let i = 0; i < vec_size(arms); i = i + 1) {
+                        let arm = ptr_vec_get(arms, i) as CaseArm*;
+                        ap_print_line(indent + 2, "CaseArm()" + ap_span_suffix(arm.span));
+                        ap_print_label(indent + 2, "literal");
+                        ap_print_expr(arm.literal, pr, indent + 4);
+                        ap_print_label(indent + 2, "body");
+                        ap_print_stmt(arm.body, pr, indent + 4);
+                    }
+                }
+            }
+            if (node.case_else != null) {
+                let ce = node.case_else as CaseElse*;
+                ap_print_label(indent, "else_arm");
+                ap_print_line(indent + 2, "CaseElse()" + ap_span_suffix(ce.span));
+                ap_print_label(indent + 2, "body");
+                ap_print_stmt(ce.body, pr, indent + 4);
+            }
+        }
+        ST_BREAK => {
+            ap_print_line(indent, "BreakStmt()" + ap_span_suffix(node.span));
+        }
+        ST_CONTINUE => {
+            ap_print_line(indent, "ContinueStmt()" + ap_span_suffix(node.span));
+        }
+        ST_WITH => {
+            ap_print_line(indent, "WithStmt()" + ap_span_suffix(node.span));
+            if (node.with_items != null) {
+                let items = node.with_items as VectorBase*;
+                if (vec_size(items) > 0) {
+                    ap_print_label(indent, "items");
+                    for (let i = 0; i < vec_size(items); i = i + 1) {
+                        let wi = ptr_vec_get(items, i) as WithItem*;
+                        with (let sb = sb_create() => sb_free(sb)) {
+                            sb_append(sb, "WithItem(has_cleanup=");
+                            sb_append(sb, ap_bool_str(wi.has_cleanup));
+                            sb_append(sb, ")");
+                            sb_append(sb, ap_span_suffix(wi.span));
+                            ap_print_line(indent + 2, sb_to_string(sb));
+                        }
+                        ap_print_label(indent + 2, "init");
+                        ap_print_stmt(wi.init, pr, indent + 4);
+                        if (wi.has_cleanup && wi.cleanup_stmt != invalid_stmt_id()) {
+                            ap_print_label(indent + 2, "cleanup");
+                            ap_print_stmt(wi.cleanup_stmt, pr, indent + 4);
+                        }
+                    }
+                }
+            }
+            ap_print_label(indent, "body");
+            ap_print_stmt(node.stmt_a, pr, indent + 2);
+            if (node.stmt_b != invalid_stmt_id()) {
+                ap_print_label(indent, "cleanup_body");
+                ap_print_stmt(node.stmt_b, pr, indent + 2);
+            }
+        }
+    }
+}
+
+/* ---------------------------------
+   Top-level declaration printers
+   --------------------------------- */
+
+/**
+ * Print a function declaration including params, return type, and body.
+ *
+ * @param fd Function declaration to print.
+ * @param pr Parse result providing statement arenas.
+ * @param indent Indent level.
+ */
+func ap_print_func_decl(fd: FuncDecl*, pr: ParseResult*, indent: int) {
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "FuncDecl(name=");
+        sb_append(sb, ap_quote_string(fd.name));
+        sb_append(sb, ", is_extern=");
+        sb_append(sb, ap_bool_str(fd.is_extern));
+        sb_append(sb, ", is_unsafe=");
+        sb_append(sb, ap_bool_str(fd.is_unsafe));
+        sb_append(sb, ")");
+        sb_append(sb, ap_span_suffix(fd.span));
+        ap_print_line(indent, sb_to_string(sb));
+    }
+    if (vec_size(fd.params) > 0) {
+        ap_print_label(indent, "params");
+        for (let i = 0; i < vec_size(fd.params); i = i + 1) {
+            let p = ptr_vec_get(fd.params, i) as Param*;
+            ap_print_param(p, indent + 2);
+        }
+    }
+    ap_print_label(indent, "return_type");
+    ap_print_type_ref(fd.return_type, indent + 2);
+    ap_print_label(indent, "body");
+    ap_print_stmt(fd.body, pr, indent + 2);
+}
+
+/**
+ * Print a struct declaration including its fields.
+ *
+ * @param sd Struct declaration to print.
+ * @param indent Indent level.
+ */
+func ap_print_struct_decl(sd: StructDecl*, indent: int) {
+    ap_print_line(indent, "StructDecl(name=" + ap_quote_string(sd.name) + ")" + ap_span_suffix(sd.span));
+    if (vec_size(sd.fields) > 0) {
+        ap_print_label(indent, "fields");
+        for (let i = 0; i < vec_size(sd.fields); i = i + 1) {
+            let fd = ptr_vec_get(sd.fields, i) as FieldDecl*;
+            ap_print_field_decl(fd, indent + 2);
+        }
+    }
+}
+
+/**
+ * Print an enum declaration including its variants.
+ *
+ * @param ed Enum declaration to print.
+ * @param indent Indent level.
+ */
+func ap_print_enum_decl(ed: EnumDecl*, indent: int) {
+    ap_print_line(indent, "EnumDecl(name=" + ap_quote_string(ed.name) + ")" + ap_span_suffix(ed.span));
+    if (vec_size(ed.variants) > 0) {
+        ap_print_label(indent, "variants");
+        for (let i = 0; i < vec_size(ed.variants); i = i + 1) {
+            let ev = ptr_vec_get(ed.variants, i) as EnumVariant*;
+            ap_print_enum_variant(ev, indent + 2);
+        }
+    }
+}
+
+/**
+ * Print a type-alias declaration.
+ *
+ * @param ta Type-alias declaration to print.
+ * @param indent Indent level.
+ */
+func ap_print_type_alias_decl(ta: TypeAliasDecl*, indent: int) {
+    ap_print_line(indent, "TypeAliasDecl(name=" + ap_quote_string(ta.name) + ")" + ap_span_suffix(ta.span));
+    ap_print_label(indent, "target");
+    ap_print_type_ref(ta.target, indent + 2);
+}
+
+/**
+ * Print a top-level `let` declaration.
+ *
+ * @param ld Let declaration to print.
+ * @param pr Parse result providing expression arenas.
+ * @param indent Indent level.
+ */
+func ap_print_let_decl(ld: LetDecl*, pr: ParseResult*, indent: int) {
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "LetDecl(name=");
+        sb_append(sb, ap_quote_string(ld.name));
+        sb_append(sb, ", is_const=");
+        sb_append(sb, ap_bool_str(ld.is_const));
+        sb_append(sb, ")");
+        sb_append(sb, ap_span_suffix(ld.span));
+        ap_print_line(indent, sb_to_string(sb));
+    }
+    if (ld.type_ref != null) {
+        ap_print_label(indent, "type");
+        ap_print_type_ref(ld.type_ref as TypeRef*, indent + 2);
+    }
+    ap_print_label(indent, "value");
+    ap_print_expr(ld.value, pr, indent + 2);
+}
+
+/**
+ * Dispatch to the correct per-kind declaration printer.
+ *
+ * @param tld Top-level declaration wrapper.
+ * @param pr Parse result providing all AST arenas.
+ * @param indent Indent level.
+ */
+func ap_print_top_level_decl(tld: TopLevelDecl*, pr: ParseResult*, indent: int) {
+    match (tld.kind) {
+        TD_FUNC => {
+            ap_print_func_decl(tld.data as FuncDecl*, pr, indent);
+        }
+        TD_STRUCT => {
+            ap_print_struct_decl(tld.data as StructDecl*, indent);
+        }
+        TD_ENUM => {
+            ap_print_enum_decl(tld.data as EnumDecl*, indent);
+        }
+        TD_TYPE_ALIAS => {
+            ap_print_type_alias_decl(tld.data as TypeAliasDecl*, indent);
+        }
+        TD_LET => {
+            ap_print_let_decl(tld.data as LetDecl*, pr, indent);
+        }
+    }
+}
+
+/* ---------------------------------
+   Module printer (public API)
+   --------------------------------- */
+
+/**
+ * Print the AST of a parsed module.
+ *
+ * Mirrors the Stage 1 `format_module()` output contract:
+ * - Module header with scalar fields and span on one line.
+ * - `imports:` label and each Import child at indent 2.
+ * - `decls:` label and each top-level declaration at indent 2.
+ * - Empty imports or decls lists are omitted (no label printed).
+ *
+ * @param mod Module to print.
+ * @param pr Parse result providing all AST arenas (expr, stmt, pattern).
+ */
+func ap_print_module(mod: Module*, pr: ParseResult*) {
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "Module(name=");
+        sb_append(sb, ap_quote_string(mod.name));
+        sb_append(sb, ", filename=");
+        sb_append(sb, ap_quote_string(mod.filename));
+        sb_append(sb, ")");
+        sb_append(sb, ap_span_suffix(mod.span));
+        ap_print_line(0, sb_to_string(sb));
+    }
+    if (mod.export_manifest != null) {
+        ap_print_label(0, "export_manifest");
+        ap_print_export_manifest(mod.export_manifest as ExportManifest*, 2);
+    }
+    if (vec_size(mod.imports) > 0) {
+        ap_print_label(0, "imports");
+        for (let i = 0; i < vec_size(mod.imports); i = i + 1) {
+            let imp = ptr_vec_get(mod.imports, i) as Import*;
+            ap_print_import(imp, 2);
+        }
+    }
+    if (vec_size(mod.decls) > 0) {
+        ap_print_label(0, "decls");
+        for (let i = 0; i < vec_size(mod.decls); i = i + 1) {
+            let decl = ptr_vec_get(mod.decls, i) as TopLevelDecl*;
+            ap_print_top_level_decl(decl, pr, 2);
+        }
+    }
+}

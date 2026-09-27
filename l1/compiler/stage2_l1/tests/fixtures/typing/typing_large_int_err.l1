@@ -1,0 +1,54 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_large_int_err;
+
+struct Packet {
+    a: uint;
+}
+
+func take_uint(x: uint) -> int {
+    return 0;
+}
+
+func return_nonliteral_uint(x: int) -> uint {
+    return x; // TYP-0315
+}
+
+func assign_nonliteral_uint(x: int) {
+    let u: uint = 0;
+    u = x; // TYP-0311
+}
+
+func call_nonliteral_uint(x: int) -> int {
+    return take_uint(x); // TYP-0312
+}
+
+func struct_nonliteral_uint(x: int) -> Packet {
+    return Packet(x); // TYP-0313
+}
+
+func untyped_bigint() {
+    let x = 2147483648; // TYP-0702
+}
+
+func untyped_negative_bigint() {
+    let y = -(2147483649); // TYP-0702
+}
+
+func bad_bigint_context() {
+    let s: string = 2147483648; // TYP-0703
+}
+
+func bad_case_bigint_context(x: string) -> int {
+    case (x) {
+        2147483648 => { // TYP-0703
+            return 1;
+        }
+        _ => {
+            return 0;
+        }
+    }
+}

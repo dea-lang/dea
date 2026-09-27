@@ -1,0 +1,63 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module byte_array_test;
+
+import std.array;
+import std.assert;
+import std.io;
+
+/**
+ * Tests the basic fixed-size byte array API.
+ */
+func test_byte_array_basic() {
+    with (let buf = ba_create(4) => ba_free(buf)) {
+        assert(ba_capacity(buf) == 4, "byte array capacity mismatch");
+
+        ba_set(buf, 0, 'O');
+        ba_set(buf, 1, 'K');
+        ba_set(buf, 2, 33 as byte);
+        assert(ba_get(buf, 0) == 'O', "first byte mismatch");
+        assert(ba_get(buf, 1) == 'K', "second byte mismatch");
+        assert(ba_get(buf, 2) == (33 as byte), "third byte mismatch");
+
+        ba_zap(buf, 2);
+        assert(ba_get(buf, 2) == (0 as byte), "zapped byte should be zero");
+    }
+}
+
+/**
+ * Tests safe std.io byte-array wrappers without emitting non-text bytes.
+ */
+func test_byte_array_stdio_helpers() {
+    with (
+        let buf = ba_create(2) => ba_free(buf),
+        let eof_buf = ba_create(1) => ba_free(eof_buf)
+    ) {
+        ba_set(buf, 0, 'O');
+        ba_set(buf, 1, 'K');
+
+        let wrote = write_stdout_some(buf, 0, 2);
+        assert(wrote != null && (wrote as int) == 2, "stdout byte-array write should transfer both bytes");
+
+        let wrote_zero = write_stderr_some(buf, 2, 0);
+        assert(wrote_zero != null && (wrote_zero as int) == 0, "zero-length stderr write should succeed");
+
+        let wrote_all_zero = write_stdout_all(buf, 2, 0);
+        assert(wrote_all_zero != null, "zero-length write_stdout_all should succeed");
+
+        let nread = read_stdin_some(eof_buf, 0, 1);
+        assert(nread != null && (nread as int) == 0, "empty stdin should report EOF");
+    }
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    test_byte_array_basic();
+    test_byte_array_stdio_helpers();
+    printl_s("\nbyte_array_test: all tests passed");
+}

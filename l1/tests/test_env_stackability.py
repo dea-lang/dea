@@ -32,7 +32,7 @@ def is_windows_host() -> bool:
 
 
 def tempdir_prefix(base: str) -> str:
-    return f"{base} " if is_windows_host() else f"{base}_"
+    return f"{base} "
 
 
 def run_checked(
@@ -183,7 +183,7 @@ done
         ],
     )
 
-    stale_root = l1_build_dir / "stale-monorepo"
+    stale_root = Path(tempfile.mkdtemp(prefix="stale-monorepo-", dir=l1_build_dir))
     stale_l0_build_dir = stale_root / "l0" / l0_build_dir.relative_to(L0_REPO_ROOT)
     stale_l1_build_dir = stale_root / "l1" / l1_build_dir.relative_to(REPO_ROOT)
     stale_l0_build_dir.mkdir(parents=True, exist_ok=True)
@@ -225,7 +225,7 @@ def main() -> int:
 
     L0_BUILD_TESTS_ROOT.mkdir(parents=True, exist_ok=True)
     L1_BUILD_TESTS_ROOT.mkdir(parents=True, exist_ok=True)
-    l0_build_dir = Path(tempfile.mkdtemp(prefix=tempdir_prefix("env_l0"), dir=L0_BUILD_TESTS_ROOT))
+    l0_build_dir = Path(tempfile.mkdtemp(prefix="env_l0_", dir=L0_BUILD_TESTS_ROOT))
     l1_build_dir = Path(tempfile.mkdtemp(prefix=tempdir_prefix("env_l1"), dir=L1_BUILD_TESTS_ROOT))
     l0_build_rel = os.path.relpath(l0_build_dir, L0_REPO_ROOT)
     l1_build_rel = os.path.relpath(l1_build_dir, REPO_ROOT)
@@ -237,6 +237,26 @@ def main() -> int:
             extra_env={"L1_BOOTSTRAP_L0C": str(l0_build_dir / "bin" / "l0c-stage2")},
         )
         source_level_envs_and_check(l0_build_dir, l1_build_dir)
+        run_checked(
+            ["make", f"L1_BUILD_DIR={l1_build_rel}", "use-dev-stage2"],
+            extra_env={"L1_BOOTSTRAP_L0C": str(l0_build_dir / "bin" / "l0c-stage2")},
+        )
+        selected = l1_build_dir / "bin" / "l1c"
+        if "(Stage 2)" not in run_checked([str(selected), "--version"]):
+            fail("use-dev-stage2 did not select Stage 2")
+        source_level_envs_and_check(l0_build_dir, l1_build_dir)
+        run_checked(
+            ["make", f"L1_BUILD_DIR={l1_build_rel}", "build-stage1"],
+            extra_env={"L1_BOOTSTRAP_L0C": str(l0_build_dir / "bin" / "l0c-stage2")},
+        )
+        if "(Stage 2)" not in run_checked([str(selected), "--version"]):
+            fail("build-stage1 changed the selected compiler")
+        run_checked(
+            [str(MONOREPO_ROOT / ".venv/bin/python"), "scripts/select_stage.py", "1"],
+            extra_env={"L1_BUILD_DIR": l1_build_rel},
+        )
+        if "(Stage 1)" not in run_checked([str(selected), "--version"]):
+            fail("could not switch back to Stage 1")
     finally:
         shutil.rmtree(l0_build_dir, ignore_errors=True)
         shutil.rmtree(l1_build_dir, ignore_errors=True)

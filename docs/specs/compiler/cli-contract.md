@@ -1,10 +1,10 @@
 # Dea Compiler CLI Contract
 
-Version: 2026-09-24
+Version: 2026-09-27
 
 This document defines the shared command-line contract for Dea compilers. It covers behavior common to the current L0
-Stage 1, L0 Stage 2, and L1 Stage 1 implementations. A level may add a documented mode or option without changing the
-meaning of the shared surface.
+Stage 1, L0 Stage 2, L1 Stage 1, and L1 Stage 2 implementations. A level may add a documented mode or option without
+changing the meaning of the shared surface.
 
 Canonical level-specific detail:
 
@@ -39,9 +39,9 @@ Canonical level-specific detail:
 | `--type`    | `--types`          | Dump resolved top-level types                                   |
 
 The dump modes are developer-facing; their text formats are not stable interfaces. All current compilers recognize
-`--compile` / `-c`. L0 Stage 1 and Stage 2 report `L0C-9510` without analysis or artifact production. L1 Stage 1
-implements the endpoint-rollback compile-only artifact set in section 7 and additionally implements `--emit-interface` /
-`-Gi`, which emits the target module's textual `.l1m` interface. L1 Stage 1 also implements the standalone `--link` /
+`--compile` / `-c`. L0 Stage 1 and Stage 2 report `L0C-9510` without analysis or artifact production. Both L1 stages
+implement the endpoint-rollback compile-only artifact set in section 7 and additionally implements `--emit-interface` /
+`-Gi`, which emits the target module's textual `.l1m` interface. Both L1 stages also implement the standalone `--link` /
 `-k` mode in section 8 and target-free `--prepare-stdlib` in section 9.
 
 ### L1 generated-C mode
@@ -191,7 +191,7 @@ controls native preparation; it does not select source providers.
 
 ## 6. Native Build/Run Temporary Workspace
 
-Each L0 Stage 2 or L1 Stage 1 `--build` or `--run` command owns one private temporary workspace for the complete native
+Each L0 Stage 2 or L1 compiler `--build` or `--run` command owns one private temporary workspace for the complete native
 operation. The command creates the workspace after CLI and source-target validation, passes it through graph analysis,
 compilation, and linking, keeps it through child execution for `--run`, and releases it from one cleanup path. L0 also
 completes entry validation before allocation; L1 validates the graph-selected target entry before final linking. It
@@ -233,7 +233,7 @@ of application compilation/link workspaces.
 
 ## 7. L1 Compile-Only Artifact Set
 
-The L1 Stage 1 compile-only form is:
+The L1 compile-only form is:
 
 ```text
 l1c -c MODULE [-I ROOT]... [-o CANONICAL_OBJECT_PATH] [-Gk]
@@ -295,7 +295,7 @@ l1c -c MODULE [-I ROOT]... [-o CANONICAL_OBJECT_PATH] [-Gk]
 
 ## 8. L1 Standalone Link Mode
 
-The implemented L1 Stage 1 form is:
+The implemented L1 form is:
 
 ```text
 l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-l LIBRARY]... [-L DIRECTORY]...

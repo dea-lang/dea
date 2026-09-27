@@ -1,0 +1,122 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module build_info;
+
+import std.text;
+
+/**
+ * Report whether this compiler binary has embedded build provenance.
+ *
+ * Source-tree and raw self-hosted builds stay on the static fallback path.
+ *
+ * @return `true` when an artifact-producing flow embedded provenance.
+ */
+func build_info_has_embedded_version() -> bool {
+    return false;
+}
+
+/**
+ * Return the recorded build identifier.
+ *
+ * @return Build identifier, or `"unknown"` for fallback builds.
+ */
+func build_info_build_id() -> string {
+    return "unknown";
+}
+
+/**
+ * Return the recorded UTC build timestamp rendered for `--version`.
+ *
+ * @return Build time text, or `"unknown"` for fallback builds.
+ */
+func build_info_build_time() -> string {
+    return "unknown";
+}
+
+/**
+ * Return the formatted commit text for `--version`.
+ *
+ * @return Full git commit hash, optionally suffixed with `+dirty`, or `"unknown"` for fallback builds.
+ */
+func build_info_commit() -> string {
+    return "unknown";
+}
+
+/**
+ * Return the recorded host platform string.
+ *
+ * @return Host platform string, or `"unknown"` for fallback builds.
+ */
+func build_info_host() -> string {
+    return "unknown";
+}
+
+/**
+ * Return the recorded compiler banner for `--version`.
+ *
+ * @return First line of `<compiler> --version`, or `"unknown"` for fallback builds.
+ */
+func build_info_compiler() -> string {
+    return "unknown";
+}
+
+/**
+ * Return the recorded release version string.
+ *
+ * @return Release version such as `"1.2.3"` or `"dev-abc1234"`, or `"unknown"` for fallback builds.
+ */
+func build_info_release_version() -> string {
+    return "unknown";
+}
+
+/**
+ * Return the compiler identity with version suffix when provenance is embedded.
+ *
+ * @param identity Stable Stage 1 compiler identity line.
+ * @return Identity with version (e.g., `"Dea language / L1 compiler (Stage 1) 1.2.3"`) when available,
+ *         or plain identity for fallback builds.
+ */
+func build_info_identity_with_version(identity: string) -> string {
+    if (!build_info_has_embedded_version()) {
+        return identity;
+    }
+
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, identity);
+        sb_append(sb, " ");
+        sb_append(sb, build_info_release_version());
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Build the multiline Stage 1 `--version` report when provenance is embedded.
+ *
+ * @param identity Stable Stage 1 compiler identity line.
+ * @return Multiline report text, or `null` when this binary uses fallback metadata.
+ */
+func build_info_version_text(identity: string) -> string? {
+    if (!build_info_has_embedded_version()) {
+        return null;
+    }
+
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, identity);
+        sb_append(sb, " ");
+        sb_append(sb, build_info_release_version());
+        sb_append(sb, "\nbuild: ");
+        sb_append(sb, build_info_build_id());
+        sb_append(sb, "\nbuild time: ");
+        sb_append(sb, build_info_build_time());
+        sb_append(sb, "\ncommit: ");
+        sb_append(sb, build_info_commit());
+        sb_append(sb, "\nhost: ");
+        sb_append(sb, build_info_host());
+        sb_append(sb, "\ncompiler: ");
+        sb_append(sb, build_info_compiler());
+        return sb_to_string(sb);
+    }
+}

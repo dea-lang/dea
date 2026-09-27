@@ -1,0 +1,1256 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module expr_types.stmt;
+
+import std.hashset;
+import std.vector;
+import util.intset;
+import util.numbers;
+import ast;
+import driver.state;
+import locals;
+import name_resolver.state;
+import signatures.tables;
+import symbols;
+import type_resolve.const_value;
+import type_resolve.ref;
+import types;
+import expr_types.convert;
+import expr_types.expr;
+import expr_types.liveness;
+import expr_types.lookup;
+import expr_types.patterns;
+import expr_types.state;
+
+/**
+ * Check a `for` update from all reachable body backedges.
+ *
+ * Consumes `states` and returns a new vector of post-update backedge states.
+ */
+func etc_check_update_from_backedge_states(self: ExpressionTypeChecker*, update: StmtId,
+    states: VectorBase*) -> VectorBase* {
+    if (update < 0) {
+        return states;
+    }
+    if (vec_size(states) == 0) {
+        let saved_alive_update: VectorBase*? = null;
+        if (self.alive_scopes != null) {
+            saved_alive_update = etc_alive_scope_stack_clone(self.alive_scopes as VectorBase*);
+        }
+        let saved_unreachable_update = self.next_stmt_unreachable;
+        self.next_stmt_unreachable = false;
+        let ignored_update_flow = etc_check_stmt(self, update);
+        if (saved_alive_update != null) {
+            etc_alive_scope_stack_restore(self, saved_alive_update as VectorBase*);
+            etc_alive_scope_stack_free(saved_alive_update);
+        }
+        self.next_stmt_unreachable = saved_unreachable_update;
+        return states;
+    }
+
+    let merged = etc_alive_scope_stack_meet_many(ptr_vec_get(states, 0) as VectorBase*, states);
+    etc_alive_scope_stack_restore(self, merged);
+    etc_alive_scope_stack_free(merged);
+    let update_flow = etc_check_stmt(self, update);
+    etc_alive_state_vec_free(states);
+
+    let result = ptr_vec_create(1);
+    if (ord(update_flow) == ord(FLOW_FALLTHROUGH) && self.alive_scopes != null) {
+        etc_alive_state_vec_push_clone(result, self.alive_scopes as VectorBase*);
+    }
+    return result;
+}
+
+/**
+ * Check one loop iteration and collect reachable backedge/exit states.
+ */
+func etc_check_loop_iteration(self: ExpressionTypeChecker*, body: StmtId,
+    update: StmtId) -> LoopIterationFlow* {
+    let capture = new LoopFlowCapture(self.loop_flow_capture_stack, ptr_vec_create(2), ptr_vec_create(2));
+    self.loop_flow_capture_stack = capture;
+    self.loop_depth = self.loop_depth + 1;
+    let body_flow = etc_check_stmt(self, body);
+    self.loop_depth = self.loop_depth - 1;
+    self.loop_flow_capture_stack = capture.parent;
+
+    let backedge_states = etc_alive_state_vec_clone(capture.continue_states);
+    if (ord(body_flow) == ord(FLOW_FALLTHROUGH) && self.alive_scopes != null) {
+        etc_alive_state_vec_push_clone(backedge_states, self.alive_scopes as VectorBase*);
+    }
+    backedge_states = etc_check_update_from_backedge_states(self, update, backedge_states);
+    return new LoopIterationFlow(capture, backedge_states, body_flow);
+}
+
+/**
+ * Converge one loop's head state, then diagnose uses under the settled state.
+ *
+ * `body` is checked in the inner loop context. `update` is checked after that
+ * context is removed so header loop control continues to target an outer loop.
+ */
+func etc_loop_liveness_fixed_point(self: ExpressionTypeChecker*, pre_loop: VectorBase*,
+    cond: ExprId, body: StmtId, update: StmtId) -> LoopFixedPointFlow* {
+    let head = etc_alive_scope_stack_clone(self.alive_scopes as VectorBase*);
+    let converged = false;
+    let saved_unreachable = self.next_stmt_unreachable;
+    while (!converged) {
+        etc_alive_scope_stack_restore(self, head);
+        let old_suppress = self.suppress_diagnostics;
+        let old_liveness_only = self.liveness_diagnostics_only;
+        self.suppress_diagnostics = true;
+        self.liveness_diagnostics_only = true;
+        let iteration = etc_check_loop_iteration(self, body, update);
+        self.liveness_diagnostics_only = old_liveness_only;
+        self.suppress_diagnostics = old_suppress;
+        self.next_stmt_unreachable = saved_unreachable;
+
+        let next_head = etc_alive_scope_stack_meet_many(pre_loop, iteration.backedge_states);
+        converged = etc_alive_scope_stack_equal(head, next_head);
+        etc_loop_flow_capture_free(iteration.capture);
+        etc_alive_state_vec_free(iteration.backedge_states);
+        drop iteration;
+        etc_alive_scope_stack_free(head);
+        head = next_head;
+    }
+
+    etc_alive_scope_stack_restore(self, head);
+    let old_liveness_only = self.liveness_diagnostics_only;
+    self.liveness_diagnostics_only = true;
+    if (cond >= 0) {
+        let cond_ty = etc_infer_expr(self, cond);
+        if (cond_ty != null) {
+            type_free(cond_ty as Type*);
+        }
+    }
+    with (let final_iteration = etc_check_loop_iteration(self, body, update)) {
+        self.liveness_diagnostics_only = old_liveness_only;
+        self.next_stmt_unreachable = saved_unreachable;
+        etc_alive_scope_stack_restore(self, head);
+        return new LoopFixedPointFlow(head, final_iteration.capture, final_iteration.backedge_states);
+    } cleanup {
+        drop final_iteration;
+    }
+}
+
+/**
+ * Return the referenced `const` binding name for an assignment target, if any.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Assignment target expression id.
+ * @return Binding name when `expr_id` targets a top-level `const`, otherwise `null`.
+ */
+func etc_assignment_const_target_name(self: ExpressionTypeChecker*, expr_id: ExprId) -> string? {
+    if (expr_id < 0 || self.current_unit == null) {
+        return null;
+    }
+    let expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr_id);
+    if (ord(expr.kind) == ord(EX_PAREN)) {
+        return etc_assignment_const_target_name(self, expr.expr_a);
+    }
+    if (ord(expr.kind) == ord(EX_FIELD)) {
+        let base_ty = etc_infer_expr(self, expr.expr_a);
+        if (base_ty == null) {
+            return null;
+        }
+        let ty = base_ty as Type*;
+        let is_ptr_base = ord(ty.kind) == ord(TY_POINTER) ||
+            (ord(ty.kind) == ord(TY_NULLABLE) && ty.inner != null && ord((ty.inner as Type*).kind) == ord(TY_POINTER));
+        type_free(ty);
+        if (is_ptr_base) {
+            return null;
+        }
+        return etc_assignment_const_target_name(self, expr.expr_a);
+    }
+    if (ord(expr.kind) != ord(EX_VAR_REF)) {
+        return null;
+    }
+
+    let local_ty = etc_lookup_local(self, expr.text_value);
+    if (local_ty != null) {
+        type_free(local_ty as Type*);
+        return null;
+    }
+
+    let sym = etc_lookup_symbol(self, expr.text_value, expr.module_path, expr.name_qualifier);
+    if (sym == null || ord((sym as Symbol*).kind) != ord(SYM_LET) || !(sym as Symbol*).is_const) {
+        return null;
+    }
+
+    return (sym as Symbol*).name;
+}
+
+/**
+ * Evaluate a condition expression to a compile-time boolean for flow only.
+ *
+ * This helper follows source short-circuit reachability. A local reference only
+ * makes the condition dynamic when that reference is on an evaluated path.
+ *
+ * @param self Expression checker state.
+ * @param ctx Const-evaluation context.
+ * @param expr_id Condition expression.
+ * @return Known true, known false, or unknown.
+ */
+func etc_const_bool_flow_eval(self: ExpressionTypeChecker*, ctx: ConstEvalContext*, expr_id: ExprId) -> ConstBoolFlowKind {
+    if (expr_id < 0 || self.current_unit == null || self.current_env == null) {
+        return CONST_BOOL_UNKNOWN;
+    }
+    let expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr_id);
+    match (expr.kind) {
+        EX_PAREN => {
+            return etc_const_bool_flow_eval(self, ctx, expr.expr_a);
+        }
+        EX_BOOL => {
+            if (expr.bool_value) return CONST_BOOL_TRUE;
+            return CONST_BOOL_FALSE;
+        }
+        EX_UNARY => {
+            if (expr.text_value != "!") {
+                return CONST_BOOL_UNKNOWN;
+            }
+            let inner = etc_const_bool_flow_eval(self, ctx, expr.expr_a);
+            if (ord(inner) == ord(CONST_BOOL_TRUE)) return CONST_BOOL_FALSE;
+            if (ord(inner) == ord(CONST_BOOL_FALSE)) return CONST_BOOL_TRUE;
+            return CONST_BOOL_UNKNOWN;
+        }
+        EX_BINARY => {
+            if (expr.text_value == "&&") {
+                let left = etc_const_bool_flow_eval(self, ctx, expr.expr_a);
+                if (ord(left) == ord(CONST_BOOL_FALSE)) return CONST_BOOL_FALSE;
+                if (ord(left) == ord(CONST_BOOL_TRUE)) {
+                    return etc_const_bool_flow_eval(self, ctx, expr.expr_b);
+                }
+                return CONST_BOOL_UNKNOWN;
+            }
+            if (expr.text_value == "||") {
+                let left2 = etc_const_bool_flow_eval(self, ctx, expr.expr_a);
+                if (ord(left2) == ord(CONST_BOOL_TRUE)) return CONST_BOOL_TRUE;
+                if (ord(left2) == ord(CONST_BOOL_FALSE)) {
+                    return etc_const_bool_flow_eval(self, ctx, expr.expr_b);
+                }
+                return CONST_BOOL_UNKNOWN;
+            }
+            return CONST_BOOL_UNKNOWN;
+        }
+        EX_VAR_REF => {
+            if (etc_expr_is_unqualified_local_ref(self, expr)) {
+                return CONST_BOOL_UNKNOWN;
+            }
+        }
+        _ => {
+            return CONST_BOOL_UNKNOWN;
+        }
+    }
+
+    let value: ConstValue*? = null;
+    value = tr_const_eval_expr(ctx, self.current_env as ModuleEnv*, expr_id);
+    if (value == null) {
+        return CONST_BOOL_UNKNOWN;
+    }
+
+    let known = value as ConstValue*;
+    let result = CONST_BOOL_UNKNOWN;
+    if (ord(known.kind) == ord(CV_BOOL)) {
+        if (known.bool_value) {
+            result = CONST_BOOL_TRUE;
+        } else {
+            result = CONST_BOOL_FALSE;
+        }
+    }
+    tr_const_value_free(known);
+    return result;
+}
+
+/**
+ * Evaluate a condition to a compile-time boolean for flow only.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Condition expression.
+ * @return Known true, known false, or unknown.
+ */
+func etc_const_bool_flow(self: ExpressionTypeChecker*, expr_id: ExprId) -> ConstBoolFlowKind {
+    if (expr_id < 0 || self.current_unit == null || self.current_env == null) {
+        return CONST_BOOL_UNKNOWN;
+    }
+
+    with (let ctx = tr_const_eval_context_create(self.result.driver_state,
+          self.result.signatures as SignatureTables*, self.result.names as NameResolution*, self.result.diags) =>
+          tr_const_eval_context_free(ctx)) {
+        return etc_const_bool_flow_eval(self, ctx, expr_id);
+    }
+}
+
+/**
+ * Type-check a dead compile-time branch while suppressing only liveness errors.
+ *
+ * @param self Expression checker state.
+ * @param stmt_id Statement to check.
+ * @return Statement flow reported by the checked statement.
+ */
+func etc_check_dead_const_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKind {
+    let saved_suppress_liveness = self.suppress_liveness_diagnostics;
+    let saved_capture = self.loop_flow_capture_stack;
+    self.suppress_liveness_diagnostics = true;
+    self.loop_flow_capture_stack = null;
+    let flow = etc_check_stmt(self, stmt_id);
+    self.loop_flow_capture_stack = saved_capture;
+    self.suppress_liveness_diagnostics = saved_suppress_liveness;
+    return flow;
+}
+
+/**
+ * Type-check a loop body known not to execute, then restore incoming liveness.
+ *
+ * @param self Expression checker state.
+ * @param body Loop body statement id.
+ * @param update Optional `for` update statement id.
+ */
+func etc_check_dead_const_loop_parts(self: ExpressionTypeChecker*, body: StmtId, update: StmtId) {
+    let saved_alive: VectorBase*? = null;
+    if (self.alive_scopes != null) {
+        saved_alive = etc_alive_scope_stack_clone(self.alive_scopes as VectorBase*);
+    }
+    let saved_unreachable = self.next_stmt_unreachable;
+    let saved_capture = self.loop_flow_capture_stack;
+    let saved_suppress_liveness = self.suppress_liveness_diagnostics;
+
+    self.suppress_liveness_diagnostics = true;
+    self.loop_flow_capture_stack = null;
+    self.next_stmt_unreachable = false;
+    self.loop_depth = self.loop_depth + 1;
+    let ignored_body_flow = etc_check_stmt(self, body);
+    self.loop_depth = self.loop_depth - 1;
+    if (update >= 0) {
+        self.next_stmt_unreachable = false;
+        let ignored_update_flow = etc_check_stmt(self, update);
+    }
+
+    if (saved_alive != null) {
+        etc_alive_scope_stack_restore(self, saved_alive as VectorBase*);
+        etc_alive_scope_stack_free(saved_alive);
+    }
+    self.loop_flow_capture_stack = saved_capture;
+    self.suppress_liveness_diagnostics = saved_suppress_liveness;
+    self.next_stmt_unreachable = saved_unreachable;
+}
+
+/**
+ * Type-check a statement and its nested statements.
+ *
+ * @param self Expression checker state.
+ * @param stmt_id Statement id to check.
+ * @return Whether the statement definitely returns.
+ */
+func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKind {
+    if (stmt_id < 0) {
+        return FLOW_FALLTHROUGH;
+    }
+    let unit = self.current_unit as DriverUnit*;
+    let stmt = stmt_arena_get(unit.parse_result.stmt_arena, stmt_id);
+    let flow = FLOW_FALLTHROUGH;
+
+    let old_scope = self.current_scope;
+    let pushed_scope_count = 0;
+    if (self.current_func != null) {
+        let scope = lc_func_env_get_block_scope(self.current_func as FunctionEnv*, stmt_id);
+        if (scope != null) {
+            pushed_scope_count = etc_scope_chain_push(self, scope as Scope*);
+            self.current_scope = scope;
+        }
+    }
+
+    match (stmt.kind) {
+        ST_BLOCK => {
+            let unreachable_warning_issued = false;
+            if (stmt.ids != null) {
+                let ids = stmt.ids as VectorBase*;
+                for (let i = 0; i < vec_size(ids); i = i + 1) {
+                    let nested_stmt = stmt_arena_get(unit.parse_result.stmt_arena, id_vec_get(ids, i));
+                    let unreachable_before_stmt =
+                        ord(flow) == ord(FLOW_RETURNS) ||
+                        ord(flow) == ord(FLOW_STOPS) ||
+                        self.next_stmt_unreachable;
+                    let saved_alive_for_unreachable: VectorBase*? = null;
+                    let saved_capture = self.loop_flow_capture_stack;
+                    if (unreachable_before_stmt && self.alive_scopes != null) {
+                        saved_alive_for_unreachable = etc_alive_scope_stack_clone(self.alive_scopes as VectorBase*);
+                        self.loop_flow_capture_stack = null;
+                    }
+                    if (ord(flow) == ord(FLOW_RETURNS) && !unreachable_warning_issued) {
+                        etc_diag_warn(self, "TYP-0031", "unreachable code after 'return'", unit.path, nested_stmt.span);
+                        unreachable_warning_issued = true;
+                    } else if (self.next_stmt_unreachable && !unreachable_warning_issued) {
+                        etc_diag_warn(self, "TYP-0030", "unreachable code", unit.path, nested_stmt.span);
+                        unreachable_warning_issued = true;
+                    }
+                    let stmt_flow = etc_check_stmt(self, id_vec_get(ids, i));
+                    if (unreachable_before_stmt) {
+                        if (saved_alive_for_unreachable != null) {
+                            etc_alive_scope_stack_restore(self, saved_alive_for_unreachable as VectorBase*);
+                            etc_alive_scope_stack_free(saved_alive_for_unreachable);
+                        }
+                        self.loop_flow_capture_stack = saved_capture;
+                    } else if (ord(stmt_flow) == ord(FLOW_RETURNS)) {
+                        flow = FLOW_RETURNS;
+                        self.next_stmt_unreachable = true;
+                    } else if (ord(stmt_flow) == ord(FLOW_STOPS)) {
+                        flow = FLOW_STOPS;
+                        self.next_stmt_unreachable = true;
+                    }
+                }
+            }
+            self.next_stmt_unreachable = false;
+        }
+        ST_LET => {
+            let declare_local = false;
+            if (stmt.type_ref != null) {
+                with (let seen = ss_create() => ss_free(seen)) {
+                    let ann_ty = tr_resolve_type_ref(self.result.signatures as SignatureTables*,
+                        self.result.names as NameResolution*, self.result.driver_state, self.current_env as ModuleEnv*,
+                        stmt.type_ref as TypeRef*, self.result.diags, seen);
+                    if (ann_ty != null) {
+                        let layout_visible = etc_check_imported_opaque_layout_type(
+                            self, ann_ty as Type*, unit.path, (stmt.type_ref as TypeRef*).span);
+                        if (type_is_builtin(ann_ty as Type*, "void")) {
+                            etc_diag_error(self, "TYP-0050", "variable cannot have type 'void'", unit.path, stmt.span);
+                        } else {
+                            if (layout_visible && etc_check_initializer_expr(
+                                self, ann_ty as Type*, stmt.expr_a, stmt.name, unit.path, stmt.span)) {
+                                declare_local = true;
+                            }
+                        }
+                        type_free(ann_ty as Type*);
+                    } else {
+                        etc_diag_type_ref_failure(self, stmt.type_ref as TypeRef*, "TYP-0279",
+                            (stmt.type_ref as TypeRef*).span);
+                        etc_diag_error(self, "TYP-0040",
+                            "cannot resolve type annotation for variable '" + stmt.name + "'",
+                            unit.path, (stmt.type_ref as TypeRef*).span);
+                    }
+                }
+            } else {
+                let val_ty2 = etc_infer_expr(self, stmt.expr_a);
+                if (val_ty2 != null) {
+                    let expr_ty = val_ty2 as Type*;
+                    if (ord(expr_ty.kind) == ord(TY_NULL)) {
+                        etc_diag_error(self, "TYP-0052", "cannot infer type from 'null'; explicit type required",
+                            unit.path, stmt.span);
+                    } else if (etc_is_bigint_literal_type(expr_ty)) {
+                        etc_diag_bigint_requires_context(self, stmt.expr_a, unit.path);
+                    } else if (type_is_builtin(expr_ty, "void")) {
+                        let init_expr = expr_arena_get(unit.parse_result.expr_arena, stmt.expr_a);
+                        etc_diag_error(self, "TYP-0053", "initializer is 'void', cannot assign to variable",
+                            unit.path, init_expr.span);
+                    } else {
+                        declare_local = true;
+                    }
+                    type_free(expr_ty);
+                } else {
+                    etc_diag_error(self, "TYP-0051", "initializer for '" + stmt.name + "' type mismatch",
+                        unit.path, stmt.span);
+                }
+            }
+            etc_check_local_declaration(self, stmt.name, stmt.span);
+            if (declare_local) {
+                etc_alive_declare(self, stmt.name);
+            }
+        }
+        ST_ASSIGN => {
+            let target_name: string? = null;
+            let prior_alive: int? = null;
+            let target_expr = expr_arena_get(unit.parse_result.expr_arena, stmt.expr_a);
+            if (ord(target_expr.kind) == ord(EX_VAR_REF)) {
+                let local_ty = etc_lookup_local(self, target_expr.text_value);
+                if (local_ty != null) {
+                    target_name = target_expr.text_value;
+                    prior_alive = etc_alive_lookup(self, target_expr.text_value);
+                    type_free(local_ty as Type*);
+                }
+            }
+            etc_alive_revive_assignment_target(self, stmt.expr_a);
+            let const_target_name_opt = etc_assignment_const_target_name(self, stmt.expr_a);
+            let left_ty = etc_infer_expr(self, stmt.expr_a);
+            if (target_name != null && prior_alive != null) {
+                etc_alive_set(self, target_name as string, (prior_alive as int) != 0);
+            }
+            if (const_target_name_opt != null) {
+                let const_target_name = const_target_name_opt as string;
+                const_target_name_opt = null;
+                etc_diag_error(self, "TYP-0360",
+                    "cannot assign to const '" + const_target_name + "'", unit.path, stmt.span);
+            } else if (left_ty != null) {
+                let assign_result = etc_check_expr_against_expected(self, left_ty as Type*, stmt.expr_b,
+                    unit.path, stmt.span);
+                if (ord(assign_result) == ord(ASSIGN_REJECT)) {
+                    etc_diag_error(self, "TYP-0311", "assignment type mismatch", unit.path, stmt.span);
+                } else if (target_name != null) {
+                    etc_alive_set(self, target_name as string, true);
+                }
+            }
+            if (left_ty != null) type_free(left_ty as Type*);
+        }
+        ST_IF => {
+            let cond_ty = etc_infer_expr(self, stmt.expr_a);
+            if (cond_ty != null) {
+                if (!etc_is_bool(cond_ty as Type*)) {
+                    etc_diag_error(self, "TYP-0070", "if condition must be bool", unit.path, stmt.span);
+                }
+                type_free(cond_ty as Type*);
+            }
+            let known_cond = etc_const_bool_flow(self, stmt.expr_a);
+            let pre_alive: VectorBase*? = null;
+            let then_alive: VectorBase*? = null;
+            let else_alive: VectorBase*? = null;
+            let pre_unreachable = self.next_stmt_unreachable;
+            if (self.alive_scopes != null) {
+                pre_alive = etc_alive_scope_stack_clone(self.alive_scopes as VectorBase*);
+            }
+            self.next_stmt_unreachable = false;
+            let then_flow = FLOW_FALLTHROUGH;
+            if (ord(known_cond) == ord(CONST_BOOL_FALSE)) {
+                then_flow = etc_check_dead_const_stmt(self, stmt.stmt_a);
+            } else {
+                then_flow = etc_check_stmt(self, stmt.stmt_a);
+            }
+            let then_unreachable = self.next_stmt_unreachable;
+            if (self.alive_scopes != null) {
+                then_alive = etc_alive_scope_stack_clone(self.alive_scopes as VectorBase*);
+            }
+            if (pre_alive != null) {
+                etc_alive_scope_stack_restore(self, pre_alive as VectorBase*);
+            }
+            self.next_stmt_unreachable = false;
+            let else_flow = FLOW_FALLTHROUGH;
+            if (stmt.stmt_b >= 0) {
+                if (ord(known_cond) == ord(CONST_BOOL_TRUE)) {
+                    else_flow = etc_check_dead_const_stmt(self, stmt.stmt_b);
+                } else {
+                    else_flow = etc_check_stmt(self, stmt.stmt_b);
+                }
+            }
+            let else_unreachable = self.next_stmt_unreachable;
+            if (self.alive_scopes != null) {
+                else_alive = etc_alive_scope_stack_clone(self.alive_scopes as VectorBase*);
+            }
+            if (pre_alive != null && then_alive != null) {
+                let fallthrough_states = ptr_vec_create(2);
+                if (ord(known_cond) == ord(CONST_BOOL_TRUE)) {
+                    if (ord(then_flow) == ord(FLOW_FALLTHROUGH)) {
+                        etc_alive_state_vec_push_clone(fallthrough_states, then_alive as VectorBase*);
+                    }
+                } else if (ord(known_cond) == ord(CONST_BOOL_FALSE)) {
+                    if (stmt.stmt_b >= 0) {
+                        if (else_alive != null && ord(else_flow) == ord(FLOW_FALLTHROUGH)) {
+                            etc_alive_state_vec_push_clone(fallthrough_states, else_alive as VectorBase*);
+                        }
+                    } else {
+                        etc_alive_state_vec_push_clone(fallthrough_states, pre_alive as VectorBase*);
+                    }
+                } else {
+                    if (ord(then_flow) == ord(FLOW_FALLTHROUGH)) {
+                        etc_alive_state_vec_push_clone(fallthrough_states, then_alive as VectorBase*);
+                    }
+                    if (stmt.stmt_b >= 0) {
+                        if (else_alive != null && ord(else_flow) == ord(FLOW_FALLTHROUGH)) {
+                            etc_alive_state_vec_push_clone(fallthrough_states, else_alive as VectorBase*);
+                        }
+                    } else {
+                        etc_alive_state_vec_push_clone(fallthrough_states, pre_alive as VectorBase*);
+                    }
+                }
+                if (vec_size(fallthrough_states) > 0) {
+                    let merged = etc_alive_scope_stack_meet_many(
+                        ptr_vec_get(fallthrough_states, 0) as VectorBase*, fallthrough_states);
+                    etc_alive_scope_stack_free(self.alive_scopes);
+                    self.alive_scopes = merged;
+                    flow = FLOW_FALLTHROUGH;
+                } else if (ord(known_cond) == ord(CONST_BOOL_TRUE)) {
+                    etc_alive_scope_stack_restore(self, pre_alive as VectorBase*);
+                    if (ord(then_flow) == ord(FLOW_RETURNS)) {
+                        flow = FLOW_RETURNS;
+                    } else {
+                        flow = FLOW_STOPS;
+                    }
+                } else if (ord(known_cond) == ord(CONST_BOOL_FALSE)) {
+                    etc_alive_scope_stack_restore(self, pre_alive as VectorBase*);
+                    if (stmt.stmt_b >= 0 && ord(else_flow) == ord(FLOW_RETURNS)) {
+                        flow = FLOW_RETURNS;
+                    } else if (stmt.stmt_b >= 0 && ord(else_flow) == ord(FLOW_STOPS)) {
+                        flow = FLOW_STOPS;
+                    } else {
+                        flow = FLOW_FALLTHROUGH;
+                    }
+                } else if (stmt.stmt_b >= 0 &&
+                    ord(then_flow) == ord(FLOW_RETURNS) &&
+                    ord(else_flow) == ord(FLOW_RETURNS)) {
+                    etc_alive_scope_stack_restore(self, pre_alive as VectorBase*);
+                    flow = FLOW_RETURNS;
+                } else {
+                    etc_alive_scope_stack_restore(self, pre_alive as VectorBase*);
+                    flow = FLOW_STOPS;
+                }
+                etc_alive_state_vec_free(fallthrough_states);
+            }
+            etc_alive_scope_stack_free(pre_alive);
+            etc_alive_scope_stack_free(then_alive);
+            etc_alive_scope_stack_free(else_alive);
+            if (pre_unreachable) {
+                self.next_stmt_unreachable = true;
+            } else if (ord(known_cond) == ord(CONST_BOOL_TRUE)) {
+                self.next_stmt_unreachable = then_unreachable;
+            } else if (ord(known_cond) == ord(CONST_BOOL_FALSE)) {
+                if (stmt.stmt_b >= 0) {
+                    self.next_stmt_unreachable = else_unreachable;
+                } else {
+                    self.next_stmt_unreachable = false;
+                }
+            } else if (stmt.stmt_b >= 0) {
+                self.next_stmt_unreachable = then_unreachable && else_unreachable;
+            } else {
+                self.next_stmt_unreachable = false;
+            }
+        }
+        ST_WHILE => {
+            let cond_ty2 = etc_infer_expr(self, stmt.expr_a);
+            if (cond_ty2 != null) {
+                if (!etc_is_bool(cond_ty2 as Type*)) {
+                    etc_diag_error(self, "TYP-0080", "while condition must be bool", unit.path, stmt.span);
+                }
+                type_free(cond_ty2 as Type*);
+            }
+            let known_while_cond = etc_const_bool_flow(self, stmt.expr_a);
+            let pre_alive_loop: VectorBase*? = null;
+            if (self.alive_scopes != null) {
+                pre_alive_loop = etc_alive_scope_stack_clone(self.alive_scopes as VectorBase*);
+            }
+            if (pre_alive_loop != null) {
+                if (ord(known_while_cond) == ord(CONST_BOOL_FALSE)) {
+                    etc_check_dead_const_loop_parts(self, stmt.stmt_a, -1);
+                    etc_alive_scope_stack_restore(self, pre_alive_loop as VectorBase*);
+                } else {
+                    let iteration = etc_check_loop_iteration(self, stmt.stmt_a, -1);
+                    let next_head = etc_alive_scope_stack_meet_many(pre_alive_loop as VectorBase*, iteration.backedge_states);
+                    if (!etc_alive_scope_stack_equal(pre_alive_loop as VectorBase*, next_head)) {
+                        etc_loop_flow_capture_free(iteration.capture);
+                        etc_alive_state_vec_free(iteration.backedge_states);
+                        drop iteration;
+                        let fixed = etc_loop_liveness_fixed_point(self, pre_alive_loop as VectorBase*,
+                            stmt.expr_a, stmt.stmt_a, -1);
+                        iteration = new LoopIterationFlow(fixed.capture, fixed.backedge_states, FLOW_FALLTHROUGH);
+                        etc_alive_scope_stack_free(next_head);
+                        next_head = fixed.head;
+                        drop fixed;
+                    }
+                    let include_zero_iteration = true;
+                    if (ord(known_while_cond) == ord(CONST_BOOL_TRUE) &&
+                        vec_size(iteration.capture.break_states) > 0) {
+                        include_zero_iteration = false;
+                    }
+                    let after_states = ptr_vec_create(1 + vec_size(iteration.capture.break_states) +
+                        vec_size(iteration.backedge_states));
+                    if (include_zero_iteration) {
+                        etc_alive_state_vec_push_clone(after_states, pre_alive_loop as VectorBase*);
+                    }
+                    for (let bi = 0; bi < vec_size(iteration.capture.break_states); bi = bi + 1) {
+                        etc_alive_state_vec_push_clone(after_states,
+                            ptr_vec_get(iteration.capture.break_states, bi) as VectorBase*);
+                    }
+                    for (let ci = 0; ci < vec_size(iteration.backedge_states); ci = ci + 1) {
+                        etc_alive_state_vec_push_clone(after_states,
+                            ptr_vec_get(iteration.backedge_states, ci) as VectorBase*);
+                    }
+                    let after_loop = etc_alive_scope_stack_meet_many(ptr_vec_get(after_states, 0) as VectorBase*, after_states);
+                    etc_alive_scope_stack_free(self.alive_scopes);
+                    self.alive_scopes = after_loop;
+                    etc_alive_state_vec_free(after_states);
+                    etc_alive_scope_stack_free(next_head);
+                    etc_loop_flow_capture_free(iteration.capture);
+                    etc_alive_state_vec_free(iteration.backedge_states);
+                    drop iteration;
+                }
+            }
+            etc_alive_scope_stack_free(pre_alive_loop);
+        }
+        ST_FOR => {
+            let init_flow = etc_check_stmt(self, stmt.stmt_a);
+            let cond_ty3 = etc_infer_expr(self, stmt.expr_a);
+            if (cond_ty3 != null) {
+                if (!etc_is_bool(cond_ty3 as Type*)) {
+                    etc_diag_error(self, "TYP-0090", "for condition must be bool", unit.path, stmt.span);
+                }
+                type_free(cond_ty3 as Type*);
+            }
+            let known_for_cond = etc_const_bool_flow(self, stmt.expr_a);
+            let pre_alive_for: VectorBase*? = null;
+            if (self.alive_scopes != null) {
+                pre_alive_for = etc_alive_scope_stack_clone(self.alive_scopes as VectorBase*);
+            }
+            if (pre_alive_for != null) {
+                if (ord(init_flow) == ord(FLOW_FALLTHROUGH)) {
+                    if (ord(known_for_cond) == ord(CONST_BOOL_FALSE)) {
+                        etc_check_dead_const_loop_parts(self, stmt.stmt_c, stmt.stmt_b);
+                        etc_alive_scope_stack_restore(self, pre_alive_for as VectorBase*);
+                    } else {
+                        let iteration2 = etc_check_loop_iteration(self, stmt.stmt_c, stmt.stmt_b);
+                        let next_head2 = etc_alive_scope_stack_meet_many(pre_alive_for as VectorBase*, iteration2.backedge_states);
+                        if (!etc_alive_scope_stack_equal(pre_alive_for as VectorBase*, next_head2)) {
+                            etc_loop_flow_capture_free(iteration2.capture);
+                            etc_alive_state_vec_free(iteration2.backedge_states);
+                            drop iteration2;
+                            let fixed2 = etc_loop_liveness_fixed_point(self, pre_alive_for as VectorBase*,
+                                stmt.expr_a, stmt.stmt_c, stmt.stmt_b);
+                            iteration2 = new LoopIterationFlow(fixed2.capture, fixed2.backedge_states, FLOW_FALLTHROUGH);
+                            etc_alive_scope_stack_free(next_head2);
+                            next_head2 = fixed2.head;
+                            drop fixed2;
+                        }
+                        let include_zero_iteration2 = true;
+                        if (ord(known_for_cond) == ord(CONST_BOOL_TRUE) &&
+                            vec_size(iteration2.capture.break_states) > 0) {
+                            include_zero_iteration2 = false;
+                        }
+                        let after_states2 = ptr_vec_create(1 + vec_size(iteration2.capture.break_states) +
+                            vec_size(iteration2.backedge_states));
+                        if (include_zero_iteration2) {
+                            etc_alive_state_vec_push_clone(after_states2, pre_alive_for as VectorBase*);
+                        }
+                        for (let bj = 0; bj < vec_size(iteration2.capture.break_states); bj = bj + 1) {
+                            etc_alive_state_vec_push_clone(after_states2,
+                                ptr_vec_get(iteration2.capture.break_states, bj) as VectorBase*);
+                        }
+                        for (let cj = 0; cj < vec_size(iteration2.backedge_states); cj = cj + 1) {
+                            etc_alive_state_vec_push_clone(after_states2,
+                                ptr_vec_get(iteration2.backedge_states, cj) as VectorBase*);
+                        }
+                        let after_for = etc_alive_scope_stack_meet_many(ptr_vec_get(after_states2, 0) as VectorBase*, after_states2);
+                        etc_alive_scope_stack_free(self.alive_scopes);
+                        self.alive_scopes = after_for;
+                        etc_alive_state_vec_free(after_states2);
+                        etc_alive_scope_stack_free(next_head2);
+                        etc_loop_flow_capture_free(iteration2.capture);
+                        etc_alive_state_vec_free(iteration2.backedge_states);
+                        drop iteration2;
+                    }
+                } else {
+                    let saved_unreachable_for = self.next_stmt_unreachable;
+                    let saved_capture_for = self.loop_flow_capture_stack;
+                    self.loop_flow_capture_stack = null;
+                    self.next_stmt_unreachable = false;
+                    let unreachable_iteration = etc_check_loop_iteration(self, stmt.stmt_c, stmt.stmt_b);
+                    etc_loop_flow_capture_free(unreachable_iteration.capture);
+                    etc_alive_state_vec_free(unreachable_iteration.backedge_states);
+                    drop unreachable_iteration;
+                    etc_alive_scope_stack_restore(self, pre_alive_for as VectorBase*);
+                    self.loop_flow_capture_stack = saved_capture_for;
+                    self.next_stmt_unreachable = saved_unreachable_for;
+                }
+            }
+            etc_alive_scope_stack_free(pre_alive_for);
+            if (ord(init_flow) == ord(FLOW_RETURNS)) {
+                flow = FLOW_RETURNS;
+            } else if (ord(init_flow) == ord(FLOW_STOPS)) {
+                flow = FLOW_STOPS;
+            }
+        }
+        ST_MATCH => {
+            let val_ty2 = etc_infer_expr(self, stmt.expr_a);
+            if (val_ty2 != null) {
+                if (ord((val_ty2 as Type*).kind) != ord(TY_ENUM)) {
+                    etc_diag_error(self, "TYP-0100",
+                        "match expression must have enum type, got '" + type_format(val_ty2 as Type*) + "'",
+                        unit.path, stmt.span);
+                } else if (stmt.match_arms != null) {
+                    let arms = stmt.match_arms as VectorBase*;
+                    let all_arms_return = true;
+                    let pre_match_alive: VectorBase*? = null;
+                    if (self.alive_scopes != null) {
+                        pre_match_alive = etc_alive_scope_stack_clone(self.alive_scopes as VectorBase*);
+                    }
+                    let fallthrough_states_match = ptr_vec_create(vec_size(arms) + 1);
+                    let validated_pattern_ids = iset_create_with_capacity(vec_size(arms));
+                    let covered_variants = ss_create();
+                    let variants_before_wildcard = ss_create();
+                    let wildcard_present = false;
+                    for (let i = 0; i < vec_size(arms); i = i + 1) {
+                        let arm = ptr_vec_get(arms, i) as MatchArm*;
+                        let arm_pattern = pattern_arena_get(unit.parse_result.pattern_arena, arm.pattern);
+                        if (ord(arm_pattern.kind) == ord(PT_WILDCARD)) {
+                            wildcard_present = true;
+                        } else if (ord(arm_pattern.kind) == ord(PT_VARIANT)) {
+                            let canonical_variant = etc_check_match_pattern(self, val_ty2 as Type*, arm.pattern);
+                            if (canonical_variant != null) {
+                                iset_add(validated_pattern_ids, arm.pattern);
+                                ss_add(covered_variants, (canonical_variant as EnumVariantInfo*).name);
+                                if (!wildcard_present) {
+                                    ss_add(variants_before_wildcard, (canonical_variant as EnumVariantInfo*).name);
+                                }
+                            }
+                        }
+                    }
+                    let wildcard_is_unreachable = etc_match_wildcard_is_unreachable(
+                        self, val_ty2 as Type*, variants_before_wildcard);
+                    for (let i = 0; i < vec_size(arms); i = i + 1) {
+                        let arm = ptr_vec_get(arms, i) as MatchArm*;
+                        let arm_pattern = pattern_arena_get(unit.parse_result.pattern_arena, arm.pattern);
+                        let arm_is_reachable = !(wildcard_is_unreachable && ord(arm_pattern.kind) == ord(PT_WILDCARD));
+                        if (pre_match_alive != null) {
+                            etc_alive_scope_stack_restore(self, pre_match_alive as VectorBase*);
+                        }
+                        self.next_stmt_unreachable = false;
+                        if (iset_has(validated_pattern_ids, arm.pattern)) {
+                            etc_bind_pattern_types(self, val_ty2 as Type*, arm.pattern);
+                        }
+                        let arm_flow = FLOW_FALLTHROUGH;
+                        if (arm_is_reachable) {
+                            arm_flow = etc_check_stmt(self, arm.body);
+                            if (ord(arm_flow) != ord(FLOW_RETURNS)) {
+                                all_arms_return = false;
+                            }
+                        } else {
+                            arm_flow = etc_check_dead_const_stmt(self, arm.body);
+                        }
+                        if (arm_is_reachable && ord(arm_flow) == ord(FLOW_FALLTHROUGH) && self.alive_scopes != null) {
+                            etc_alive_state_vec_push_clone(fallthrough_states_match, self.alive_scopes as VectorBase*);
+                        }
+                    }
+                    let is_exhaustive = etc_check_match_exhaustiveness(
+                        self, val_ty2 as Type*, covered_variants, wildcard_present, wildcard_is_unreachable, stmt.span);
+                    iset_free(validated_pattern_ids);
+                    ss_free(covered_variants);
+                    ss_free(variants_before_wildcard);
+                    if (!is_exhaustive && pre_match_alive != null) {
+                        etc_alive_state_vec_push_clone(fallthrough_states_match, pre_match_alive as VectorBase*);
+                    }
+                    if (is_exhaustive && all_arms_return) {
+                        if (pre_match_alive != null) {
+                            etc_alive_scope_stack_restore(self, pre_match_alive as VectorBase*);
+                        }
+                        flow = FLOW_RETURNS;
+                    } else if (vec_size(fallthrough_states_match) > 0) {
+                        let after_match = etc_alive_scope_stack_meet_many(
+                            ptr_vec_get(fallthrough_states_match, 0) as VectorBase*, fallthrough_states_match);
+                        etc_alive_scope_stack_free(self.alive_scopes);
+                        self.alive_scopes = after_match;
+                        flow = FLOW_FALLTHROUGH;
+                    } else if (is_exhaustive) {
+                        if (pre_match_alive != null) {
+                            etc_alive_scope_stack_restore(self, pre_match_alive as VectorBase*);
+                        }
+                        flow = FLOW_STOPS;
+                    }
+                    etc_alive_state_vec_free(fallthrough_states_match);
+                    etc_alive_scope_stack_free(pre_match_alive);
+                    self.next_stmt_unreachable = false;
+                }
+                type_free(val_ty2 as Type*);
+            }
+        }
+        ST_CASE => {
+            let val_ty3 = etc_infer_expr(self, stmt.expr_a);
+            if (val_ty3 != null) {
+                let case_ty_ok = etc_is_case_type(val_ty3 as Type*);
+                if (!case_ty_ok) {
+                    etc_diag_error(
+                        self,
+                        "TYP-0106",
+                        "'case' scrutinee must have a builtin integer type, 'float', 'double', 'bool', or 'string', got '" + type_format(val_ty3 as Type*) + "'",
+                        unit.path,
+                        stmt.span
+                    );
+                }
+                if (stmt.case_arms != null) {
+                    with (let seen_literals = ss_create() => ss_free(seen_literals),
+                          let const_ctx = tr_const_eval_context_create(self.result.driver_state,
+                              self.result.signatures as SignatureTables*, self.result.names as NameResolution*,
+                              self.result.diags) => tr_const_eval_context_free(const_ctx)) {
+                        let arms2 = stmt.case_arms as VectorBase*;
+                        let all_case_arms_return = true;
+                        let pre_case_alive: VectorBase*? = null;
+                        if (self.alive_scopes != null) {
+                            pre_case_alive = etc_alive_scope_stack_clone(self.alive_scopes as VectorBase*);
+                        }
+                        let fallthrough_states_case = ptr_vec_create(vec_size(arms2) + 1);
+                        for (let i = 0; i < vec_size(arms2); i = i + 1) {
+                            let arm2 = ptr_vec_get(arms2, i) as CaseArm*;
+                            let class_code = CASE_LIT_POSSIBLE;
+                            let arm_literal = expr_arena_get(unit.parse_result.expr_arena, arm2.literal);
+                            let case_literal_ok = true;
+                            let const_value = etc_eval_case_const_value(self, const_ctx, arm2.literal);
+                            if (const_value == null) {
+                                case_literal_ok = false;
+                                if (etc_case_arm_is_aggregate_const(self, arm2.literal)) {
+                                    etc_diag_error(self, "TYP-0113",
+                                        "case arm value is an aggregate constant and cannot be used as a scalar case arm value",
+                                        unit.path, arm_literal.span);
+                                } else {
+                                    etc_diag_error(self, "TYP-0112",
+                                        "case arm value is not a compile-time constant",
+                                        unit.path, arm_literal.span);
+                                }
+                            }
+                            let literal_ty = etc_infer_expr(self, arm2.literal);
+                            if (literal_ty != null) {
+                                if (case_literal_ok && case_ty_ok) {
+                                    class_code = etc_classify_case_literal(self, val_ty3 as Type*, arm2.literal, literal_ty as Type*);
+                                    if (ord(class_code) == ord(CASE_LIT_POSSIBLE) && etc_is_int(val_ty3 as Type*) &&
+                                        const_value != null) {
+                                        let evaluated = const_value as ConstValue*;
+                                        if ((ord(evaluated.kind) == ord(CV_INT) ||
+                                             ord(evaluated.kind) == ord(CV_BYTE) ||
+                                             ord(evaluated.kind) == ord(CV_OTHER_INT)) &&
+                                            !int_value_fits_builtin(val_ty3 as Type*, evaluated.int_value)) {
+                                            class_code = CASE_LIT_ALWAYS_FALSE;
+                                        }
+                                    }
+                                    if (ord(class_code) == ord(CASE_LIT_BIGINT_CONTEXT)) {
+                                        let assign_result = etc_check_assign_expr(self, val_ty3 as Type*, literal_ty as Type*,
+                                            arm2.literal, unit.path, arm_literal.span);
+                                        if (ord(assign_result) == ord(ASSIGN_REJECT)) {
+                                            case_literal_ok = false;
+                                            etc_diag_error(
+                                                self,
+                                                "TYP-0107",
+                                                "'case' arm value type '" + type_format(literal_ty as Type*) + "' does not match scrutinee type '" + type_format(val_ty3 as Type*) + "'",
+                                                unit.path,
+                                                arm_literal.span
+                                            );
+                                        } else if (ord(assign_result) == ord(ASSIGN_REPORTED)) {
+                                            case_literal_ok = false;
+                                        }
+                                    } else if (ord(class_code) == ord(CASE_LIT_MISMATCH)) {
+                                        case_literal_ok = false;
+                                        etc_diag_error(
+                                            self,
+                                            "TYP-0107",
+                                            "'case' arm value type '" + type_format(literal_ty as Type*) + "' does not match scrutinee type '" + type_format(val_ty3 as Type*) + "'",
+                                            unit.path,
+                                            arm_literal.span
+                                        );
+                                    } else if (ord(class_code) == ord(CASE_LIT_ALWAYS_FALSE)) {
+                                        etc_diag_warn(
+                                            self,
+                                            "TYP-0111",
+                                            "'case' arm value can never match scrutinee type '" + type_format(val_ty3 as Type*) + "'",
+                                            unit.path,
+                                            arm_literal.span
+                                        );
+                                    }
+                                }
+                                if (case_literal_ok && ord(class_code) != ord(CASE_LIT_ALWAYS_FALSE)) {
+                                    if (const_value != null) {
+                                        let case_key = etc_case_const_value_key(const_value as ConstValue*);
+                                        if (ss_has(seen_literals, case_key)) {
+                                            etc_diag_error(
+                                                self,
+                                                "TYP-0108",
+                                                "duplicate case arm value",
+                                                unit.path,
+                                                arm_literal.span
+                                            );
+                                        } else {
+                                            ss_add(seen_literals, case_key);
+                                        }
+                                    }
+                                }
+                                type_free(literal_ty as Type*);
+                            }
+                            if (const_value != null) {
+                                tr_const_value_free(const_value as ConstValue*);
+                            }
+                            if (pre_case_alive != null) {
+                                etc_alive_scope_stack_restore(self, pre_case_alive as VectorBase*);
+                            }
+                            self.next_stmt_unreachable = false;
+                            let arm_flow2 = FLOW_FALLTHROUGH;
+                            if (ord(class_code) == ord(CASE_LIT_ALWAYS_FALSE)) {
+                                arm_flow2 = etc_check_dead_const_stmt(self, arm2.body);
+                            } else {
+                                arm_flow2 = etc_check_stmt(self, arm2.body);
+                            }
+                            if (ord(class_code) != ord(CASE_LIT_ALWAYS_FALSE) && ord(arm_flow2) != ord(FLOW_RETURNS)) {
+                                all_case_arms_return = false;
+                            }
+                            if (ord(class_code) != ord(CASE_LIT_ALWAYS_FALSE) &&
+                                ord(arm_flow2) == ord(FLOW_FALLTHROUGH) && self.alive_scopes != null) {
+                                etc_alive_state_vec_push_clone(fallthrough_states_case, self.alive_scopes as VectorBase*);
+                            }
+                        }
+                        if (stmt.case_else != null) {
+                            if (pre_case_alive != null) {
+                                etc_alive_scope_stack_restore(self, pre_case_alive as VectorBase*);
+                            }
+                            self.next_stmt_unreachable = false;
+                            let else_flow2 = etc_check_stmt(self, (stmt.case_else as CaseElse*).body);
+                            if (all_case_arms_return && ord(else_flow2) == ord(FLOW_RETURNS)) {
+                                flow = FLOW_RETURNS;
+                            }
+                            if (ord(else_flow2) == ord(FLOW_FALLTHROUGH) && self.alive_scopes != null) {
+                                etc_alive_state_vec_push_clone(fallthrough_states_case, self.alive_scopes as VectorBase*);
+                            }
+                        } else if (pre_case_alive != null) {
+                            etc_alive_state_vec_push_clone(fallthrough_states_case, pre_case_alive as VectorBase*);
+                        }
+                        if (ord(flow) == ord(FLOW_RETURNS)) {
+                            if (pre_case_alive != null) {
+                                etc_alive_scope_stack_restore(self, pre_case_alive as VectorBase*);
+                            }
+                        } else if (vec_size(fallthrough_states_case) > 0) {
+                            let after_case = etc_alive_scope_stack_meet_many(
+                                ptr_vec_get(fallthrough_states_case, 0) as VectorBase*, fallthrough_states_case);
+                            etc_alive_scope_stack_free(self.alive_scopes);
+                            self.alive_scopes = after_case;
+                        } else if (stmt.case_else != null) {
+                            if (pre_case_alive != null) {
+                                etc_alive_scope_stack_restore(self, pre_case_alive as VectorBase*);
+                            }
+                            flow = FLOW_STOPS;
+                        }
+                        etc_alive_state_vec_free(fallthrough_states_case);
+                        etc_alive_scope_stack_free(pre_case_alive);
+                        self.next_stmt_unreachable = false;
+                    }
+                }
+                type_free(val_ty3 as Type*);
+            }
+        }
+        ST_WITH => {
+            let cleanup_guards: IntSet*? = null;
+            let header_returns = false;
+            if (stmt.with_items != null) {
+                let items = stmt.with_items as VectorBase*;
+                let seen_header_try = false;
+                for (let i = 0; i < vec_size(items); i = i + 1) {
+                    let item = ptr_vec_get(items, i) as WithItem*;
+                    let init_has_try = etc_stmt_contains_try(unit, item.init);
+                    let init_flow = etc_check_stmt(self, item.init);
+                    if (ord(init_flow) == ord(FLOW_RETURNS)) {
+                        header_returns = true;
+                    }
+                    if (init_has_try) {
+                        seen_header_try = true;
+                    }
+                    if (seen_header_try) {
+                        let init_stmt = stmt_arena_get(unit.parse_result.stmt_arena, item.init);
+                        if (ord(init_stmt.kind) == ord(ST_LET) && init_stmt.type_ref != null) {
+                            let local = etc_lookup_visible_local_symbol(self, init_stmt.name);
+                            if (local != null) {
+                                let symbol = local as LocalSymbol*;
+                                let local_ty = etc_local_symbol_type(self, symbol);
+                                if (local_ty != null) {
+                                    let ty = local_ty as Type*;
+                                    if (ord(symbol.kind) == ord(LK_LOCAL) && symbol.decl_id == item.init &&
+                                        ord(ty.kind) != ord(TY_NULLABLE)) {
+                                        if (cleanup_guards == null) {
+                                            cleanup_guards = iset_create();
+                                        }
+                                        iset_add(cleanup_guards as IntSet*, symbol.decl_id);
+                                    }
+                                    type_free(ty);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            let body_flow = etc_check_stmt(self, stmt.stmt_a);
+            let inline_override = 0; // 0=none, 1=return, 2=loop control
+            if (stmt.with_items != null && stmt.stmt_b < 0) {
+                let items2 = stmt.with_items as VectorBase*;
+                for (let j = vec_size(items2) - 1; j >= 0; j = j - 1) {
+                    let cleanup_item = ptr_vec_get(items2, j) as WithItem*;
+                    if (cleanup_item.has_cleanup && cleanup_item.cleanup_stmt >= 0) {
+                        let cleanup_flow_item = etc_check_stmt(self, cleanup_item.cleanup_stmt);
+                        if (inline_override == 0) {
+                            if (ord(cleanup_flow_item) == ord(FLOW_RETURNS)) {
+                                inline_override = 1;
+                            } else if (ord(cleanup_flow_item) == ord(FLOW_STOPS)) {
+                                inline_override = 2;
+                            }
+                        }
+                    }
+                }
+            }
+            let cleanup_guard_node: CleanupHeaderGuard*? = null;
+            if (stmt.stmt_b >= 0 && cleanup_guards != null) {
+                cleanup_guard_node = new CleanupHeaderGuard(self.cleanup_header_guard_stack,
+                    cleanup_guards as IntSet*);
+                self.cleanup_header_guard_stack = cleanup_guard_node;
+                cleanup_guards = null;
+            }
+            let cleanup_flow = etc_check_stmt(self, stmt.stmt_b);
+            if (cleanup_guards != null) {
+                iset_free(cleanup_guards as IntSet*);
+            }
+            if (cleanup_guard_node != null) {
+                let node = cleanup_guard_node as CleanupHeaderGuard*;
+                self.cleanup_header_guard_stack = node.parent;
+                iset_free(node.guarded_decl_ids);
+                drop node;
+            }
+            if (ord(cleanup_flow) == ord(FLOW_RETURNS) || inline_override == 1 ||
+                (inline_override == 0 &&
+                 (header_returns || ord(body_flow) == ord(FLOW_RETURNS)))) {
+                flow = FLOW_RETURNS;
+            } else if (ord(cleanup_flow) == ord(FLOW_STOPS) || inline_override == 2) {
+                flow = FLOW_STOPS;
+            }
+        }
+        ST_RETURN => {
+            if (self.current_ret_type != null) {
+                let expected = self.current_ret_type as Type*;
+                if (stmt.expr_a < 0) {
+                    if (!type_is_builtin(expected, "void")) {
+                        etc_diag_error(self, "TYP-0315", "return type mismatch: expected " + type_format(expected), unit.path, stmt.span);
+                    }
+                } else {
+                    if (ord(etc_check_expr_against_expected(self, expected, stmt.expr_a,
+                        unit.path, stmt.span)) == ord(ASSIGN_REJECT)) {
+                        etc_diag_error(self, "TYP-0315", "return type mismatch: expected " + type_format(expected),
+                            unit.path, stmt.span);
+                    }
+                }
+            }
+            flow = FLOW_RETURNS;
+            self.next_stmt_unreachable = true;
+        }
+        ST_DROP => {
+            let drop_ty = etc_lookup_local(self, stmt.name);
+            if (drop_ty == null) {
+                let sym = etc_lookup_symbol(self, stmt.name, null, null);
+                if (sym != null && ord((sym as Symbol*).kind) == ord(SYM_LET)) {
+                    etc_diag_error(self, "TYP-0063", "cannot drop module-level let '" + stmt.name + "'",
+                        unit.path, stmt.span);
+                } else {
+                    etc_diag_error(self, "TYP-0060", "unknown variable '" + stmt.name + "'",
+                        unit.path, stmt.span);
+                }
+            } else {
+                let var_ty = drop_ty as Type*;
+                let is_ptr = ord(var_ty.kind) == ord(TY_POINTER);
+                let is_opt_ptr = ord(var_ty.kind) == ord(TY_NULLABLE) &&
+                    var_ty.inner != null &&
+                    ord((var_ty.inner as Type*).kind) == ord(TY_POINTER);
+                if (!(is_ptr || is_opt_ptr)) {
+                    etc_diag_error(self, "TYP-0061",
+                        "cannot drop non-pointer type '" + type_format(var_ty) + "'",
+                        unit.path, stmt.span);
+                } else {
+                    let pointer_ty = var_ty;
+                    if (is_opt_ptr) {
+                        pointer_ty = var_ty.inner as Type*;
+                    }
+                    let pointee = pointer_ty.inner as Type*;
+                    if (etc_is_imported_opaque_nominal(self, pointee)) {
+                        etc_diag_opaque_layout_use(self, pointee, stmt.span);
+                    } else {
+                        let alive = etc_alive_lookup(self, stmt.name);
+                        if (alive != null && (alive as int) == 0) {
+                            etc_diag_error(self, "TYP-0062", "use of dropped variable '" + stmt.name + "'",
+                                unit.path, stmt.span);
+                        } else {
+                            etc_alive_set(self, stmt.name, false);
+                        }
+                    }
+                }
+                type_free(var_ty);
+            }
+        }
+        ST_EXPR => {
+            let ty = etc_infer_expr(self, stmt.expr_a);
+            if (ty != null) {
+                type_free(ty as Type*);
+            }
+        }
+        ST_BREAK => {
+            if (self.loop_depth < 1) {
+                etc_diag_error(self, "TYP-0110", "'break' statement not within a loop", unit.path, stmt.span);
+            } else {
+                etc_capture_break_state(self);
+                self.next_stmt_unreachable = true;
+                flow = FLOW_STOPS;
+            }
+        }
+        ST_CONTINUE => {
+            if (self.loop_depth < 1) {
+                etc_diag_error(self, "TYP-0120", "'continue' statement not within a loop", unit.path, stmt.span);
+            } else {
+                etc_capture_continue_state(self);
+                self.next_stmt_unreachable = true;
+                flow = FLOW_STOPS;
+            }
+        }
+    }
+
+    self.current_scope = old_scope;
+    for (let scope_i = 0; scope_i < pushed_scope_count; scope_i = scope_i + 1) {
+        etc_decl_scope_pop(self);
+        etc_alive_scope_pop(self);
+    }
+    return flow;
+}
+
+/**
+ * Type-check one function body.
+ *
+ * @param self Expression checker state.
+ * @param env Function environment to check.
+ */
+func etc_check_function(self: ExpressionTypeChecker*, env: FunctionEnv*) {
+    self.current_func = env;
+    self.current_scope = env.root_scope;
+    etc_alive_scope_push(self, env.root_scope);
+    let func_type = sig_lookup_func_type(self.result.signatures as SignatureTables*, env.module_name, env.func_name);
+    if (func_type == null) {
+        etc_alive_scope_pop(self);
+        return;
+    }
+    self.current_ret_type = (func_type as Type*).result;
+    let body_flow = etc_check_stmt(self, env.func_decl.body);
+    if (!(env.func_decl as FuncDecl*).is_extern &&
+        !etc_is_void(self.current_ret_type) &&
+        ord(body_flow) != ord(FLOW_RETURNS)) {
+        let unit = self.current_unit as DriverUnit*;
+        etc_diag_error(
+            self,
+            "TYP-0010",
+            "not all control paths return a value of type '" + type_format(self.current_ret_type as Type*) + "'",
+            unit.path,
+            env.func_decl.span
+        );
+    }
+    self.current_func = null;
+    self.current_ret_type = null;
+    self.current_scope = null;
+    etc_alive_scope_pop(self);
+}
+
+/**
+ * Type-check module-scope `let` initializer expressions.
+ *
+ * Signature resolution owns top-level binding type resolution, including
+ * const-only and no-slice restrictions. This pass records expression metadata
+ * for successfully resolved bindings so backend lowering can rely on analysis.
+ *
+ * @param self Expression checker state.
+ * @param root Module whose top-level declarations should be checked.
+ */
+func etc_check_top_level_initializers(self: ExpressionTypeChecker*, root: Module*) {
+    let sigs = self.result.signatures as SignatureTables*;
+    for (let i = 0; i < vec_size(root.decls); i = i + 1) {
+        let top = ptr_vec_get(root.decls, i) as TopLevelDecl*;
+        if (ord(top.kind) != ord(TD_LET)) {
+            continue;
+        }
+        let decl = top.data as LetDecl*;
+        let expected = sig_lookup_let_type(sigs, root.name, decl.name);
+        if (expected == null) {
+            continue;
+        }
+        if (type_is_builtin(expected as Type*, "void")) {
+            etc_diag_error(self, "TYP-0050", "variable cannot have type 'void'", root.filename, decl.span);
+            continue;
+        }
+        etc_check_initializer_expr(self, expected as Type*, decl.value, decl.name, root.filename, decl.span);
+    }
+}

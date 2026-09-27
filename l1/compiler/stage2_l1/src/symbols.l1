@@ -1,0 +1,95 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module symbols;
+
+import ast;
+import types;
+
+/**
+ * Defines the SymbolKind enumeration.
+ */
+enum SymbolKind {
+    SYM_FUNC;
+    SYM_STRUCT;
+    SYM_ENUM;
+    SYM_ENUM_VARIANT;
+    SYM_TYPE_ALIAS;
+    SYM_LET;
+}
+
+/**
+ * Represents the Symbol structure.
+ */
+struct Symbol {
+    name: string;
+    kind: SymbolKind;
+    module_name: string;
+    owner_name: string;
+    decl_ptr: void*?;
+    span: Span;
+    resolved_type: Type*?;
+    is_const: bool;
+    const_literal: string;
+    is_extern: bool;
+}
+
+/**
+ * Create a new symbol with the given properties.
+ *
+ * @param name Name of the symbol.
+ * @param kind Kind of the symbol.
+ * @param module_name Name of the module where the symbol is defined.
+ * @param owner_name Name of the owner (e.g., function or struct) of the symbol.
+ * @param decl_ptr Pointer to the AST node where the symbol is declared, or `null` for synthesized symbols.
+ * @param span Source code span for error reporting.
+ * @return A new Symbol instance with cloned string fields and null resolved type.
+ */
+func symbol_create(name: string, kind: SymbolKind, module_name: string, owner_name: string, decl_ptr: void*?,
+                   span: Span) -> Symbol* {
+    return new Symbol(name, kind, module_name, owner_name, decl_ptr, span, null, false, "", false);
+}
+
+/**
+ * Replace a symbol's resolved type with a cloned copy.
+ *
+ * @param self Symbol to update.
+ * @param resolved_type Resolved type to clone into the symbol.
+ */
+func symbol_set_type_clone(self: Symbol*, resolved_type: Type*) {
+    if (self.resolved_type != null) {
+        type_free(self.resolved_type as Type*);
+    }
+    self.resolved_type = type_clone(resolved_type);
+}
+
+/**
+ * Return the printable name for a symbol kind.
+ *
+ * @param kind Symbol kind to format.
+ * @return Uppercase display name for `kind`.
+ */
+func symbol_kind_name(kind: SymbolKind) -> string {
+    match (kind) {
+        SYM_FUNC => { return "FUNC"; }
+        SYM_STRUCT => { return "STRUCT"; }
+        SYM_ENUM => { return "ENUM"; }
+        SYM_ENUM_VARIANT => { return "ENUM_VARIANT"; }
+        SYM_TYPE_ALIAS => { return "TYPE_ALIAS"; }
+        SYM_LET => { return "LET"; }
+    }
+}
+
+/**
+ * Free a symbol and any owned resolved type.
+ *
+ * @param self Symbol to free.
+ */
+func symbol_free(self: Symbol*) {
+    if (self.resolved_type != null) {
+        type_free(self.resolved_type as Type*);
+    }
+    drop self;
+}

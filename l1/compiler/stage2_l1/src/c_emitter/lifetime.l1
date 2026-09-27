@@ -1,0 +1,295 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module c_emitter.lifetime;
+
+import std.text;
+import std.vector;
+import ast;
+import driver.state;
+import sem_context;
+import signatures.tables;
+import types;
+import c_emitter.abi;
+import c_emitter.expr;
+import c_emitter.state;
+import c_emitter.stmt;
+
+/**
+ * Emit final cleanup for ARC-managed top-level lets owned by one module.
+ *
+ * @param self Emitter to update.
+ * @param module_name Owning source module.
+ */
+func cem_emit_module_top_level_let_cleanup(self: CEmitter*, module_name: string) {
+    let analysis = cem_analysis(self);
+    if (analysis.signatures == null) {
+        return;
+    }
+    let unit = driver_find_unit(analysis.driver_state, module_name);
+    if (unit == null || (unit as DriverUnit*).parse_result.root_module == null) {
+        return;
+    }
+    let root = (unit as DriverUnit*).parse_result.root_module as Module*;
+    for (let j = 0; j < vec_size(root.decls); j = j + 1) {
+        let decl = ptr_vec_get(root.decls, j) as TopLevelDecl*;
+        if (ord(decl.kind) != ord(TD_LET)) {
+            continue;
+        }
+        let let_decl = decl.data as LetDecl*;
+        let let_type = sig_lookup_let_type(analysis.signatures as SignatureTables*, root.name, let_decl.name);
+        if (let_type == null || !analysis_has_arc_data(analysis, let_type as Type*)) {
+            continue;
+        }
+        cem_emit_value_cleanup(self, cem_mangle_let_name(root.name, let_decl.name), let_type as Type*);
+    }
+}
+
+/**
+ * Emit an ARC string retain call.
+ *
+ * @param self Emitter to update.
+ * @param c_expr Lowered string expression.
+ */
+func cem_emit_string_retain(self: CEmitter*, c_expr: string) {
+    if (self.trace_arc) {
+        ccb_emit(self.out, "_rt_string_retain_impl(" + c_expr + ", __FILE__, __LINE__)" + ";");
+        return;
+    }
+    ccb_emit(self.out, "rt_string_retain(" + c_expr + ")" + ";");
+}
+
+/**
+ * Emit an ARC string release call.
+ *
+ * @param self Emitter to update.
+ * @param c_expr Lowered string expression.
+ */
+func cem_emit_string_release(self: CEmitter*, c_expr: string) {
+    if (self.trace_arc) {
+        ccb_emit(self.out, "_rt_string_release_impl(" + c_expr + ", __FILE__, __LINE__)" + ";");
+        return;
+    }
+    ccb_emit(self.out, "rt_string_release(" + c_expr + ")" + ";");
+}
+
+/**
+ * Report whether any variant field in an enum carries ARC-managed data.
+ *
+ * @param self Emitter to inspect.
+ * @param enum_info Resolved enum metadata.
+ * @return `true` when cleanup code must inspect the active variant.
+ */
+func cem_enum_info_has_arc_data(self: CEmitter*, enum_info: EnumInfo*) -> bool {
+    for (let i = 0; i < vec_size(enum_info.variants); i = i + 1) {
+        let variant = ptr_vec_get(enum_info.variants, i) as EnumVariantInfo*;
+        for (let j = 0; j < vec_size(variant.field_types); j = j + 1) {
+            if (analysis_has_arc_data(cem_analysis(self), ptr_vec_get(variant.field_types, j) as Type*)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * Emit cleanup for a by-value expression according to its type.
+ *
+ * @param self Emitter to update.
+ * @param c_expr Lowered value expression.
+ * @param ty Type of the value.
+ */
+func cem_emit_value_cleanup(self: CEmitter*, c_expr: string, ty: Type*) {
+    if (analysis_is_arc_type(ty)) {
+        cem_emit_string_release(self, c_expr);
+        return;
+    }
+
+    if (ord(ty.kind) == ord(TY_NULLABLE)) {
+        let inner = ty.inner as Type*;
+        if (ord(inner.kind) == ord(TY_POINTER) || !analysis_has_arc_data(cem_analysis(self), inner)) {
+            return;
+        }
+        ccb_emit(self.out, "if (" + cem_emit_optional_has_value(c_expr) + ")" + " {");
+        ccb_indent(self.out);
+        cem_emit_value_cleanup(self, cem_emit_optional_value(c_expr), inner);
+        ccb_dedent(self.out);
+        ccb_emit(self.out, "}");
+        return;
+    }
+
+    if (ord(ty.kind) == ord(TY_ARRAY)) {
+        if (!analysis_has_arc_data(cem_analysis(self), ty.inner as Type*)) {
+            return;
+        }
+        let idx = cem_fresh_tmp(self, "arr_i");
+        ccb_emit(self.out, "for (dea_int " + idx + " = " + int_to_string(ty.array_len) +
+            "; " + idx + " > 0; " + idx + " = " + idx + " - 1) {");
+        ccb_indent(self.out);
+        let inner = ty.inner as Type*;
+        if (ord(inner.kind) == ord(TY_ARRAY)) {
+            cem_emit_raw_array_cleanup(self, "(" + c_expr + ").data[" + idx + " - 1]", inner);
+        } else {
+            cem_emit_value_cleanup(self, "(" + c_expr + ").data[" + idx + " - 1]", inner);
+        }
+        ccb_dedent(self.out);
+        ccb_emit(self.out, "}");
+        return;
+    }
+
+    if (ord(ty.kind) == ord(TY_STRUCT)) {
+        let info = sig_lookup_struct_info(cem_analysis(self).signatures as SignatureTables*, ty.module_name, ty.name);
+        if (info == null) {
+            return;
+        }
+        let fields = (info as StructInfo*).fields;
+        for (let i = 0; i < vec_size(fields); i = i + 1) {
+            let field = ptr_vec_get(fields, i) as StructFieldInfo*;
+            cem_emit_value_cleanup(self, cem_emit_field_access(c_expr, field.name, false), field.field_type);
+        }
+        return;
+    }
+
+    if (ord(ty.kind) == ord(TY_ENUM)) {
+        let enum_info = sig_lookup_enum_info(cem_analysis(self).signatures as SignatureTables*, ty.module_name, ty.name);
+        if (enum_info == null) {
+            return;
+        }
+        if (!cem_enum_info_has_arc_data(self, enum_info as EnumInfo*)) {
+            return;
+        }
+
+        cem_emit_switch_start(self, cem_emit_enum_tag_access(c_expr));
+        for (let i = 0; i < vec_size((enum_info as EnumInfo*).variants); i = i + 1) {
+            let info2 = ptr_vec_get((enum_info as EnumInfo*).variants, i) as EnumVariantInfo*;
+
+            let has_arc = false;
+            for (let j = 0; j < vec_size(info2.field_types); j = j + 1) {
+                if (analysis_has_arc_data(cem_analysis(self), ptr_vec_get(info2.field_types, j) as Type*)) {
+                    has_arc = true;
+                    break;
+                }
+            }
+            if (!has_arc) {
+                continue;
+            }
+
+            ccb_emit(self.out, "case " + cem_emit_enum_tag(ty, info2.name) + ": {");
+            ccb_indent(self.out);
+            for (let cleanup_j = 0; cleanup_j < vec_size(info2.field_types); cleanup_j = cleanup_j + 1) {
+                let field_ty = ptr_vec_get(info2.field_types, cleanup_j) as Type*;
+                cem_emit_value_cleanup(self, cem_emit_enum_payload_field_access(c_expr, info2.name,
+                    sv_get(info2.field_names, cleanup_j)), field_ty);
+            }
+            cem_emit_exit_switch(self);
+            ccb_dedent(self.out);
+            ccb_emit(self.out, "}");
+        }
+        ccb_emit(self.out, "default: break;");
+        cem_emit_switch_end(self);
+    }
+}
+
+/**
+ * Emit cleanup for a raw C array row belonging to a flattened array wrapper.
+ *
+ * @param self Emitter to update.
+ * @param c_expr Lowered raw C array expression.
+ * @param ty Array type represented by `c_expr`.
+ */
+func cem_emit_raw_array_cleanup(self: CEmitter*, c_expr: string, ty: Type*) {
+    if (ord(ty.kind) != ord(TY_ARRAY)) {
+        cem_emit_value_cleanup(self, c_expr, ty);
+        return;
+    }
+    if (!analysis_has_arc_data(cem_analysis(self), ty.inner as Type*)) {
+        return;
+    }
+    let idx = cem_fresh_tmp(self, "arr_i");
+    ccb_emit(self.out, "for (dea_int " + idx + " = " + int_to_string(ty.array_len) +
+        "; " + idx + " > 0; " + idx + " = " + idx + " - 1) {");
+    ccb_indent(self.out);
+    let inner = ty.inner as Type*;
+    if (ord(inner.kind) == ord(TY_ARRAY)) {
+        cem_emit_raw_array_cleanup(self, c_expr + "[" + idx + " - 1]", inner);
+    } else {
+        cem_emit_value_cleanup(self, c_expr + "[" + idx + " - 1]", inner);
+    }
+    ccb_dedent(self.out);
+    ccb_emit(self.out, "}");
+}
+
+/**
+ * Emit cleanup for a pointer-to-struct value.
+ *
+ * @param self Emitter to update.
+ * @param c_ptr_expr Lowered pointer expression.
+ * @param struct_type Struct type to clean.
+ */
+func cem_emit_struct_cleanup(self: CEmitter*, c_ptr_expr: string, struct_type: Type*) {
+    let info = sig_lookup_struct_info(cem_analysis(self).signatures as SignatureTables*, struct_type.module_name, struct_type.name);
+    if (info == null) {
+        cem_ice("[ICE-1270] missing StructInfo for " + struct_type.module_name + "." + struct_type.name);
+    }
+
+    ccb_emit(self.out, "if (" + c_ptr_expr + " != NULL" + ") {");
+    ccb_indent(self.out);
+    for (let i = 0; i < vec_size((info as StructInfo*).fields); i = i + 1) {
+        let field = ptr_vec_get((info as StructInfo*).fields, i) as StructFieldInfo*;
+        cem_emit_value_cleanup(self, c_ptr_expr + "->" + field.name, field.field_type);
+    }
+    ccb_dedent(self.out);
+    ccb_emit(self.out, "}");
+}
+
+/**
+ * Emit cleanup for a pointer-to-enum value.
+ *
+ * @param self Emitter to update.
+ * @param c_ptr_expr Lowered pointer expression.
+ * @param enum_type Enum type to clean.
+ */
+func cem_emit_enum_cleanup(self: CEmitter*, c_ptr_expr: string, enum_type: Type*) {
+    let enum_info = sig_lookup_enum_info(cem_analysis(self).signatures as SignatureTables*, enum_type.module_name, enum_type.name);
+    if (enum_info == null) {
+        cem_ice("[ICE-1080] missing EnumInfo for " + enum_type.module_name + "." + enum_type.name);
+    }
+    if (!cem_enum_info_has_arc_data(self, enum_info as EnumInfo*)) {
+        return;
+    }
+
+    ccb_emit(self.out, "if (" + c_ptr_expr + " != NULL" + ") {");
+    ccb_indent(self.out);
+    cem_emit_switch_start(self, c_ptr_expr + "->tag");
+    for (let i = 0; i < vec_size((enum_info as EnumInfo*).variants); i = i + 1) {
+        let info2 = ptr_vec_get((enum_info as EnumInfo*).variants, i) as EnumVariantInfo*;
+
+        let has_arc = false;
+        for (let j = 0; j < vec_size(info2.field_types); j = j + 1) {
+            if (analysis_has_arc_data(cem_analysis(self), ptr_vec_get(info2.field_types, j) as Type*)) {
+                has_arc = true;
+                break;
+            }
+        }
+        if (!has_arc) {
+            continue;
+        }
+
+        ccb_emit(self.out, "case " + cem_emit_enum_tag(enum_type, info2.name) + ": {");
+        ccb_indent(self.out);
+        for (let cleanup_j = 0; cleanup_j < vec_size(info2.field_types); cleanup_j = cleanup_j + 1) {
+            let field_ty = ptr_vec_get(info2.field_types, cleanup_j) as Type*;
+            cem_emit_value_cleanup(self, c_ptr_expr + "->data." + info2.name + "." +
+                sv_get(info2.field_names, cleanup_j), field_ty);
+        }
+        cem_emit_exit_switch(self);
+        ccb_dedent(self.out);
+        ccb_emit(self.out, "}");
+    }
+    ccb_emit(self.out, "default: break;");
+    cem_emit_switch_end(self);
+    ccb_dedent(self.out);
+    ccb_emit(self.out, "}");
+}

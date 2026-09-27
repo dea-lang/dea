@@ -1,0 +1,21 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_prefixed_int_literals;
+
+func sum_prefixed() -> int {
+    let x: int = 0x20;
+    let y: int = 0b101;
+    let z: int = 0o7;
+    return x + y + z;
+}
+
+func cast_prefixed_to_byte_ok() -> byte {
+    return 0xff as byte;
+}
+
+func negate_prefixed() -> int {
+    return -0x2A;
+}

@@ -1,0 +1,913 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module l1c_lib;
+
+import std.fs;
+import std.hashmap;
+import std.io;
+import std.string;
+import std.text;
+import std.vector;
+import util.diag;
+
+import ast;
+import util.strings;
+import source_paths;
+import analysis;
+import backend;
+import sem_context;
+import driver;
+import driver.state;
+import build_driver;
+import preparation;
+import preparation.consumer;
+import compile_driver;
+import link_driver;
+import build_info;
+import cli_args;
+import cli_args.help;
+import cli_args.model;
+import codegen_options;
+import diag_print;
+import lexer;
+import module_graph;
+import tokens;
+import util.log;
+import name_resolver.query;
+import name_resolver.state;
+import types;
+import symbols;
+import ast_printer;
+
+/**
+ * Represents the PreparedInput structure.
+ */
+struct PreparedInput {
+    entry_module: string;
+    search_paths: SourceSearchPaths*;
+}
+
+/**
+ * Free a prepared CLI input bundle.
+ *
+ * @param self Prepared input to free.
+ */
+func prepared_input_free(self: PreparedInput*) {
+    sp_free(self.search_paths);
+    drop self;
+}
+
+/**
+ * Free a nullable prepared input bundle when present.
+ *
+ * @param self Optional prepared input to free.
+ */
+func prepared_input_free_opt(self: PreparedInput*?) {
+    if (self != null) {
+        prepared_input_free(self as PreparedInput*);
+    }
+}
+
+/**
+ * Copy every diagnostic from one collector into another.
+ *
+ * @param dst Destination collector.
+ * @param src Source collector.
+ */
+func l1c_copy_collector(dst: DiagCollector*, src: DiagCollector*) {
+    for (let i = 0; i < diag_count(src); i = i + 1) {
+        diag_copy(dst, diag_get(src, i));
+    }
+}
+
+/**
+ * Log the effective system and project roots for one CLI invocation.
+ *
+ * @param cfg Logging configuration.
+ * @param sys_roots Effective system-root vector.
+ * @param project_roots Effective project-root vector.
+ */
+func l1c_log_effective_roots(cfg: LogConfig*, sys_roots: StringVector*, project_roots: StringVector*) {
+    log_info(cfg, "System root(s): " + sp_format_root_list(sys_roots));
+    log_info(cfg, "Project root(s): " + sp_format_root_list(project_roots));
+}
+
+/**
+ * Normalize CLI input into an entry module and search paths.
+ *
+ * @param opts Parsed CLI options.
+ * @param diags Diagnostic collector for normalization errors.
+ * @param cfg Logging configuration.
+ * @return Prepared input bundle, or `null` if normalization fails.
+ */
+func l1c_prepare_input(opts: CliOptions*, diags: DiagCollector*, cfg: LogConfig*) -> PreparedInput*? {
+    with (
+        let project_roots = us_sv_clone(opts.project_roots) => sv_free(project_roots),
+        let sys_roots = us_sv_clone(opts.sys_roots) => sv_free(sys_roots)
+    ) {
+        sp_apply_default_sys_roots(sys_roots);
+
+        let entry_target = opts.entry_target as string;
+
+        let entry_module = sp_normalize_entry_target(entry_target, project_roots, diags)?;
+        sp_apply_default_project_roots(project_roots);
+        l1c_log_effective_roots(cfg, sys_roots, project_roots);
+        let sp = sp_build_from_roots(project_roots, sys_roots);
+        /* Source inspection needs complete bodies, including private declarations. */
+        if (ord(opts.mode) != ord(CM_TOK) && ord(opts.mode) != ord(CM_AST) && !opts.all_modules) {
+            with (let managed = mp_create(opts, cfg, false) => mp_free(managed)) {
+                mp_source_paths(managed, sp);
+            }
+        }
+        return new PreparedInput(entry_module, sp);
+    }
+}
+
+/**
+ * Print one token with source location metadata.
+ *
+ * @param path Source path owning the token.
+ * @param tok Token to print.
+ */
+func l1c_print_token(path: string, tok: Token) {
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, path);
+        sb_append(sb, ":");
+        sb_append_int(sb, tok.line);
+        sb_append(sb, ":");
+        sb_append_int(sb, tok.column);
+        sb_append(sb, ":\t");
+        sb_append(sb, token_to_string(tok));
+        printl_s(sb_to_string(sb));
+    }
+}
+
+/**
+ * Print a header before dumping tokens for a module.
+ *
+ * @param module_name Module being printed.
+ * @param path Source path for the module.
+ */
+func l1c_print_module_token_header(module_name: string, path: string) {
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "=== Tokens for module ");
+        sb_append(sb, module_name);
+        sb_append(sb, " (");
+        sb_append(sb, path);
+        sb_append(sb, ") ===");
+        printl_s(sb_to_string(sb));
+    }
+}
+
+/**
+ * Lex a source file and print its tokens.
+ *
+ * @param path Source file to read.
+ * @param include_eof Whether to print the trailing EOF token.
+ * @param diags Diagnostic collector for I/O and lexing errors.
+ * @return Process-style status code.
+ */
+func l1c_dump_tokens_for_path(path: string, include_eof: bool, diags: DiagCollector*) -> int {
+    let text_opt = read_file(path);
+    if (text_opt == null) {
+        diag_error(diags, "l1c", "L1C-0040", "cannot read source file: " + path, path, 0, 0, 0, 0);
+        return 1;
+    }
+
+    let text = text_opt as string;
+    let ls = ls_create(us_strip_utf8_bom(text), path);
+    let toks = tokenize(ls);
+    if (toks == null) {
+        l1c_copy_collector(diags, ls.diags);
+        ls_free(ls);
+        return 1;
+    }
+
+    let tv = toks as TokenVector;
+    for (let i = 0; i < tv_len(tv); i = i + 1) {
+        let tok = tv_get(tv, i);
+        if (!include_eof && ord(tok.token_type) == ord(TT_EOF)) {
+            continue;
+        }
+        l1c_print_token(path, tok);
+    }
+
+    tv_free(tv);
+    ls_free(ls);
+    return 0;
+}
+
+/**
+ * Execute Stage 1 `--check` mode.
+ *
+ * @param opts Parsed CLI options.
+ * @param cfg Logging configuration.
+ * @return Process-style status code.
+ */
+func l1c_cmd_check(opts: CliOptions*, cfg: LogConfig*) -> int {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let prepared = l1c_prepare_input(opts, diags, cfg);
+        if (prepared == null) {
+            dp_print_collector(diags);
+            return 1;
+        }
+        let prep = prepared as PreparedInput*;
+
+        let result = analysis_analyze_entry(prep.search_paths, prep.entry_module, cfg);
+        prepared_input_free(prep);
+        prepared = null;
+        dp_print_collector_with_sources(result.diags, analysis_source_names(result), analysis_source_texts(result));
+
+        let rc = 0;
+        if (analysis_has_errors(result)) {
+            rc = 1;
+        }
+
+        analysis_result_free(result);
+        return rc;
+    }
+}
+
+/**
+ * Execute Stage 1 `--tok` mode.
+ *
+ * @param opts Parsed CLI options.
+ * @param cfg Logging configuration.
+ * @return Process-style status code.
+ */
+func l1c_cmd_tok(opts: CliOptions*, cfg: LogConfig*) -> int {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let prepared = l1c_prepare_input(opts, diags, cfg);
+        if (prepared == null) {
+            dp_print_collector(diags);
+            return 1;
+        }
+        let prep = prepared as PreparedInput*;
+
+        if (opts.all_modules) {
+            let result = driver_analyze_entry(prep.search_paths, prep.entry_module, cfg);
+            prepared_input_free(prep);
+            prepared = null;
+            if (driver_has_errors(result)) {
+                dp_print_collector_with_sources(result.diags, result.source_names, result.source_texts);
+                driver_state_free(result);
+                return 1;
+            }
+
+            with (let names = driver_module_names_sorted(result) => sv_free(names)) {
+                let rc = 0;
+                for (let i = 0; i < sv_size(names); i = i + 1) {
+                    let name = sv_get(names, i);
+                    let unit = driver_find_unit(result, name);
+                    if (unit == null) {
+                        continue;
+                    }
+
+                    l1c_print_module_token_header(name, (unit as DriverUnit*).path);
+
+                    let one_rc = l1c_dump_tokens_for_path((unit as DriverUnit*).path, opts.include_eof, diags);
+                    if (one_rc != 0) {
+                        rc = one_rc;
+                    }
+                    printl_s("");
+                }
+
+                dp_print_collector(diags);
+                driver_state_free(result);
+                return rc;
+            }
+        }
+
+        let path_opt = sp_resolve(prep.search_paths, prep.entry_module);
+        if (path_opt == null) {
+            diag_error(
+                diags,
+                "l1c",
+                "L1C-0070",
+                "Module '" + prep.entry_module + "' not found in system_roots or project_roots",
+                "",
+                0,
+                0,
+                0,
+                0
+            );
+            prepared_input_free(prep);
+            prepared = null;
+            dp_print_collector(diags);
+            return 1;
+        }
+
+        let path = path_opt as string;
+        prepared_input_free(prep);
+        prepared = null;
+        let rc = l1c_dump_tokens_for_path(path, opts.include_eof, diags);
+        dp_print_collector(diags);
+        return rc;
+    }
+}
+
+/**
+ * Execute Stage 1 `--gen` mode.
+ *
+ * @param opts Parsed CLI options.
+ * @param cfg Logging configuration.
+ * @return Process-style status code.
+ */
+func l1c_cmd_gen(opts: CliOptions*, cfg: LogConfig*) -> int {
+    with (let diags = diag_create() => diag_free(diags),
+          let managed = mp_create(opts, cfg, false) => mp_free(managed)) {
+        let prepared = l1c_prepare_input(opts, diags, cfg);
+        if (prepared == null) {
+            dp_print_collector(diags);
+            return 1;
+        }
+        let prep = prepared as PreparedInput*;
+        let entry_module = prep.entry_module;
+        let result = mp_analyze(
+            managed,
+            prep.search_paths,
+            entry_module,
+            MRP_ALLOW_SOURCE_FALLBACK,
+            null
+        );
+        prepared_input_free(prep);
+        prepared = null;
+
+        dp_print_collector_with_sources(result.diags, analysis_source_names(result), analysis_source_texts(result));
+        if (analysis_has_errors(result)) {
+            analysis_result_free(result);
+            return 1;
+        }
+
+        with (let cg_opts = cg_options_from_cli(opts) => cg_options_free(cg_opts)) {
+            let c_code = backend_generate_module(result, entry_module, cg_opts, cfg);
+            if (opts.output != null) {
+                if (write_file(opts.output as string, c_code) == null) {
+                    diag_error(diags, "l1c", "L1C-9511", "cannot write output file: " + (opts.output as string),
+                        opts.output as string, 0, 0, 0, 0);
+                    dp_print_collector(diags);
+                    analysis_result_free(result);
+                    return 1;
+                }
+            } else {
+                print_s(c_code);
+            }
+
+            analysis_result_free(result);
+            return 0;
+        }
+    }
+}
+
+/**
+ * Add the generic interface-projection fallback only when analysis supplied
+ * no specific diagnostic.
+ *
+ * @param result Analysis result that attempted interface projection.
+ * @param fallback_diags Collector receiving the generic fallback diagnostic.
+ * @param module_name Module whose interface projection failed.
+ */
+func l1c_add_interface_projection_fallback(result: AnalysisResult*, fallback_diags: DiagCollector*,
+                                            module_name: string) {
+    if (!analysis_has_errors(result)) {
+        diag_error(fallback_diags, "l1c", "L1C-2030",
+            "failed to project interface for module '" + module_name + "'", "", 0, 0, 0, 0);
+    }
+}
+
+/**
+ * Execute Stage 1 `--emit-interface` mode.
+ *
+ * @param opts Parsed CLI options.
+ * @param cfg Logging configuration.
+ * @return Process-style status code.
+ */
+func l1c_cmd_emit_interface(opts: CliOptions*, cfg: LogConfig*) -> int {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let prepared = l1c_prepare_input(opts, diags, cfg);
+        if (prepared == null) {
+            dp_print_collector(diags);
+            return 1;
+        }
+        let prep = prepared as PreparedInput*;
+        let entry_module = prep.entry_module;
+        let result = analysis_analyze_entry(prep.search_paths, entry_module, cfg);
+        prepared_input_free(prep);
+        prepared = null;
+
+        dp_print_collector_with_sources(result.diags, analysis_source_names(result), analysis_source_texts(result));
+        if (analysis_has_errors(result)) {
+            analysis_result_free(result);
+            return 1;
+        }
+
+        let iface_text = analysis_emit_interface(result, entry_module);
+        if (iface_text == null) {
+            if (analysis_has_errors(result)) {
+                dp_print_collector_with_sources(
+                    result.diags, analysis_source_names(result), analysis_source_texts(result));
+            } else {
+                l1c_add_interface_projection_fallback(result, diags, entry_module);
+                dp_print_collector(diags);
+            }
+            analysis_result_free(result);
+            return 1;
+        }
+
+        let text = iface_text as string;
+        if (opts.output != null) {
+            if (write_file(opts.output as string, text) == null) {
+                diag_error(diags, "l1c", "L1C-9511", "cannot write output file: " + (opts.output as string),
+                    opts.output as string, 0, 0, 0, 0);
+                dp_print_collector(diags);
+                analysis_result_free(result);
+                return 1;
+            }
+        } else {
+            print_s(text);
+        }
+
+        analysis_result_free(result);
+        return 0;
+    }
+}
+
+/**
+ * Execute Stage 1 `--sym` mode.
+ *
+ * @param opts Parsed CLI options.
+ * @param cfg Logging configuration.
+ * @return Process-style status code.
+ */
+func l1c_cmd_sym(opts: CliOptions*, cfg: LogConfig*) -> int {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let prepared = l1c_prepare_input(opts, diags, cfg);
+        if (prepared == null) {
+            dp_print_collector(diags);
+            return 1;
+        }
+        let prep = prepared as PreparedInput*;
+        let result = analysis_analyze_entry(prep.search_paths, prep.entry_module, cfg);
+        prepared_input_free(prep);
+        prepared = null;
+
+        dp_print_collector_with_sources(result.diags, analysis_source_names(result), analysis_source_texts(result));
+        if (analysis_has_errors(result)) {
+            analysis_result_free(result);
+            return 1;
+        }
+
+        with (let module_names = nr_env_names_sorted(result.names as NameResolution*) => sv_free(module_names)) {
+            for (let i = 0; i < sv_size(module_names); i = i + 1) {
+                let mod_name = sv_get(module_names, i);
+                let entry_unit = driver_find_unit(result.driver_state, result.driver_state.entry_module) as DriverUnit*;
+                if (!opts.all_modules && mod_name != entry_unit.module_name) {
+                    continue;
+                }
+
+                let env_opt = nr_env_find(result.names as NameResolution*, mod_name);
+                if (env_opt == null) {
+                    printl_s("=== module " + mod_name + " (no symbol env) ===");
+                    continue;
+                }
+                let env = env_opt as ModuleEnv*;
+
+                printl_s("=== module " + mod_name + " ===");
+
+                printl_s("  locals:");
+                with (let keys = spm_keys(env.locals) => sv_free(keys)) {
+                    sv_sort(keys);
+                    if (sv_size(keys) > 0) {
+                        for (let j = 0; j < sv_size(keys); j = j + 1) {
+                            let sym = spm_get(env.locals, sv_get(keys, j)) as Symbol*;
+                            with (let sb = sb_create() => sb_free(sb)) {
+                                sb_append(sb, "    ");
+                                sb_append(sb, symbol_kind_name(sym.kind));
+                                while (sb_size(sb) < 17) { sb_append(sb, " "); }
+                                sb_append(sb, sym.name);
+                                if (sym.resolved_type != null) {
+                                    sb_append(sb, ": ");
+                                    sb_append(sb, type_format(sym.resolved_type as Type*));
+                                }
+                                printl_s(sb_to_string(sb));
+                            }
+                        }
+                    } else {
+                        printl_s("    <none>");
+                    }
+                }
+
+                printl_s("  imported:");
+                with (let keys2 = spm_keys(env.imported) => sv_free(keys2)) {
+                    sv_sort(keys2);
+                    if (sv_size(keys2) > 0) {
+                        for (let j = 0; j < sv_size(keys2); j = j + 1) {
+                            let sym2 = spm_get(env.imported, sv_get(keys2, j)) as Symbol*;
+                            with (let sb2 = sb_create() => sb_free(sb2)) {
+                                sb_append(sb2, "    ");
+                                sb_append(sb2, symbol_kind_name(sym2.kind));
+                                while (sb_size(sb2) < 17) { sb_append(sb2, " "); }
+                                sb_append(sb2, sym2.name);
+                                sb_append(sb2, " (from ");
+                                sb_append(sb2, sym2.module_name);
+                                sb_append(sb2, ")");
+                                if (sym2.resolved_type != null) {
+                                    sb_append(sb2, ": ");
+                                    sb_append(sb2, type_format(sym2.resolved_type as Type*));
+                                }
+                                printl_s(sb_to_string(sb2));
+                            }
+                        }
+                    } else {
+                        printl_s("    <none>");
+                    }
+                }
+
+                printl_s("  all:");
+                with (let keys3 = spm_keys(env.all) => sv_free(keys3)) {
+                    sv_sort(keys3);
+                    if (sv_size(keys3) > 0) {
+                        for (let j = 0; j < sv_size(keys3); j = j + 1) {
+                            let name = sv_get(keys3, j);
+                            let sym3 = spm_get(env.all, name) as Symbol*;
+                            let origin = "unknown";
+                            if (spm_has(env.locals, name)) { origin = "local"; }
+                            else if (spm_has(env.imported, name)) { origin = "imported"; }
+
+                            with (let sb3 = sb_create() => sb_free(sb3)) {
+                                sb_append(sb3, "    ");
+                                sb_append(sb3, symbol_kind_name(sym3.kind));
+                                while (sb_size(sb3) < 17) { sb_append(sb3, " "); }
+                                sb_append(sb3, sym3.name);
+                                sb_append(sb3, " [");
+                                sb_append(sb3, origin);
+                                sb_append(sb3, "]");
+                                if (sym3.resolved_type != null) {
+                                    sb_append(sb3, ": ");
+                                    sb_append(sb3, type_format(sym3.resolved_type as Type*));
+                                }
+                                printl_s(sb_to_string(sb3));
+                            }
+                        }
+                    } else {
+                        printl_s("    <none>");
+                    }
+                }
+                printl_s("");
+            }
+        }
+
+        analysis_result_free(result);
+        return 0;
+    }
+}
+
+/**
+ * Execute Stage 1 `--type` mode.
+ *
+ * @param opts Parsed CLI options.
+ * @param cfg Logging configuration.
+ * @return Process-style status code.
+ */
+func l1c_cmd_type(opts: CliOptions*, cfg: LogConfig*) -> int {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let prepared = l1c_prepare_input(opts, diags, cfg);
+        if (prepared == null) {
+            dp_print_collector(diags);
+            return 1;
+        }
+        let prep = prepared as PreparedInput*;
+        let result = analysis_analyze_entry(prep.search_paths, prep.entry_module, cfg);
+        prepared_input_free(prep);
+        prepared = null;
+
+        dp_print_collector_with_sources(result.diags, analysis_source_names(result), analysis_source_texts(result));
+        if (analysis_has_errors(result)) {
+            analysis_result_free(result);
+            return 1;
+        }
+
+        let tables = result.signatures as SignatureTables*;
+        with (let module_names = driver_module_names_sorted(result.driver_state) => sv_free(module_names)) {
+            for (let i = 0; i < sv_size(module_names); i = i + 1) {
+                let mod_name = sv_get(module_names, i);
+                let entry_unit = driver_find_unit(result.driver_state, result.driver_state.entry_module) as DriverUnit*;
+                if (!opts.all_modules && mod_name != entry_unit.module_name) {
+                    continue;
+                }
+
+                printl_s("=== module " + mod_name + " ===");
+
+                printl_s("  functions:");
+                let any_funcs = false;
+                with (let f_keys = spm_keys(tables.func_types) => sv_free(f_keys)) {
+                    sv_sort(f_keys);
+                    for (let j = 0; j < sv_size(f_keys); j = j + 1) {
+                        let key = sv_get(f_keys, j);
+                        if (starts_with_s(key, mod_name + "::")) {
+                            any_funcs = true;
+                            let fname = slice_s(key, len_s(mod_name) + 2, len_s(key));
+                            printl_s("    " + fname + ": " + type_format(spm_get(tables.func_types, key) as Type*));
+                        }
+                    }
+                }
+                if (!any_funcs) { printl_s("    <none>"); }
+
+                printl_s("  structs:");
+                let any_structs = false;
+                with (let s_keys = spm_keys(tables.struct_infos) => sv_free(s_keys)) {
+                    sv_sort(s_keys);
+                    for (let j = 0; j < sv_size(s_keys); j = j + 1) {
+                        let key2 = sv_get(s_keys, j);
+                        if (starts_with_s(key2, mod_name + "::")) {
+                            any_structs = true;
+                            let s_info = spm_get(tables.struct_infos, key2) as StructInfo*;
+                            printl_s("    " + s_info.name + ":");
+                            for (let k = 0; k < vec_size(s_info.fields); k = k + 1) {
+                                let f_info = ptr_vec_get(s_info.fields, k) as StructFieldInfo*;
+                                printl_s("      " + f_info.name + ": " + type_format(f_info.field_type));
+                            }
+                        }
+                    }
+                }
+                if (!any_structs) { printl_s("    <none>"); }
+
+                printl_s("  enums:");
+                let any_enums = false;
+                with (let e_keys = spm_keys(tables.enum_infos) => sv_free(e_keys)) {
+                    sv_sort(e_keys);
+                    for (let j = 0; j < sv_size(e_keys); j = j + 1) {
+                        let key3 = sv_get(e_keys, j);
+                        if (starts_with_s(key3, mod_name + "::")) {
+                            any_enums = true;
+                            let e_info = spm_get(tables.enum_infos, key3) as EnumInfo*;
+                            printl_s("    " + e_info.name + ":");
+                            for (let k = 0; k < vec_size(e_info.variants); k = k + 1) {
+                                let v_info = ptr_vec_get(e_info.variants, k) as EnumVariantInfo*;
+                                with (let sb = sb_create() => sb_free(sb)) {
+                                    sb_append(sb, "      ");
+                                    sb_append(sb, v_info.name);
+                                    if (vec_size(v_info.field_types) > 0) {
+                                        sb_append(sb, "(");
+                                        for (let l = 0; l < vec_size(v_info.field_types); l = l + 1) {
+                                            if (l > 0) { sb_append(sb, ", "); }
+                                            sb_append(sb, type_format(ptr_vec_get(v_info.field_types, l) as Type*));
+                                        }
+                                        sb_append(sb, ")");
+                                    }
+                                    printl_s(sb_to_string(sb));
+                                }
+                            }
+                        }
+                    }
+                }
+                if (!any_enums) { printl_s("    <none>"); }
+
+                printl_s("");
+            }
+        }
+
+        analysis_result_free(result);
+        return 0;
+    }
+}
+
+/**
+ * Append whitespace-delimited C option words from one source string.
+ *
+ * @param dst Destination vector for parsed option words.
+ * @param raw Raw options string, or `null`.
+ */
+func l1c_append_c_option_words(dst: StringVector*, raw: string?) {
+    bd_append_c_option_words(dst, raw);
+}
+
+/**
+ * Merge C option words from environment and CLI with CLI-last precedence.
+ *
+ * @param env_opts Options from `L1_CFLAGS`.
+ * @param cli_opts Options from `--c-options`.
+ * @return Parsed option words in final order.
+ */
+func l1c_merge_c_option_words(env_opts: string?, cli_opts: string?) -> StringVector* {
+    return bd_merge_c_option_words(env_opts, cli_opts);
+}
+
+/**
+ * Resolve merged C option words from `L1_CFLAGS` and parsed CLI options.
+ *
+ * @param opts Parsed CLI options.
+ * @return Parsed option words in final order.
+ */
+func l1c_collect_c_option_words(opts: CliOptions*) -> StringVector* {
+    return bd_collect_c_option_words(opts);
+}
+
+/**
+ * Execute Stage 1 `--ast` mode.
+ *
+ * Without `--all-modules`, prints the AST for the entry module only.
+ * With `--all-modules`, prints all modules in the compilation unit in sorted
+ * order, separated by `=== Module <name> ===` headers.
+ *
+ * @param opts Parsed CLI options.
+ * @param cfg Logging configuration.
+ * @return Process-style status code.
+ */
+func l1c_cmd_ast(opts: CliOptions*, cfg: LogConfig*) -> int {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let prepared = l1c_prepare_input(opts, diags, cfg);
+        if (prepared == null) {
+            dp_print_collector(diags);
+            return 1;
+        }
+        let prep = prepared as PreparedInput*;
+
+        let result = driver_analyze_entry(prep.search_paths, prep.entry_module, cfg);
+        prepared_input_free(prep);
+        prepared = null;
+
+        if (driver_has_errors(result)) {
+            dp_print_collector_with_sources(result.diags, result.source_names, result.source_texts);
+            driver_state_free(result);
+            return 1;
+        }
+
+        if (opts.all_modules) {
+            with (let names = driver_module_names_sorted(result) => sv_free(names)) {
+                for (let i = 0; i < sv_size(names); i = i + 1) {
+                    let name = sv_get(names, i);
+                    let unit_opt = driver_find_unit(result, name);
+                    if (unit_opt == null) {
+                        continue;
+                    }
+                    let unit = unit_opt as DriverUnit*;
+                    if (unit.parse_result.root_module == null) {
+                        continue;
+                    }
+                    printl_s("=== Module " + name + " ===");
+                    ap_print_module(unit.parse_result.root_module as Module*, unit.parse_result);
+                    printl_s("");
+                }
+            }
+            driver_state_free(result);
+            return 0;
+        }
+
+        let entry_opt = driver_find_unit(result, result.entry_module);
+        if (entry_opt == null) {
+            diag_error(
+                diags,
+                "l1c",
+                "L1C-0070",
+                "Module '" + result.entry_module + "' not found in compilation unit",
+                "",
+                0,
+                0,
+                0,
+                0
+            );
+            dp_print_collector(diags);
+            driver_state_free(result);
+            return 1;
+        }
+
+        let entry = entry_opt as DriverUnit*;
+        if (entry.parse_result.root_module == null) {
+            diag_error(
+                diags,
+                "l1c",
+                "L1C-0070",
+                "Entry module '" + result.entry_module + "' has no parsed AST",
+                "",
+                0,
+                0,
+                0,
+                0
+            );
+            dp_print_collector(diags);
+            driver_state_free(result);
+            return 1;
+        }
+
+        ap_print_module(entry.parse_result.root_module as Module*, entry.parse_result);
+        driver_state_free(result);
+        return 0;
+    }
+}
+
+/**
+ * Report that a requested CLI mode is not implemented in Stage 1 yet.
+ *
+ * @param mode Requested CLI mode.
+ * @param cfg Logging configuration.
+ * @return Process-style status code.
+ */
+func l1c_cmd_nyi(mode: CliMode, cfg: LogConfig*) -> int {
+    with (let diags = diag_create() => diag_free(diags)) {
+        diag_error(
+            diags,
+            "l1c",
+            "L1C-9510",
+            "mode '" + cli_mode_flag(mode) + "' is not implemented in Stage 1 yet",
+            "",
+            0,
+            0,
+            0,
+            0
+        );
+        dp_print_collector(diags);
+        return 1;
+    }
+}
+
+/**
+ * Parse CLI arguments and dispatch the requested command.
+ *
+ * @param argv Argument vector excluding the executable name.
+ * @return Process-style status code.
+ */
+func run_with_argv(argv: StringVector*) -> int {
+    let parsed = cli_parse(argv);
+    if (parsed.help_requested) {
+        cli_print_help();
+        cli_parse_result_free(parsed);
+        return 0;
+    }
+
+    if (parsed.version_requested) {
+        cli_print_version();
+        cli_parse_result_free(parsed);
+        return 0;
+    }
+
+    if (diag_has_errors(parsed.diags) || parsed.options == null) {
+        with (
+            let err_cfg = log_config_create(log_level_from_verbosity(parsed.verbosity), parsed.rich_log) => drop err_cfg
+        ) {
+            log_info(err_cfg, build_info_identity_with_version(cli_compiler_identity_text()));
+        }
+        cli_print_usage(true);
+        dp_print_collector(parsed.diags);
+        cli_parse_result_free(parsed);
+        return 2;
+    }
+
+    if (diag_count(parsed.diags) > 0) {
+        dp_print_collector(parsed.diags);
+    }
+
+    let opts = parsed.options as CliOptions*;
+    parsed.options = null;
+
+    with (let cfg = log_config_create(log_level_from_verbosity(opts.verbosity), opts.log) => drop cfg) {
+        log_info(cfg, build_info_identity_with_version(cli_compiler_identity_text()));
+
+        let rc = 1;
+        match (opts.mode) {
+            CM_PREPARE_STDLIB => {
+                rc = pr_cmd_prepare(opts, cfg);
+            }
+            CM_CHECK => {
+                rc = l1c_cmd_check(opts, cfg);
+            }
+            CM_TOK => {
+                rc = l1c_cmd_tok(opts, cfg);
+            }
+            CM_RUN => {
+                rc = ld_cmd_run(opts, cfg);
+            }
+            CM_BUILD => {
+                rc = ld_cmd_build(opts, cfg);
+            }
+            CM_COMPILE => {
+                rc = cd_cmd_compile(opts, cfg);
+            }
+            CM_LINK => {
+                rc = ld_cmd_link(opts, cfg);
+            }
+            CM_EMIT_INTERFACE => {
+                rc = l1c_cmd_emit_interface(opts, cfg);
+            }
+            CM_GEN => {
+                rc = l1c_cmd_gen(opts, cfg);
+            }
+            CM_AST => {
+                rc = l1c_cmd_ast(opts, cfg);
+            }
+            CM_SYM => {
+                rc = l1c_cmd_sym(opts, cfg);
+            }
+            CM_TYPE => {
+                rc = l1c_cmd_type(opts, cfg);
+            }
+        }
+
+        cli_options_free(opts);
+        cli_parse_result_free(parsed);
+        return rc;
+    }
+}

@@ -1,0 +1,26 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module math_int_trace_main;
+
+import std.assert;
+import std.integer;
+import std.io;
+import std.text;
+
+/** Check signed-integer helpers while allocating and releasing their text results. */
+func main() -> int {
+    assert(div_floor(-7, 3) == -3, "div_floor result");
+    assert(div_ceil(-7, 3) == -2, "div_ceil result");
+    assert(clamp(-5, 0, 10) == 0, "clamp result");
+
+    let quotient = int_to_string(div_floor(-7, 3));
+    let remainder = int_to_string(emod(-7, 3));
+    let rendered = quotient + ":" + remainder;
+    assert(rendered == "-3:2", "rendered signed arithmetic result");
+
+    printl_s("math_int_trace_main: PASS");
+    return 0;
+}

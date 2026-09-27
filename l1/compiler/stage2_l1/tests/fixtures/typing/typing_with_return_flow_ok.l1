@@ -1,0 +1,28 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_with_return_flow_ok;
+
+func header() -> int {
+    with (return 1 => null) {
+    }
+}
+
+func inline_cleanup() -> int {
+    with (let marker: int = 0 => return 2) {
+    }
+}
+
+func cleanup_block() -> int {
+    with (let marker: int = 0) {
+    } cleanup {
+        return 3;
+    }
+}
+
+func for_init() -> int {
+    for (return 4; false;) {
+    }
+}

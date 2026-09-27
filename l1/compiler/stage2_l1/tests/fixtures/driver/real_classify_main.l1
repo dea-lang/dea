@@ -1,0 +1,24 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module real_classify_main;
+
+import std.real;
+
+func main() -> int {
+    if (!std.real::is_nan_f(std.real::NAN_F)) { return 1; }
+    if (!std.real::is_nan_d(std.real::NAN)) { return 2; }
+
+    if (!std.real::is_inf_f(std.real::INFINITY_F)) { return 3; }
+    if (!std.real::is_inf_d(std.real::INFINITY)) { return 4; }
+
+    if (!std.real::is_finite_f(1.0f)) { return 5; }
+    if (!std.real::is_finite_d(1.0)) { return 6; }
+
+    if (!std.real::signbit_f(-1.0f)) { return 7; }
+    if (!std.real::signbit_d(-1.0)) { return 8; }
+
+    return 0;
+}

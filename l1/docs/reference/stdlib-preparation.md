@@ -22,11 +22,16 @@ the new frontend and canonical bundled sources. Ambient source roots, native cac
 not redirect that semantic build. It does not build native L1 program-runtime archives. The upstream L0 inputs needed to
 construct Stage 1 are still required.
 
+`make build-stage2` first performs that Stage 1 bootstrap and builds the L1 runtime archives, then uses the explicit
+Stage 1 artifact to compile the self-hosted sources. Both stages consume the same bundled interfaces and preparation
+contract. Use `make use-dev-stage1` or `make use-dev-stage2` to select the development alias; ordinary builds preserve
+it.
+
 Ordinary semantic analysis, interface emission, generated C, and compile-only imported-provider resolution use those
 interfaces without preparing native support, probing a C compiler for reuse, or hashing the bundled source tree.
-Compile-only invokes the C compiler for its requested module, but does not compile imported providers. Rebuild Stage 1
-after editing compiler or bundled inputs that generate interfaces. Running an old semantic set after such edits is
-outside the supported development workflow. Missing or invalid bundled interfaces report `L1C-2158`
+Compile-only invokes the C compiler for its requested module, but does not compile imported providers. Rebuild the
+selected stage after editing compiler or bundled inputs that generate interfaces. Running an old semantic set after such
+edits is outside the supported development workflow. Missing or invalid bundled interfaces report `L1C-2158`
 bootstrap/installation repair guidance alongside any normal semantic diagnostics.
 
 In source-resolving modes, explicit interfaces retain their existing authority. Managed interfaces occupy exactly the

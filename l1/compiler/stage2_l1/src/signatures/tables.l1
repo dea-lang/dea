@@ -1,0 +1,357 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module signatures.tables;
+
+import std.hashmap;
+import std.hashset;
+import std.vector;
+import util.diag;
+import ast;
+import driver.state;
+import name_resolver.state;
+import type_resolve.ref;
+import types;
+
+/**
+ * Defers one source-declaration shape check until all aliases materialize.
+ */
+struct SigPendingShapeCheck {
+    module_name: string;
+    ty: Type*;
+    code: string;
+    message: string;
+    filename: string;
+    span: Span;
+}
+
+/**
+ * Build a fully qualified signature-table key.
+ *
+ * @param module_name Defining module name.
+ * @param name Symbol name.
+ * @return Key in `module::name` form.
+ */
+func sig_key(module_name: string, name: string) -> string {
+    return module_name + "::" + name;
+}
+
+/**
+ * Return the declared name carried by one top-level AST entry.
+ *
+ * @param top Top-level declaration to inspect.
+ * @return Declaration name.
+ */
+func sig_top_decl_name(top: TopLevelDecl*) -> string {
+    match (top.kind) {
+        TD_STRUCT => { return (top.data as StructDecl*).name; }
+        TD_ENUM => { return (top.data as EnumDecl*).name; }
+        TD_FUNC => { return (top.data as FuncDecl*).name; }
+        TD_TYPE_ALIAS => { return (top.data as TypeAliasDecl*).name; }
+        TD_LET => { return (top.data as LetDecl*).name; }
+    }
+}
+
+/**
+ * Return the source span carried by one top-level AST entry.
+ *
+ * @param top Top-level declaration to inspect.
+ * @return Declaration span.
+ */
+func sig_top_decl_span(top: TopLevelDecl*) -> Span {
+    match (top.kind) {
+        TD_STRUCT => { return (top.data as StructDecl*).span; }
+        TD_ENUM => { return (top.data as EnumDecl*).span; }
+        TD_FUNC => { return (top.data as FuncDecl*).span; }
+        TD_TYPE_ALIAS => { return (top.data as TypeAliasDecl*).span; }
+        TD_LET => { return (top.data as LetDecl*).span; }
+    }
+}
+
+/**
+ * Emit a signature-resolution error for a source span.
+ *
+ * @param diags Diagnostic collector.
+ * @param code Diagnostic code.
+ * @param message Diagnostic message.
+ * @param filename Source filename.
+ * @param span Source span to highlight.
+ */
+func sig_diag_error(diags: DiagCollector*, code: string, message: string, filename: string, span: Span) {
+    diag_error(diags, "SignatureResolver", code, message, filename, span.start_line, span.start_column, span.end_line,
+        span.end_column);
+}
+
+/**
+ * Emit a name-resolution warning after resolved signatures are available.
+ *
+ * @param diags Diagnostic collector.
+ * @param code Diagnostic code.
+ * @param message Diagnostic message.
+ * @param filename Source filename.
+ * @param span Source span to highlight.
+ */
+func sig_name_diag_warn(diags: DiagCollector*, code: string, message: string, filename: string, span: Span) {
+    diag_warn(diags, "NameResolver", code, message, filename, span.start_line, span.start_column, span.end_line,
+        span.end_column);
+}
+
+/**
+ * Emit a name-resolution error after resolved signatures are available.
+ *
+ * @param diags Diagnostic collector.
+ * @param code Diagnostic code.
+ * @param message Diagnostic message.
+ * @param filename Source filename.
+ * @param span Source span to highlight.
+ */
+func sig_name_diag_error(diags: DiagCollector*, code: string, message: string, filename: string, span: Span) {
+    diag_error(diags, "NameResolver", code, message, filename, span.start_line, span.start_column, span.end_line,
+        span.end_column);
+}
+
+/**
+ * Free a vector of owned types.
+ *
+ * @param items Optional vector of `Type*` values to free.
+ */
+func sig_type_vec_free(items: VectorBase*?) {
+    if (items == null) {
+        return;
+    }
+    let vec = items as VectorBase*;
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        type_free(ptr_vec_get(vec, i) as Type*);
+    }
+    vec_free(vec);
+}
+
+/**
+ * Free an optional string set.
+ *
+ * @param self Optional string set to free.
+ */
+func sig_set_free_opt(self: StringSet*?) {
+    if (self != null) {
+        ss_free(self as StringSet*);
+    }
+}
+
+/**
+ * Free an optional vector of owned types.
+ *
+ * @param items Optional vector of `Type*` values to free.
+ */
+func sig_type_vec_free_opt(items: VectorBase*?) {
+    if (items != null) {
+        sig_type_vec_free(items as VectorBase*);
+    }
+}
+
+/**
+ * Free a temporary vector of struct-field metadata.
+ *
+ * @param items Optional vector of `StructFieldInfo*` values to free.
+ */
+func sig_struct_field_vec_temp_free(items: VectorBase*?) {
+    if (items == null) {
+        return;
+    }
+    let vec = items as VectorBase*;
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        let field = ptr_vec_get(vec, i) as StructFieldInfo*;
+        type_free(field.field_type);
+        drop field;
+    }
+    vec_free(vec);
+}
+
+/**
+ * Free a temporary vector of enum-variant metadata.
+ *
+ * @param items Optional vector of `EnumVariantInfo*` values to free.
+ */
+func sig_enum_variant_vec_temp_free(items: VectorBase*?) {
+    if (items == null) {
+        return;
+    }
+    let vec = items as VectorBase*;
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        let variant = ptr_vec_get(vec, i) as EnumVariantInfo*;
+        sig_type_vec_free(variant.field_types);
+        sv_free(variant.field_names);
+        drop variant;
+    }
+    vec_free(vec);
+}
+
+/**
+ * Retain one resolved temporary type for post-finalization shape checking.
+ *
+ * @param checks Vector receiving an owned pending check.
+ * @param module_name Module that owns unqualified names inside `ty`.
+ * @param ty Resolved temporary type to clone.
+ * @param code Diagnostic code to emit for an invalid shape.
+ * @param message Diagnostic message to emit.
+ * @param filename Source filename.
+ * @param span Source span.
+ */
+func sig_pending_shape_add(checks: VectorBase*, module_name: string, ty: Type*, code: string,
+                           message: string, filename: string, span: Span) {
+    ptr_vec_push(checks,
+        new SigPendingShapeCheck(module_name, type_clone(ty), code, message, filename, span) as void*);
+}
+
+/**
+ * Free deferred shape checks and their owned type clones.
+ *
+ * @param checks Optional vector of `SigPendingShapeCheck*` values.
+ */
+func sig_pending_shapes_free(checks: VectorBase*?) {
+    if (checks == null) {
+        return;
+    }
+    let vec = checks as VectorBase*;
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        let check = ptr_vec_get(vec, i) as SigPendingShapeCheck*;
+        type_free(check.ty);
+        drop check;
+    }
+    vec_free(vec);
+}
+
+/**
+ * Look up a resolved function type.
+ *
+ * @param self Signature tables to inspect.
+ * @param module_name Defining module name.
+ * @param name Function name.
+ * @return Function type, or `null` if absent.
+ */
+func sig_lookup_func_type(self: SignatureTables*, module_name: string, name: string) -> Type*? {
+    let value = spm_get(self.func_types, sig_key(module_name, name));
+    if (value == null) {
+        return null;
+    }
+    return value as Type*;
+}
+
+/**
+ * Look up resolved struct metadata.
+ *
+ * @param self Signature tables to inspect.
+ * @param module_name Defining module name.
+ * @param name Struct name.
+ * @return Struct info, or `null` if absent.
+ */
+func sig_lookup_struct_info(self: SignatureTables*, module_name: string, name: string) -> StructInfo*? {
+    let value = spm_get(self.struct_infos, sig_key(module_name, name));
+    if (value == null) {
+        return null;
+    }
+    return value as StructInfo*;
+}
+
+/**
+ * Look up resolved enum metadata.
+ *
+ * @param self Signature tables to inspect.
+ * @param module_name Defining module name.
+ * @param name Enum name.
+ * @return Enum info, or `null` if absent.
+ */
+func sig_lookup_enum_info(self: SignatureTables*, module_name: string, name: string) -> EnumInfo*? {
+    let value = spm_get(self.enum_infos, sig_key(module_name, name));
+    if (value == null) {
+        return null;
+    }
+    return value as EnumInfo*;
+}
+
+/**
+ * Look up a resolved top-level binding type.
+ *
+ * @param self Signature tables to inspect.
+ * @param module_name Defining module name.
+ * @param name Binding name.
+ * @return Resolved type, or `null` if absent.
+ */
+func sig_lookup_let_type(self: SignatureTables*, module_name: string, name: string) -> Type*? {
+    let value = spm_get(self.let_types, sig_key(module_name, name));
+    if (value == null) {
+        return null;
+    }
+    return value as Type*;
+}
+
+/**
+ * Create empty signature tables.
+ *
+ * @return New signature tables.
+ */
+func sig_make_tables() -> SignatureTables* {
+    return new SignatureTables(spm_create(), spm_create(), spm_create(), spm_create(), ss_create());
+}
+
+/**
+ * Report whether a resolved type is, or transitively contains, a slice.
+ *
+ * Recursion descends into array element types so that array-of-slice forms are
+ * also detected. It does not descend into function parameter or result types,
+ * because slices are permitted as function parameters.
+ *
+ * @param ty Resolved type to inspect.
+ * @return `true` when `ty` is a slice or an array whose element contains a slice.
+ */
+func sig_type_contains_slice(ty: Type*) -> bool {
+    if (ord(ty.kind) == ord(TY_SLICE)) {
+        return true;
+    }
+    if (ord(ty.kind) == ord(TY_ARRAY)) {
+        return sig_type_contains_slice(ty.inner as Type*);
+    }
+    return false;
+}
+
+/**
+ * Emit a slice-escape diagnostic when a type appears in a disallowed long-lived position.
+ *
+ * @param ty Resolved type to inspect.
+ * @param code Diagnostic code to emit.
+ * @param message Diagnostic message to emit.
+ * @param diags Diagnostic collector.
+ * @param filename Source filename to report.
+ * @param span Source span to report.
+ */
+func sig_reject_slice_escape(ty: Type*, code: string, message: string, diags: DiagCollector*, filename: string,
+                             span: Span) {
+    if (sig_type_contains_slice(ty)) {
+        sig_diag_error(diags, code, message, filename, span);
+    }
+}
+
+/**
+ * Finalize and check exact type positions retained from source declarations.
+ *
+ * Keeping these clones alive until every source signature is resolved
+ * preserves independent slice diagnostics without running shape checks before
+ * cross-provider aliases can be materialized.
+ *
+ * @param checks Deferred shape checks to process.
+ * @param tables Finalized signature tables.
+ * @param nr Name-resolution data containing source and interface aliases.
+ * @param driver_state Driver state containing provider interfaces and units.
+ * @param diags Diagnostic collector.
+ */
+func sig_check_pending_materialized_shapes(checks: VectorBase*, tables: SignatureTables*, nr: NameResolution*,
+                                           driver_state: DriverState*, diags: DiagCollector*) {
+    with (let seen = ss_create() => ss_free(seen)) {
+        for (let i = 0; i < vec_size(checks); i = i + 1) {
+            let check = ptr_vec_get(checks, i) as SigPendingShapeCheck*;
+            tr_finalize_materialized_type(tables, nr, driver_state, check.module_name, check.ty, diags, seen);
+            sig_reject_slice_escape(check.ty, check.code, check.message, diags, check.filename, check.span);
+        }
+    }
+}

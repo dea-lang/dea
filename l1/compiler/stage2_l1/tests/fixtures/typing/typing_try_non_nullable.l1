@@ -1,0 +1,16 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_try_non_nullable;
+
+/**
+ * Triggers `TYP-0250` for postfix try on a non-nullable operand.
+ *
+ * @param value Non-nullable input value.
+ * @return Never produced successfully.
+ */
+func bad_try(value: int) -> int? {
+    return value?;
+}

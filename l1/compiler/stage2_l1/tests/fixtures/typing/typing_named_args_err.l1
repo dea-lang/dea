@@ -1,0 +1,26 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_named_args_err;
+
+func test_func(a: int, b: int) -> int {
+    return a + b;
+}
+
+struct Point {
+    x: int;
+    y: int;
+}
+
+func test_errs() {
+    // test_func(1, b: 2); // PAR-0550 is tested elsewhere or requires a separate module
+    test_func(a: 1, c: 2); // TYP-0762 (unknown 'c'), TYP-0764 (missing 'b')
+    test_func(a: 1, a: 2); // TYP-0763 (duplicate 'a'), TYP-0764 (missing 'b')
+    test_func(a: 1); // TYP-0764 (missing 'b')
+    test_func(b: 2); // TYP-0764 (missing 'a')
+    
+    new Point(x: 1, z: 2); // TYP-0762 (unknown 'z'), TYP-0764 (missing 'y')
+    new Point(x: 1, x: 2); // TYP-0763 (duplicate 'x'), TYP-0764 (missing 'y')
+}

@@ -1,0 +1,26 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_cast_optional_int_err;
+
+struct Point {
+    x: int;
+}
+
+func bad_int_literal_to_bool_opt() -> bool? {
+    return 1 as bool?; // TYP-0230
+}
+
+func bad_int_literal_to_point_opt() -> Point? {
+    return 1 as Point?; // TYP-0230
+}
+
+func bad_bigint_literal_to_bool_opt() -> bool? {
+    return 2147483648 as bool?; // TYP-0703
+}
+
+func bad_bigint_literal_to_point_opt() -> Point? {
+    return 2147483648 as Point?; // TYP-0703
+}

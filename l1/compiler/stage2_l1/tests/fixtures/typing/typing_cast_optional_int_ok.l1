@@ -1,0 +1,86 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_cast_optional_int_ok;
+
+func int_literal_to_int_opt() -> int? {
+    return 42 as int?;
+}
+
+func int_literal_to_uint_opt() -> uint? {
+    return 42 as uint?;
+}
+
+func int_literal_context_to_uint_opt() -> uint? {
+    return 42;
+}
+
+func int_literal_to_long_opt() -> long? {
+    return 42 as long?;
+}
+
+func int_literal_context_to_long_opt() -> long? {
+    return 42;
+}
+
+func int_literal_to_ulong_opt() -> ulong? {
+    return 42 as ulong?;
+}
+
+func int_literal_context_to_ulong_opt() -> ulong? {
+    return 42;
+}
+
+func bigint_literal_to_uint_opt() -> uint? {
+    return 2147483648 as uint?;
+}
+
+func bigint_literal_to_long_opt() -> long? {
+    return 9999999999 as long?;
+}
+
+func bigint_literal_context_to_long_opt() -> long? {
+    return 9999999999;
+}
+
+func min_long_literal_to_long_opt() -> long? {
+    return (-0x8000000000000000) as long?;
+}
+
+func bigint_literal_to_ulong_opt() -> ulong? {
+    return 18446744073709551615 as ulong?;
+}
+
+func bigint_literal_context_to_ulong_opt() -> ulong? {
+    return 18446744073709551615;
+}
+
+func int_var_to_int_opt(x: int) -> int? {
+    return x as int?;
+}
+
+func uint_var_to_uint_opt(x: uint) -> uint? {
+    return x as uint?;
+}
+
+func long_var_to_long_opt(x: long) -> long? {
+    return x as long?;
+}
+
+func ulong_var_to_ulong_opt(x: ulong) -> ulong? {
+    return x as ulong?;
+}
+
+func int_expr_to_uint_opt(x: int) -> uint? {
+    return (x + 1) as uint?;
+}
+
+func int_expr_to_long_opt(x: int) -> long? {
+    return (x + 1) as long?;
+}
+
+func long_expr_to_ulong_opt(x: uint) -> ulong? {
+    return (x + 1) as ulong?;
+}

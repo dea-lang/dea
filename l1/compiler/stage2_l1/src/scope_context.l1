@@ -1,0 +1,170 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module scope_context;
+
+import std.string;
+import std.vector;
+
+import ast;
+import types;
+
+/**
+ * Represents one declared variable tracked by the backend.
+ */
+struct ScopeVar {
+    name: string;
+    var_type: Type*;
+}
+
+/**
+ * Represents backend cleanup state for a single lexical scope.
+ */
+struct ScopeContext {
+    scope_id: int;
+    parent: ScopeContext*?;
+    owned_vars: VectorBase*;         // ScopeVar*
+    declared_vars: VectorBase*;      // ScopeVar*
+    with_cleanup_inline: VectorBase*?; // int entries (StmtId)
+    with_cleanup_block: StmtId;
+    with_cleanup_in_progress: bool;
+}
+
+/**
+ * Create a backend scope context.
+ *
+ * @param parent Parent scope, or `null` for the function root.
+ * @return New scope context.
+ */
+func sc_create(parent: ScopeContext*?) -> ScopeContext* {
+    return new ScopeContext(0, parent, ptr_vec_create(4), ptr_vec_create(8), null, invalid_stmt_id(), false);
+}
+
+/**
+ * Free a tracked variable record.
+ *
+ * @param self Record to free.
+ */
+func sc_var_free(self: ScopeVar*) {
+    type_free(self.var_type);
+    drop self;
+}
+
+/**
+ * Free an optional inline-cleanup vector.
+ *
+ * @param items Optional cleanup vector to free.
+ */
+func sc_inline_cleanup_free_opt(items: VectorBase*?) {
+    if (items != null) {
+        vec_free(items as VectorBase*);
+    }
+}
+
+/**
+ * Free one scope context and its owned containers.
+ *
+ * @param self Scope context to free.
+ */
+func sc_free(self: ScopeContext*) {
+    for (let i = 0; i < vec_size(self.owned_vars); i = i + 1) {
+        sc_var_free(ptr_vec_get(self.owned_vars, i) as ScopeVar*);
+    }
+    for (let declared_i = 0; declared_i < vec_size(self.declared_vars); declared_i = declared_i + 1) {
+        sc_var_free(ptr_vec_get(self.declared_vars, declared_i) as ScopeVar*);
+    }
+    vec_free(self.owned_vars);
+    vec_free(self.declared_vars);
+    sc_inline_cleanup_free_opt(self.with_cleanup_inline);
+    drop self;
+}
+
+/**
+ * Add a declared variable to a scope.
+ *
+ * @param self Scope to update.
+ * @param name Mangled C variable name.
+ * @param var_type Resolved Dea type.
+ */
+func sc_add_declared(self: ScopeContext*, name: string, var_type: Type*) {
+    ptr_vec_push(self.declared_vars, new ScopeVar(name, type_clone(var_type)) as void*);
+}
+
+/**
+ * Add an owned variable to a scope and record it as declared.
+ *
+ * @param self Scope to update.
+ * @param name Mangled C variable name.
+ * @param var_type Resolved Dea type.
+ */
+func sc_add_owned(self: ScopeContext*, name: string, var_type: Type*) {
+    ptr_vec_push(self.owned_vars, new ScopeVar(name, type_clone(var_type)) as void*);
+    ptr_vec_push(self.declared_vars, new ScopeVar(name, type_clone(var_type)) as void*);
+}
+
+/**
+ * Remove a variable from the owned set.
+ *
+ * @param self Scope to update.
+ * @param name Mangled C variable name to stop cleaning up.
+ */
+func sc_remove_owned(self: ScopeContext*, name: string) {
+    let kept = ptr_vec_create(vec_size(self.owned_vars));
+    for (let i = 0; i < vec_size(self.owned_vars); i = i + 1) {
+        let item = ptr_vec_get(self.owned_vars, i) as ScopeVar*;
+        if (item.name == name) {
+            sc_var_free(item);
+            continue;
+        }
+        ptr_vec_push(kept, item as void*);
+    }
+    vec_free(self.owned_vars);
+    self.owned_vars = kept;
+}
+
+/**
+ * Return the closest declared variable type from a scope chain.
+ *
+ * @param self Starting scope, or `null`.
+ * @param name Mangled C variable name to find.
+ * @return Borrowed type pointer, or `null` if absent.
+ */
+func sc_lookup_declared_type(self: ScopeContext*?, name: string) -> Type*? {
+    let cur = self;
+    while (cur != null) {
+        let scope = cur as ScopeContext*;
+        for (let i = vec_size(scope.declared_vars) - 1; i >= 0; i = i - 1) {
+            let item = ptr_vec_get(scope.declared_vars, i) as ScopeVar*;
+            if (item.name == name) {
+                return item.var_type;
+            }
+        }
+        cur = scope.parent;
+    }
+    return null;
+}
+
+/**
+ * Return whether a scope currently has inline cleanup items.
+ *
+ * @param self Scope to inspect.
+ * @return `true` if inline cleanup statements are recorded.
+ */
+func sc_has_inline_cleanup(self: ScopeContext*) -> bool {
+    return self.with_cleanup_inline != null && vec_size(self.with_cleanup_inline as VectorBase*) > 0;
+}
+
+/**
+ * Lazily create and append an inline cleanup statement id.
+ *
+ * @param self Scope to update.
+ * @param stmt_id Cleanup statement id to append.
+ */
+func sc_push_inline_cleanup(self: ScopeContext*, stmt_id: StmtId) {
+    if (self.with_cleanup_inline == null) {
+        self.with_cleanup_inline = id_vec_create(2);
+    }
+    id_vec_push(self.with_cleanup_inline as VectorBase*, stmt_id);
+}

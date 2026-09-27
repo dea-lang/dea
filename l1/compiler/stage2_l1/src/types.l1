@@ -1,0 +1,772 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module types;
+
+import std.hashmap;
+import std.hashset;
+import std.string;
+import std.text;
+import std.vector;
+
+import ast;
+import builtin_types;
+
+/**
+ * Defines the TypeKind enumeration.
+ */
+enum TypeKind {
+    TY_BUILTIN;
+    TY_STRUCT;
+    TY_ENUM;
+    TY_POINTER;
+    TY_NULLABLE;
+    TY_ARRAY;
+    TY_SLICE;
+    TY_FUNC;
+    TY_NULL;
+}
+
+/**
+ * Represents the Type structure.
+ */
+struct Type {
+    kind: TypeKind;
+    module_name: string;
+    name: string;
+    inner: Type*?;
+    array_len: int;
+    params: VectorBase*?; // Type*
+    result: Type*?;
+    is_unsafe: bool;
+    is_variadic: bool;
+}
+
+/**
+ * Represents the StructFieldInfo structure.
+ */
+struct StructFieldInfo {
+    name: string;
+    field_type: Type*;
+}
+
+/**
+ * Represents the StructInfo structure.
+ */
+struct StructInfo {
+    key: string;
+    module_name: string;
+    name: string;
+    filename: string;
+    span: Span;
+    struct_type: Type*;
+    fields: VectorBase*; // StructFieldInfo*
+    is_opaque: bool;
+}
+
+/**
+ * Represents the EnumVariantInfo structure.
+ */
+struct EnumVariantInfo {
+    name: string;
+    field_types: VectorBase*; // Type*
+    field_names: StringVector*;
+}
+
+/**
+ * Represents the EnumInfo structure.
+ */
+struct EnumInfo {
+    key: string;
+    module_name: string;
+    name: string;
+    filename: string;
+    span: Span;
+    enum_type: Type*;
+    variants: VectorBase*; // EnumVariantInfo*
+    is_opaque: bool;
+}
+
+/**
+ * Represents the SignatureTables structure.
+ */
+struct SignatureTables {
+    func_types: StringPtrMap*;   // key -> Type*
+    struct_infos: StringPtrMap*; // key -> StructInfo*
+    enum_infos: StringPtrMap*;   // key -> EnumInfo*
+    let_types: StringPtrMap*;    // key -> Type*
+    failed_aliases: StringSet*;  // fully qualified aliases already diagnosed as unresolved
+}
+
+/**
+ * Free a vector of owned parameter types.
+ *
+ * @param items Optional parameter-type vector to free.
+ */
+func type_param_vec_free(items: VectorBase*?) {
+    if (items == null) {
+        return;
+    }
+
+    let vec = items as VectorBase*;
+    for (let i = 0; i < vec_size(vec); i = i + 1) {
+        let item = *(vec_get(vec, i) as Type**);
+        type_free(item);
+    }
+    vec_free(vec);
+}
+
+/**
+ * Create a type descriptor from raw components.
+ *
+ * @param kind Type kind tag.
+ * @param module_name Defining module name for nominal types.
+ * @param name Type name for builtin and nominal kinds.
+ * @param inner Owned inner type for pointer and nullable kinds.
+ * @param params Owned parameter vector for function kinds.
+ * @param result Owned result type for function kinds.
+ * @return New type descriptor.
+ */
+func type_new(kind: TypeKind, module_name: string, name: string, inner: Type*?, params: VectorBase*?,
+              result: Type*?, is_unsafe: bool) -> Type* {
+    return new Type(kind, module_name, name, inner, 0, params, result, is_unsafe, false);
+}
+
+/**
+ * Create a builtin type descriptor.
+ *
+ * @param name Builtin type name.
+ * @return New builtin type.
+ */
+func type_new_builtin(name: string) -> Type* {
+    return type_new(TY_BUILTIN, "", name, null, null, null, false);
+}
+
+/**
+ * Create the builtin `bool` type.
+ *
+ * @return New `bool` type.
+ */
+func type_builtin_bool() -> Type* {
+    return type_new_builtin("bool");
+}
+
+/**
+ * Create the builtin `tiny` type.
+ *
+ * @return New `tiny` type.
+ */
+func type_builtin_tiny() -> Type* {
+    return type_new_builtin("tiny");
+}
+
+/**
+ * Create the builtin `byte` type.
+ *
+ * @return New `byte` type.
+ */
+func type_builtin_byte() -> Type* {
+    return type_new_builtin("byte");
+}
+
+/**
+ * Create the builtin `short` type.
+ *
+ * @return New `short` type.
+ */
+func type_builtin_short() -> Type* {
+    return type_new_builtin("short");
+}
+
+/**
+ * Create the builtin `int` type.
+ *
+ * @return New `int` type.
+ */
+func type_builtin_int() -> Type* {
+    return type_new_builtin("int");
+}
+
+/**
+ * Create the builtin `ushort` type.
+ *
+ * @return New `ushort` type.
+ */
+func type_builtin_ushort() -> Type* {
+    return type_new_builtin("ushort");
+}
+
+/**
+ * Create the builtin `uint` type.
+ *
+ * @return New `uint` type.
+ */
+func type_builtin_uint() -> Type* {
+    return type_new_builtin("uint");
+}
+
+/**
+ * Create the builtin `long` type.
+ *
+ * @return New `long` type.
+ */
+func type_builtin_long() -> Type* {
+    return type_new_builtin("long");
+}
+
+/**
+ * Create the builtin `ulong` type.
+ *
+ * @return New `ulong` type.
+ */
+func type_builtin_ulong() -> Type* {
+    return type_new_builtin("ulong");
+}
+
+/**
+ * Create the builtin `float` type.
+ *
+ * @return New `float` type.
+ */
+func type_builtin_float() -> Type* {
+    return type_new_builtin("float");
+}
+
+/**
+ * Create the builtin `double` type.
+ *
+ * @return New `double` type.
+ */
+func type_builtin_double() -> Type* {
+    return type_new_builtin("double");
+}
+
+/**
+ * Create the builtin `string` type.
+ *
+ * @return New `string` type.
+ */
+func type_builtin_string() -> Type* {
+    return type_new_builtin("string");
+}
+
+/**
+ * Create the builtin `void` type.
+ *
+ * @return New `void` type.
+ */
+func type_builtin_void() -> Type* {
+    return type_new_builtin("void");
+}
+
+/**
+ * Create the special `null` type.
+ *
+ * @return New `null` type.
+ */
+func type_new_null() -> Type* {
+    return type_new(TY_NULL, "", "null", null, null, null, false);
+}
+
+/**
+ * Create a struct type reference.
+ *
+ * @param module_name Module defining the struct.
+ * @param name Struct name.
+ * @return New struct type.
+ */
+func type_new_struct(module_name: string, name: string) -> Type* {
+    return type_new(TY_STRUCT, module_name, name, null, null, null, false);
+}
+
+/**
+ * Create an enum type reference.
+ *
+ * @param module_name Module defining the enum.
+ * @param name Enum name.
+ * @return New enum type.
+ */
+func type_new_enum(module_name: string, name: string) -> Type* {
+    return type_new(TY_ENUM, module_name, name, null, null, null, false);
+}
+
+/**
+ * Wrap a type in a pointer type.
+ *
+ * @param inner Pointee type.
+ * @return New pointer type.
+ */
+func type_new_pointer(inner: Type*) -> Type* {
+    return type_new(TY_POINTER, "", "", inner, null, null, false);
+}
+
+/**
+ * Wrap a type in a nullable type.
+ *
+ * @param inner Wrapped type.
+ * @return New nullable type.
+ */
+func type_new_nullable(inner: Type*) -> Type* {
+    return type_new(TY_NULLABLE, "", "", inner, null, null, false);
+}
+
+/**
+ * Wrap a type in a fixed-size array type.
+ *
+ * @param inner Element type.
+ * @param length Positive element count.
+ * @return New array type.
+ */
+func type_new_array(inner: Type*, length: int) -> Type* {
+    let result = type_new(TY_ARRAY, "", "", inner, null, null, false);
+    result.array_len = length;
+    return result;
+}
+
+/**
+ * Append a dimension to the innermost end of an adjacent array chain.
+ *
+ * @param ty Existing type.
+ * @param length Dimension length to append.
+ * @return Type with the dimension appended in source order.
+ */
+func type_append_array_dimension(ty: Type*, length: int) -> Type* {
+    if (ord(ty.kind) != ord(TY_ARRAY)) {
+        return type_new_array(ty, length);
+    }
+    let outer_len = ty.array_len;
+    let inner = ty.inner as Type*;
+    ty.inner = null;
+    drop ty;
+    return type_new_array(type_append_array_dimension(inner, length), outer_len);
+}
+
+/**
+ * Wrap a type in a non-owning slice type.
+ *
+ * @param inner Element type.
+ * @return New slice type.
+ */
+func type_new_slice(inner: Type*) -> Type* {
+    return type_new(TY_SLICE, "", "", inner, null, null, false);
+}
+
+/**
+ * Report whether a type is a slice constructor.
+ *
+ * @param self Type to inspect.
+ * @return `true` when `self` is `Slice(_)`.
+ */
+func type_is_slice(self: Type*) -> bool {
+    return ord(self.kind) == ord(TY_SLICE);
+}
+
+/**
+ * Return the element type of a slice type.
+ *
+ * @param self Type to inspect.
+ * @return The element type, or `null` when `self` is not a slice.
+ */
+func type_slice_element(self: Type*) -> Type*? {
+    if (ord(self.kind) != ord(TY_SLICE)) {
+        return null;
+    }
+    return self.inner;
+}
+
+/**
+ * Report whether a fixed array converts to a slice target by element identity.
+ *
+ * @param array_ty Candidate source type.
+ * @param slice_ty Candidate slice target type.
+ * @return `true` when `array_ty` is an array and `slice_ty` is a slice of the same element type.
+ */
+func type_array_to_slice_compatible(array_ty: Type*, slice_ty: Type*) -> bool {
+    if (ord(array_ty.kind) != ord(TY_ARRAY) || ord(slice_ty.kind) != ord(TY_SLICE)) {
+        return false;
+    }
+    return type_equals(array_ty.inner, slice_ty.inner);
+}
+
+/**
+ * Create a function type.
+ *
+ * @param params Owned vector of parameter types.
+ * @param result Result type.
+ * @return New function type.
+ */
+func type_new_func(params: VectorBase*, result: Type*, is_unsafe: bool) -> Type* {
+    return type_new(TY_FUNC, "", "", null, params, result, is_unsafe);
+}
+
+/**
+ * Create a variadic function type whose final effective parameter is a slice.
+ *
+ * @param params Owned vector of effective parameter types.
+ * @param result Result type.
+ * @param is_unsafe Whether the function has the unsafe contract marker.
+ * @return New variadic function type.
+ */
+func type_new_variadic_func(params: VectorBase*, result: Type*, is_unsafe: bool) -> Type* {
+    let ty = type_new_func(params, result, is_unsafe);
+    ty.is_variadic = true;
+    return ty;
+}
+
+/**
+ * Check whether a type is a specific builtin.
+ *
+ * @param self Type to inspect.
+ * @param name Builtin name to compare against.
+ * @return `true` if `self` is the named builtin type.
+ */
+func type_is_builtin(self: Type*, name: string) -> bool {
+    return ord(self.kind) == ord(TY_BUILTIN) && self.name == name;
+}
+
+/**
+ * Report whether a type is a pointer constructor.
+ *
+ * @param self Type to inspect.
+ * @return `true` when `self` is `Pointer(_)`.
+ */
+func type_is_pointer_type(self: Type*) -> bool {
+    return ord(self.kind) == ord(TY_POINTER);
+}
+
+/**
+ * Report whether a type is an optional constructor.
+ *
+ * @param self Type to inspect.
+ * @return `true` when `self` is `Optional(_)`.
+ */
+func type_is_optional_type(self: Type*) -> bool {
+    return ord(self.kind) == ord(TY_NULLABLE);
+}
+
+/**
+ * Report whether a nullable type has an immediate non-nullable pointer payload.
+ *
+ * @param self Type to inspect.
+ * @return `true` for exactly `Optional(Pointer(_))`.
+ */
+func type_is_nullable_pointer_type(self: Type*) -> bool {
+    return ord(self.kind) == ord(TY_NULLABLE) &&
+        self.inner != null &&
+        ord((self.inner as Type*).kind) == ord(TY_POINTER);
+}
+
+/**
+ * Report whether one type tree mentions builtin floating-point types.
+ *
+ * @param self Type to inspect.
+ * @return `true` when `self` or any nested type is builtin `float` or `double`.
+ */
+func type_contains_builtin_real(self: Type*) -> bool {
+    if (type_is_builtin(self, "float") || type_is_builtin(self, "double")) {
+        return true;
+    }
+    if (ord(self.kind) == ord(TY_POINTER) || ord(self.kind) == ord(TY_NULLABLE) ||
+        ord(self.kind) == ord(TY_ARRAY) || ord(self.kind) == ord(TY_SLICE)) {
+        return type_contains_builtin_real(self.inner as Type*);
+    }
+    if (ord(self.kind) == ord(TY_FUNC)) {
+        let params = self.params as VectorBase*;
+        for (let i = 0; i < vec_size(params); i = i + 1) {
+            if (type_contains_builtin_real(ptr_vec_get(params, i) as Type*)) {
+                return true;
+            }
+        }
+        return type_contains_builtin_real(self.result as Type*);
+    }
+    return false;
+}
+
+/**
+ * Check whether a type name is one of the builtin names.
+ *
+ * @param name Type name to inspect.
+ * @return `true` if `name` names a builtin type.
+ */
+func type_is_builtin_name(name: string) -> bool {
+    return builtin_type_name_is_known(name);
+}
+
+/**
+ * Create a builtin type descriptor from the shared builtin-name inventory.
+ *
+ * @param name Candidate builtin type name.
+ * @return New builtin type, or `null` when `name` is not builtin.
+ */
+func type_builtin_from_name(name: string) -> Type*? {
+    if (!builtin_type_name_is_known(name)) {
+        return null;
+    }
+    return type_new_builtin(name);
+}
+
+/**
+ * Deep-clone a type descriptor.
+ *
+ * @param self Type to clone.
+ * @return Deep copy of `self`.
+ */
+func type_clone(self: Type*) -> Type* {
+    if (ord(self.kind) == ord(TY_BUILTIN)) {
+        return type_new_builtin(self.name);
+    }
+    if (ord(self.kind) == ord(TY_STRUCT)) {
+        return type_new_struct(self.module_name, self.name);
+    }
+    if (ord(self.kind) == ord(TY_ENUM)) {
+        return type_new_enum(self.module_name, self.name);
+    }
+    if (ord(self.kind) == ord(TY_NULL)) {
+        return type_new_null();
+    }
+    if (ord(self.kind) == ord(TY_POINTER)) {
+        return type_new_pointer(type_clone(self.inner as Type*));
+    }
+    if (ord(self.kind) == ord(TY_NULLABLE)) {
+        return type_new_nullable(type_clone(self.inner as Type*));
+    }
+    if (ord(self.kind) == ord(TY_ARRAY)) {
+        return type_new_array(type_clone(self.inner as Type*), self.array_len);
+    }
+    if (ord(self.kind) == ord(TY_SLICE)) {
+        return type_new_slice(type_clone(self.inner as Type*));
+    }
+
+    let params = vec_create(sizeof(void*), 2);
+    let src_params = self.params as VectorBase*;
+    for (let i = 0; i < vec_size(src_params); i = i + 1) {
+        let param = *(vec_get(src_params, i) as Type**);
+        vec_push_ptr(params, type_clone(param) as void*);
+    }
+    if (self.is_variadic) {
+        return type_new_variadic_func(params, type_clone(self.result as Type*), self.is_unsafe);
+    }
+    return type_new_func(params, type_clone(self.result as Type*), self.is_unsafe);
+}
+
+/**
+ * Compare two types for structural equality.
+ *
+ * @param a First type.
+ * @param b Second type.
+ * @return `true` if the types are equal.
+ */
+func type_equals(a: Type*?, b: Type*?) -> bool {
+    if (a == null || b == null) {
+        return a == null && b == null;
+    }
+
+    let left = a as Type*;
+    let right = b as Type*;
+    if (ord(left.kind) != ord(right.kind)) {
+        return false;
+    }
+
+    if (ord(left.kind) == ord(TY_BUILTIN) || ord(left.kind) == ord(TY_NULL)) {
+        return left.name == right.name;
+    }
+
+    if (ord(left.kind) == ord(TY_STRUCT) || ord(left.kind) == ord(TY_ENUM)) {
+        return left.module_name == right.module_name && left.name == right.name;
+    }
+
+    if (ord(left.kind) == ord(TY_POINTER) || ord(left.kind) == ord(TY_NULLABLE) ||
+        ord(left.kind) == ord(TY_SLICE)) {
+        return type_equals(left.inner, right.inner);
+    }
+    if (ord(left.kind) == ord(TY_ARRAY)) {
+        return left.array_len == right.array_len && type_equals(left.inner, right.inner);
+    }
+
+    let left_params = left.params as VectorBase*;
+    let right_params = right.params as VectorBase*;
+    if (left.is_unsafe != right.is_unsafe || left.is_variadic != right.is_variadic) {
+        return false;
+    }
+    if (vec_size(left_params) != vec_size(right_params)) {
+        return false;
+    }
+    for (let i = 0; i < vec_size(left_params); i = i + 1) {
+        if (!type_equals(
+            *(vec_get(left_params, i) as Type**),
+            *(vec_get(right_params, i) as Type**)
+        )) {
+            return false;
+        }
+    }
+    return type_equals(left.result, right.result);
+}
+
+/**
+ * Format a type as source-like text.
+ *
+ * @param self Type to format.
+ * @return Human-readable type spelling.
+ */
+func type_format(self: Type*) -> string {
+    if (ord(self.kind) == ord(TY_BUILTIN) || ord(self.kind) == ord(TY_NULL)) {
+        return self.name;
+    }
+    if (ord(self.kind) == ord(TY_STRUCT) || ord(self.kind) == ord(TY_ENUM)) {
+        return self.module_name + "::" + self.name;
+    }
+    if (ord(self.kind) == ord(TY_POINTER)) {
+        return type_format(self.inner as Type*) + "*";
+    }
+    if (ord(self.kind) == ord(TY_ARRAY)) {
+        with (let dims = sv_create(4) => sv_free(dims)) {
+            let cur = self;
+            while (ord(cur.kind) == ord(TY_ARRAY)) {
+                sv_push(dims, "[" + int_to_string(cur.array_len) + "]");
+                cur = cur.inner as Type*;
+            }
+            with (let sb = sb_create() => sb_free(sb)) {
+                sb_append(sb, type_format(cur));
+                for (let i = 0; i < sv_size(dims); i = i + 1) {
+                    sb_append(sb, sv_get(dims, i));
+                }
+                return sb_to_string(sb);
+            }
+        }
+    }
+    if (ord(self.kind) == ord(TY_SLICE)) {
+        return type_format(self.inner as Type*) + "[]";
+    }
+    if (ord(self.kind) == ord(TY_NULLABLE)) {
+        if (ord((self.inner as Type*).kind) == ord(TY_FUNC)) {
+            return "(" + type_format(self.inner as Type*) + ")?";
+        }
+        return type_format(self.inner as Type*) + "?";
+    }
+
+    with (let sb = sb_create() => sb_free(sb)) {
+        if (self.is_unsafe) {
+            sb_append(sb, "unsafe ");
+        }
+        sb_append(sb, "func(");
+        let params = self.params as VectorBase*;
+        for (let i = 0; i < vec_size(params); i = i + 1) {
+            if (i > 0) {
+                sb_append(sb, ", ");
+            }
+            let param = *(vec_get(params, i) as Type**);
+            if (self.is_variadic && i == vec_size(params) - 1 && ord(param.kind) == ord(TY_SLICE)) {
+                sb_append(sb, type_format(param.inner as Type*));
+                sb_append(sb, "...");
+            } else {
+                sb_append(sb, type_format(param));
+            }
+        }
+        sb_append(sb, ") -> ");
+        sb_append(sb, type_format(self.result as Type*));
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Free a type descriptor and any owned child types.
+ *
+ * @param self Type to free.
+ */
+func type_free(self: Type*) {
+    let pending = ptr_vec_create(8);
+    ptr_vec_push(pending, self as void*);
+    while (vec_size(pending) > 0) {
+        let node_index = vec_size(pending) - 1;
+        let node = ptr_vec_get(pending, node_index) as Type*;
+        pending.length = node_index;
+        if (node.inner != null) {
+            ptr_vec_push(pending, node.inner as void*);
+        }
+        if (node.params != null) {
+            let params = node.params as VectorBase*;
+            for (let i = 0; i < vec_size(params); i = i + 1) {
+                ptr_vec_push(pending, ptr_vec_get(params, i));
+            }
+            vec_free(params);
+        }
+        if (node.result != null) {
+            ptr_vec_push(pending, node.result as void*);
+        }
+        drop node;
+    }
+    vec_free(pending);
+}
+
+/**
+ * Free resolved struct metadata.
+ *
+ * @param self Struct info to free.
+ */
+func struct_info_free(self: StructInfo*) {
+    type_free(self.struct_type);
+    for (let i = 0; i < vec_size(self.fields); i = i + 1) {
+        let field = ptr_vec_get(self.fields, i) as StructFieldInfo*;
+        type_free(field.field_type);
+        drop field;
+    }
+    vec_free(self.fields);
+    drop self;
+}
+
+/**
+ * Free resolved enum metadata.
+ *
+ * @param self Enum info to free.
+ */
+func enum_info_free(self: EnumInfo*) {
+    type_free(self.enum_type);
+    for (let i = 0; i < vec_size(self.variants); i = i + 1) {
+        let variant = ptr_vec_get(self.variants, i) as EnumVariantInfo*;
+        let field_types = variant.field_types as VectorBase*;
+        for (let j = 0; j < vec_size(field_types); j = j + 1) {
+            type_free(ptr_vec_get(field_types, j) as Type*);
+        }
+        vec_free(field_types);
+        sv_free(variant.field_names);
+        drop variant;
+    }
+    vec_free(self.variants);
+    drop self;
+}
+
+/**
+ * Free signature tables and every owned resolved type/info entry.
+ *
+ * @param self Signature tables to free.
+ */
+func sig_tables_free(self: SignatureTables*) {
+    for (let i = 0; i < spm_capacity(self.func_types); i = i + 1) {
+        if (spm_slot_occupied(self.func_types, i)) {
+            type_free(spm_slot_value(self.func_types, i) as Type*);
+        }
+    }
+    for (let struct_i = 0; struct_i < spm_capacity(self.struct_infos); struct_i = struct_i + 1) {
+        if (spm_slot_occupied(self.struct_infos, struct_i)) {
+            struct_info_free(spm_slot_value(self.struct_infos, struct_i) as StructInfo*);
+        }
+    }
+    for (let enum_i = 0; enum_i < spm_capacity(self.enum_infos); enum_i = enum_i + 1) {
+        if (spm_slot_occupied(self.enum_infos, enum_i)) {
+            enum_info_free(spm_slot_value(self.enum_infos, enum_i) as EnumInfo*);
+        }
+    }
+    for (let let_i = 0; let_i < spm_capacity(self.let_types); let_i = let_i + 1) {
+        if (spm_slot_occupied(self.let_types, let_i)) {
+            type_free(spm_slot_value(self.let_types, let_i) as Type*);
+        }
+    }
+    spm_free(self.func_types);
+    spm_free(self.struct_infos);
+    spm_free(self.enum_infos);
+    spm_free(self.let_types);
+    ss_free(self.failed_aliases);
+    drop self;
+}

@@ -1,0 +1,190 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module parser.interface;
+
+import std.hashset;
+import std.vector;
+import util.strings;
+import ast;
+import lexer;
+import module_interface;
+import mi_utils;
+import parser.decl;
+import parser.cursor;
+import parser.state;
+import tokens;
+import parser.interface.declarations;
+import parser.interface.header;
+import parser.interface.normalize;
+
+/**
+ * Parse a `.l1m` interface file into a ModuleInterface, with peer interfaces
+ * available for cross-module nominal-kind resolution.
+ *
+ * @param text Source text of the interface file.
+ * @param filename Filename used in diagnostics.
+ * @param peers Optional vector of `ModuleInterface*` peers used to resolve
+ *              cross-module nominal kinds; pass `null` for a single-module parse.
+ * @return Parse result wrapping the interface and diagnostics.
+ */
+func pi_parse_interface_with_peers(text: string, filename: string, peers: VectorBase*?) -> InterfaceParseResult* {
+    let ls = ls_create(us_strip_utf8_bom(text), filename);
+    let toks = tokenize(ls);
+    if (toks == null) {
+        return pi_result_from_impl(ps_lex_error_result(ls, filename));
+    }
+
+    let p = ps_create(toks as TokenVector, filename);
+    toks = null;
+    ls_free(ls);
+
+    let header_opt = pi_parse_header(p);
+    if (header_opt == null) {
+        let result = new InterfaceParseResult(null, p.diags);
+        pi_destroy_state(p, false);
+        return result;
+    }
+    let header = header_opt as InterfaceHeader*;
+
+    let mi = new ModuleInterface(
+        header.module_name,
+        header.fingerprint,
+        false,
+        ptr_vec_create(4),
+        ptr_vec_create(4),
+        ptr_vec_create(4),
+        ptr_vec_create(4),
+        ptr_vec_create(4),
+        ptr_vec_create(4),
+        ptr_vec_create(8),
+        ptr_vec_create(8)
+    );
+    drop header;
+
+    // Operational regions are strict and monotonic:
+    // entry, imports, requires, links, then declarations.
+    let region = 0;
+    let decl_group = -1;
+    let seen_entry = false;
+    with (let seen_imports = ss_create() => ss_free(seen_imports),
+          let seen_decls = ss_create() => ss_free(seen_decls)) {
+        while (!ps_check(p, ord(TT_EOF))) {
+            if (pi_check_ident_text(p, "entry")) {
+                let entry_tok = ps_peek(p);
+                let duplicate = seen_entry;
+                if (duplicate) {
+                    pi_operational_error(p, "PAR-0578", "Duplicate entry marker in interface file", entry_tok);
+                } else if (region > 0) {
+                    pi_operational_error(p, "PAR-0579",
+                        "Entry marker appears outside its canonical interface region", entry_tok);
+                }
+                seen_entry = true;
+                if (!pi_parse_entry_line(p)) {
+                    break;
+                }
+                if (!duplicate && region == 0) {
+                    mi.has_entry = true;
+                }
+                continue;
+            }
+
+            if (ps_check(p, ord(TT_IMPORT))) {
+                let import_tok = ps_peek(p);
+                let import_entry = pi_parse_module_import_line(p);
+                if (import_entry == null) {
+                    break;
+                }
+                let imported = import_entry as InterfaceModuleImport*;
+                let duplicate2 = !ss_add(seen_imports, imported.provider_module);
+                if (duplicate2) {
+                    pi_operational_error(p, "PAR-0578",
+                        "Duplicate import provider '" + imported.provider_module + "' in interface file", import_tok);
+                    mi_module_import_free(imported);
+                } else if (region > 1) {
+                    pi_operational_error(p, "PAR-0579",
+                        "Module import appears outside its canonical interface region", import_tok);
+                    mi_module_import_free(imported);
+                } else {
+                    region = 1;
+                    ptr_vec_push(mi.module_imports, imported as void*);
+                }
+                continue;
+            }
+
+            if (pi_check_ident_text(p, "require")) {
+                let require_tok = ps_peek(p);
+                let dep = pi_parse_dep_line(p);
+                if (dep == null) {
+                    break;
+                }
+                if (region > 2) {
+                    pi_operational_error(p, "PAR-0579",
+                        "Require record appears outside its canonical interface region", require_tok);
+                    mi_dep_entry_free(dep as InterfaceDepEntry*);
+                } else {
+                    region = 2;
+                    ptr_vec_push(mi.require_entries, dep as void*);
+                }
+                continue;
+            }
+
+            if (pi_check_ident_text(p, "link")) {
+                let link_tok = ps_peek(p);
+                let dep2 = pi_parse_dep_line(p);
+                if (dep2 == null) {
+                    break;
+                }
+                if (region > 3) {
+                    pi_operational_error(p, "PAR-0579",
+                        "Link record appears outside its canonical interface region", link_tok);
+                    mi_dep_entry_free(dep2 as InterfaceDepEntry*);
+                } else {
+                    region = 3;
+                    ptr_vec_push(mi.link_entries, dep2 as void*);
+                }
+                continue;
+            }
+
+            let next_decl_group = pi_decl_group(p);
+            if (next_decl_group >= 0) {
+                region = 4;
+                if (next_decl_group < decl_group) {
+                    pi_operational_error(p, "PAR-0579",
+                        "Exported declaration appears outside canonical declaration-group order", ps_peek(p));
+                } else {
+                    decl_group = next_decl_group;
+                }
+            }
+            if (!pi_parse_one_decl(p, mi, seen_decls)) {
+                break;
+            }
+        }
+    }
+
+    if (ps_has_error(p)) {
+        mi_free(mi);
+        let result2 = new InterfaceParseResult(null, p.diags);
+        pi_destroy_state(p, false);
+        return result2;
+    }
+
+    pi_normalize_interface_types(mi, peers);
+
+    let result3 = new InterfaceParseResult(mi, p.diags);
+    pi_destroy_state(p, false);
+    return result3;
+}
+
+/**
+ * Parse a `.l1m` interface file into a ModuleInterface.
+ *
+ * @param text Source text of the interface file.
+ * @param filename Filename used in diagnostics.
+ * @return Parse result wrapping the interface and diagnostics.
+ */
+func pi_parse_interface(text: string, filename: string) -> InterfaceParseResult* {
+    return pi_parse_interface_with_peers(text, filename, null);
+}

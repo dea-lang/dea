@@ -1,0 +1,608 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module expr_types.convert;
+
+import std.string;
+import std.text;
+import std.vector;
+import util.numbers;
+import ast;
+import driver.state;
+import name_resolver.state;
+import type_resolve.const_value;
+import type_resolve.ref;
+import types;
+import expr_types.lookup;
+import expr_types.state;
+
+/**
+ * Check whether a type behaves like an integer in arithmetic.
+ *
+ * @param ty Type to inspect.
+ * @return `true` for implemented integer builtins.
+ */
+func etc_is_int(ty: Type*?) -> bool {
+    if (ty == null) return false;
+    return type_is_builtin(ty as Type*, "tiny") || type_is_builtin(ty as Type*, "byte") ||
+           type_is_builtin(ty as Type*, "short") || type_is_builtin(ty as Type*, "ushort") ||
+           type_is_builtin(ty as Type*, "int") || type_is_builtin(ty as Type*, "uint") ||
+           type_is_builtin(ty as Type*, "long") || type_is_builtin(ty as Type*, "ulong");
+}
+
+/**
+ * Check whether a type is the internal placeholder for an uncontextualized bigint literal.
+ *
+ * @param ty Type to inspect.
+ * @return `true` when `ty` is the bigint placeholder type.
+ */
+func etc_is_bigint_literal_type(ty: Type*?) -> bool {
+    if (ty == null) return false;
+    return type_is_builtin(ty as Type*, "__bigint_literal");
+}
+
+/**
+ * Return the payload type for exactly one nullable integer layer.
+ *
+ * @param ty Type to inspect.
+ * @return Borrowed integer payload type for `T?`, otherwise `null`.
+ */
+func etc_nullable_integer_inner(ty: Type*) -> Type*? {
+    if (ord(ty.kind) != ord(TY_NULLABLE)) {
+        return null;
+    }
+    let inner = ty.inner as Type*;
+    if (!etc_is_int(inner)) {
+        return null;
+    }
+    return inner;
+}
+
+func etc_bigint_expr_text(self: ExpressionTypeChecker*, expr_id: ExprId) -> string? {
+    if (expr_id < 0 || self.current_unit == null) {
+        return null;
+    }
+    let expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr_id);
+    if (ord(expr.kind) == ord(EX_BIGINT)) {
+        return expr.text_value;
+    }
+    if (ord(expr.kind) == ord(EX_PAREN)) {
+        return etc_bigint_expr_text(self, expr.expr_a);
+    }
+    if (ord(expr.kind) == ord(EX_UNARY) && expr.text_value == "-") {
+        let text = etc_bigint_expr_text(self, expr.expr_a)?;
+        if (len_s(text) > 0 && char_at_s(text, 0) == '-') {
+            return slice_s(text, 1, len_s(text));
+        }
+        with (let sb = sb_create() => sb_free(sb)) {
+            sb_append(sb, "-");
+            sb_append(sb, text);
+            return sb_to_string(sb);
+        }
+    }
+    return null;
+}
+
+func etc_bigint_expr_base(self: ExpressionTypeChecker*, expr_id: ExprId) -> int? {
+    if (expr_id < 0 || self.current_unit == null) {
+        return null;
+    }
+    let expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr_id);
+    if (ord(expr.kind) == ord(EX_BIGINT)) {
+        return expr.base_value;
+    }
+    if (ord(expr.kind) == ord(EX_PAREN) || (ord(expr.kind) == ord(EX_UNARY) && expr.text_value == "-")) {
+        return etc_bigint_expr_base(self, expr.expr_a);
+    }
+    return null;
+}
+
+func etc_set_bigint_expr_type(self: ExpressionTypeChecker*, expr_id: ExprId, ty: Type*) {
+    if (expr_id < 0 || self.current_unit == null) {
+        return;
+    }
+    let expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr_id);
+    etc_set_expr_type(self, expr_id, ty);
+    if (ord(expr.kind) == ord(EX_PAREN) || (ord(expr.kind) == ord(EX_UNARY) && expr.text_value == "-")) {
+        etc_set_bigint_expr_type(self, expr.expr_a, ty);
+    }
+}
+
+func etc_diag_bigint_requires_context(self: ExpressionTypeChecker*, expr_id: ExprId, filename: string) {
+    if (self.current_unit == null || expr_id < 0) {
+        return;
+    }
+    let expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr_id);
+    let display = etc_bigint_expr_text(self, expr_id);
+    let base = etc_bigint_expr_base(self, expr_id);
+    if (display != null && base != null) {
+        etc_diag_error(self, "TYP-0702",
+            "integer literal " + bigint_to_string(display as string, base as int) + " outside 'int' requires a contextual integer type",
+            filename, expr.span);
+        return;
+    }
+    etc_diag_error(self, "TYP-0702", "integer literal outside 'int' requires a contextual integer type",
+        filename, expr.span);
+}
+
+func etc_diag_bigint_context_error(self: ExpressionTypeChecker*, expr_id: ExprId, dst: Type*, filename: string) {
+    if (self.current_unit == null || expr_id < 0) {
+        return;
+    }
+    let expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr_id);
+    let display = etc_bigint_expr_text(self, expr_id);
+    let base = etc_bigint_expr_base(self, expr_id);
+    if (display != null && base != null) {
+        etc_diag_error(self, "TYP-0703",
+            "integer literal " + bigint_to_string(display as string, base as int) + " outside 'int' cannot be used in contextual type '" + type_format(dst) + "'",
+            filename, expr.span);
+        return;
+    }
+    etc_diag_error(self, "TYP-0703",
+        "integer literal outside 'int' cannot be used in contextual type '" + type_format(dst) + "'",
+        filename, expr.span);
+}
+
+func etc_diag_bigint_literal_range_error(self: ExpressionTypeChecker*, expr_id: ExprId, dst: Type*, filename: string) {
+    if (self.current_unit == null || expr_id < 0) {
+        return;
+    }
+    let expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr_id);
+    let text = etc_bigint_expr_text(self, expr_id);
+    let base = etc_bigint_expr_base(self, expr_id);
+    if (text != null && base != null) {
+        etc_diag_error(self, "TYP-0700",
+            "integer literal " + bigint_to_string(text as string, base as int) + " is outside " + etc_builtin_int_range(dst) + " for target type '" + type_format(dst) + "'",
+            filename, expr.span);
+        return;
+    }
+    etc_diag_error(self, "TYP-0700",
+        "integer literal is outside " + etc_builtin_int_range(dst) + " for target type '" + type_format(dst) + "'",
+        filename, expr.span);
+}
+
+/**
+ * Check whether a type is one of the builtin floating-point types.
+ *
+ * @param ty Type to inspect.
+ * @return `true` for `float` and `double`.
+ */
+func etc_is_real(ty: Type*?) -> bool {
+    if (ty == null) return false;
+    return type_is_builtin(ty as Type*, "float") || type_is_builtin(ty as Type*, "double");
+}
+
+/**
+ * Check whether a type is numeric in the current bootstrap language.
+ *
+ * @param ty Type to inspect.
+ * @return `true` for builtin integer and floating-point types.
+ */
+func etc_is_numeric(ty: Type*?) -> bool {
+    return etc_is_int(ty) || etc_is_real(ty);
+}
+
+/**
+ * Compute the common result type for floating-point binary operators.
+ *
+ * @param left Left operand type.
+ * @param right Right operand type.
+ * @return `double` when either operand is `double`, otherwise `float`, or `null` when either operand is non-real.
+ */
+func etc_real_binary_result_type(left: Type*, right: Type*) -> Type*? {
+    if (!etc_is_real(left) || !etc_is_real(right)) {
+        return null;
+    }
+    if (type_is_builtin(left, "double") || type_is_builtin(right, "double")) {
+        return type_builtin_double();
+    }
+    return type_builtin_float();
+}
+
+/**
+ * Check whether an implicit floating-point widening is supported.
+ *
+ * @param dst Destination type.
+ * @param src Source type.
+ * @return `true` if `src` can widen into `dst`.
+ */
+func etc_can_widen_real(dst: Type*, src: Type*) -> bool {
+    return type_is_builtin(dst, "double") && type_is_builtin(src, "float");
+}
+
+/**
+ * Check whether a type is nullable.
+ *
+ * @param ty Type to inspect.
+ * @return `true` if `ty` is `TY_NULLABLE`.
+ */
+func etc_is_nullable(ty: Type*?) -> bool {
+    if (ty == null) return false;
+    return ord((ty as Type*).kind) == ord(TY_NULLABLE);
+}
+
+/**
+ * Return the inner type of a nullable type.
+ *
+ * @param ty A nullable type.
+ * @return The inner type.
+ */
+func etc_nullable_inner(ty: Type*) -> Type* {
+    return ty.inner as Type*;
+}
+
+/**
+ * Check whether a type supports identity/value equality (== and !=).
+ *
+ * @param ty Type to inspect.
+ * @return `true` if equality is supported.
+ */
+func etc_supports_equality(ty: Type*?) -> bool {
+    if (ty == null) return false;
+    let t = ty as Type*;
+    return etc_is_int(t) || etc_is_bool(t) || etc_is_real(t) || etc_is_string(t) ||
+        ord(t.kind) == ord(TY_POINTER) || ord(t.kind) == ord(TY_FUNC);
+}
+
+/**
+ * Check whether a type is `bool`.
+ *
+ * @param ty Type to inspect.
+ * @return `true` if `ty` is `bool`.
+ */
+func etc_is_bool(ty: Type*?) -> bool {
+    if (ty == null) return false;
+    return type_is_builtin(ty as Type*, "bool");
+}
+
+/**
+ * Check whether a type is `string`.
+ *
+ * @param ty Type to inspect.
+ * @return `true` if `ty` is `string`.
+ */
+func etc_is_string(ty: Type*?) -> bool {
+    if (ty == null) return false;
+    return type_is_builtin(ty as Type*, "string");
+}
+
+/**
+ * Compare two types for equality in the expression checker.
+ *
+ * @param a First type.
+ * @param b Second type.
+ * @return `true` if the types are equal.
+ */
+func etc_types_equal(a: Type*?, b: Type*?) -> bool {
+    return type_equals(a, b);
+}
+
+/**
+ * Compare two types structurally while ignoring the `unsafe` marker on
+ * function types.
+ *
+ * @param a First type.
+ * @param b Second type.
+ * @return `true` when `a` and `b` differ only by function unsafety.
+ */
+func etc_types_equal_ignoring_func_unsafety(a: Type*?, b: Type*?) -> bool {
+    if (a == null || b == null) {
+        return a == null && b == null;
+    }
+
+    let left = a as Type*;
+    let right = b as Type*;
+    if (ord(left.kind) != ord(right.kind)) {
+        return false;
+    }
+
+    if (ord(left.kind) == ord(TY_BUILTIN) || ord(left.kind) == ord(TY_NULL)) {
+        return left.name == right.name;
+    }
+
+    if (ord(left.kind) == ord(TY_STRUCT) || ord(left.kind) == ord(TY_ENUM)) {
+        return left.module_name == right.module_name && left.name == right.name;
+    }
+
+    if (ord(left.kind) == ord(TY_POINTER) || ord(left.kind) == ord(TY_NULLABLE) ||
+        ord(left.kind) == ord(TY_SLICE)) {
+        return etc_types_equal_ignoring_func_unsafety(left.inner, right.inner);
+    }
+    if (ord(left.kind) == ord(TY_ARRAY)) {
+        return left.array_len == right.array_len && etc_types_equal_ignoring_func_unsafety(left.inner, right.inner);
+    }
+
+    if (left.is_variadic != right.is_variadic) {
+        return false;
+    }
+    let left_params = left.params as VectorBase*;
+    let right_params = right.params as VectorBase*;
+    if (vec_size(left_params) != vec_size(right_params)) {
+        return false;
+    }
+    for (let i = 0; i < vec_size(left_params); i = i + 1) {
+        if (!etc_types_equal_ignoring_func_unsafety(
+            *(vec_get(left_params, i) as Type**),
+            *(vec_get(right_params, i) as Type**)
+        )) {
+            return false;
+        }
+    }
+    return etc_types_equal_ignoring_func_unsafety(left.result, right.result);
+}
+
+/**
+ * Return whether two types differ only by the `unsafe` marker on one or more
+ * function-type nodes.
+ *
+ * @param a First type.
+ * @param b Second type.
+ * @return `true` when function unsafety is the only difference.
+ */
+func etc_has_function_unsafety_mismatch(a: Type*, b: Type*) -> bool {
+    if (!etc_types_equal_ignoring_func_unsafety(a, b)) {
+        return false;
+    }
+    return !type_equals(a, b);
+}
+
+/**
+ * Return a human-readable range for a builtin integer type.
+ *
+ * @param dst Destination type.
+ * @return Range text for diagnostics.
+ */
+func etc_builtin_int_range(dst: Type*) -> string {
+    if (type_is_builtin(dst, "tiny")) return "-128..127";
+    if (type_is_builtin(dst, "byte")) return "0..255";
+    if (type_is_builtin(dst, "short")) return "-32768..32767";
+    if (type_is_builtin(dst, "ushort")) return "0..65535";
+    if (type_is_builtin(dst, "int")) return "-2147483648..2147483647";
+    if (type_is_builtin(dst, "uint")) return "0..4294967295";
+    if (type_is_builtin(dst, "long")) return "-9223372036854775808..9223372036854775807";
+    if (type_is_builtin(dst, "ulong")) return "0..18446744073709551615";
+    return "int";
+}
+
+/**
+ * Report an integer literal value outside a target integer type range.
+ *
+ * @param self Expression checker collecting diagnostics.
+ * @param value Literal value.
+ * @param dst Destination integer type.
+ * @param filename Source filename.
+ * @param span Source span to highlight.
+ */
+func etc_diag_int_literal_range_error(self: ExpressionTypeChecker*, value: int, dst: Type*, filename: string,
+                                      span: Span) {
+    etc_diag_error(self, "TYP-0700",
+        "integer literal " + int_to_string(value) + " is outside " + etc_builtin_int_range(dst) + " for target type '" + type_format(dst) + "'",
+        filename, span);
+}
+
+/**
+ * Check whether an implicit integer widening is supported.
+ *
+ * @param dst Destination type.
+ * @param src Source type.
+ * @return `true` if `src` can widen into `dst`.
+ */
+func etc_can_widen_int(dst: Type*, src: Type*) -> bool {
+    if (type_is_builtin(dst, "short") && type_is_builtin(src, "tiny")) return true;
+    if (type_is_builtin(dst, "long") && type_is_builtin(src, "tiny")) return true;
+    if (type_is_builtin(dst, "int") && type_is_builtin(src, "tiny")) return true;
+    if (type_is_builtin(dst, "short") && type_is_builtin(src, "byte")) return true;
+    if (type_is_builtin(dst, "ushort") && type_is_builtin(src, "byte")) return true;
+    if (type_is_builtin(dst, "int") && type_is_builtin(src, "byte")) return true;
+    if (type_is_builtin(dst, "uint") && type_is_builtin(src, "byte")) return true;
+    if (type_is_builtin(dst, "long") && type_is_builtin(src, "byte")) return true;
+    if (type_is_builtin(dst, "ulong") && type_is_builtin(src, "byte")) return true;
+    if (type_is_builtin(dst, "int") && type_is_builtin(src, "short")) return true;
+    if (type_is_builtin(dst, "long") && type_is_builtin(src, "short")) return true;
+    if (type_is_builtin(dst, "int") && type_is_builtin(src, "ushort")) return true;
+    if (type_is_builtin(dst, "uint") && type_is_builtin(src, "ushort")) return true;
+    if (type_is_builtin(dst, "long") && type_is_builtin(src, "ushort")) return true;
+    if (type_is_builtin(dst, "ulong") && type_is_builtin(src, "ushort")) return true;
+    if (type_is_builtin(dst, "long") && type_is_builtin(src, "int")) return true;
+    if (type_is_builtin(dst, "long") && type_is_builtin(src, "uint")) return true;
+    if (type_is_builtin(dst, "ulong") && type_is_builtin(src, "uint")) return true;
+    return false;
+}
+
+func etc_check_assign_bigint_expr(self: ExpressionTypeChecker*, dst: Type*, expr_id: ExprId,
+                                  filename: string) -> AssignCheckResult {
+    let text = etc_bigint_expr_text(self, expr_id);
+    let base = etc_bigint_expr_base(self, expr_id);
+    if (text == null || base == null) {
+        return ASSIGN_REJECT;
+    }
+    if (!etc_is_int(dst)) {
+        etc_diag_bigint_context_error(self, expr_id, dst, filename);
+        return ASSIGN_REPORTED;
+    }
+    if (!bigint_fits_builtin(dst, text as string, base as int)) {
+        etc_diag_bigint_literal_range_error(self, expr_id, dst, filename);
+        return ASSIGN_REPORTED;
+    }
+    etc_set_bigint_expr_type(self, expr_id, dst);
+    return ASSIGN_ACCEPT;
+}
+
+/**
+ * Check whether a typed context may accept an integer literal by range.
+ *
+ * @param self Expression checker state.
+ * @param dst Destination type.
+ * @param src Source type.
+ * @param expr_id Source expression id.
+ * @param filename Source filename.
+ * @param span Diagnostic span.
+ * @return Assignability result for the typed context.
+ */
+func etc_check_assign_expr(self: ExpressionTypeChecker*, dst: Type*, src: Type*, expr_id: ExprId, filename: string,
+                           span: Span) -> AssignCheckResult {
+    if (ord(dst.kind) == ord(TY_NULLABLE)) {
+        let inner_result = etc_check_assign_expr(self, dst.inner as Type*, src, expr_id, filename, span);
+        if (ord(inner_result) != ord(ASSIGN_REJECT)) {
+            return inner_result;
+        }
+    }
+
+    if (ord(dst.kind) == ord(TY_SLICE) && type_array_to_slice_compatible(src, dst)) {
+        return ASSIGN_ACCEPT;
+    }
+
+    if (etc_is_bigint_literal_type(src)) {
+        return etc_check_assign_bigint_expr(self, dst, expr_id, filename);
+    }
+
+    if (etc_can_assign(self, dst, src)) return ASSIGN_ACCEPT;
+
+    if (etc_has_function_unsafety_mismatch(dst, src)) {
+        etc_diag_error(self, "TYP-0780",
+            "unsafe/plain function type mismatch: expected " + type_format(dst) + ", got " + type_format(src),
+            filename, span);
+        return ASSIGN_REPORTED;
+    }
+
+    if (type_is_builtin(src, "int") && etc_is_int(dst) && !type_is_builtin(dst, "int")) {
+        let const_int = etc_cast_const_int(self, expr_id);
+        if (const_int != null) {
+            if (int_value_fits_builtin(dst, const_int as int)) {
+                return ASSIGN_ACCEPT;
+            }
+            etc_diag_int_literal_range_error(self, const_int as int, dst, filename, span);
+            return ASSIGN_REPORTED;
+        }
+    }
+
+    if (type_is_builtin(src, "int") && etc_is_real(dst)) {
+        let const_int2 = etc_cast_const_int(self, expr_id);
+        if (const_int2 != null) {
+            return ASSIGN_ACCEPT;
+        }
+    }
+
+    return ASSIGN_REJECT;
+}
+
+/**
+ * Check whether a value of one type can be assigned to another.
+ *
+ * @param self Expression checker state.
+ * @param dst Destination type.
+ * @param src Source type.
+ * @return `true` if assignment is allowed.
+ */
+func etc_can_assign(self: ExpressionTypeChecker*, dst: Type*, src: Type*) -> bool {
+    if (type_equals(dst, src)) return true;
+
+    if (ord(src.kind) == ord(TY_NULL) && ord(dst.kind) == ord(TY_NULLABLE)) return true;
+    if (etc_can_widen_int(dst, src)) return true;
+    if (etc_can_widen_real(dst, src)) return true;
+
+    if (ord(dst.kind) == ord(TY_NULLABLE)) {
+        return etc_can_assign(self, dst.inner as Type*, src);
+    }
+
+    if (ord(src.kind) == ord(TY_NULLABLE) && ord(dst.kind) == ord(TY_NULLABLE)) {
+        return etc_can_assign(self, dst.inner as Type*, src.inner as Type*);
+    }
+
+    if (ord(src.kind) == ord(TY_POINTER) && ord(dst.kind) == ord(TY_POINTER)) {
+        let dst_inner = dst.inner as Type*;
+        let src_inner = src.inner as Type*;
+        if (type_is_builtin(dst_inner, "void") || type_is_builtin(src_inner, "void")) {
+            return true;
+        }
+        return etc_can_assign(self, dst_inner, src_inner);
+    }
+
+    return false;
+}
+
+/**
+ * Check whether a value can be cast explicitly using Stage 1 parity rules.
+ *
+ * @param self Expression checker state.
+ * @param dst Destination type.
+ * @param src Source type.
+ * @return `true` if the explicit cast is allowed.
+ */
+func etc_can_cast(self: ExpressionTypeChecker*, dst: Type*, src: Type*) -> bool {
+    if (etc_can_assign(self, dst, src)) {
+        return true;
+    }
+
+    let nullable_dst_inner = etc_nullable_integer_inner(dst);
+    if (nullable_dst_inner != null && etc_is_int(src)) {
+        return etc_can_cast(self, nullable_dst_inner as Type*, src);
+    }
+
+    if (etc_is_numeric(dst) && etc_is_numeric(src)) {
+        return true;
+    }
+
+    if (ord(src.kind) == ord(TY_NULLABLE) && ord(dst.kind) != ord(TY_NULLABLE)) {
+        return etc_can_assign(self, dst, src.inner as Type*);
+    }
+
+    return false;
+}
+
+/**
+ * Extract a compile-time integer value from a cast operand when available.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Operand expression id.
+ * @return Integer value, or `null` when not a supported constant form.
+ */
+func etc_cast_const_int(self: ExpressionTypeChecker*, expr_id: ExprId) -> int? {
+    if (expr_id < 0 || self.current_unit == null || self.current_env == null) {
+        return null;
+    }
+    if (etc_expr_contains_unqualified_local_ref(self, expr_id)) {
+        return null;
+    }
+
+    let value: ConstValue*? = null;
+    with (let ctx = tr_const_eval_context_create(self.result.driver_state,
+          self.result.signatures as SignatureTables*, self.result.names as NameResolution*, self.result.diags) =>
+          tr_const_eval_context_free(ctx)) {
+        value = tr_const_eval_expr(ctx, self.current_env as ModuleEnv*, expr_id);
+    }
+    if (value == null) {
+        return null;
+    }
+
+    let known = value as ConstValue*;
+    let result: int? = null;
+    if (tr_const_value_is_integer_like(known)) {
+        result = known.int_value;
+    }
+    tr_const_value_free(known);
+    return result;
+}
+
+/**
+ * Check whether a cast operand is provably null at compile time.
+ *
+ * @param self Expression checker state.
+ * @param expr_id Operand expression id.
+ * @return `true` if the operand is known-null.
+ */
+func etc_cast_is_const_null(self: ExpressionTypeChecker*, expr_id: ExprId) -> bool {
+    if (expr_id < 0 || self.current_unit == null) {
+        return false;
+    }
+    let expr = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr_id);
+    if (ord(expr.kind) == ord(EX_NULL)) {
+        return true;
+    }
+    if (ord(expr.kind) == ord(EX_PAREN) || ord(expr.kind) == ord(EX_CAST)) {
+        return etc_cast_is_const_null(self, expr.expr_a);
+    }
+    return false;
+}

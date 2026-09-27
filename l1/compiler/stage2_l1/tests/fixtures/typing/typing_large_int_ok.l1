@@ -1,0 +1,75 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_large_int_ok;
+
+struct Packet {
+    a: uint;
+    b: long;
+    c: ulong;
+    d: uint?;
+    e: long?;
+    f: ulong?;
+}
+
+enum Large {
+    Sample(x: uint, y: ulong);
+}
+
+func take_uint(x: uint) -> long {
+    return x;
+}
+
+func take_long(x: long) -> long {
+    return x;
+}
+
+func contextual_literals() -> long {
+    let a: uint = 0004294967295;
+    let b: uint = 0x00000000ffffffff;
+    let c: long = 0x0000000080000000;
+    let d: long = -0x8000000000000000;
+    let e: ulong = 0o1777777777777777777777;
+    let f: ulong = 0b1111111111111111111111111111111111111111111111111111111111111111;
+    let g: uint? = 4294967295;
+    let h: long? = 2147483648;
+    let i: ulong? = 18446744073709551615;
+    let p = Packet(a, c, e, b, 2147483648, 18446744073709551615);
+    let s = Sample(a, e);
+    case (a) {
+        4294967295 => {
+        }
+        _ => {
+        }
+    }
+    case (e) {
+        0o1777777777777777777777 => {
+        }
+        _ => {
+        }
+    }
+    return take_long(c) + take_uint(a) + d + (b as long);
+}
+
+func widenings(b: byte, u: ushort, i: int, x: uint) -> ulong {
+    let a: uint = b;
+    let bb: uint = u;
+    let c: long = b;
+    let d: long = u;
+    let e: long = i;
+    let f: long = x;
+    let g: ulong = b;
+    let h: ulong = u;
+    let j: ulong = x;
+    return g + h + j;
+}
+
+func explicit_casts(i: int, u: uint, l: long, ul: ulong) -> int {
+    let a: uint = i as uint;
+    let b: tiny = l as tiny;
+    let c: long = u as long;
+    let d: ulong = l as ulong;
+    return (a as int) + (b as int) + (c as int) + (d as int) + (ul as int);
+}

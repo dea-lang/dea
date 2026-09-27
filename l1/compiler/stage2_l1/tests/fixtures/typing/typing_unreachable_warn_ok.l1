@@ -1,0 +1,54 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_unreachable_warn_ok;
+
+/**
+ * Triggers TYP-0031 after a direct return.
+ */
+func warn_after_return() -> int {
+    return 1;
+    let x: int = 2; // TYP-0031
+    return x;
+}
+
+/**
+ * Triggers TYP-0030 after a loop break.
+ */
+func warn_after_break() -> int {
+    while (true) {
+        break;
+        let y: int = 0; // TYP-0030
+    }
+    return 0;
+}
+
+/**
+ * Triggers TYP-0030 after a loop continue.
+ */
+func warn_after_continue() -> int {
+    while (true) {
+        continue;
+        let z: int = 0; // TYP-0030
+    }
+    return 0;
+}
+
+/**
+ * Keeps later statements reachable after conditional loop control.
+ */
+func no_warn_after_conditional_continue() -> int {
+    let x: int = 0;
+    for (x = 0; x < 5; x = x + 1) {
+        if (x != 0) {
+            continue;
+        }
+        if (x != 0) {
+            break;
+        }
+        x = x + 1;
+    }
+    return x;
+}

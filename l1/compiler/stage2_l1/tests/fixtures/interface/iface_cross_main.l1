@@ -1,0 +1,23 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module iface_cross_main;
+
+export RemoteAlias, RemoteHolder, remote_identity, remote_slot;
+
+import iface_dep;
+
+struct RemoteHolder {
+    point: iface_dep::RemotePoint;
+    tone: iface_dep::RemoteColor;
+}
+
+type RemoteAlias = iface_dep::RemotePoint;
+
+func remote_identity(point: iface_dep::RemotePoint) -> iface_dep::RemotePoint {
+    return point;
+}
+
+let remote_slot: iface_dep::RemotePoint? = null;

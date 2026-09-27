@@ -1,0 +1,327 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module backend.output;
+
+import std.hashset;
+import std.vector;
+import interface_projection;
+import ast;
+import c_emitter.abi;
+import c_emitter.lifetime;
+import c_emitter.declarations;
+import c_emitter.state;
+import c_emitter.stmt;
+import c_emitter.types;
+import c_emitter.wrappers;
+import driver.state;
+import module_interface;
+import sem_context;
+import signatures.tables;
+import types;
+import util.log;
+import backend.expr;
+import backend.lifetime;
+import backend.lower;
+import backend.state;
+import backend.stmt;
+import backend.types;
+
+/**
+ * Emit all top-level `let` declarations.
+ *
+ * @param self Backend state to update.
+ */
+func be_emit_let_declarations(self: Backend*) {
+    if (self.result.signatures == null) {
+        return;
+    }
+
+    let any_bindings = false;
+    for (let unit_i = 0; unit_i < driver_unit_count(self.result.driver_state); unit_i = unit_i + 1) {
+        let unit = driver_unit_get(self.result.driver_state, unit_i);
+        if (unit.parse_result.root_module == null) {
+            continue;
+        }
+        let root = unit.parse_result.root_module as Module*;
+        for (let j = 0; j < vec_size(root.decls); j = j + 1) {
+            let top = ptr_vec_get(root.decls, j) as TopLevelDecl*;
+            if (ord(top.kind) == ord(TD_LET) &&
+                (be_emits_module_definitions(self, root.name) ||
+                 be_target_consumes_symbol(self, root.name, (top.data as LetDecl*).name))) {
+                any_bindings = true;
+                break;
+            }
+        }
+    }
+    for (let iface_i = 0; iface_i < driver_interface_count(self.result.driver_state); iface_i = iface_i + 1) {
+        let mi = driver_interface_get(self.result.driver_state, iface_i);
+        for (let let_i = 0; let_i < vec_size(mi.let_entries); let_i = let_i + 1) {
+            let entry = ptr_vec_get(mi.let_entries, let_i) as InterfaceLetEntry*;
+            if (be_target_consumes_symbol(self, mi.module_name, entry.name)) {
+                any_bindings = true;
+                break;
+            }
+        }
+        if (any_bindings) {
+            break;
+        }
+    }
+    if (!any_bindings) {
+        return;
+    }
+
+    cem_emit_section_comment(self.emitter, "Top-level bindings");
+    for (let i = 0; i < driver_unit_count(self.result.driver_state); i = i + 1) {
+        let unit = driver_unit_get(self.result.driver_state, i);
+        if (unit.parse_result.root_module == null) {
+            continue;
+        }
+
+        let root = unit.parse_result.root_module as Module*;
+        let emit_definitions = be_emits_module_definitions(self, root.name);
+        if (emit_definitions) {
+            self.current_module = root.name;
+            self.current_unit = unit;
+            self.current_env = be_find_env(self, root.name);
+        }
+
+        let module_has_bindings = false;
+        for (let j = 0; j < vec_size(root.decls); j = j + 1) {
+            let top = ptr_vec_get(root.decls, j) as TopLevelDecl*;
+            if (ord(top.kind) != ord(TD_LET)) {
+                continue;
+            }
+
+            let decl = top.data as LetDecl*;
+            if (!emit_definitions && !be_target_consumes_symbol(self, root.name, decl.name)) {
+                continue;
+            }
+            if (!module_has_bindings) {
+                cem_emit_module_comment(self.emitter, root.name);
+                module_has_bindings = true;
+            }
+
+            let let_type = sig_lookup_let_type(self.result.signatures as SignatureTables*, root.name, decl.name);
+            if (let_type == null) {
+                be_ice("[ICE-1151] missing Let type for " + root.name + "." + decl.name);
+            }
+            if (!emit_definitions) {
+                cem_emit_external_let_declaration(self.emitter, root.name, decl.name, let_type as Type*, decl.is_const);
+                continue;
+            }
+            let c_init = be_try_emit_let_initializer(self, decl.value, let_type as Type*);
+            if (c_init != null) {
+                cem_emit_let_declaration(self.emitter, root.name, decl, let_type as Type*, c_init as string,
+                    be_is_symbol_exported(self, root.name, decl.name));
+            } else {
+                if (decl.is_const) {
+                    be_ice("[ICE-1181] unsupported top-level let initializer");
+                }
+                cem_emit_zero_initialized_let_declaration(self.emitter, root.name, decl, let_type as Type*,
+                    be_is_symbol_exported(self, root.name, decl.name));
+            }
+        }
+    }
+
+    for (let iface_i2 = 0; iface_i2 < driver_interface_count(self.result.driver_state); iface_i2 = iface_i2 + 1) {
+        let mi2 = driver_interface_get(self.result.driver_state, iface_i2);
+        let module_has_bindings2 = false;
+        for (let let_i = 0; let_i < vec_size(mi2.let_entries); let_i = let_i + 1) {
+            let entry2 = ptr_vec_get(mi2.let_entries, let_i) as InterfaceLetEntry*;
+            if (!be_target_consumes_symbol(self, mi2.module_name, entry2.name)) {
+                continue;
+            }
+            if (!module_has_bindings2) {
+                cem_emit_module_comment(self.emitter, mi2.module_name);
+                module_has_bindings2 = true;
+            }
+            cem_emit_interface_let_declaration(self.emitter, mi2.module_name, entry2);
+        }
+    }
+}
+
+/**
+ * Emit one deferred top-level `let` assignment inside a module init function.
+ *
+ * @param self Backend state to update.
+ * @param module_name Defining module name.
+ * @param decl Binding declaration node.
+ * @param let_type Resolved binding type.
+ */
+func be_emit_deferred_top_level_let_assignment(self: Backend*, module_name: string, decl: LetDecl*, let_type: Type*) {
+    let c_name = cem_mangle_let_name(module_name, decl.name);
+    be_emit_line_directive(self, decl.span);
+    let c_value = be_emit_owned_expr_with_expected_type(self, decl.value, let_type);
+    if (analysis_has_arc_data(self.result, let_type)) {
+        let temp = cem_fresh_tmp(self.emitter, "tmp");
+        cem_emit_temp_decl(self.emitter, cem_emit_type(let_type), temp, c_value);
+        be_emit_value_cleanup(self, c_name, let_type);
+        cem_emit_assignment(self.emitter, c_name, temp);
+    } else {
+        cem_emit_assignment(self.emitter, c_name, c_value);
+    }
+}
+
+/**
+ * Emit one module's always-present external lifecycle pair.
+ *
+ * `I4init` performs only this module's deferred binding initialization and
+ * `I4fini` performs only this module's ARC-managed top-level cleanup.
+ *
+ * @param self Backend state to update.
+ * @param root Selected source module.
+ */
+func be_emit_module_lifecycle_functions(self: Backend*, root: Module*) {
+    if (self.result.signatures == null) {
+        return;
+    }
+
+    self.current_module = root.name;
+    self.current_unit = be_find_unit(self, root.name);
+    self.current_env = be_find_env(self, root.name);
+    if (self.current_unit == null) {
+        be_ice("[ICE-1362] missing unit for module lifecycle emission: " + root.name);
+    }
+
+    cem_emit_section_comment(self.emitter, "Module lifecycle functions");
+    cem_emit_module_comment(self.emitter, root.name);
+    cem_emit_external_void_function_header(self.emitter, cem_mangle_module_init_name(root.name));
+    for (let i = 0; i < vec_size(root.decls); i = i + 1) {
+        let top = ptr_vec_get(root.decls, i) as TopLevelDecl*;
+        if (ord(top.kind) != ord(TD_LET)) {
+            continue;
+        }
+        let decl = top.data as LetDecl*;
+        if (decl.is_const) {
+            continue;
+        }
+        let let_type = sig_lookup_let_type(self.result.signatures as SignatureTables*, root.name, decl.name);
+        if (let_type == null) {
+            be_ice("[ICE-1151] missing Let type for " + root.name + "." + decl.name);
+        }
+        let c_init = be_try_emit_let_initializer(self, decl.value, let_type as Type*);
+        if (c_init == null) {
+            be_emit_deferred_top_level_let_assignment(self, root.name, decl, let_type as Type*);
+        }
+    }
+    cem_emit_function_definition_footer(self.emitter);
+
+    cem_emit_external_void_function_header(self.emitter, cem_mangle_module_fini_name(root.name));
+    cem_emit_module_top_level_let_cleanup(self.emitter, root.name);
+    cem_emit_function_definition_footer(self.emitter);
+}
+
+/**
+ * Emit all function declarations.
+ *
+ * @param self Backend state to update.
+ */
+func be_emit_function_declarations(self: Backend*) {
+    if (self.result.signatures == null) {
+        return;
+    }
+
+    cem_emit_section_comment(self.emitter, "Function declarations");
+    for (let i = 0; i < driver_unit_count(self.result.driver_state); i = i + 1) {
+        let unit = driver_unit_get(self.result.driver_state, i);
+        if (unit.parse_result.root_module == null) {
+            continue;
+        }
+
+        let root = unit.parse_result.root_module as Module*;
+        let emit_definitions = be_emits_module_definitions(self, root.name);
+        let module_has_functions = false;
+        for (let j = 0; j < vec_size(root.decls); j = j + 1) {
+            let top = ptr_vec_get(root.decls, j) as TopLevelDecl*;
+            if (ord(top.kind) != ord(TD_FUNC)) {
+                continue;
+            }
+            let decl = top.data as FuncDecl*;
+            if (!emit_definitions && !be_target_consumes_symbol(self, root.name, decl.name)) {
+                continue;
+            }
+            if (!module_has_functions) {
+                cem_emit_module_comment(self.emitter, root.name);
+                module_has_functions = true;
+            }
+            let func_type = sig_lookup_func_type(self.result.signatures as SignatureTables*, root.name, decl.name);
+            if (func_type == null) {
+                be_ice("[ICE-1150] missing FuncType for " + root.name + "." + decl.name);
+            }
+            cem_emit_function_declaration(self.emitter, root.name, decl, func_type as Type*,
+                !emit_definitions || be_is_symbol_exported(self, root.name, decl.name));
+        }
+    }
+
+    for (let iface_i = 0; iface_i < driver_interface_count(self.result.driver_state); iface_i = iface_i + 1) {
+        let mi = driver_interface_get(self.result.driver_state, iface_i);
+        let module_has_functions2 = false;
+        for (let func_i = 0; func_i < vec_size(mi.func_entries); func_i = func_i + 1) {
+            let entry = ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*;
+            if (!be_target_consumes_symbol(self, mi.module_name, entry.name)) {
+                continue;
+            }
+            if (!module_has_functions2) {
+                cem_emit_module_comment(self.emitter, mi.module_name);
+                module_has_functions2 = true;
+            }
+            cem_emit_interface_function_declaration(self.emitter, mi.module_name, entry);
+        }
+    }
+}
+
+/**
+ * Emit `I5entry` for the selected module's already-resolved entry type.
+ *
+ * @param self Backend state to update.
+ * @param root Selected source module.
+ * @param entry_type Borrowed entry type returned by `analysis_module_entry_type`.
+ */
+func be_emit_module_entry_bridge_if_needed(self: Backend*, root: Module*, entry_type: Type*?) {
+    if (entry_type == null) {
+        return;
+    }
+    cem_emit_section_comment(self.emitter, "Module entry bridge");
+    cem_emit_module_entry_bridge(self.emitter, root.name, entry_type as Type*);
+}
+
+/**
+ * Run the shared C-generation pipeline for one selected output boundary.
+ *
+ * @param self Backend state to update.
+ * @return Complete generated C translation unit.
+ */
+func be_generate_output(self: Backend*) -> string {
+    let target_root = be_target_root(self);
+    self.required_type_keys = be_collect_required_type_keys(self, target_root);
+    cem_set_module_type_keys(self.emitter, self.required_type_keys as StringSet*);
+    let target_entry_type = analysis_module_entry_type(self.result, target_root.name);
+
+    log_stage(self.cfg, "Generating C code", "");
+    log_debug(self.cfg, "Preparing optional wrapper types");
+    cem_prepare_optional_wrappers(self.emitter);
+    be_prepare_variadic_pack_wrappers(self);
+    log_debug(self.cfg, "Emitting header and forward declarations");
+    cem_emit_header(self.emitter, self.opts);
+    cem_emit_forward_decls(self.emitter);
+    cem_emit_section_comment(self.emitter, "Optional wrapper types (builtins / early)");
+    cem_emit_optional_wrappers(self.emitter, true);
+    be_emit_type_definitions(self);
+    cem_emit_section_comment(self.emitter, "Array wrapper types");
+    cem_emit_array_wrappers(self.emitter);
+    cem_emit_section_comment(self.emitter, "Slice descriptor types");
+    cem_emit_slice_wrappers(self.emitter);
+    cem_emit_section_comment(self.emitter, "Optional wrapper types (late)");
+    cem_emit_optional_wrappers(self.emitter, false);
+    cem_emit_section_comment(self.emitter, "Function pointer typedefs");
+    cem_emit_func_ptr_typedefs(self.emitter);
+    be_emit_let_declarations(self);
+    be_emit_function_declarations(self);
+    be_emit_module_lifecycle_functions(self, target_root);
+    be_emit_function_definitions(self);
+    be_emit_module_entry_bridge_if_needed(self, target_root, target_entry_type);
+    return cem_get_output(self.emitter);
+}

@@ -1,0 +1,23 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module argv_dump;
+
+import std.io;
+import std.system;
+
+/**
+ * Main entry point for argv forwarding tests.
+ */
+func main() -> int {
+    printl_i(argc());
+    if (argc() > 1) {
+        printl_s(argv(1));
+    }
+    if (argc() > 2) {
+        printl_s(argv(2));
+    }
+    return 0;
+}

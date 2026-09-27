@@ -1,0 +1,522 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module driver.state;
+
+import std.hashmap;
+import std.hashset;
+import std.vector;
+import util.diag;
+import util.strings;
+import util.log;
+import dea_prelude;
+import module_graph;
+import source_paths;
+import mi_utils;
+import module_interface;
+import parser;
+import ast;
+
+/**
+ * Represents the DriverUnit structure.
+ */
+struct DriverUnit {
+    /** Canonical identity requested from the resolver, not the parsed declaration. */
+    module_name: string;
+    path: string;
+    parse_result: ParseResult*;
+}
+
+/**
+ * Represents the DriverState structure.
+ */
+struct DriverState {
+    entry_module: string;
+    graph: ModuleGraph*;
+    /**
+     * Module lookups that failed before graph-node creation.
+     *
+     * Invalid or absent providers intentionally have no public placeholder
+     * node; this private ledger suppresses repeated resolution attempts.
+     */
+    failed_without_node: StringSet*;
+    /** Every owned parsed unit shell, including failed or mismatched units. */
+    units: VectorBase*; // DriverUnit*
+    /** Validated requested module identity -> borrowed DriverUnit*. */
+    units_by_name: StringPtrMap*; // module name -> DriverUnit*
+    graph_interfaces: VectorBase*; // raw ModuleInterface* selected by the graph
+    graph_interfaces_by_name: StringPtrMap*; // module name -> raw ModuleInterface*
+    interfaces: VectorBase*; // active semantic ModuleInterface* clones
+    interfaces_by_name: StringPtrMap*; // module name -> semantic ModuleInterface*
+    projection_interfaces: VectorBase*; // active wire-preserving ModuleInterface* clones
+    projection_interfaces_by_name: StringPtrMap*; // module name -> projection ModuleInterface*
+    interface_funcs_by_key: StringPtrMap*; // module::function -> InterfaceFuncEntry*
+    diags: DiagCollector*;
+    source_names: StringVector*; // source cache: file paths
+    source_texts: StringVector*; // source cache: file contents
+}
+
+/**
+ * Carries borrowed, recursion-invariant module-resolution inputs.
+ *
+ * This context owns none of its pointer or optional-string fields. Its caller
+ * must keep every referenced value alive for the complete resolution walk.
+ */
+struct DriverResolutionContext {
+    state: DriverState*;
+    candidates: StringPtrMap*;
+    search_paths: SourceSearchPaths*;
+    interface_roots: StringVector*;
+    policy: ModuleResolutionPolicy;
+    artifact_root: string?;
+    cfg: LogConfig*;
+}
+
+/**
+ * Free a loaded driver unit and its parse result.
+ *
+ * @param self Driver unit to free.
+ */
+func dr_unit_free(self: DriverUnit*) {
+    parse_result_free(self.parse_result);
+    drop self;
+}
+
+/**
+ * Free an optional vector of driver units.
+ *
+ * @param units Optional driver-unit vector to free.
+ */
+func dr_units_free(units: VectorBase*?) {
+    if (units == null) {
+        return;
+    }
+
+    let v = units as VectorBase*;
+    for (let i = 0; i < vec_size(v); i = i + 1) {
+        let unit = ptr_vec_get(v, i) as DriverUnit*;
+        dr_unit_free(unit);
+    }
+    vec_free(v);
+}
+
+/**
+ * Free an optional vector of module interfaces.
+ *
+ * @param interfaces Optional interface vector to free.
+ */
+func dr_interfaces_free(interfaces: VectorBase*?) {
+    if (interfaces == null) {
+        return;
+    }
+
+    let v = interfaces as VectorBase*;
+    for (let i = 0; i < vec_size(v); i = i + 1) {
+        mi_free(ptr_vec_get(v, i) as ModuleInterface*);
+    }
+    vec_free(v);
+}
+
+/**
+ * Free driver state and all owned parse/cache data.
+ *
+ * @param self Driver state to free.
+ */
+func driver_state_free(self: DriverState*) {
+    ss_free(self.failed_without_node);
+    spm_free(self.units_by_name);
+    spm_free(self.graph_interfaces_by_name);
+    spm_free(self.interfaces_by_name);
+    spm_free(self.projection_interfaces_by_name);
+    spm_free(self.interface_funcs_by_key);
+    dr_units_free(self.units);
+    dr_interfaces_free(self.graph_interfaces);
+    dr_interfaces_free(self.interfaces);
+    dr_interfaces_free(self.projection_interfaces);
+    mg_free(self.graph);
+    diag_free(self.diags);
+    sv_free(self.source_names);
+    sv_free(self.source_texts);
+    drop self;
+}
+
+/**
+ * Report whether driver analysis produced any errors.
+ *
+ * @param self Driver state to inspect.
+ * @return `true` if the driver's diagnostics contain an error.
+ */
+func driver_has_errors(self: DriverState*) -> bool {
+    return diag_has_errors(self.diags);
+}
+
+/**
+ * Return the number of diagnostics collected by the driver.
+ *
+ * @param self Driver state to inspect.
+ * @return Total diagnostic count.
+ */
+func driver_diag_count(self: DriverState*) -> int {
+    return diag_count(self.diags);
+}
+
+/**
+ * Return a driver diagnostic by index.
+ *
+ * @param self Driver state to inspect.
+ * @param index Zero-based diagnostic index.
+ * @return Diagnostic at `index`.
+ */
+func driver_diag_get(self: DriverState*, index: int) -> Diagnostic* {
+    return diag_get(self.diags, index);
+}
+
+/**
+ * Return the number of owned parsed unit shells.
+ *
+ * @param self Driver state to inspect.
+ * @return Unit count, including parser failures and identity mismatches.
+ */
+func driver_unit_count(self: DriverState*) -> int {
+    return vec_size(self.units);
+}
+
+/**
+ * Return an owned parsed unit shell by index.
+ *
+ * @param self Driver state to inspect.
+ * @param index Zero-based unit index.
+ * @return Driver unit at `index`.
+ */
+func driver_unit_get(self: DriverState*, index: int) -> DriverUnit* {
+    return ptr_vec_get(self.units, index) as DriverUnit*;
+}
+
+/**
+ * Return the deterministic module graph built by the driver.
+ *
+ * @param self Driver state to inspect.
+ * @return Borrowed module graph owned by `self`.
+ */
+func driver_graph(self: DriverState*) -> ModuleGraph* {
+    return self.graph;
+}
+
+/**
+ * Return the number of active module interfaces.
+ *
+ * @param self Driver state to inspect.
+ * @return Interface count.
+ */
+func driver_interface_count(self: DriverState*) -> int {
+    return vec_size(self.interfaces);
+}
+
+/**
+ * Return an active module interface by index.
+ *
+ * @param self Driver state to inspect.
+ * @param index Zero-based interface index.
+ * @return Module interface at `index`.
+ */
+func driver_interface_get(self: DriverState*, index: int) -> ModuleInterface* {
+    return ptr_vec_get(self.interfaces, index) as ModuleInterface*;
+}
+
+/**
+ * Build an interface function lookup key.
+ *
+ * @param module_name Provider module name.
+ * @param name Function name.
+ * @return Key in `module::function` form.
+ */
+func dr_interface_func_key(module_name: string, name: string) -> string {
+    return module_name + "::" + name;
+}
+
+/**
+ * Register a parsed unit in ordered ownership and, when valid, by identity.
+ *
+ * Ordered storage owns every unit shell produced once parsing starts, including
+ * lexer/parser failures and header mismatches. The lookup index is narrower:
+ * it exposes a unit only when a parsed module header exists and its declared
+ * name matches the canonical identity requested by the resolver.
+ *
+ * @param self Driver state to update.
+ * @param unit Owned unit to register.
+ */
+func dr_register_unit(self: DriverState*, unit: DriverUnit*) {
+    ptr_vec_push(self.units, unit as void*);
+    if (unit.parse_result.root_module == null) {
+        return;
+    }
+    let mod = unit.parse_result.root_module as Module*;
+    if (mod.name != unit.module_name) {
+        return;
+    }
+    spm_put(self.units_by_name, unit.module_name, unit as void*);
+}
+
+/**
+ * Register an owned raw interface selected while constructing the graph.
+ *
+ * @param self Driver state to update.
+ * @param mi Owned raw interface.
+ */
+func dr_register_graph_interface(self: DriverState*, mi: ModuleInterface*) {
+    ptr_vec_push(self.graph_interfaces, mi as void*);
+    spm_put(self.graph_interfaces_by_name, mi.module_name, mi as void*);
+}
+
+/**
+ * Register an active interface in owned storage and non-owning lookup indexes.
+ *
+ * @param self Driver state to update.
+ * @param mi Owned interface clone to register.
+ */
+func dr_register_interface(self: DriverState*, mi: ModuleInterface*) {
+    ptr_vec_push(self.interfaces, mi as void*);
+    spm_put(self.interfaces_by_name, mi.module_name, mi as void*);
+    for (let func_i = 0; func_i < vec_size(mi.func_entries); func_i = func_i + 1) {
+        let entry = ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*;
+        let key = dr_interface_func_key(mi.module_name, entry.name);
+        if (spm_get(self.interface_funcs_by_key, key) == null) {
+            spm_put(self.interface_funcs_by_key, key, entry as void*);
+        }
+    }
+}
+
+/**
+ * Register a wire-preserving active interface for later projection.
+ *
+ * @param self Driver state to update.
+ * @param mi Owned unnormalized interface clone to register.
+ */
+func dr_register_projection_interface(self: DriverState*, mi: ModuleInterface*) {
+    ptr_vec_push(self.projection_interfaces, mi as void*);
+    spm_put(self.projection_interfaces_by_name, mi.module_name, mi as void*);
+}
+
+/**
+ * Find an identity-validated driver unit by requested module name.
+ *
+ * @param self Driver state to inspect.
+ * @param module_name Module name to search for.
+ * @return Matching driver unit, or `null` if absent or its header did not match.
+ */
+func driver_find_unit(self: DriverState*, module_name: string) -> DriverUnit*? {
+    let unit = spm_get(self.units_by_name, module_name);
+    if (unit == null) {
+        return null;
+    }
+    return unit as DriverUnit*;
+}
+
+/**
+ * Find an active module interface by module name.
+ *
+ * @param self Driver state to inspect.
+ * @param module_name Module name to search for.
+ * @return Matching module interface, or `null` if absent.
+ */
+func driver_find_interface(self: DriverState*, module_name: string) -> ModuleInterface*? {
+    let mi = spm_get(self.interfaces_by_name, module_name);
+    if (mi == null) {
+        return null;
+    }
+    return mi as ModuleInterface*;
+}
+
+/**
+ * Find the raw interface selected for a graph node.
+ *
+ * Unlike `driver_find_interface`, this includes graph-only `link` providers
+ * that were intentionally not activated for semantic replay.
+ *
+ * @param self Driver state to inspect.
+ * @param module_name Canonical provider module name.
+ * @return Borrowed selected interface, or `null` for source/virtual nodes.
+ */
+func driver_find_graph_interface(self: DriverState*, module_name: string) -> ModuleInterface*? {
+    let mi = spm_get(self.graph_interfaces_by_name, module_name);
+    if (mi == null) {
+        return null;
+    }
+    return mi as ModuleInterface*;
+}
+
+/**
+ * Return one selected provider interface's opaque whole-module fingerprint.
+ *
+ * @param self Driver state to inspect.
+ * @param module_name Canonical provider module name.
+ * @return Opaque fingerprint spelling, or `""` when unavailable.
+ */
+func driver_provider_fingerprint(self: DriverState*, module_name: string) -> string {
+    let mi = driver_find_graph_interface(self, module_name);
+    if (mi == null) {
+        return "";
+    }
+    return (mi as ModuleInterface*).fingerprint;
+}
+
+/**
+ * Find a wire-preserving active module interface by module name.
+ *
+ * @param self Driver state to inspect.
+ * @param module_name Module name to search for.
+ * @return Matching projection interface, or `null` if absent.
+ */
+func driver_find_projection_interface(self: DriverState*, module_name: string) -> ModuleInterface*? {
+    let mi = spm_get(self.projection_interfaces_by_name, module_name);
+    if (mi == null) {
+        return null;
+    }
+    return mi as ModuleInterface*;
+}
+
+/**
+ * Find an interface function entry by module and function name.
+ *
+ * @param self Driver state to inspect.
+ * @param module_name Provider module name.
+ * @param name Function name.
+ * @return Matching interface function entry, or `null`.
+ */
+func driver_find_interface_func(self: DriverState*, module_name: string, name: string) -> InterfaceFuncEntry*? {
+    let entry = spm_get(self.interface_funcs_by_key, dr_interface_func_key(module_name, name));
+    if (entry == null) {
+        return null;
+    }
+    return entry as InterfaceFuncEntry*;
+}
+
+/**
+ * Clone interface function parameter names by module and function name.
+ *
+ * @param self Driver state to inspect.
+ * @param module_name Provider module name.
+ * @param name Function name.
+ * @return Cloned parameter-name vector, or `null`.
+ */
+func driver_clone_interface_func_param_names(self: DriverState*, module_name: string, name: string) -> StringVector*? {
+    let entry = driver_find_interface_func(self, module_name, name);
+    if (entry == null) {
+        return null;
+    }
+    return us_sv_clone((entry as InterfaceFuncEntry*).param_names);
+}
+
+/**
+ * Return identity-validated loaded module names in sorted order.
+ *
+ * @param self Driver state to inspect.
+ * @return New vector containing sorted module names.
+ */
+func driver_module_names_sorted(self: DriverState*) -> StringVector* {
+    let out = spm_keys(self.units_by_name);
+    sv_sort(out);
+    return out;
+}
+
+/**
+ * Emit a driver diagnostic without a precise source span.
+ *
+ * @param diags Diagnostic collector.
+ * @param code Diagnostic code.
+ * @param message Diagnostic message.
+ * @param filename Filename to attach when known.
+ */
+func dr_emit_error(diags: DiagCollector*, code: string, message: string, filename: string) {
+    diag_error(diags, "Driver", code, message, filename, 0, 0, 0, 0);
+}
+
+/**
+ * Create an empty driver state.
+ *
+ * @param entry_module Entry module name.
+ * @param interfaces Optional borrowed interface candidates used to size active storage.
+ * @return New driver state owning its analysis data.
+ */
+func dr_state_create(entry_module: string, interfaces: VectorBase*?) -> DriverState* {
+    let interface_capacity = 0;
+    if (interfaces != null) {
+        interface_capacity = vec_size(interfaces as VectorBase*);
+    }
+    let state = new DriverState(
+        entry_module,
+        mg_create(),
+        ss_create(),
+        ptr_vec_create(8),
+        spm_create(),
+        ptr_vec_create(interface_capacity),
+        spm_create(),
+        ptr_vec_create(interface_capacity),
+        spm_create(),
+        ptr_vec_create(interface_capacity),
+        spm_create(),
+        spm_create(),
+        diag_create(),
+        sv_create(4),
+        sv_create(4)
+    );
+    let virtual_node = mg_node_virtual(dea_module_name());
+    virtual_node.state = MNS_RESOLVED;
+    if (!mg_add_node(state.graph, virtual_node)) {
+        mg_node_free(virtual_node);
+    }
+    return state;
+}
+
+/**
+ * Build a borrowed supplied-interface lookup while rejecting duplicates.
+ *
+ * @param state Driver state receiving duplicate diagnostics.
+ * @param interfaces Borrowed vector of `ModuleInterface*` values.
+ * @return Non-owning map from module name to supplied interface.
+ */
+func dr_build_interface_candidates(state: DriverState*, interfaces: VectorBase*?) -> StringPtrMap* {
+    let candidates = spm_create();
+    if (interfaces == null) {
+        return candidates;
+    }
+    let source = interfaces as VectorBase*;
+    for (let i = 0; i < vec_size(source); i = i + 1) {
+        let mi = ptr_vec_get(source, i) as ModuleInterface*;
+        if (!sp_is_valid_module_name(mi.module_name)) {
+            dr_emit_error(state.diags, "DRV-0072",
+                "invalid canonical supplied-interface module name: '" + mi.module_name + "'",
+                "<interface:" + mi.module_name + ">");
+        } else if (spm_get(candidates, mi.module_name) != null) {
+            dr_emit_error(state.diags, "DRV-0071",
+                "duplicate supplied module interface for '" + mi.module_name + "'",
+                "<interface:" + mi.module_name + ">");
+        } else {
+            spm_put(candidates, mi.module_name, mi as void*);
+        }
+    }
+    return candidates;
+}
+
+/**
+ * Add a graph node, diagnosing an impossible second origin for one identity.
+ *
+ * @param state Driver state receiving the node and diagnostics.
+ * @param node Owned node candidate.
+ * @return `true` when the graph accepted ownership.
+ */
+func dr_add_graph_node(state: DriverState*, node: ModuleGraphNode*) -> bool {
+    if (mg_add_node(state.graph, node)) {
+        return true;
+    }
+    let filename = "";
+    if (node.origin.path != null) {
+        filename = node.origin.path as string;
+    }
+    dr_emit_error(state.diags, "DRV-0077",
+        "conflicting graph identity for module '" + node.module_name + "'", filename);
+    mg_node_free(node);
+    return false;
+}

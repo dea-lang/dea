@@ -1,0 +1,35 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_optional_int_context_err;
+
+struct Packet {
+    a: uint?;
+}
+
+func take_uint_opt(x: uint?) -> int {
+    return 0;
+}
+
+func return_nonliteral_uint_opt(x: int) -> uint? {
+    return x; // TYP-0315
+}
+
+func assign_nonliteral_uint_opt(x: int) {
+    let u: uint? = 0;
+    u = x; // TYP-0311
+}
+
+func call_nonliteral_uint_opt(x: int) -> int {
+    return take_uint_opt(x); // TYP-0312
+}
+
+func struct_nonliteral_uint_opt(x: int) -> Packet {
+    return Packet(x); // TYP-0313
+}
+
+func bad_uint_opt_negative() -> uint? {
+    return -1; // TYP-0700
+}

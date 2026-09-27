@@ -1,0 +1,20 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_const_expr_err;
+
+let runtime_value: int = 1;
+
+const DIV_ZERO: int = 1 / 0; // SIG-0200
+const MOD_ZERO: int = 1 % 0; // SIG-0200
+const NON_CONST: int = runtime_value + 1; // SIG-0200
+const FLOAT_ARITH: double = 1.0 + 2.0; // SIG-0200
+const ADD_OVERFLOW: int = 2147483647 + 1; // SIG-0200
+const SUB_OVERFLOW: int = (-2147483648) - 1; // SIG-0200
+const MUL_OVERFLOW: int = 2147483647 * 2; // SIG-0200
+const DIV_OVERFLOW: int = (-2147483648) / (-1); // SIG-0200
+const MOD_OVERFLOW: int = (-2147483648) % (-1); // SIG-0200
+const REACH_AND: bool = true && (1 / 0 == 0); // SIG-0200
+const REACH_OR: bool = false || (1 / 0 == 0); // SIG-0200

@@ -1,0 +1,37 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_call_err;
+
+/**
+ * Returns the input unchanged.
+ *
+ * @param x Input integer.
+ * @return The same integer value.
+ */
+func takes_int(x: int) -> int {
+    return x;
+}
+
+/**
+ * Triggers function-call arity mismatch diagnostics.
+ *
+ * @return A fixed integer.
+ */
+func err_call_arity() -> int {
+    takes_int();
+    takes_int(1, 2);
+    return 0;
+}
+
+/**
+ * Triggers a function-call argument type mismatch.
+ *
+ * @return A fixed integer.
+ */
+func err_call_arg_type() -> int {
+    takes_int("hello");
+    return 0;
+}

@@ -1,0 +1,591 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+module hashmap_test;
+
+import std.io;
+import std.string;
+import std.assert;
+import std.unit;
+
+import std.text;
+import std.hashmap;
+import std.hashset;
+import std.vector;
+
+/**
+ * Creates a key string with a prefix and an integer index.
+ *
+ * @param prefix The key prefix to prepend.
+ * @param i The numeric suffix to append.
+ * @return The concatenated key string.
+ */
+func make_key(prefix: string, i: int) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, prefix);
+        sb_append_int(sb, i);
+        return sb_to_string(sb);
+    }
+}
+
+/* =================================
+   StringPtrMap tests
+   ================================= */
+
+/**
+ * Tests test_spm_basic.
+ */
+func test_spm_basic() {
+    printl_s("=== Test spm_basic ===");
+
+    let m = spm_create();
+    assert(spm_size(m) == 0, "new map should be empty");
+    assert(!spm_has(m, "x"), "missing key should not be found");
+
+    /* Insert three entries using heap-allocated ints as values */
+    let v1 = new int;
+    *v1 = 10;
+    let v2 = new int;
+    *v2 = 20;
+    let v3 = new int;
+    *v3 = 30;
+
+    spm_put(m, "alpha", v1 as void*);
+    spm_put(m, "beta",  v2 as void*);
+    spm_put(m, "gamma", v3 as void*);
+
+    assert(spm_size(m) == 3, "size should be 3");
+    assert(spm_has(m, "alpha"), "alpha should exist");
+    assert(spm_has(m, "beta"), "beta should exist");
+    assert(spm_has(m, "gamma"), "gamma should exist");
+    assert(!spm_has(m, "delta"), "delta should not exist");
+
+    let r1 = spm_get(m, "alpha") as int*;
+    assert(*r1 == 10, "alpha value should be 10");
+    let r2 = spm_get(m, "beta") as int*;
+    assert(*r2 == 20, "beta value should be 20");
+    let r3 = spm_get(m, "gamma") as int*;
+    assert(*r3 == 30, "gamma value should be 30");
+
+    printl_si("  size:", spm_size(m));
+    printl_si("  capacity:", spm_capacity(m));
+
+    spm_free(m);
+    drop v1;
+    drop v2;
+    drop v3;
+
+    printl_s("spm_basic passed!\n");
+}
+
+/**
+ * Tests test_spm_update.
+ */
+func test_spm_update() {
+    printl_s("=== Test spm_update ===");
+
+    let m = spm_create();
+
+    let v1 = new int;
+    *v1 = 100;
+    let v2 = new int;
+    *v2 = 200;
+
+    spm_put(m, "key", v1 as void*);
+    let r1 = spm_get(m, "key") as int*;
+    assert(*r1 == 100, "initial value should be 100");
+
+    /* Update value for same key */
+    spm_put(m, "key", v2 as void*);
+    assert(spm_size(m) == 1, "size should still be 1 after update");
+    let r2 = spm_get(m, "key") as int*;
+    assert(*r2 == 200, "updated value should be 200");
+
+    spm_free(m);
+    drop v1;
+    drop v2;
+
+    printl_s("spm_update passed!\n");
+}
+
+/**
+ * Tests test_spm_remove.
+ */
+func test_spm_remove() {
+    printl_s("=== Test spm_remove ===");
+
+    let m = spm_create();
+
+    let v1 = new int;
+    *v1 = 1;
+    let v2 = new int;
+    *v2 = 2;
+
+    spm_put(m, "a", v1 as void*);
+    spm_put(m, "b", v2 as void*);
+    assert(spm_size(m) == 2, "size should be 2");
+
+    let removed = spm_remove(m, "a");
+    assert(removed, "remove should return true for existing key");
+    assert(spm_size(m) == 1, "size should be 1 after remove");
+    assert(!spm_has(m, "a"), "removed key should be gone");
+    assert(spm_has(m, "b"), "other key should remain");
+
+    let not_removed = spm_remove(m, "nonexistent");
+    assert(!not_removed, "remove of missing key should return false");
+
+    spm_free(m);
+    drop v1;
+    drop v2;
+
+    printl_s("spm_remove passed!\n");
+}
+
+/**
+ * Tests test_spm_reinsert_after_remove.
+ */
+func test_spm_reinsert_after_remove() {
+    printl_s("=== Test spm_reinsert_after_remove ===");
+
+    let m = spm_create();
+
+    let v1 = new int;
+    *v1 = 42;
+    let v2 = new int;
+    *v2 = 99;
+
+    spm_put(m, "key", v1 as void*);
+    spm_remove(m, "key");
+    assert(!spm_has(m, "key"), "key should be gone after remove");
+
+    spm_put(m, "key", v2 as void*);
+    assert(spm_has(m, "key"), "key should exist after reinsert");
+    let r = spm_get(m, "key") as int*;
+    assert(*r == 99, "reinserted value should be 99");
+    assert(spm_size(m) == 1, "size should be 1");
+
+    spm_free(m);
+    drop v1;
+    drop v2;
+
+    printl_s("spm_reinsert_after_remove passed!\n");
+}
+
+/**
+ * Tests test_spm_grow.
+ */
+func test_spm_grow() {
+    printl_s("=== Test spm_grow (rehash) ===");
+
+    /* Start small to force rehash */
+    let m = spm_create();
+    let initial_cap = spm_capacity(m);
+    printl_si("  initial capacity:", initial_cap);
+
+    /* Insert enough entries to trigger rehash (>75% of 16 = >12) */
+    for (let i: int = 0; i < 20; i = i + 1) {
+        let key = make_key("key_", i);
+        let v = new int;
+        *v = i * 10;
+        spm_put(m, key, v as void*);
+    }
+
+    printl_si("  size after 20 inserts:", spm_size(m));
+    printl_si("  capacity after growth:", spm_capacity(m));
+
+    assert(spm_size(m) == 20, "size should be 20");
+    assert(spm_capacity(m) > initial_cap, "capacity should have grown");
+
+    /* Verify all entries survive rehash */
+    for (let verify_i: int = 0; verify_i < 20; verify_i = verify_i + 1) {
+        let key = make_key("key_", verify_i);
+        assert(spm_has(m, key), "key should survive rehash");
+        let r = spm_get(m, key) as int*;
+        assert(*r == verify_i * 10, "value should survive rehash");
+    }
+
+    /* Cleanup: free all heap-allocated values */
+    for (let slot_i: int = 0; slot_i < spm_capacity(m); slot_i = slot_i + 1) {
+        if (spm_slot_occupied(m, slot_i)) {
+            let v = spm_slot_value(m, slot_i) as int*;
+            drop v;
+        }
+    }
+    spm_free(m);
+
+    printl_s("spm_grow passed!\n");
+}
+
+/**
+ * Tests test_spm_keys.
+ */
+func test_spm_keys() {
+    printl_s("=== Test spm_keys ===");
+
+    let m = spm_create();
+
+    let v1 = new int;
+    *v1 = 1;
+    let v2 = new int;
+    *v2 = 2;
+    let v3 = new int;
+    *v3 = 3;
+
+    spm_put(m, "c", v1 as void*);
+    spm_put(m, "a", v2 as void*);
+    spm_put(m, "b", v3 as void*);
+
+    let keys = spm_keys(m);
+    assert(sv_size(keys) == 3, "keys vector should have 3 entries");
+    printl_si("  keys count:", sv_size(keys));
+
+    sv_free(keys);
+    spm_free(m);
+    drop v1;
+    drop v2;
+    drop v3;
+
+    printl_s("spm_keys passed!\n");
+}
+
+/**
+ * Tests test_spm_clear.
+ */
+func test_spm_clear() {
+    printl_s("=== Test spm_clear ===");
+
+    let m = spm_create();
+
+    let v1 = new int;
+    *v1 = 1;
+    let v2 = new int;
+    *v2 = 2;
+
+    spm_put(m, "x", v1 as void*);
+    spm_put(m, "y", v2 as void*);
+    assert(spm_size(m) == 2, "size should be 2");
+
+    spm_clear(m);
+    assert(spm_size(m) == 0, "size should be 0 after clear");
+    assert(!spm_has(m, "x"), "x should be gone after clear");
+    assert(!spm_has(m, "y"), "y should be gone after clear");
+
+    spm_free(m);
+    drop v1;
+    drop v2;
+
+    printl_s("spm_clear passed!\n");
+}
+
+/* =================================
+   StringIntMap tests
+   ================================= */
+
+/**
+ * Tests test_sim_basic.
+ */
+func test_sim_basic() -> Unit? {
+    printl_s("=== Test sim_basic ===");
+
+    let m = sim_create();
+    assert(sim_size(m) == 0, "new int map should be empty");
+
+    sim_put(m, "width", 1920);
+    sim_put(m, "height", 1080);
+    sim_put(m, "depth", 32);
+
+    assert(sim_size(m) == 3, "size should be 3");
+
+    let w = sim_get(m, "width")?;
+    assert(w == 1920, "width should be 1920");
+    let h = sim_get(m, "height")?;
+    assert(h == 1080, "height should be 1080");
+    let d = sim_get(m, "depth")?;
+    assert(d == 32, "depth should be 32");
+
+    let missing = sim_get(m, "foo");
+    assert(missing == null, "missing key should return null");
+
+    printl_si("  size:", sim_size(m));
+
+    sim_free(m);
+
+    printl_s("sim_basic passed!\n");
+    return present();
+}
+
+/**
+ * Tests test_sim_update_and_remove.
+ */
+func test_sim_update_and_remove() -> Unit? {
+    printl_s("=== Test sim_update_and_remove ===");
+
+    let m = sim_create();
+
+    sim_put(m, "count", 10);
+    let v1 = sim_get(m, "count")?;
+    assert(v1 == 10, "initial count should be 10");
+
+    sim_put(m, "count", 42);
+    assert(sim_size(m) == 1, "size should be 1 after update");
+    let v2 = sim_get(m, "count")?;
+    assert(v2 == 42, "updated count should be 42");
+
+    let removed = sim_remove(m, "count");
+    assert(removed, "remove should succeed");
+    assert(sim_size(m) == 0, "size should be 0 after remove");
+    assert(!sim_has(m, "count"), "key should be gone");
+
+    sim_free(m);
+
+    printl_s("sim_update_and_remove passed!\n");
+    return present();
+}
+
+/**
+ * Tests test_sim_grow.
+ */
+func test_sim_grow() -> Unit? {
+    printl_s("=== Test sim_grow (rehash) ===");
+
+    let m = sim_create();
+
+    for (let i: int = 0; i < 50; i = i + 1) {
+        let key = make_key("item_", i);
+        sim_put(m, key, i * 100);
+    }
+
+    assert(sim_size(m) == 50, "size should be 50");
+    printl_si("  capacity after 50 inserts:", sim_capacity(m));
+
+    for (let verify_i: int = 0; verify_i < 50; verify_i = verify_i + 1) {
+        let key = make_key("item_", verify_i);
+        let val = sim_get(m, key)?;
+        assert(val == verify_i * 100, "value should survive rehash");
+    }
+
+    sim_free(m);
+
+    printl_s("sim_grow passed!\n");
+    return present();
+}
+
+/* =================================
+   StringSet tests
+   ================================= */
+
+/**
+ * Tests test_ss_basic.
+ */
+func test_ss_basic() {
+    printl_s("=== Test ss_basic ===");
+
+    let s = ss_create();
+    assert(ss_size(s) == 0, "new set should be empty");
+
+    let added1 = ss_add(s, "hello");
+    assert(added1, "first add should return true");
+    let added2 = ss_add(s, "world");
+    assert(added2, "second add should return true");
+    let added3 = ss_add(s, "hello");
+    assert(!added3, "duplicate add should return false");
+
+    assert(ss_size(s) == 2, "size should be 2");
+    assert(ss_has(s, "hello"), "should contain hello");
+    assert(ss_has(s, "world"), "should contain world");
+    assert(!ss_has(s, "missing"), "should not contain missing");
+
+    printl_si("  size:", ss_size(s));
+
+    ss_free(s);
+
+    printl_s("ss_basic passed!\n");
+}
+
+/**
+ * Tests test_ss_remove.
+ */
+func test_ss_remove() {
+    printl_s("=== Test ss_remove ===");
+
+    let s = ss_create();
+    ss_add(s, "a");
+    ss_add(s, "b");
+    ss_add(s, "c");
+
+    let removed = ss_remove(s, "b");
+    assert(removed, "remove should succeed");
+    assert(ss_size(s) == 2, "size should be 2");
+    assert(!ss_has(s, "b"), "b should be gone");
+    assert(ss_has(s, "a"), "a should remain");
+    assert(ss_has(s, "c"), "c should remain");
+
+    /* Re-add after remove */
+    ss_add(s, "b");
+    assert(ss_has(s, "b"), "b should be back");
+    assert(ss_size(s) == 3, "size should be 3");
+
+    ss_free(s);
+
+    printl_s("ss_remove passed!\n");
+}
+
+/**
+ * Tests test_ss_grow.
+ */
+func test_ss_grow() {
+    printl_s("=== Test ss_grow (rehash) ===");
+
+    let s = ss_create();
+
+    for (let i: int = 0; i < 30; i = i + 1) {
+        let key = make_key("elem_", i);
+        ss_add(s, key);
+    }
+
+    assert(ss_size(s) == 30, "size should be 30");
+    printl_si("  capacity after 30 adds:", ss_capacity(s));
+
+    for (let verify_i: int = 0; verify_i < 30; verify_i = verify_i + 1) {
+        let key = make_key("elem_", verify_i);
+        assert(ss_has(s, key), "element should survive rehash");
+    }
+
+    ss_free(s);
+
+    printl_s("ss_grow passed!\n");
+}
+
+/**
+ * Tests test_ss_to_vector.
+ */
+func test_ss_to_vector() {
+    printl_s("=== Test ss_to_vector ===");
+
+    let s = ss_create();
+    ss_add(s, "one");
+    ss_add(s, "two");
+    ss_add(s, "three");
+
+    let v = ss_to_vector(s);
+    assert(sv_size(v) == 3, "vector should have 3 elements");
+    printl_si("  vector size:", sv_size(v));
+
+    sv_free(v);
+    ss_free(s);
+
+    printl_s("ss_to_vector passed!\n");
+}
+
+/* =================================
+   Stress test: heavy insert/remove/lookup
+   ================================= */
+
+/**
+ * Tests test_stress.
+ */
+func test_stress() -> Unit? {
+    printl_s("=== Test stress ===");
+
+    let m = sim_create();
+
+    /* Insert 200 entries */
+    for (let i: int = 0; i < 200; i = i + 1) {
+        let key = make_key("stress_", i);
+        sim_put(m, key, i);
+    }
+    assert(sim_size(m) == 200, "size should be 200");
+
+    /* Remove even-numbered entries */
+    for (let remove_i: int = 0; remove_i < 200; remove_i = remove_i + 2) {
+        let key = make_key("stress_", remove_i);
+        sim_remove(m, key);
+    }
+    assert(sim_size(m) == 100, "size should be 100 after removing evens");
+
+    /* Verify odd entries remain */
+    for (let odd_i: int = 1; odd_i < 200; odd_i = odd_i + 2) {
+        let key = make_key("stress_", odd_i);
+        assert(sim_has(m, key), "odd key should remain");
+        let val = sim_get(m, key)?;
+        assert(val == odd_i, "odd value should match");
+    }
+
+    /* Verify even entries are gone */
+    for (let even_i: int = 0; even_i < 200; even_i = even_i + 2) {
+        let key = make_key("stress_", even_i);
+        assert(!sim_has(m, key), "even key should be removed");
+    }
+
+    /* Re-insert even entries with new values */
+    for (let reinsert_i: int = 0; reinsert_i < 200; reinsert_i = reinsert_i + 2) {
+        let key = make_key("stress_", reinsert_i);
+        sim_put(m, key, reinsert_i + 1000);
+    }
+    assert(sim_size(m) == 200, "size should be 200 after re-insert");
+
+    /* Verify all entries */
+    for (let verify_i: int = 0; verify_i < 200; verify_i = verify_i + 1) {
+        let key = make_key("stress_", verify_i);
+        let val = sim_get(m, key)?;
+        if (verify_i % 2 == 1) {
+            assert(val == verify_i, "odd value should be original");
+        } else {
+            assert(val == verify_i + 1000, "even value should be updated");
+        }
+    }
+
+    printl_si("  final size:", sim_size(m));
+    printl_si("  final capacity:", sim_capacity(m));
+
+    sim_free(m);
+
+    printl_s("stress passed!\n");
+    return present();
+}
+
+/* =================================
+   Entry point
+   ================================= */
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    printl_s("======================================");
+    printl_s("    HashMap / HashSet Test Suite");
+    printl_s("======================================\n");
+
+    /* StringPtrMap */
+    test_spm_basic();
+    test_spm_update();
+    test_spm_remove();
+    test_spm_reinsert_after_remove();
+    test_spm_grow();
+    test_spm_keys();
+    test_spm_clear();
+
+    /* StringIntMap */
+    let r1 = test_sim_basic();
+    assert(r1 != null, "test_sim_basic returned null");
+    let r2 = test_sim_update_and_remove();
+    assert(r2 != null, "test_sim_update_and_remove returned null");
+    let r3 = test_sim_grow();
+    assert(r3 != null, "test_sim_grow returned null");
+
+    /* StringSet */
+    test_ss_basic();
+    test_ss_remove();
+    test_ss_grow();
+    test_ss_to_vector();
+
+    /* Stress */
+    let r4 = test_stress();
+    assert(r4 != null, "test_stress returned null");
+
+    printl_s("\n======================================");
+    printl_s("    All HashMap/HashSet tests passed!");
+    printl_s("======================================");
+}

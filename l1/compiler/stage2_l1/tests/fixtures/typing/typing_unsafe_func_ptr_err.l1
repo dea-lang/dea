@@ -1,0 +1,25 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_unsafe_func_ptr_err;
+
+func safe_inc(x: int) -> int {
+    return x + 1;
+}
+
+unsafe func unsafe_inc(x: int) -> int {
+    return x + 1;
+}
+
+func takes_safe(cb: func(int) -> int) -> int {
+    return cb(1);
+}
+
+func main() -> int {
+    let plain: func(int) -> int = unsafe_inc; // TYP-0780
+    let flagged: unsafe func(int) -> int = safe_inc; // TYP-0780
+    let maybe_plain: (func(int) -> int)? = unsafe_inc; // TYP-0780
+    return takes_safe(unsafe_inc); // TYP-0780
+}

@@ -1,0 +1,21 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module bitwise_main;
+
+func main() -> int {
+    let base: byte = 15;
+    let inverted: byte = ~base;
+    let masked: int = inverted & 15;
+    let wide: long = 3;
+    let count: uint = 2;
+    let shifted_left: long = wide << count;
+    let shifted_right: long = shifted_left >> count;
+    let mixed: long = (wide | count) ^ 1;
+    if (inverted == 240 && masked == 0 && shifted_left == 12 && shifted_right == 3 && mixed == 2) {
+        return 29;
+    }
+    return 0;
+}

@@ -1,0 +1,997 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module build_driver;
+
+import std.fs;
+import std.path;
+import std.string;
+import std.system;
+import std.text;
+import std.vector;
+import util.diag;
+import util.log;
+
+import util.strings;
+import source_paths;
+import sem_context;
+import cli_args.model;
+import compiler_filesystem;
+
+/**
+ * Prepared input bundle for build/run commands.
+ */
+struct BuildPreparedInput {
+    entry_module: string;
+    search_paths: SourceSearchPaths*;
+}
+
+/**
+ * Free a prepared input bundle.
+ *
+ * @param self Prepared input to free.
+ */
+func bd_prepared_input_free(self: BuildPreparedInput*) {
+    sp_free(self.search_paths);
+    drop self;
+}
+
+/**
+ * Free an optional prepared input bundle.
+ *
+ * @param self Optional prepared input.
+ */
+func bd_prepared_input_free_opt(self: BuildPreparedInput*?) {
+    if (self != null) {
+        bd_prepared_input_free(self as BuildPreparedInput*);
+    }
+}
+
+/**
+ * Log the effective system and project roots for build/run commands.
+ *
+ * @param cfg Logging configuration.
+ * @param sys_roots Effective system-root vector.
+ * @param project_roots Effective project-root vector.
+ */
+func bd_log_effective_roots(cfg: LogConfig*, sys_roots: StringVector*, project_roots: StringVector*) {
+    log_info(cfg, "System root(s): " + sp_format_root_list(sys_roots));
+    log_info(cfg, "Project root(s): " + sp_format_root_list(project_roots));
+}
+
+/**
+ * Normalize CLI target input into an entry module and source search paths.
+ *
+ * @param opts Parsed CLI options.
+ * @param diags Diagnostic collector for normalization failures.
+ * @param cfg Logging configuration.
+ * @return Prepared input bundle, or `null` on failure.
+ */
+func bd_prepare_input(opts: CliOptions*, diags: DiagCollector*, cfg: LogConfig*) -> BuildPreparedInput*? {
+    with (
+        let project_roots = us_sv_clone(opts.project_roots) => sv_free(project_roots),
+        let sys_roots = us_sv_clone(opts.sys_roots) => sv_free(sys_roots)
+    ) {
+        sp_apply_default_sys_roots(sys_roots);
+
+        let entry_target = opts.entry_target as string;
+        let entry_module = sp_normalize_entry_target(entry_target, project_roots, diags)?;
+        sp_apply_default_project_roots(project_roots);
+        bd_log_effective_roots(cfg, sys_roots, project_roots);
+        let sp = sp_build_from_roots(project_roots, sys_roots);
+        return new BuildPreparedInput(entry_module, sp);
+    }
+}
+
+/**
+ * Append whitespace-delimited C option words from one source string.
+ *
+ * @param dst Destination vector for parsed option words.
+ * @param raw Raw options string, or `null`.
+ */
+func bd_append_c_option_words(dst: StringVector*, raw: string?) {
+    if (raw == null) {
+        return;
+    }
+
+    with (let parts = us_split_is_space_non_empty(raw as string) => sv_free(parts)) {
+        for (let i = 0; i < sv_size(parts); i = i + 1) {
+            sv_push(dst, sv_get(parts, i));
+        }
+    }
+}
+
+/**
+ * Merge C option words from environment and CLI with CLI-last precedence.
+ *
+ * @param env_opts Options from `L1_CFLAGS`.
+ * @param cli_opts Options from `--c-options`.
+ * @return Parsed option words in final order.
+ */
+func bd_merge_c_option_words(env_opts: string?, cli_opts: string?) -> StringVector* {
+    let out = sv_create(4);
+    bd_append_c_option_words(out, env_opts);
+    bd_append_c_option_words(out, cli_opts);
+    return out;
+}
+
+/**
+ * Format option words using the Stage 1 verbose display contract.
+ *
+ * @param words Option vector to format.
+ * @return Python-list-style rendering for verbose logs.
+ */
+func bd_format_word_list(words: StringVector*) -> string {
+    if (sv_size(words) == 0) {
+        return "[]";
+    }
+
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "[");
+        for (let i = 0; i < sv_size(words); i = i + 1) {
+            if (i > 0) {
+                sb_append(sb, ", ");
+            }
+            sb_append(sb, "'");
+            sb_append(sb, sv_get(words, i));
+            sb_append(sb, "'");
+        }
+        sb_append(sb, "]");
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Resolve merged C option words from `L1_CFLAGS` and parsed CLI options.
+ *
+ * @param opts Parsed CLI options.
+ * @return Parsed option words in final order.
+ */
+func bd_collect_c_option_words(opts: CliOptions*) -> StringVector* {
+    return bd_merge_c_option_words(env_get("L1_CFLAGS"), opts.c_options);
+}
+
+/**
+ * Return whether a path exists and is a directory.
+ *
+ * @param path Candidate directory path.
+ * @return `true` when the path exists and is a directory.
+ */
+func bd_is_dir(path: string) -> bool {
+    return std.fs::is_dir(path);
+}
+
+/**
+ * Return whether the current host should use Windows command behavior.
+ *
+ * @return `true` when Windows shell rules should apply.
+ */
+func bd_is_windows() -> bool {
+    let platform_override = env_get("L1_PLATFORM");
+    if (platform_override != null) {
+        let lowered = to_lower_s(platform_override as string);
+        if (lowered == "windows" || lowered == "win32") {
+            return true;
+        }
+        if (lowered == "posix" || lowered == "unix") {
+            return false;
+        }
+    }
+
+    let os_name = env_get("OS");
+    if (os_name != null && os_name as string == "Windows_NT") {
+        return true;
+    }
+
+    let msystem = env_get("MSYSTEM");
+    return msystem != null && !is_empty_s(msystem as string);
+}
+
+/**
+ * Return the executable suffix for the current host.
+ *
+ * @return `.exe` on Windows, otherwise `.out`.
+ */
+func bd_exe_suffix() -> string {
+    if (bd_is_windows()) {
+        return ".exe";
+    }
+    return ".out";
+}
+
+/**
+ * Return the default build output name for the current host.
+ *
+ * @return `a.exe` on Windows, otherwise `a.out`.
+ */
+func bd_default_exe_name() -> string {
+    if (bd_is_windows()) {
+        return "a.exe";
+    }
+    return "a.out";
+}
+
+/**
+ * Return the shell null device for the current host shell.
+ *
+ * @return `NUL` on Windows, otherwise `/dev/null`.
+ */
+func bd_null_device() -> string {
+    if (bd_is_windows()) {
+        return "NUL";
+    }
+    return "/dev/null";
+}
+
+/**
+ * Quote one shell token for POSIX `system()` execution.
+ *
+ * @param arg Raw token.
+ * @return Safely single-quoted token.
+ */
+func bd_shell_quote_posix(arg: string) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "'");
+        for (let i = 0; i < len_s(arg); i = i + 1) {
+            let c = char_at_s(arg, i);
+            if (c == '\'') {
+                sb_append(sb, "'");
+                sb_append(sb, "\\");
+                sb_append(sb, "'");
+                sb_append(sb, "'");
+            } else {
+                sb_append_byte(sb, c);
+            }
+        }
+        sb_append(sb, "'");
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Quote one shell token for Windows `system()` execution.
+ *
+ * @param arg Raw token.
+ * @return Safely double-quoted token.
+ */
+func bd_shell_quote_windows(arg: string) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "\"");
+        let backslashes = 0;
+        for (let i = 0; i < len_s(arg); i = i + 1) {
+            let c = char_at_s(arg, i);
+            if (c == '\\') {
+                backslashes = backslashes + 1;
+                continue;
+            }
+            if (c == '"') {
+                for (let slash_i = 0; slash_i < backslashes * 2 + 1;
+                     slash_i = slash_i + 1) {
+                    sb_append(sb, "\\");
+                }
+                sb_append(sb, "\"");
+                backslashes = 0;
+                continue;
+            }
+            for (let slash_i2 = 0; slash_i2 < backslashes;
+                 slash_i2 = slash_i2 + 1) {
+                sb_append(sb, "\\");
+            }
+            backslashes = 0;
+            sb_append_byte(sb, c);
+        }
+        for (let trailing_i = 0; trailing_i < backslashes * 2;
+             trailing_i = trailing_i + 1) {
+            sb_append(sb, "\\");
+        }
+        sb_append(sb, "\"");
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Quote one shell token for the active host shell.
+ *
+ * @param arg Raw token.
+ * @return Safely quoted token.
+ */
+func bd_shell_quote(arg: string) -> string {
+    if (bd_is_windows()) {
+        return bd_shell_quote_windows(arg);
+    }
+    return bd_shell_quote_posix(arg);
+}
+
+/**
+ * Return whether one Windows shell token can remain unquoted.
+ *
+ * @param arg Raw token.
+ * @return `true` when cmd.exe-safe token text needs no surrounding quotes.
+ */
+func bd_windows_token_is_plain(arg: string) -> bool {
+    if (is_empty_s(arg)) {
+        return false;
+    }
+    for (let i = 0; i < len_s(arg); i = i + 1) {
+        let c = char_at_s(arg, i);
+        if (c == ' ' || c == '\t' || c == '"' || c == '&' || c == '(' || c == ')' ||
+            c == '<' || c == '>' || c == '|' || c == '^')
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+/** Return whether one word is stable through the Windows `system()` shell. */
+func bd_windows_shell_word_safe(word: string) -> bool {
+    for (let i = 0; i < len_s(word); i = i + 1) {
+        let c = char_at_s(word, i);
+        if (c == '%' || c == '!' || c == '"' ||
+            c == '\r' || c == '\n') {
+            return false;
+        }
+    }
+    return true;
+}
+
+/** Lowercase hexadecimal digit used by command-value diagnostic escaping. */
+func bd_diagnostic_hex_digit(value: int) -> byte {
+    if (value < 10) {
+        return (('0' as int) + value) as byte;
+    }
+    return (('a' as int) + value - 10) as byte;
+}
+
+/** Render one rejected command word without diagnostic control characters. */
+func bd_diagnostic_word(word: string) -> string {
+    with (let out = cb_create() => cb_free(out)) {
+        for (let i = 0; i < len_s(word); i = i + 1) {
+            let value = char_at_s(word, i) as int;
+            if (value < 32 || value == 127) {
+                cb_append_s(out, "\\x");
+                cb_append(out, bd_diagnostic_hex_digit(value / 16));
+                cb_append(out, bd_diagnostic_hex_digit(value % 16));
+            } else {
+                cb_append(out, value as byte);
+            }
+        }
+        return cb_to_string(out);
+    }
+}
+
+/** Validate exact Windows host-command words with one diagnostic contract. */
+func bd_validate_windows_shell_words(
+    words: StringVector*,
+    code: string,
+    message: string,
+    diags: DiagCollector*
+) -> bool {
+    for (let i = 0; i < sv_size(words); i = i + 1) {
+        let word = sv_get(words, i);
+        if (!bd_windows_shell_word_safe(word)) {
+            let displayed = bd_diagnostic_word(word);
+            diag_error(
+                diags,
+                "l1c",
+                code,
+                message + ": " + displayed,
+                displayed,
+                0,
+                0,
+                0,
+                0
+            );
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Normalize one Windows executable token for `cmd.exe`.
+ *
+ * Relative `./...` command paths are valid under POSIX shells but `cmd.exe`
+ * interprets the leading `./` as a command named `.`. Rewriting the slash
+ * separators to `.\...` keeps caller-selected relative executables runnable.
+ *
+ * @param arg Raw executable token.
+ * @return Command token with cmd.exe-safe relative separators.
+ */
+func bd_windows_exec_token(arg: string) -> string {
+    if (!starts_with_s(arg, ".")) {
+        return arg;
+    }
+
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < len_s(arg); i = i + 1) {
+            let c = char_at_s(arg, i);
+            if (c == '/') {
+                sb_append(sb, "\\");
+            } else {
+                sb_append_byte(sb, c);
+            }
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Join command words into one shell command line.
+ *
+ * @param words Command words to quote and join.
+ * @return One shell command line.
+ */
+func bd_join_shell_words(words: StringVector*) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < sv_size(words); i = i + 1) {
+            if (i > 0) {
+                sb_append(sb, " ");
+            }
+            let word = sv_get(words, i);
+            if (bd_is_windows() && i == 0) {
+                word = bd_windows_exec_token(word);
+            }
+            if (bd_is_windows() && i == 0 && bd_windows_token_is_plain(word)) {
+                sb_append(sb, word);
+            } else {
+                sb_append(sb, bd_shell_quote(word));
+            }
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Join command words into the Stage 1 visible command-line form.
+ *
+ * @param words Command words to join.
+ * @return Space-delimited command line without shell quoting.
+ */
+func bd_join_display_words(words: StringVector*) -> string {
+    return join_s(words, " ");
+}
+
+/**
+ * Return whether text is a dotted decimal compiler-version suffix.
+ *
+ * @param text Candidate version text without the preceding hyphen.
+ * @return `true` for values such as `12` and `18.1.3`.
+ */
+func bd_is_compiler_version_suffix(text: string) -> bool {
+    if (len_s(text) == 0) {
+        return false;
+    }
+    let segment_has_digit = false;
+    for (let i = 0; i < len_s(text); i = i + 1) {
+        let c = char_at_s(text, i);
+        if (is_digit(c)) {
+            segment_has_digit = true;
+        } else if (c == '.' && segment_has_digit) {
+            segment_has_digit = false;
+        } else {
+            return false;
+        }
+    }
+    return segment_has_digit;
+}
+
+/**
+ * Return whether an executable basename denotes one compiler driver.
+ *
+ * Conventional target prefixes, dotted numeric versions, optional MinGW
+ * `-posix` / `-win32` thread-model suffixes, and a final case-insensitive
+ * `.exe` suffix are accepted. Related tools such as `gcc-ar`, `clang-cl`, and
+ * names that merely contain the driver token are deliberately rejected.
+ *
+ * @param compiler Compiler executable spelling or path.
+ * @param driver Lower-case compiler driver name.
+ * @return `true` when the basename denotes the requested driver.
+ */
+func bd_compiler_driver_name_matches(compiler: string, driver: string) -> bool {
+    let base = to_lower_s(basename(compiler));
+    if (ends_with_s(base, ".exe")) {
+        base = slice_s(base, 0, len_s(base) - len_s(".exe"));
+    }
+    if (ends_with_s(base, "-posix")) {
+        base = slice_s(base, 0, len_s(base) - len_s("-posix"));
+    } else if (ends_with_s(base, "-win32")) {
+        base = slice_s(base, 0, len_s(base) - len_s("-win32"));
+    }
+
+    let version_separator = find_last_s(base, "-");
+    if (version_separator >= 0 &&
+        bd_is_compiler_version_suffix(
+            slice_s(base, version_separator + 1, len_s(base)))) {
+        base = slice_s(base, 0, version_separator);
+    }
+
+    return base == driver || ends_with_s(base, "-" + driver);
+}
+
+/**
+ * Return the compiler flag-family name used by Stage 1.
+ *
+ * @param compiler Compiler command string.
+ * @return Flag-family tag.
+ */
+func bd_compiler_flag_family(compiler: string) -> string {
+    let base = to_lower_s(basename(compiler));
+    if (bd_compiler_driver_name_matches(compiler, "tcc") ||
+        starts_with_s(base, "tcc-")) {
+        return "tcc";
+    }
+    if (bd_compiler_driver_name_matches(compiler, "gcc") ||
+        bd_compiler_driver_name_matches(compiler, "clang"))
+    {
+        return "gcc";
+    }
+    if (base == "cc" || base == "cc.exe") {
+        return "cc";
+    }
+    if (base == "cl" || base == "cl.exe") {
+        return "msvc";
+    }
+    return "unknown";
+}
+
+/**
+ * Return the GNU-style compiler identity used for debug-path options.
+ *
+ * GCC and Clang share ordinary Stage 1 flag-family defaults but require
+ * different debug working-directory controls.
+ *
+ * @param compiler Compiler executable spelling or canonical path.
+ * @return `gcc`, `clang`, or `unknown`.
+ */
+func bd_compiler_debug_family(compiler: string) -> string {
+    if (bd_compiler_driver_name_matches(compiler, "gcc")) {
+        return "gcc";
+    }
+    if (bd_compiler_driver_name_matches(compiler, "clang")) {
+        return "clang";
+    }
+    return "unknown";
+}
+
+/**
+ * Return whether the user already supplied an optimization flag.
+ *
+ * @param extra_opts Collected extra C compiler options.
+ * @return `true` when an explicit optimization flag is present.
+ */
+func bd_has_explicit_opt_flag(extra_opts: StringVector*) -> bool {
+    for (let i = 0; i < sv_size(extra_opts); i = i + 1) {
+        let opt = sv_get(extra_opts, i);
+        if (starts_with_s(opt, "-O") || starts_with_s(opt, "/O")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Return whether the user supplied a debug flag.
+ *
+ * @param extra_opts Collected extra C compiler options.
+ * @return `true` when a debug flag is present.
+ */
+func bd_has_debug_flag(extra_opts: StringVector*) -> bool {
+    for (let i = 0; i < sv_size(extra_opts); i = i + 1) {
+        let opt = sv_get(extra_opts, i);
+        if ((starts_with_s(opt, "-g") && opt != "-g0") ||
+            opt == "--debug" || opt == "/Zi" || opt == "/Z7") {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Return the default optimization flag for a compiler family.
+ *
+ * @param family Compiler flag-family name.
+ * @param extra_opts Collected extra C compiler options.
+ * @return Optimization flag, or `null`.
+ */
+func bd_get_optimize_flag(family: string, extra_opts: StringVector*) -> string? {
+    if (bd_has_explicit_opt_flag(extra_opts)) {
+        return null;
+    }
+
+    if (bd_has_debug_flag(extra_opts)) {
+        if (family == "tcc") {
+            return "-O0";
+        }
+        if (family == "gcc") {
+            return "-Og";
+        }
+        if (family == "msvc") {
+            return "/Od";
+        }
+        return null;
+    }
+
+    // MinGW/GCC on Windows has shown optimizer-sensitive miscompiles in
+    // teardown-heavy traces. Keep the automatic default conservative there;
+    // users can still opt in explicitly with -O*.
+    if (bd_is_windows() && family == "gcc") {
+        return "-O0";
+    }
+
+    if (family == "gcc" || family == "tcc") {
+        return "-O1";
+    }
+    if (family == "msvc") {
+        return "/O1";
+    }
+    return null;
+}
+
+/**
+ * Return why one explicit C compiler option violates the L1 floating-point contract.
+ *
+ * @param opt One explicit C compiler option word.
+ * @return Rejection reason, or `null` when the option is acceptable.
+ */
+func bd_float_contract_forbidden_option_reason(opt: string) -> string? {
+    let lowered = to_lower_s(opt);
+    if (lowered == "-ofast" || lowered == "-ffast-math") {
+        return "fast-math disables NaN, infinity, or signed-zero semantics required by L1";
+    }
+    if (lowered == "-ffinite-math-only") {
+        return "finite-math-only removes NaN and infinity semantics required by L1";
+    }
+    if (lowered == "-fno-signed-zeros") {
+        return "signed zero is part of the L1 floating-point contract";
+    }
+    if (lowered == "-funsafe-math-optimizations" ||
+        lowered == "-fassociative-math" ||
+        lowered == "-freciprocal-math")
+    {
+        return "the option allows floating-point rewrites that violate the L1 contract";
+    }
+    if (starts_with_s(lowered, "/fp:fast")) {
+        return "MSVC fast floating-point mode is incompatible with the L1 contract";
+    }
+    return null;
+}
+
+/**
+ * Reject explicit C compiler options that would invalidate the L1 floating-point contract.
+ *
+ * @param result Analysis result to inspect.
+ * @param extra_opts Collected C compiler option words.
+ * @param diags Diagnostic collector for rejection messages.
+ * @return `true` when the option set is acceptable.
+ */
+func bd_validate_float_c_options(result: AnalysisResult*, extra_opts: StringVector*, diags: DiagCollector*) -> bool {
+    if (!analysis_uses_floating_point(result)) {
+        return true;
+    }
+
+    let ok = true;
+    for (let i = 0; i < sv_size(extra_opts); i = i + 1) {
+        let opt = sv_get(extra_opts, i);
+        let reason = bd_float_contract_forbidden_option_reason(opt);
+        if (reason == null) {
+            continue;
+        }
+        diag_error(diags, "l1c", "L1C-0018",
+            "floating-point backend contract rejects C compiler option '" + opt + "': " + (reason as string),
+            "", 0, 0, 0, 0);
+        ok = false;
+    }
+    return ok;
+}
+
+/**
+ * Return the best available C compiler command or `null`.
+ *
+ * @return Compiler command string, or `null`.
+ */
+func bd_find_c_compiler() -> string? {
+    let from_env = env_get("L1_CC");
+    if (from_env != null) {
+        return from_env as string;
+    }
+
+    with (let candidates = sv_create(4) => sv_free(candidates)) {
+        sv_push(candidates, "tcc");
+        sv_push(candidates, "gcc");
+        sv_push(candidates, "clang");
+        sv_push(candidates, "cc");
+        for (let i = 0; i < sv_size(candidates); i = i + 1) {
+            let candidate = sv_get(candidates, i);
+            let resolved = cfs_resolve_executable(candidate);
+            if (resolved != null) {
+                return candidate;
+            }
+        }
+    }
+
+    let from_cc = env_get("CC");
+    if (from_cc != null) {
+        return from_cc as string;
+    }
+    return null;
+}
+
+/**
+ * Resolve the effective C compiler for one build invocation.
+ *
+ * Moves a CLI-provided compiler out of `opts` when present so the returned
+ * owned string has exactly one local owner in the caller.
+ *
+ * @param opts Parsed CLI options.
+ * @return Compiler command string, or `null`.
+ */
+func bd_take_c_compiler(opts: CliOptions*) -> string? {
+    if (opts.c_compiler != null) {
+        let compiler = opts.c_compiler as string;
+        opts.c_compiler = null;
+        return compiler;
+    }
+    return bd_find_c_compiler();
+}
+
+/**
+ * Resolve the runtime include directory for build/run.
+ *
+ * @param opts Parsed CLI options.
+ * @return Runtime include directory, or `null`.
+ */
+func bd_runtime_include_dir(opts: CliOptions*) -> string? {
+    if (opts.runtime_include != null) {
+        return opts.runtime_include as string;
+    }
+
+    let from_env = env_get("L1_RUNTIME_INCLUDE");
+    if (from_env != null) {
+        return from_env as string;
+    }
+
+    let toolchain_home = env_get("L1_HOME");
+    if (toolchain_home != null && !bd_is_dir(join(toolchain_home as string, "stage1_l0/src"))) {
+        return join(toolchain_home as string, "include");
+    }
+    let build_dir = env_get("L1_BUILD_DIR");
+    if (build_dir != null) {
+        return join(build_dir as string, "include");
+    }
+
+    let home = env_get("L1_HOME");
+    if (home != null) {
+        let prefix_include = join(home as string, "include");
+        if (bd_is_dir(prefix_include)) {
+            return prefix_include;
+        }
+    }
+    return null;
+}
+
+/**
+ * Resolve the runtime library directory for build/run.
+ *
+ * @param opts Parsed CLI options.
+ * @return Runtime library directory, or `null`.
+ */
+func bd_runtime_lib_dir(opts: CliOptions*) -> string? {
+    if (opts.runtime_lib != null) {
+        return opts.runtime_lib as string;
+    }
+
+    let from_env = env_get("L1_RUNTIME_LIB");
+    if (from_env != null) {
+        return from_env as string;
+    }
+    if (opts.managed_profile != null) {
+        return join(opts.managed_profile as string, "lib");
+    }
+
+    let build_dir = env_get("L1_BUILD_DIR");
+    if (build_dir != null) {
+        return join(build_dir as string, "lib");
+    }
+
+    let home = env_get("L1_HOME");
+    if (home != null) {
+        let prefix_lib = join(home as string, "lib");
+        if (bd_is_dir(prefix_lib)) {
+            return prefix_lib;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Return the runtime archive filename selected by the trace and unchecked flags.
+ *
+ * @param opts Parsed CLI options.
+ * @return Runtime archive filename.
+ */
+func bd_runtime_archive_filename(opts: CliOptions*) -> string {
+    if (opts.trace_arc || opts.trace_memory) {
+        return "libdea_rt_traced.a";
+    }
+    if (opts.unchecked) {
+        return "libdea_rt_unchecked.a";
+    }
+    if (opts.check_basic) {
+        return "libdea_rt_check_basic.a";
+    }
+    return "libdea_rt.a";
+}
+
+/**
+ * Return the repo-local runtime object paths when they are available.
+ *
+ * TinyCC gets a direct-object link path instead of the official runtime archive.
+ * Initiative 0002 keeps the public archives (`libdea_rt.a` and
+ * `libdea_rt_traced.a`) owned by the platform toolchain. On Darwin, local tcc
+ * 0.9.28rc emits ELF objects while clang/cc emit Mach-O, so either object
+ * format becomes unusable across the toolchain boundary. The repo-local tcc
+ * objects under `$L1_BUILD_DIR/runtime/tcc/{default,traced}/` are therefore the
+ * dedicated tcc link path. On Windows/MSYS2 the carve-out is functionally
+ * redundant because tcc and mingw both emit PE/COFF, but it is harmless and
+ * keeps the cross-platform tcc path simple; do not add a host-OS guard for it.
+ *
+ * @param opts Parsed CLI options.
+ * @param build_dir Repo-local L1 build directory, or `null` when unavailable.
+ * @return Runtime object paths, or `null` when no repo-local build dir is known.
+ */
+func bd_runtime_object_paths_for_build_dir(opts: CliOptions*, build_dir: string?) -> StringVector*? {
+    if (build_dir == null) {
+        return null;
+    }
+
+    let variant = "default";
+    if (opts.trace_arc || opts.trace_memory) {
+        variant = "traced";
+    } else if (opts.unchecked) {
+        variant = "unchecked";
+    } else if (opts.check_basic) {
+        variant = "check_basic";
+    }
+    let object_dir = join(join(join(build_dir as string, "runtime"), "tcc"), variant);
+    let paths = sv_create(16);
+    if (opts.trace_arc || opts.trace_memory) {
+        sv_push(paths, join(object_dir, "dea_rt_trace.o"));
+    }
+    sv_push(paths, join(object_dir, "dea_rt_panic.o"));
+    sv_push(paths, join(object_dir, "dea_rt_sys.o"));
+    sv_push(paths, join(object_dir, "dea_rt_math.o"));
+    sv_push(paths, join(object_dir, "dea_rt_rand.o"));
+    sv_push(paths, join(object_dir, "dea_rt_string.o"));
+    sv_push(paths, join(object_dir, "dea_rt_alloc.o"));
+    sv_push(paths, join(object_dir, "dea_rt_io.o"));
+    sv_push(paths, join(object_dir, "dea_rt_hash.o"));
+    sv_push(paths, join(object_dir, "dea_rt_time.o"));
+    return paths;
+}
+
+/**
+ * Return the repo-local runtime object paths from `$L1_BUILD_DIR`.
+ *
+ * @param opts Parsed CLI options.
+ * @return Runtime object paths, or `null` when no repo-local build dir is known.
+ */
+func bd_runtime_object_paths(opts: CliOptions*) -> StringVector*? {
+    let runtime_override = env_get("L1_RUNTIME_LIB");
+    if (opts.runtime_lib != null || runtime_override != null) { return null; }
+    if (opts.managed_profile != null) {
+        let paths = bd_runtime_object_paths_for_build_dir(opts, opts.managed_profile);
+        if (paths == null) { return null; }
+        with (let original = paths as StringVector* => sv_free(original)) {
+            let adapted = sv_create(sv_size(original));
+            for (let i = 0; i < sv_size(original); i = i + 1) {
+                sv_push(adapted, replace_s(sv_get(original, i), "/runtime/tcc/", "/lib/tcc/"));
+            }
+            return adapted;
+        }
+    }
+    return bd_runtime_object_paths_for_build_dir(opts, env_get("L1_BUILD_DIR"));
+}
+
+/**
+ * Free optional repo-local runtime object paths.
+ *
+ * @param paths Optional vector returned by `bd_runtime_object_paths`.
+ */
+func bd_runtime_object_paths_free(paths: StringVector*?) {
+    if (paths != null) {
+        sv_free(paths as StringVector*);
+    }
+}
+
+/**
+ * Return whether every runtime object path exists.
+ *
+ * @param paths Runtime object paths.
+ * @return `true` when every path exists.
+ */
+func bd_runtime_object_paths_exist(paths: StringVector*) -> bool {
+    for (let i = 0; i < sv_size(paths); i = i + 1) {
+        if (!exists(sv_get(paths, i))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Push compiler-family standard flags into a command-word vector.
+ *
+ * @param words Command words to extend.
+ * @param family Compiler flag-family name.
+ */
+func bd_push_standard_flags(words: StringVector*, family: string) {
+    if (family == "tcc") {
+        sv_push(words, "-std=c99");
+        sv_push(words, "-Wall");
+        sv_push(words, "-pedantic");
+        return;
+    }
+    if (family == "gcc") {
+        sv_push(words, "-std=c99");
+        sv_push(words, "-Wall");
+        sv_push(words, "-Wextra");
+        sv_push(words, "-Wno-unused");
+        sv_push(words, "-Wno-unused-parameter");
+        sv_push(words, "-pedantic-errors");
+        return;
+    }
+    if (family == "msvc") {
+        sv_push(words, "/std:c11");
+        sv_push(words, "/W4");
+    }
+}
+
+/**
+ * Push compiler-family output-path flags into a command-word vector.
+ *
+ * @param words Command words to extend.
+ * @param family Compiler flag-family name.
+ * @param exe_path Output executable path.
+ */
+func bd_push_output_flags(words: StringVector*, family: string, exe_path: string) {
+    if (family == "msvc") {
+        sv_push(words, "/Fe:" + exe_path);
+        return;
+    }
+    sv_push(words, "-o");
+    sv_push(words, exe_path);
+}
+
+/**
+ * Replay compiler output captured into temp files.
+ *
+ * @param cfg Logging configuration.
+ * @param stdout_path Captured stdout path.
+ * @param stderr_path Captured stderr path.
+ * @param failed Whether compilation failed.
+ */
+func bd_replay_compile_output(cfg: LogConfig*, stdout_path: string, stderr_path: string, failed: bool) {
+    let stderr_text = read_file(stderr_path);
+    let stdout_text = read_file(stdout_path);
+
+    if (failed) {
+        if (stderr_text != null && !is_empty_s(stderr_text as string)) {
+            log_error(cfg, stderr_text as string);
+        }
+        if (stdout_text != null && !is_empty_s(stdout_text as string)) {
+            log_error(cfg, stdout_text as string);
+        }
+        return;
+    }
+
+    if (stderr_text != null && !is_empty_s(stderr_text as string)) {
+        log_error(cfg, stderr_text as string);
+    }
+    if (stdout_text != null && !is_empty_s(stdout_text as string)) {
+        log_info(cfg, stdout_text as string);
+    }
+}

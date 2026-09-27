@@ -1,0 +1,33 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_pointer_identity_err;
+
+struct T {
+    val: int;
+}
+
+struct U {
+    val: int;
+}
+
+func err_pointer_identity() {
+    let t: T* = new T(1);
+    let u: U* = new U(1);
+
+    // T* vs U*
+    let b1: bool = t == u; // TYP-0172
+    let b2: bool = t != u; // TYP-0172
+
+    let i: int* = ((new T(1)) as void*) as int*;
+    let l: long* = ((new T(1)) as void*) as long*;
+
+    // int* vs long*
+    let b3: bool = i == l; // TYP-0172
+
+    // non-void* vs void*
+    let v: void* = t as void*;
+    let b4: bool = t == v; // TYP-0172
+}

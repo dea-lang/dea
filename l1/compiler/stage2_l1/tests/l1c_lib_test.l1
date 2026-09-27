@@ -1,0 +1,1656 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module l1c_lib_test;
+
+import sys.rt;
+
+import std.assert;
+import std.fs;
+import std.io;
+import std.path;
+import std.string;
+import std.vector;
+
+import analysis;
+import ast;
+import compiler_filesystem;
+import l1c_lib;
+import support.driver_inputs;
+import sem_context;
+import signatures.tables;
+import source_paths;
+import types;
+import util.diag;
+import util.log;
+
+/**
+ * Returns the root directory for test fixtures.
+ *
+ * @return The driver fixture directory used by command-line tests.
+ */
+func fixture_root() -> string {
+    return "compiler/stage2_l1/tests/fixtures/driver";
+}
+
+/**
+ * Returns the semantics fixture directory used by command-line tests.
+ *
+ * @return The semantics fixture directory for semantic failure cases.
+ */
+func semantics_fixture_root() -> string {
+    return "compiler/stage2_l1/tests/fixtures/semantics";
+}
+
+/**
+ * Returns the interface-fixture directory used by module-interface tests.
+ *
+ * @return The interface fixture directory for `.l1m` emission tests.
+ */
+func interface_fixture_root() -> string {
+    return "compiler/stage2_l1/tests/fixtures/interface";
+}
+
+/** Return the valid interface-first module-graph fixture root. */
+func graph_interface_root() -> string {
+    return "compiler/stage2_l1/tests/fixtures/module_graph/interfaces_first";
+}
+
+/** Return the malformed authoritative-interface fixture root. */
+func graph_bad_interface_root() -> string {
+    return "compiler/stage2_l1/tests/fixtures/module_graph/interfaces_bad_parse";
+}
+
+/** Return the project source-fallback fixture root. */
+func fallback_source_root() -> string {
+    return "compiler/stage2_l1/tests/fixtures/driver/source_project";
+}
+
+/**
+ * Returns the temporary output path used by `--gen` tests.
+ *
+ * @return Output file path for generated C.
+ */
+func gen_output_path() -> string {
+    return "compiler/stage2_l1/tests/.tmp-ok_main.c";
+}
+
+/**
+ * Returns the temporary output path used by `--emit-interface` tests.
+ *
+ * @return Output file path for emitted `.l1m` text.
+ */
+func interface_output_path() -> string {
+    return "compiler/stage2_l1/tests/.tmp-iface-demo.l1m";
+}
+
+/**
+ * Returns the temporary output path used by `--build` tests.
+ *
+ * @return Output executable path for build tests.
+ */
+func build_output_path() -> string {
+    return "compiler/stage2_l1/tests/.tmp-build-ok_main";
+}
+
+/**
+ * Returns the kept-C path used by `--build` tests.
+ *
+ * @return Output C path for build tests.
+ */
+func build_c_output_path(module_name: string) -> string {
+    return join(
+        build_output_path() + ".dea-c",
+        module_name + ".c"
+    );
+}
+
+/**
+ * Returns the base output path used by `--run --keep-c` tests.
+ *
+ * @return Requested output base path for run tests.
+ */
+func run_keep_c_output_path() -> string {
+    return "compiler/stage2_l1/tests/.tmp-run-kept";
+}
+
+/**
+ * Returns the kept-C path used by `--run --keep-c` tests.
+ *
+ * @return Output C path for run tests.
+ */
+func run_keep_c_c_path(module_name: string) -> string {
+    return join(module_name + ".dea-c", module_name + ".c");
+}
+
+/**
+ * Returns the base output path used by the named-argument runtime fixture.
+ *
+ * @return Requested output base path for the named-argument runtime test.
+ */
+func named_args_output_path() -> string {
+    return "compiler/stage2_l1/tests/.tmp-named-args";
+}
+
+/**
+ * Returns the kept-C path used by the named-argument runtime fixture.
+ *
+ * @return Output C path for the named-argument runtime test.
+ */
+func named_args_c_output_path() -> string {
+    return join("named_args_main.dea-c", "named_args_main.c");
+}
+
+/** Remove one retained-C test tree using its deliberately bounded fixture set. */
+func cleanup_retained_c_test_tree(c_path: string) {
+    let root = parent(c_path);
+    cfs_remove_regular_file(c_path);
+    cfs_remove_regular_file(join(root, "ok_main.c"));
+    cfs_remove_regular_file(join(root, "ok_dep1.c"));
+    cfs_remove_regular_file(join(root, "ok_dep2.c"));
+    cfs_remove_regular_file(join(root, "ok_leaf.c"));
+    cfs_remove_regular_file(join(root, "toplet_init_dep.c"));
+    cfs_remove_regular_file(join(root, "init_collision.c"));
+    cfs_remove_regular_file(join(root, "init/collision.c"));
+    cfs_remove_regular_file(join(root, "std/assert.c"));
+    cfs_remove_regular_file(join(root, "std/string.c"));
+    cfs_remove_regular_file(join(root, "sys/rt.c"));
+    cfs_remove_regular_file(join(root, "__dea_wrapper.c"));
+    cfs_remove_empty_dir(join(root, "init"));
+    cfs_remove_empty_dir(join(root, "std"));
+    cfs_remove_empty_dir(join(root, "sys"));
+    cfs_remove_empty_dir(root);
+}
+
+/**
+ * Tests test_check_ok.
+ */
+func test_check_ok() {
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--check");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "ok_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "--check should succeed for ok_main");
+    }
+}
+
+/**
+ * Tests compile mode publishes the default pair and optional retained C set.
+ */
+func test_compile_mode_publishes_selected_artifact_sets() {
+    let stem = "compiler/stage2_l1/tests/.tmp-compile-only";
+    let c_path = stem + ".c";
+    let object_path = stem + ".o";
+    let interface_path = stem + ".l1m";
+    rt_delete_file(c_path);
+    rt_delete_file(object_path);
+    rt_delete_file(interface_path);
+
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "-c");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "-o");
+        sv_push(argv, object_path);
+        sv_push(argv, "no_main");
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "-c should publish a dependency-free module");
+    }
+
+    assert(!exists(c_path), "plain compile mode must not publish generated C");
+    assert(exists(object_path), "plain compile mode must publish a relocatable object");
+    assert(exists(interface_path), "plain compile mode must publish an interface");
+
+    rt_delete_file(object_path);
+    rt_delete_file(interface_path);
+
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "-c");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "-o");
+        sv_push(argv, object_path);
+        sv_push(argv, "no_main");
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "-c --keep-c should publish a dependency-free module");
+    }
+
+    assert(exists(c_path), "-c --keep-c must publish generated C");
+    assert(exists(object_path), "-c --keep-c must publish a relocatable object");
+    assert(exists(interface_path), "-c --keep-c must publish an interface");
+
+    rt_delete_file(c_path);
+    rt_delete_file(object_path);
+    rt_delete_file(interface_path);
+}
+
+/**
+ * Tests a bare argument separator keeps compile mode in the CLI-error path.
+ */
+func test_compile_bare_separator_is_cli_error() {
+    with (let argv = sv_create(4) => sv_free(argv)) {
+        sv_push(argv, "--compile");
+        sv_push(argv, "compiler/stage2_l1/tests/.tmp-compile-only");
+        sv_push(argv, "--");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 2, "bare separator outside --run should return the CLI-error status");
+    }
+}
+
+/**
+ * Tests test_check_cycle_fails.
+ */
+func test_check_cycle_fails() {
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--check");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "cycle_a");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 1, "--check should fail for cycle_a");
+    }
+}
+
+/**
+ * Tests test_check_semantic_failure.
+ */
+func test_check_semantic_failure() {
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--check");
+        sv_push(argv, "-Rp");
+        sv_push(argv, semantics_fixture_root());
+        sv_push(argv, "infer_fail_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 1, "--check should fail for semantic errors");
+    }
+}
+
+/**
+ * Tests test_tok_ok.
+ */
+func test_tok_ok() {
+    with (let argv = sv_create(10) => sv_free(argv)) {
+        sv_push(argv, "--tok");
+        sv_push(argv, "--include-eof");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "ok_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "--tok should succeed for ok_main");
+    }
+}
+
+/**
+ * Tests test_gen_ok_stdout.
+ */
+func test_gen_ok_stdout() {
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--gen");
+        sv_push(argv, "--no-line-directives");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "ok_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "--gen should succeed for ok_main");
+    }
+}
+
+/**
+ * Tests test_gen_ok_output_file.
+ */
+func test_gen_ok_output_file() {
+    let out_path = gen_output_path();
+    rt_delete_file(out_path);
+
+    with (let argv = sv_create(10) => sv_free(argv)) {
+        sv_push(argv, "--gen");
+        sv_push(argv, "--no-line-directives");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "ok_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "--gen --output should succeed for ok_main");
+    }
+
+    let c_text = read_file(out_path);
+    assert(c_text != null, "generated C output file should exist");
+    assert(contains_s(c_text as string, "/* Generated by l1c, the Dea/L1 compiler. Do not edit. */"), "generated C header missing");
+    assert(contains_s(c_text as string, "void __deaM7ok_mainI4init(void)"),
+        "generated C module init missing");
+    assert(contains_s(c_text as string, "void __deaM7ok_mainI4fini(void)"),
+        "generated C module fini missing");
+    assert(contains_s(c_text as string, "int __deaM7ok_mainI5entry(void)"),
+        "generated C entry bridge missing");
+    assert(!contains_s(c_text as string, "int main(int argc, char **argv)"),
+        "generated C must not contain a process main wrapper");
+    assert(!contains_s(c_text as string, "/* Module: ok_dep1 */"),
+        "generated C must not contain imported module definitions");
+
+    rt_delete_file(out_path);
+}
+
+/** Verify generated-C accepts interface-only imports without native siblings. */
+func test_gen_interface_first_without_native_siblings() {
+    let out_path = gen_output_path();
+    let provider_c = graph_interface_root() + "/graph/provider.c";
+    let provider_object = graph_interface_root() + "/graph/provider.o";
+    rt_delete_file(out_path);
+    assert(!exists(provider_c) && !exists(provider_object),
+        "interface-only fixture must not begin with native siblings");
+
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--gen");
+        sv_push(argv, "--no-line-directives");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "-I");
+        sv_push(argv, graph_interface_root());
+        sv_push(argv, "-o");
+        sv_push(argv, out_path);
+        sv_push(argv, "graph_entry");
+        assert(run_with_argv(argv) == 0,
+            "--gen should accept verified interface-only imports");
+    }
+
+    let text = read_file(out_path);
+    assert(text != null, "interface-backed generated C should exist");
+    assert(contains_s(text as string, "/* Module: graph_entry */"),
+        "interface-backed output should define the selected source module");
+    assert(!contains_s(text as string, "/* Module: graph.provider */"),
+        "interface-backed output must not define the provider");
+    assert(!exists(provider_c) && !exists(provider_object),
+        "pure generation must not create or inspect native siblings");
+    rt_delete_file(out_path);
+}
+
+/** Verify malformed selected interfaces fail rather than falling back to source. */
+func test_gen_malformed_interface_is_authoritative() {
+    let out_path = gen_output_path();
+    rt_delete_file(out_path);
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--gen");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "-I");
+        sv_push(argv, graph_bad_interface_root());
+        sv_push(argv, "-o");
+        sv_push(argv, out_path);
+        sv_push(argv, "graph_entry");
+        assert(run_with_argv(argv) == 1,
+            "malformed selected interface should fail generated-C mode");
+    }
+    assert(!exists(out_path), "failed generated-C analysis must not write output");
+}
+
+/** Verify an interface-only target is not accepted as generated-C input. */
+func test_gen_requires_source_target() {
+    let out_path = gen_output_path();
+    rt_delete_file(out_path);
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--gen");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "-I");
+        sv_push(argv, graph_interface_root());
+        sv_push(argv, "-o");
+        sv_push(argv, out_path);
+        sv_push(argv, "graph.required");
+        assert(run_with_argv(argv) == 1,
+            "interface-only generated-C target should be rejected");
+    }
+    assert(!exists(out_path), "interface-only target failure must not write output");
+}
+
+/** Verify absent interfaces retain source-fallback resolution. */
+func test_gen_uses_source_fallback_when_no_interface_is_selected() {
+    let out_path = gen_output_path();
+    rt_delete_file(out_path);
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--gen");
+        sv_push(argv, "--no-line-directives");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "-Rp");
+        sv_push(argv, fallback_source_root());
+        sv_push(argv, "-o");
+        sv_push(argv, out_path);
+        sv_push(argv, "fallback_entry");
+        assert(run_with_argv(argv) == 0,
+            "generated-C should use source fallback when no interface exists");
+    }
+    let text = read_file(out_path);
+    assert(text != null && contains_s(text as string, "/* Module: fallback_entry */"),
+        "source-fallback generated C should define only its target");
+    assert(!contains_s(text as string, "/* Module: graph.fallback */"),
+        "source-fallback provider definitions must stay outside target output");
+    rt_delete_file(out_path);
+}
+
+/**
+ * Tests `--emit-interface` stdout mode exits successfully.
+ */
+func test_emit_interface_stdout() {
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--emit-interface");
+        sv_push(argv, "-Rp");
+        sv_push(argv, interface_fixture_root());
+        sv_push(argv, "iface_demo");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "--emit-interface should succeed for iface_demo");
+    }
+}
+
+/**
+ * Tests `--emit-interface --output` writes deterministic `.l1m` text.
+ */
+func test_emit_interface_output_file() {
+    let out_path = interface_output_path();
+    rt_delete_file(out_path);
+
+    with (let argv = sv_create(10) => sv_free(argv)) {
+        sv_push(argv, "--emit-interface");
+        sv_push(argv, "-Rp");
+        sv_push(argv, interface_fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "iface_demo");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "--emit-interface --output should succeed for iface_demo");
+    }
+
+    let text = read_file(out_path);
+    assert(text != null, "interface output file should exist");
+    assert(contains_s(text as string, "module interface iface_demo;\nfingerprint \"sip13:"),
+        "canonical interface fingerprint missing");
+    assert(contains_s(text as string, "struct Point {\n  x: int;\n  y: int;\n}"), "exported struct missing");
+    assert(contains_s(text as string, "func area(s: Size) -> int;"), "exported function missing");
+    assert(!contains_s(text as string, " == \""), "declaration hash suffixes must not be emitted");
+    assert(!contains_s(text as string, "helper"), "private helper must not be emitted");
+
+    rt_delete_file(out_path);
+}
+
+/** Specific canonicalization diagnostics suppress the generic interface-projection fallback. */
+func test_emit_interface_specific_failure_suppresses_generic_fallback() {
+    let sp = sp_create();
+    sp_add_project_root(sp, interface_fixture_root());
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+          let fallback_diags = diag_create() => diag_free(fallback_diags)) {
+        let result = analysis_analyze_entry(sp, "iface_demo", cfg);
+        assert(!analysis_has_errors(result), "iface_demo should analyze before metadata corruption");
+        let area_ty = sig_lookup_func_type(
+            analysis_signature_tables(result) as SignatureTables*, "iface_demo", "area"
+        );
+        assert(area_ty != null, "iface_demo area signature should exist");
+        ptr_vec_push((area_ty as Type*).params as VectorBase*, type_builtin_int() as void*);
+
+        let emitted = analysis_emit_interface(result, "iface_demo");
+        assert(emitted == null, "inconsistent public signature metadata should block interface emission");
+        assert(analysis_has_errors(result), "canonicalization failure should remain on analysis diagnostics");
+        let saw_specific = false;
+        for (let i = 0; i < analysis_diag_count(result); i = i + 1) {
+            if (analysis_diag_get(result, i).code == "SIG-0283") {
+                saw_specific = true;
+            }
+        }
+        assert(saw_specific, "canonicalization failure should report SIG-0283");
+
+        l1c_add_interface_projection_fallback(result, fallback_diags, "iface_demo");
+        assert(diag_count(fallback_diags) == 0,
+            "specific interface diagnostics must suppress generic L1C-2030 fallback");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests test_gen_trace_defines.
+ */
+func test_gen_trace_defines() {
+    let out_path = gen_output_path();
+    rt_delete_file(out_path);
+
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--gen");
+        sv_push(argv, "--no-line-directives");
+        sv_push(argv, "--trace-arc");
+        sv_push(argv, "--trace-memory");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "ok_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "--gen with trace flags should succeed");
+    }
+
+    let c_text = read_file(out_path);
+    assert(c_text != null, "generated C output file should exist for trace test");
+    assert(!contains_s(c_text as string, "#define DEA_TRACE_ARC 1"), "trace ARC define should not be emitted");
+    assert(!contains_s(c_text as string, "#define DEA_TRACE_MEMORY 1"), "trace memory define should not be emitted");
+    assert(contains_s(c_text as string, "#include \"dea_rt.h\""), "public runtime include missing");
+
+    rt_delete_file(out_path);
+}
+
+/**
+ * Tests test_parse_error_exit_code.
+ */
+func test_parse_error_exit_code() {
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--check");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "ok_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 2, "CLI parse/validation errors should return 2");
+    }
+}
+
+/**
+ * Tests test_default_build_mode_succeeds.
+ */
+func test_default_build_mode_succeeds() {
+    let out_path = build_output_path();
+    let c_path = build_c_output_path("ok_main");
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "ok_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "default build mode should succeed for ok_main");
+    }
+
+    assert(exists(out_path), "built executable should exist");
+    assert(exists(c_path), "kept generated C should exist for build");
+
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+}
+
+/**
+ * Tests test_run_exit_code_passthrough.
+ */
+func test_run_exit_code_passthrough() {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "exit_seven");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 7, "--run should return the child program exit code");
+    }
+}
+
+/**
+ * Tests test_run_keep_c_output_file.
+ */
+func test_run_keep_c_output_file() {
+    let out_path = run_keep_c_output_path();
+    let c_path = run_keep_c_c_path("ok_main");
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "ok_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "--run --keep-c should succeed for ok_main");
+    }
+
+    assert(exists(c_path), "--run --keep-c should retain the generated C file");
+
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+}
+
+/**
+ * Tests cleanup-block return precedence in `--run` mode.
+ */
+func test_run_cleanup_return_precedence() {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "cleanup_return_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 11, "cleanup block should override the body return value");
+    }
+}
+
+/**
+ * Tests chained postfix-try short-circuiting in `--run` mode.
+ */
+func test_run_try_chain_short_circuits() {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "try_chain_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 12, "nested try chain should short-circuit before later calls run");
+    }
+}
+
+/**
+ * Tests qualified enum variant execution when imports are shadowed locally.
+ */
+func test_run_shadowed_qualified_variant() {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-Rp");
+        sv_push(argv, semantics_fixture_root());
+        sv_push(argv, "shadow_warn_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 13, "qualified imported enum variants should still run under RES-0021 warnings");
+    }
+}
+
+/**
+ * Tests named-argument runtime behavior through the command-line harness.
+ */
+func test_run_named_args_main() {
+    let out_path = named_args_output_path();
+    let c_path = named_args_c_output_path();
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-Rp");
+        sv_push(argv, semantics_fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "named_args_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "named_args_main should run with exit 0");
+    }
+
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+}
+
+/**
+ * Tests integer bitwise lowering and execution in `--run --keep-c` mode.
+ */
+func test_run_bitwise_build_and_keep_c() {
+    let out_path = run_keep_c_output_path();
+    let c_path = run_keep_c_c_path("bitwise_main");
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "bitwise_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 29, "--run --keep-c should compile and execute bitwise_main");
+    }
+
+    let c_text = read_file(c_path);
+    assert(c_text != null, "bitwise_main kept C file should exist");
+    assert(contains_s(c_text as string, "dea_byte inverted = ((dea_byte)((~base)));"),
+        "bitwise_main unary bitwise-not lowering mismatch");
+    assert(contains_s(c_text as string, "dea_int masked = (((dea_int)(inverted)) & 15);"),
+        "bitwise_main bitwise-and widening mismatch");
+    assert(contains_s(c_text as string, "dea_long shifted_left = (wide << ((dea_long)(count)));"),
+        "bitwise_main left-shift widening mismatch");
+    assert(contains_s(c_text as string, "dea_long shifted_right = (shifted_left >> ((dea_long)(count)));"),
+        "bitwise_main right-shift widening mismatch");
+
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+}
+
+/**
+ * Tests function pointer typedefs, equality, and indirect calls in `--run --keep-c` mode.
+ */
+func test_run_function_pointer_build_and_keep_c() {
+    let out_path = run_keep_c_output_path();
+    let c_path = run_keep_c_c_path("function_pointer_main");
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "function_pointer_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 42, "--run --keep-c should compile and execute function_pointer_main");
+    }
+
+    let c_text = read_file(c_path);
+    assert(c_text != null, "function_pointer_main kept C file should exist");
+    assert(contains_s(c_text as string, "typedef dea_int (*dea_func_int_int_int)(dea_int, dea_int);"),
+        "function pointer typedef missing");
+    assert(contains_s(c_text as string, "dea_func_int_int_int op = __deaM21function_pointer_mainN3addF2iii;"),
+        "function pointer local declaration mismatch");
+    assert(contains_s(c_text as string, "(op == other)"), "function pointer equality lowering mismatch");
+    assert(contains_s(c_text as string, "_rt_panic(\"call through null function pointer\")"),
+        "function pointer null-call guard missing");
+    assert(contains_s(c_text as string, ")(left, right)"),
+        "function pointer indirect call lowering mismatch");
+
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+}
+
+/**
+ * Tests variadic direct/indirect calls, spread forwarding, and generated C packs.
+ */
+func test_run_variadic_build_and_keep_c() {
+    let out_path = run_keep_c_output_path();
+    let c_path = run_keep_c_c_path("variadic_main");
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "variadic_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "variadic_main should compile and execute");
+    }
+
+    let c_text = read_file(c_path);
+    assert(c_text != null, "variadic_main kept C file should exist");
+    assert(contains_s(c_text as string, "N3sumF2iVii(dea_int base, __deaWi values)"),
+        "variadic signature should use V identity and slice ABI");
+    assert(contains_s(c_text as string, ".len = 0, .data = NULL"),
+        "zero-element variadic pack mismatch");
+    assert(contains_s(c_text as string, "dea_varargs_"),
+        "ordinary variadic call should materialize a pack array");
+    assert(contains_s(c_text as string, ".data = (values).data"),
+        "array spread should pass a slice descriptor without repacking");
+    assert(contains_s(c_text as string, "typedef dea_int (*dea_func_int_int_sl_int)(dea_int, __deaWi);"),
+        "variadic function pointer should share the slice-level C ABI typedef");
+    assert(contains_s(c_text as string, "__deaA1_F1ii"),
+        "int callback variadic pack should encode its complete function signature");
+    assert(contains_s(c_text as string, "__deaA1_F1cc"),
+        "string callback variadic pack should encode its complete function signature");
+    assert(!contains_s(c_text as string, "__deaA1_X"),
+        "callback variadic packs must not use the ambiguous fallback wrapper name");
+
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+}
+
+/**
+ * Tests ARC-managed variadic packs under traced execution.
+ */
+func test_run_variadic_trace() {
+    with (let argv = dti_native_argv(10) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--trace-arc");
+        sv_push(argv, "--trace-memory");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "variadic_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "traced variadic_main should succeed");
+    }
+}
+
+/**
+ * Tests string equality and inequality execution in `--run --keep-c` mode.
+ */
+func test_run_string_equality_build_and_keep_c() {
+    let out_path = run_keep_c_output_path();
+    let c_path = run_keep_c_c_path("string_equality_main");
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "string_equality_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 23, "--run --keep-c should compile and execute string_equality_main");
+    }
+
+    let c_text = read_file(c_path);
+    assert(c_text != null, "string_equality_main kept C file should exist");
+    assert(contains_s(c_text as string, "rt_string_equals(lit, same_lit)"),
+        "string_equality_main equality lowering mismatch");
+    assert(contains_s(c_text as string, "(!rt_string_equals(lit, different_lit))"),
+        "string_equality_main inequality lowering mismatch");
+    assert(contains_s(c_text as string, "rt_string_equals(built_a, built_b)"),
+        "string_equality_main heap-string equality lowering mismatch");
+
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+}
+
+/**
+ * Tests pointer identity equality execution in `--run --keep-c` mode.
+ */
+func test_run_pointer_identity_build_and_keep_c() {
+    let out_path = run_keep_c_output_path();
+    let c_path = run_keep_c_c_path("pointer_identity_main");
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "pointer_identity_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "--run --keep-c should compile and execute pointer_identity_main with exit 0");
+    }
+
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+}
+
+/**
+ * Tests pointer-only use of an imported opaque handle through `--run`.
+ */
+func test_run_opaque_handle_round_trip() {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "opaque_handle_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 23, "opaque_handle_main should return through the opaque handle API");
+    }
+}
+
+/**
+ * Tests nullable identity equality execution in `--run --keep-c` mode.
+ */
+func test_run_nullable_identity_build_and_keep_c() {
+    let out_path = run_keep_c_output_path();
+    let c_path = run_keep_c_c_path("nullable_identity_main");
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "nullable_identity_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "--run should succeed for nullable_identity_main");
+    }
+
+    assert(exists(c_path), "run kept-C file should exist");
+
+    let c_text = read_file(c_path);
+    assert(c_text != null, "nullable_identity_main kept C file should exist");
+    assert(contains_s(c_text as string, "rt_string_equals(dea_arc_"),
+        "nullable_identity_main string? equality should compare captured payloads");
+    assert(contains_s(c_text as string, "rt_string_retain((dea_copy_"),
+        "nullable_identity_main string? equality should retain borrowed snapshots");
+
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+}
+
+/**
+ * Tests optional wrapper typedef ordering for user-defined value payloads.
+ */
+func test_run_optional_struct_field_order_builds() {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "optional_struct_field_order_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "optional struct wrapper typedef should be emitted before dependent type definitions");
+    }
+}
+
+/**
+ * Tests same-type struct casts lower without a pedantic-invalid C cast.
+ */
+func test_run_same_type_struct_cast_builds() {
+    let out_path = run_keep_c_output_path();
+    let c_path = run_keep_c_c_path("same_type_struct_cast_main");
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "same_type_struct_cast_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "same-type struct cast should compile and execute under pedantic C99");
+    }
+
+    assert(exists(c_path), "run kept-C file should exist for same_type_struct_cast_main");
+
+    let c_text = read_file(c_path);
+    assert(c_text != null, "same_type_struct_cast_main kept C file should exist");
+    assert(!contains_s(c_text as string, "pl(((__deaM4mainS5Token)("),
+        "same-type struct cast should not lower to a C struct cast");
+
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+}
+
+/**
+ * Tests `std.types` optional-string unwrap through a value-match scrutinee.
+ */
+func test_run_std_types_opt_string_builds() {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "std_types_opt_string_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "std.types optional-string unwrap should retain the match scrutinee correctly");
+    }
+}
+
+/**
+ * Tests single-statement `while`, `for`, `match`, and `case` execution in `--run` mode.
+ */
+func test_run_single_statement_bodies() {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "single_stmt_bodies_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 23, "single_stmt_bodies_main should execute successfully");
+    }
+}
+
+/**
+ * Tests string relational execution in `--run --keep-c` mode.
+ */
+func test_run_string_relational_build_and_keep_c() {
+    let out_path = run_keep_c_output_path();
+    let c_path = run_keep_c_c_path("string_relational_main");
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "string_relational_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 23, "--run --keep-c should compile and execute string_relational_main");
+    }
+
+    let c_text = read_file(c_path);
+    assert(c_text != null, "string_relational_main kept C file should exist");
+    assert(contains_s(c_text as string, "(rt_string_compare(short_value, longer_value) < 0)"),
+        "string_relational_main less-than lowering mismatch");
+    assert(contains_s(c_text as string, "(rt_string_compare(short_value, same_value) <= 0)"),
+        "string_relational_main less-equal lowering mismatch");
+    assert(contains_s(c_text as string, "(rt_string_compare(longer_value, short_value) > 0)"),
+        "string_relational_main greater-than lowering mismatch");
+    assert(contains_s(c_text as string, "(rt_string_compare(longer_value, same_value) >= 0)"),
+        "string_relational_main greater-equal lowering mismatch");
+    assert(contains_s(c_text as string, "(rt_string_compare(built_same, short_value) >= 0)"),
+        "string_relational_main heap-string ordering lowering mismatch");
+
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+}
+
+/**
+ * Tests string concatenation build and keep-c: runtime correctness and lowered C contents.
+ */
+func test_run_string_concat_build_and_keep_c() {
+    let out_path = run_keep_c_output_path();
+    let c_path = run_keep_c_c_path("string_concat_main");
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "string_concat_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 23, "--run --keep-c should compile and execute string_concat_main");
+    }
+
+    let c_text = read_file(c_path);
+    assert(c_text != null, "string_concat_main kept C file should exist");
+    assert(contains_s(c_text as string, "rt_string_concat"),
+        "string_concat_main concat lowering mismatch");
+
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+}
+
+/**
+ * Tests top-level `const` execution and `static const` C emission in `--run --keep-c` mode.
+ */
+func test_run_const_build_and_keep_c() {
+    let out_path = run_keep_c_output_path();
+    let c_path = run_keep_c_c_path("const_main");
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "const_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 23, "--run --keep-c should compile and execute const_main");
+    }
+
+    let c_text = read_file(c_path);
+    assert(c_text != null, "const_main kept C file should exist");
+    assert(contains_s(c_text as string, "const struct __deaM10const_mainS4Pair __deaM10const_mainN4pair = { .left = 1, .right = 2 };"),
+        "const_main struct const lowering mismatch");
+    assert(contains_s(c_text as string, "const dea_int __deaM10const_mainN6answer = 20;"),
+        "const_main scalar const lowering mismatch");
+
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+}
+
+/**
+ * Tests non-constant top-level `let` execution and hidden init-function C emission in `--run --keep-c` mode.
+ */
+func test_run_nonconstant_top_level_let_build_and_keep_c() {
+    let out_path = run_keep_c_output_path();
+    let c_path = run_keep_c_c_path("toplet_init_main");
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "toplet_init_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 23, "--run --keep-c should compile and execute toplet_init_main");
+    }
+
+    let c_text = read_file(c_path);
+    assert(c_text != null, "toplet_init_main kept C file should exist");
+    let root = parent(c_path);
+    let dep_text = read_file(join(root, "toplet_init_dep.c"));
+    let wrapper_text = read_file(join(root, "__dea_wrapper.c"));
+    assert(dep_text != null, "toplet_init_dep kept C file should exist");
+    assert(wrapper_text != null, "toplet_init_main wrapper C file should exist");
+    assert(contains_s(dep_text as string, "dea_int __deaM15toplet_init_depN4BASE = 0;"),
+        "toplet_init_main dep zero-init mismatch");
+    assert(contains_s(c_text as string, "dea_int __deaM16toplet_init_mainN6ANSWER = 0;"),
+        "toplet_init_main main zero-init mismatch");
+    assert(contains_s(dep_text as string, "void __deaM15toplet_init_depI4init(void)"),
+        "toplet_init_main dep init function missing");
+    assert(contains_s(dep_text as string, "__deaM15toplet_init_depN4BASE = __deaM15toplet_init_depN4seedF0i();"),
+        "toplet_init_main dep init assignment mismatch");
+    assert(contains_s(c_text as string, "void __deaM16toplet_init_mainI4init(void)"),
+        "toplet_init_main main init function missing");
+    assert(contains_s(c_text as string, "__deaM16toplet_init_mainN6ANSWER = __deaM16toplet_init_mainN4bumpF1ii(__deaM15toplet_init_depN8get_baseF0i());"),
+        "toplet_init_main main init assignment mismatch");
+    assert(contains_s(wrapper_text as string,
+        "__deaM15toplet_init_depI4init();\n    __deaM16toplet_init_mainI4init();"),
+        "toplet_init_main global init order mismatch");
+    assert(contains_s(wrapper_text as string,
+        "_rt_init_args(argc, argv);\n    __deaM15toplet_init_depI4init();\n    __deaM16toplet_init_mainI4init();\n    dea_exit_code = __deaM16toplet_init_mainI5entry();"),
+        "toplet_init_main wrapper init call mismatch");
+
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+}
+
+/**
+ * Tests module lifecycle LBI names distinguish dotted and underscored modules.
+ */
+func test_run_module_lifecycle_name_collision_build_and_keep_c() {
+    let out_path = run_keep_c_output_path();
+    let c_path = run_keep_c_c_path("init_collision_main");
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "init_collision_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 3, "--run --keep-c should compile and execute init_collision_main");
+    }
+
+    let c_text = read_file(c_path);
+    assert(c_text != null, "init_collision_main kept C file should exist");
+    let root = parent(c_path);
+    let dotted_text = read_file(join(root, "init/collision.c"));
+    let underscored_text = read_file(join(root, "init_collision.c"));
+    let wrapper_text = read_file(join(root, "__dea_wrapper.c"));
+    assert(dotted_text != null, "dotted collision module kept C file should exist");
+    assert(underscored_text != null, "underscore collision module kept C file should exist");
+    assert(wrapper_text != null, "collision wrapper C file should exist");
+    assert(contains_s(dotted_text as string, "void __deaM4init9collisionI4init(void)"),
+        "dotted module lifecycle init function missing");
+    assert(contains_s(underscored_text as string, "void __deaM14init_collisionI4init(void)"),
+        "underscore module lifecycle init function missing");
+    assert(contains_s(wrapper_text as string,
+        "__deaM4init9collisionI4init();\n    __deaM14init_collisionI4init();"),
+        "collision fixture global init order mismatch");
+
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+}
+
+/**
+ * Tests float/double build-and-run execution with kept generated C.
+ */
+func test_run_float_build_and_keep_c() {
+    let out_path = run_keep_c_output_path();
+    let c_path = run_keep_c_c_path("float_main");
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "float_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 17, "--run --keep-c should compile and execute float_main");
+    }
+
+    let c_text = read_file(c_path);
+    assert(c_text != null, "float_main kept C file should exist");
+    assert(contains_s(c_text as string, "#include <float.h>"), "float_main float contract header missing");
+    assert(contains_s(c_text as string, "#if FLT_RADIX != 2"), "float_main float radix guard missing");
+    assert(contains_s(c_text as string, "__FAST_MATH__"), "float_main fast-math guard missing");
+    assert(contains_s(c_text as string, "double __deaM10float_mainN5widenF1fd(float x)"), "float_main widen signature mismatch");
+    assert(contains_s(c_text as string, "float seed = 1.0f;"), "float_main float literal lowering mismatch");
+    assert(contains_s(c_text as string, "double total = ((__deaM10float_mainN5widenF1fd(seed) + 1.5) + 1.5);"),
+        "float_main double arithmetic lowering mismatch");
+
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+}
+
+/**
+ * Tests float/double subtraction, multiplication, division, and casts in `--run --keep-c` mode.
+ */
+func test_run_float_ops_build_and_keep_c() {
+    let out_path = run_keep_c_output_path();
+    let c_path = run_keep_c_c_path("float_ops_main");
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "float_ops_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 21, "--run --keep-c should compile and execute float_ops_main");
+    }
+
+    let c_text = read_file(c_path);
+    assert(c_text != null, "float_ops_main kept C file should exist");
+    assert(contains_s(c_text as string, "float diff = (lhs - rhs);"), "float_ops_main subtraction lowering mismatch");
+    assert(contains_s(c_text as string, "float prod = (rhs * 4.0f);"), "float_ops_main multiplication lowering mismatch");
+    assert(contains_s(c_text as string, "double quot = (9.0 / 2.0);"), "float_ops_main division lowering mismatch");
+    assert(contains_s(c_text as string, "float narrowed = ((float)(quot));"), "float_ops_main narrowing cast mismatch");
+    assert(contains_s(c_text as string, "dea_int back_to_int = ((dea_int)(from_int));"),
+        "float_ops_main double-to-int cast mismatch");
+    assert(!contains_s(c_text as string, "_rt_isub("), "float_ops_main subtraction should not use checked integer subtraction");
+    assert(!contains_s(c_text as string, "_rt_imul("), "float_ops_main multiplication should not use checked integer multiplication");
+    assert(!contains_s(c_text as string, "_rt_idiv("), "float_ops_main division should not use checked integer division");
+
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+}
+
+/**
+ * Tests floating zero-division lowering in kept generated C.
+ */
+func test_build_float_zero_division_keep_c() {
+    let out_path = build_output_path();
+    let c_path = build_c_output_path("float_zero_div_main");
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "float_zero_div_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "default build mode should succeed for float_zero_div_main");
+    }
+
+    let c_text = read_file(c_path);
+    assert(c_text != null, "float_zero_div_main kept C file should exist");
+    assert(contains_s(c_text as string, "double dz = (1.0 / 0.0);"), "float_zero_div_main double zero-division mismatch");
+    assert(contains_s(c_text as string, "float fz = (1.0f / 0.0f);"), "float_zero_div_main float zero-division mismatch");
+    assert(!contains_s(c_text as string, "_rt_idiv("), "float_zero_div_main should not use checked integer division");
+
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+}
+
+/**
+ * Tests that build mode rejects explicit C options that violate the floating-point contract.
+ */
+func test_build_float_rejects_invalid_math_mode_option() {
+    let out_path = build_output_path();
+    let c_path = build_c_output_path("float_main");
+    rt_delete_file(out_path);
+    cleanup_retained_c_test_tree(c_path);
+
+    with (let argv = dti_native_argv(14) => sv_free(argv)) {
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "--output");
+        sv_push(argv, out_path);
+        sv_push(argv, "--keep-c");
+        sv_push(argv, "--c-options");
+        sv_push(argv, "-fno-signed-zeros");
+        sv_push(argv, "float_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 1, "float_main should reject invalid signed-zero-breaking C options");
+    }
+
+    assert(!exists(out_path), "invalid FP mode should fail before producing an executable");
+    assert(!exists(c_path), "invalid FP mode should fail before writing kept generated C");
+}
+
+/**
+ * Tests test_merge_c_option_words_cli_last.
+ */
+func test_merge_c_option_words_cli_last() {
+    with (let words = l1c_merge_c_option_words("-DENV_ONE   -DENV_TWO", "-DCLI_ONE -DCLI_TWO") => sv_free(words)) {
+        assert(sv_size(words) == 4, "expected 4 merged C option words");
+        assert(sv_get(words, 0) == "-DENV_ONE", "env option #1 should come first");
+        assert(sv_get(words, 1) == "-DENV_TWO", "env option #2 should come before CLI options");
+        assert(sv_get(words, 2) == "-DCLI_ONE", "cli option #1 should come after env options");
+        assert(sv_get(words, 3) == "-DCLI_TWO", "cli option #2 should come last");
+    }
+}
+
+/**
+ * Tests test_merge_c_option_words_ignores_empty_inputs.
+ */
+func test_merge_c_option_words_ignores_empty_inputs() {
+    with (let empty_words = l1c_merge_c_option_words("   \t  ", null) => sv_free(empty_words)) {
+        assert(sv_size(empty_words) == 0, "blank env options should produce no words");
+    }
+
+    with (let cli_words = l1c_merge_c_option_words(null, "  -DCLI_ONLY\t") => sv_free(cli_words)) {
+        assert(sv_size(cli_words) == 1, "single CLI option should be preserved");
+        assert(sv_get(cli_words, 0) == "-DCLI_ONLY", "CLI option text mismatch");
+    }
+}
+
+/**
+ * Tests test_type_ok.
+ */
+func test_type_ok() {
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--type");
+        sv_push(argv, "-Rp");
+        sv_push(argv, semantics_fixture_root());
+        sv_push(argv, "ok_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "--type should succeed for ok_main");
+    }
+}
+
+/**
+ * Tests test_sym_ok.
+ */
+func test_sym_ok() {
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--sym");
+        sv_push(argv, "-Rp");
+        sv_push(argv, semantics_fixture_root());
+        sv_push(argv, "ok_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "--sym should succeed for ok_main");
+    }
+}
+
+/**
+ * Tests test_sym_all_modules_ok.
+ */
+func test_sym_all_modules_ok() {
+    with (let argv = sv_create(8) => sv_free(argv)) {
+        sv_push(argv, "--sym");
+        sv_push(argv, "--all-modules");
+        sv_push(argv, "-Rp");
+        sv_push(argv, semantics_fixture_root());
+        sv_push(argv, "ok_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "--sym --all-modules should succeed for ok_main");
+    }
+}
+
+func test_run_real_classify() {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "real_classify_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "real_classify_main failed");
+    }
+}
+
+func test_run_real_basic() {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "real_basic_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "real_basic_main failed");
+    }
+}
+
+func test_run_real_round() {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "real_round_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "real_round_main failed");
+    }
+}
+
+func test_run_real_decompose() {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "real_decompose_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "real_decompose_main failed");
+    }
+}
+
+func test_run_real_transcendental() {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "real_transcendental_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "real_transcendental_main failed");
+    }
+}
+
+func test_run_fixed_array_oob_fails() {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "fixed_array_oob_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc != 0, "fixed_array_oob_main should fail through _rt_panic_oob");
+    }
+}
+
+/**
+ * Tests end-to-end execution of slices, len, and slice intrinsics.
+ */
+func test_run_slice_ok() {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "slice_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "slice_main should succeed");
+    }
+}
+
+/**
+ * Tests that out-of-bounds slice indexing panics through `_rt_panic_oob`.
+ */
+func test_run_slice_oob_fails() {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "slice_oob_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc != 0, "slice_oob_main should fail through _rt_panic_oob");
+    }
+}
+
+/**
+ * Tests traced execution confirms non-owning string slices emit no spurious release.
+ */
+func test_run_trace_slice_non_owning() {
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--trace-arc");
+        sv_push(argv, "--trace-memory");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "slice_trace_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "traced slice_trace_main should succeed without double free");
+    }
+}
+
+/**
+ * Tests traced execution for fixed-size array ARC assignment paths.
+ */
+func test_run_trace_fixed_array_arc_paths() {
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--trace-arc");
+        sv_push(argv, "--trace-memory");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "fixed_array_trace_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "traced fixed_array_trace_main should succeed");
+    }
+}
+
+/**
+ * Tests traced execution for nested fixed-size array ARC return paths.
+ */
+func test_run_trace_fixed_array_nested_return() {
+    with (let argv = dti_native_argv(12) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--trace-arc");
+        sv_push(argv, "--trace-memory");
+        sv_push(argv, "-Rp");
+        sv_push(argv, fixture_root());
+        sv_push(argv, "fixed_array_nested_return_main");
+
+        let rc = run_with_argv(argv);
+        assert(rc == 0, "traced fixed_array_nested_return_main should succeed");
+    }
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    test_check_ok();
+    test_compile_mode_publishes_selected_artifact_sets();
+    test_compile_bare_separator_is_cli_error();
+    test_check_cycle_fails();
+    test_check_semantic_failure();
+    test_tok_ok();
+    test_gen_ok_stdout();
+    test_gen_ok_output_file();
+    test_gen_interface_first_without_native_siblings();
+    test_gen_malformed_interface_is_authoritative();
+    test_gen_requires_source_target();
+    test_gen_uses_source_fallback_when_no_interface_is_selected();
+    test_emit_interface_stdout();
+    test_emit_interface_output_file();
+    test_emit_interface_specific_failure_suppresses_generic_fallback();
+    test_gen_trace_defines();
+    test_parse_error_exit_code();
+    test_default_build_mode_succeeds();
+    test_run_exit_code_passthrough();
+    test_run_keep_c_output_file();
+    test_run_cleanup_return_precedence();
+    test_run_try_chain_short_circuits();
+    test_run_shadowed_qualified_variant();
+    test_run_named_args_main();
+    test_run_bitwise_build_and_keep_c();
+    test_run_function_pointer_build_and_keep_c();
+    test_run_variadic_build_and_keep_c();
+    test_run_string_equality_build_and_keep_c();
+    test_run_pointer_identity_build_and_keep_c();
+    test_run_opaque_handle_round_trip();
+    test_run_nullable_identity_build_and_keep_c();
+    test_run_optional_struct_field_order_builds();
+    test_run_std_types_opt_string_builds();
+    test_run_single_statement_bodies();
+    test_run_string_relational_build_and_keep_c();
+    test_run_string_concat_build_and_keep_c();
+    test_run_const_build_and_keep_c();
+    test_run_nonconstant_top_level_let_build_and_keep_c();
+    test_run_module_lifecycle_name_collision_build_and_keep_c();
+    test_run_float_build_and_keep_c();
+    test_run_float_ops_build_and_keep_c();
+    test_build_float_zero_division_keep_c();
+    test_build_float_rejects_invalid_math_mode_option();
+    test_merge_c_option_words_cli_last();
+    test_merge_c_option_words_ignores_empty_inputs();
+    test_type_ok();
+    test_sym_ok();
+    test_sym_all_modules_ok();
+    test_run_real_classify();
+    test_run_real_basic();
+    test_run_real_round();
+    test_run_real_decompose();
+    test_run_real_transcendental();
+    test_run_fixed_array_oob_fails();
+    test_run_slice_ok();
+    test_run_slice_oob_fails();
+    test_run_trace_slice_non_owning();
+    test_run_trace_fixed_array_arc_paths();
+    test_run_trace_fixed_array_nested_return();
+    test_run_variadic_trace();
+    printl_s("l1c_lib_test: all tests passed");
+}

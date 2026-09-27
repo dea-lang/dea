@@ -1,0 +1,13 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module math_emod_zero_divisor;
+
+import std.integer;
+
+func main() -> int {
+    emod(1, 0);
+    return 0;
+}

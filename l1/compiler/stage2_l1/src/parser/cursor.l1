@@ -1,0 +1,662 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module parser.cursor;
+
+import std.text;
+import std.vector;
+import util.diag;
+import util.intset;
+import tokens;
+import ast;
+import parser.state;
+import parser.token_value;
+
+/**
+ * Return the current lookahead token.
+ *
+ * TT_LEXER_ERROR wrappers are interpreted as logical tokens. Wrappers with
+ * recovery are exposed as that token; wrappers without recovery are skipped.
+ *
+ * @param self Parser state to inspect.
+ * @return Token at the current parse position.
+ */
+func ps_peek(self: ParserState*) -> Token {
+    return ps_logical_token_at_cursor(self);
+}
+
+/**
+ * Emit and step over any TT_LEXER_ERROR tokens at the cursor.
+ *
+ * @param self Parser state to advance.
+ */
+func ps_skip_lexer_errors(self: ParserState*) {
+    ps_logical_token_at_cursor(self);
+}
+
+/**
+ * Return the logical current token and skip unrecoverable lexer wrappers.
+ *
+ * @param self Parser state to inspect.
+ * @return Logical current token.
+ */
+func ps_logical_token_at_cursor(self: ParserState*) -> Token {
+    while (true) {
+        let tok = tv_get(self.tokens, self.index);
+        match (tok.token_type) {
+            TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+                if (iset_add(self.emitted_lex_errors, self.index)) {
+                    diag_error(self.diags, "Lexer", code, message, self.filename,
+                               tok.line, tok.column, line_end, column_end);
+                }
+                if (token_recovery_is_some(recovery)) {
+                    return token_recovered(tok);
+                }
+                self.index = self.index + 1;
+            }
+            _ => { return tok; }
+        }
+    }
+    return tv_get(self.tokens, tv_len(self.tokens) - 1);
+}
+
+/**
+ * Return a logical lookahead token without moving the parser cursor.
+ *
+ * @param self Parser state to inspect.
+ * @param offset Logical token offset from the current cursor.
+ * @return Logical lookahead token.
+ */
+func ps_peek_logical_ahead(self: ParserState*, offset: int) -> Token {
+    let physical = self.index;
+    let logical = 0;
+    let n = tv_len(self.tokens);
+    while (physical < n) {
+        let tok = tv_get(self.tokens, physical);
+        let visible = true;
+        match (tok.token_type) {
+            TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+                if (token_recovery_is_some(recovery)) {
+                    tok = token_recovered(tok);
+                } else {
+                    visible = false;
+                }
+            }
+            _ => {}
+        }
+        if (visible) {
+            if (logical == offset) {
+                return tok;
+            }
+            logical = logical + 1;
+        }
+        physical = physical + 1;
+    }
+    return tv_get(self.tokens, n - 1);
+}
+
+/**
+ * Emit deferred lexer diagnostics that parsing never reached.
+ *
+ * @param self Parser state whose physical token stream should be scanned.
+ */
+func ps_emit_remaining_lexer_errors(self: ParserState*) {
+    for (let i = 0; i < tv_len(self.tokens); i = i + 1) {
+        let tok = tv_get(self.tokens, i);
+        match (tok.token_type) {
+            TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+                if (iset_add(self.emitted_lex_errors, i)) {
+                    diag_error(self.diags, "Lexer", code, message, self.filename,
+                               tok.line, tok.column, line_end, column_end);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/**
+ * Return the most recently consumed token.
+ *
+ * @param self Parser state to inspect.
+ * @return Last consumed token, or the first token if nothing has been consumed yet.
+ */
+func ps_last(self: ParserState*) -> Token {
+    return self.last_token;
+}
+
+/**
+ * Check whether the parser is positioned at EOF.
+ *
+ * @param self Parser state to inspect.
+ * @return `true` if the current token is `TT_EOF`.
+ */
+func ps_at_end(self: ParserState*) -> bool {
+    return tok_is(ps_peek(self), ord(TT_EOF));
+}
+
+/**
+ * Consume and return the current token.
+ *
+ * @param self Parser state to advance.
+ * @return Token that was current before advancing.
+ */
+func ps_advance(self: ParserState*) -> Token {
+    let tok = ps_peek(self);
+    if (!ps_at_end(self)) {
+        self.index = self.index + 1;
+    }
+    self.last_token = tok;
+    return tok;
+}
+
+/**
+ * Check whether the current token has the given kind ordinal.
+ *
+ * @param self Parser state to inspect.
+ * @param kind_ord Token kind ordinal to compare against.
+ * @return `true` if the current token matches `kind_ord`.
+ */
+func ps_check(self: ParserState*, kind_ord: int) -> bool {
+    return tok_is(ps_peek(self), kind_ord);
+}
+
+/**
+ * Consume the current token if it has the given kind ordinal.
+ *
+ * @param self Parser state to advance.
+ * @param kind_ord Token kind ordinal to match.
+ * @return `true` if a matching token was consumed.
+ */
+func ps_match(self: ParserState*, kind_ord: int) -> bool {
+    if (ps_check(self, kind_ord)) {
+        ps_advance(self);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Consume the current token if it matches either of two kinds.
+ *
+ * @param self Parser state to advance.
+ * @param k1 First acceptable token kind ordinal.
+ * @param k2 Second acceptable token kind ordinal.
+ * @return `true` if one of the requested token kinds was consumed.
+ */
+func ps_match_any2(self: ParserState*, k1: int, k2: int) -> bool {
+    if (ps_match(self, k1)) {
+        return true;
+    }
+    if (ps_match(self, k2)) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Consume the current token if it matches any of three kinds.
+ *
+ * @param self Parser state to advance.
+ * @param k1 First acceptable token kind ordinal.
+ * @param k2 Second acceptable token kind ordinal.
+ * @param k3 Third acceptable token kind ordinal.
+ * @return `true` if one of the requested token kinds was consumed.
+ */
+func ps_match_any3(self: ParserState*, k1: int, k2: int, k3: int) -> bool {
+    if (ps_match(self, k1)) {
+        return true;
+    }
+    if (ps_match(self, k2)) {
+        return true;
+    }
+    if (ps_match(self, k3)) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Consume the current token if it matches any of four kinds.
+ *
+ * @param self Parser state to advance.
+ * @param k1 First acceptable token kind ordinal.
+ * @param k2 Second acceptable token kind ordinal.
+ * @param k3 Third acceptable token kind ordinal.
+ * @param k4 Fourth acceptable token kind ordinal.
+ * @return `true` if one of the requested token kinds was consumed.
+ */
+func ps_match_any4(self: ParserState*, k1: int, k2: int, k3: int, k4: int) -> bool {
+    if (ps_match(self, k1)) {
+        return true;
+    }
+    if (ps_match(self, k2)) {
+        return true;
+    }
+    if (ps_match(self, k3)) {
+        return true;
+    }
+    if (ps_match(self, k4)) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Check whether the current token is an identifier.
+ *
+ * @param self Parser state to inspect.
+ * @return `true` if the current token is `TT_IDENT`.
+ */
+func ps_check_ident(self: ParserState*) -> bool {
+    return tok_is_ident(ps_peek(self));
+}
+
+/**
+ * Consume the current token if it is an identifier.
+ *
+ * @param self Parser state to advance.
+ * @return `true` if an identifier token was consumed.
+ */
+func ps_match_ident(self: ParserState*) -> bool {
+    if (ps_check_ident(self)) {
+        ps_advance(self);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Check whether the current token is an integer literal.
+ *
+ * @param self Parser state to inspect.
+ * @return `true` if the current token is `TT_INT`.
+ */
+func ps_check_int(self: ParserState*) -> bool {
+    return tok_is_int(ps_peek(self));
+}
+
+/**
+ * Check whether the current token is a bigint literal.
+ *
+ * @param self Parser state to inspect.
+ * @return `true` if the current token is `TT_BIGINT`.
+ */
+func ps_check_bigint(self: ParserState*) -> bool {
+    return tok_is_bigint(ps_peek(self));
+}
+
+/**
+ * Consume the current token if it is an integer literal.
+ *
+ * @param self Parser state to advance.
+ * @return `true` if an integer literal token was consumed.
+ */
+func ps_match_int(self: ParserState*) -> bool {
+    if (ps_check_int(self)) {
+        ps_advance(self);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Consume the current token if it is a bigint literal.
+ *
+ * @param self Parser state to advance.
+ * @return `true` if a bigint literal token was consumed.
+ */
+func ps_match_bigint(self: ParserState*) -> bool {
+    if (ps_check_bigint(self)) {
+        ps_advance(self);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Check whether the current token is a real literal.
+ *
+ * @param self Parser state to inspect.
+ * @return `true` if the current token is `TT_REALNUM`.
+ */
+func ps_check_real(self: ParserState*) -> bool {
+    return tok_is_real(ps_peek(self));
+}
+
+/**
+ * Consume the current token if it is a real literal.
+ *
+ * @param self Parser state to advance.
+ * @return `true` if a real literal token was consumed.
+ */
+func ps_match_real(self: ParserState*) -> bool {
+    if (ps_check_real(self)) {
+        ps_advance(self);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Check whether the current token is a byte literal.
+ *
+ * @param self Parser state to inspect.
+ * @return `true` if the current token is `TT_BYTE`.
+ */
+func ps_check_byte(self: ParserState*) -> bool {
+    return tok_is_byte(ps_peek(self));
+}
+
+/**
+ * Consume the current token if it is a byte literal.
+ *
+ * @param self Parser state to advance.
+ * @return `true` if a byte literal token was consumed.
+ */
+func ps_match_byte(self: ParserState*) -> bool {
+    if (ps_check_byte(self)) {
+        ps_advance(self);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Check whether the current token is a string literal.
+ *
+ * @param self Parser state to inspect.
+ * @return `true` if the current token is `TT_STRING`.
+ */
+func ps_check_string(self: ParserState*) -> bool {
+    return tok_is_string(ps_peek(self));
+}
+
+/**
+ * Consume the current token if it is a string literal.
+ *
+ * @param self Parser state to advance.
+ * @return `true` if a string literal token was consumed.
+ */
+func ps_match_string(self: ParserState*) -> bool {
+    if (ps_check_string(self)) {
+        ps_advance(self);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Check whether the current token can start a top-level declaration.
+ *
+ * @param self Parser state to inspect.
+ * @return `true` if the current token starts a declaration accepted at module scope.
+ */
+func ps_is_top_level_start(self: ParserState*) -> bool {
+    return ps_check(self, ord(TT_EXTERN)) ||
+           ps_check(self, ord(TT_UNSAFE)) ||
+           ps_check(self, ord(TT_FUNC)) ||
+           ps_check(self, ord(TT_STRUCT)) ||
+           ps_check(self, ord(TT_ENUM)) ||
+           ps_check(self, ord(TT_TYPE)) ||
+           ps_check(self, ord(TT_LET));
+}
+
+/**
+ * Recover after a parse error by advancing to the next top-level boundary.
+ *
+ * @param self Parser state to resynchronize.
+ */
+func ps_sync_top_level(self: ParserState*) {
+    while (!ps_at_end(self) && !self.eof_aborted) {
+        if (ps_is_top_level_start(self)) {
+            return;
+        }
+
+        let consumed = ps_advance(self);
+        if (tok_is(consumed, ord(TT_SEMI)) || tok_is(consumed, ord(TT_RBRACE))) {
+            if (ps_is_top_level_start(self) || ps_at_end(self)) {
+                return;
+            }
+        }
+    }
+}
+
+/**
+ * Report whether the current token can start a statement.
+ *
+ * @param self Parser state to inspect.
+ * @return True if the current token is a statement-start keyword.
+ */
+func ps_at_stmt_start(self: ParserState*) -> bool {
+    return ps_check(self, ord(TT_LET)) ||
+           ps_check(self, ord(TT_IF)) ||
+           ps_check(self, ord(TT_WHILE)) ||
+           ps_check(self, ord(TT_FOR)) ||
+           ps_check(self, ord(TT_RETURN)) ||
+           ps_check(self, ord(TT_BREAK)) ||
+           ps_check(self, ord(TT_CONTINUE)) ||
+           ps_check(self, ord(TT_DROP)) ||
+           ps_check(self, ord(TT_MATCH)) ||
+           ps_check(self, ord(TT_CASE)) ||
+           ps_check(self, ord(TT_WITH)) ||
+           ps_check(self, ord(TT_LBRACE));
+}
+
+/**
+ * Recover after a failed statement by advancing to the next statement boundary.
+ *
+ * Skips to and consumes the next `;`, or stops before a `}`, a statement-start
+ * keyword, a top-level start, or end of input. This keeps a single in-body
+ * statement error from unwinding to the top-level loop.
+ *
+ * @param self Parser state to resynchronize.
+ */
+func ps_sync_stmt(self: ParserState*) {
+    while (!ps_at_end(self) && !self.eof_aborted) {
+        if (ps_check(self, ord(TT_SEMI))) {
+            ps_advance(self);
+            return;
+        }
+        if (ps_check(self, ord(TT_RBRACE))) {
+            return;
+        }
+        if (ps_at_stmt_start(self) || ps_is_top_level_start(self)) {
+            return;
+        }
+        ps_advance(self);
+    }
+}
+
+/**
+ * Require the current token to have a specific kind.
+ *
+ * @param self Parser state to inspect.
+ * @param kind_ord Required token kind ordinal.
+ * @param code Diagnostic code to emit on mismatch.
+ * @param msg Expectation message prefix used in the diagnostic.
+ * @return Consumed token, or `null` after emitting an error if the token does not match.
+ */
+func ps_expect(self: ParserState*, kind_ord: int, code: string, msg: string) -> Token? {
+    if (!ps_check(self, kind_ord)) {
+        let got = token_to_string(ps_peek(self));
+        ps_emit_error(self, code, msg + ", got " + got + " instead", ps_peek(self));
+        return null;
+    }
+    return ps_advance(self);
+}
+
+/**
+ * Require the current token to be an identifier.
+ *
+ * @param self Parser state to inspect.
+ * @param code Diagnostic code to emit on mismatch.
+ * @param msg Expectation message prefix used in the diagnostic.
+ * @return Consumed identifier token, or `null` after emitting an error.
+ */
+func ps_expect_ident(self: ParserState*, code: string, msg: string) -> Token? {
+    if (!ps_check_ident(self)) {
+        let got = token_to_string(ps_peek(self));
+        ps_emit_error(self, code, msg + ", got " + got + " instead", ps_peek(self));
+        return null;
+    }
+    return ps_advance(self);
+}
+
+/**
+ * Capture a zero-width span at the current token position.
+ *
+ * @param self Parser state to inspect.
+ * @return Span starting and ending at the current token location.
+ */
+func ps_span_start(self: ParserState*) -> Span {
+    let here = ps_peek(self);
+    return Span(here.line, here.column, here.line, here.column);
+}
+
+/**
+ * Extend a starting span to the end of the last consumed token.
+ *
+ * @param self Parser state providing the current position.
+ * @param start Starting span captured before parsing the construct.
+ * @return Span from `start` through the last consumed token.
+ */
+func ps_extend_span(self: ParserState*, start: Span) -> Span {
+    let here = ps_last(self);
+    return Span(
+        start.start_line,
+        start.start_column,
+        here.line,
+        here.column + token_width(here)
+    );
+}
+
+/**
+ * Require an identifier that is legal as a variable name.
+ *
+ * @param self Parser state to inspect.
+ * @param code Diagnostic code to emit on mismatch.
+ * @param msg Expectation message prefix used in the diagnostic.
+ * @return Variable-name token, or `null` after emitting an error.
+ */
+func ps_expect_variable_name(self: ParserState*, code: string, msg: string) -> Token? {
+    let tok = ps_peek(self);
+    if (tok_is_future_extension(tok)) {
+        let t = token_to_string(tok);
+        ps_emit_error(self, "PAR-0010",
+            "invalid variable name '" + t + "': reserved for future language use", tok);
+        return null;
+    }
+    let got = ps_expect_ident(self, code, msg)?;
+    if (is_reserved_keyword(got)) {
+        let ident = token_ident_text(got) as string;
+        ps_emit_error(self, "PAR-0011", "invalid variable name '" + ident + "': reserved identifier", got);
+        return null;
+    }
+    return got;
+}
+
+/* ---------------------------------
+   Name helpers
+   --------------------------------- */
+
+/**
+ * Parse the remaining components of a dotted name.
+ *
+ * @param self Parser state to advance.
+ * @param first Already parsed first identifier component.
+ * @return Full dotted name, or `null` on parse error.
+ */
+func parse_dotted_name_rest(self: ParserState*, first: string) -> string? {
+    let name = first;
+    while (ps_match(self, ord(TT_DOT))) {
+        let ident = ps_expect_ident(self, "PAR-0300", "expected identifier after '.' in module name")?;
+        let ident_text = token_ident_text(ident) as string;
+        with (let sb = sb_create() => sb_free(sb)) {
+            sb_append(sb, name);
+            sb_append(sb, ".");
+            sb_append(sb, ident_text);
+            name = sb_to_string(sb);
+        }
+    }
+    return name;
+}
+
+/**
+ * Represents the QualifiedNameResult structure.
+ */
+struct QualifiedNameResult {
+    module_path: StringVector*;
+    name_qualifier: StringVector*?;
+    name_tok: Token;
+}
+
+/**
+ * Free a qualified-name parse result and its owned vectors.
+ *
+ * @param self Qualified-name result to free.
+ */
+func qn_result_free_all(self: QualifiedNameResult*) {
+    sv_free(self.module_path);
+    sv_free_opt(self.name_qualifier);
+    drop self;
+}
+
+/**
+ * Parse a qualified name when the lookahead matches `Module.Path::Name`.
+ *
+ * @param self Parser state to inspect.
+ * @return Parsed qualified-name components, or `null` if the lookahead is not a qualified name.
+ */
+func ps_try_parse_qualified_name(self: ParserState*) -> QualifiedNameResult*? {
+    if (!ps_check_ident(self)) {
+        return null;
+    }
+
+    // Lookahead without building strings: parse only if we truly have ModulePath::Name.
+    let look = 1; // after first identifier
+    while (tok_is(ps_peek_logical_ahead(self, look), ord(TT_DOT))) {
+        look = look + 1;
+        if (!tok_is_ident(ps_peek_logical_ahead(self, look))) {
+            return null;
+        }
+        look = look + 1;
+    }
+
+    if (!tok_is(ps_peek_logical_ahead(self, look), ord(TT_DOUBLE_COLON))) {
+        return null;
+    }
+
+    // Commit parse and build vectors.
+    let first = ps_expect_ident(self, "PAR-0401", "expected identifier before '::'")?;
+
+    with (let parts: StringVector*? = sv_create(4) => sv_free_opt(parts),
+          let qualifier: StringVector*? = null => sv_free_opt(qualifier)) {
+        sv_push(parts as StringVector*, token_ident_text(first) as string);
+
+        while (ps_match(self, ord(TT_DOT))) {
+            let part = ps_expect_ident(self, "PAR-0300", "expected identifier after '.' in module name")?;
+            sv_push(parts as StringVector*, token_ident_text(part) as string);
+        }
+
+        ps_expect(self, ord(TT_DOUBLE_COLON), "PAR-0401", "expected '::' in qualified name")?;
+        let name_tok = ps_expect_ident(self, "PAR-0401", "expected identifier after '::'")?;
+
+        let current_name_tok = name_tok;
+
+        while (ps_match(self, ord(TT_DOUBLE_COLON))) {
+            if (qualifier == null) {
+                qualifier = sv_create(2);
+            }
+            sv_push(qualifier as StringVector*, token_ident_text(current_name_tok) as string);
+            current_name_tok = ps_expect_ident(self, "PAR-0401", "expected identifier after '::'")?;
+        }
+
+        let result = new QualifiedNameResult(parts as StringVector*, qualifier, current_name_tok);
+        parts = null;
+        qualifier = null;
+        return result;
+    }
+}

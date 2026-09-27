@@ -1,0 +1,37 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_const_case_values_err;
+
+struct Point {
+    x: int;
+}
+
+let OK: int = 200;
+const A: int = 1;
+const B: int = 1;
+const ORIGIN: Point = Point(0);
+
+func non_const_case(status: int) -> int {
+    case (status) {
+        OK => { return 1; }
+        _ => { return 0; }
+    }
+}
+
+func duplicate_const_case(x: int) -> int {
+    case (x) {
+        A => { return 1; }
+        B => { return 2; }
+        _ => { return 0; }
+    }
+}
+
+func aggregate_const_case(x: int) -> int {
+    case (x) {
+        ORIGIN => { return 1; }
+        _ => { return 0; }
+    }
+}

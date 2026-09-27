@@ -1,0 +1,25 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_string_concat_ok;
+
+func concat_ok() -> string {
+    let a: string = "hello";
+    let b: string = " world";
+    let c = a + b;
+    return c;
+}
+
+func concat_empty() -> string {
+    return "foo" + "";
+}
+
+func concat_chain() -> string {
+    return "a" + "b" + "c";
+}
+
+func concat_call_result() -> string {
+    return concat_ok() + "!";
+}

@@ -1,0 +1,145 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module dea_prelude;
+
+import std.hashmap;
+import std.string;
+import std.vector;
+
+import ast;
+import symbols;
+import types;
+
+/**
+ * Return the synthesized prelude module name.
+ *
+ * @return Prelude module name.
+ */
+func dea_module_name() -> string {
+    return "dea";
+}
+
+/**
+ * Return the synthetic filename used for `dea` diagnostics.
+ *
+ * @return Synthetic `dea` filename.
+ */
+func dea_module_filename() -> string {
+    return "<dea>";
+}
+
+/**
+ * Return the synthetic zero span used by `dea`.
+ *
+ * @return Zero-valued span.
+ */
+func dea_zero_span() -> Span {
+    return Span(0, 0, 0, 0);
+}
+
+/**
+ * Report whether a module name refers to the synthesized prelude.
+ *
+ * @param module_name Module name to inspect.
+ * @return `true` when `module_name` is `dea`.
+ */
+func dea_is_virtual_module_name(module_name: string) -> bool {
+    return module_name == dea_module_name();
+}
+
+/**
+ * Report whether a symbol originates from the synthesized prelude.
+ *
+ * @param sym Symbol to inspect.
+ * @return `true` when `sym` belongs to `dea`.
+ */
+func dea_is_symbol(sym: Symbol*?) -> bool {
+    return sym != null && (sym as Symbol*).module_name == dea_module_name();
+}
+
+/**
+ * Report whether a symbol is one named `dea` intrinsic.
+ *
+ * @param sym Symbol to inspect.
+ * @param name Intrinsic name to match.
+ * @return `true` when `sym` is `dea::<name>`.
+ */
+func dea_is_intrinsic_symbol(sym: Symbol*?, name: string) -> bool {
+    return dea_is_symbol(sym) && (sym as Symbol*).name == name;
+}
+
+/**
+ * Create the synthetic parsed module node used by the `dea` environment.
+ *
+ * @return New empty module node for `dea`.
+ */
+func dea_make_virtual_module() -> Module* {
+    return new Module(dea_module_name(), null, ptr_vec_create(0), ptr_vec_create(0), dea_zero_span(), dea_module_filename());
+}
+
+/**
+ * Insert one synthesized symbol into the prelude locals/all maps.
+ *
+ * @param locals Owned locals map.
+ * @param all Visible-symbol map.
+ * @param sym Symbol to insert.
+ */
+func dea_put_local_symbol(locals: StringPtrMap*, all: StringPtrMap*, sym: Symbol*) {
+    spm_put(locals, sym.name, sym as void*);
+    spm_put(all, sym.name, sym as void*);
+}
+
+/**
+ * Add one synthesized intrinsic function symbol to the prelude environment.
+ *
+ * @param locals Prelude locals map.
+ * @param all Prelude visible-symbol map.
+ * @param name Intrinsic function name.
+ * @param param_name Pseudo-type name used in the intrinsic signature display.
+ * @param param_name2 Optional second pseudo-type name.
+ * @param result_type Result type to expose for the intrinsic symbol.
+ */
+func dea_add_intrinsic(locals: StringPtrMap*, all: StringPtrMap*, name: string, param_name: string, param_name2: string?,
+    result_type: Type*) {
+    let params = ptr_vec_create(1);
+    ptr_vec_push(params, type_new_builtin(param_name) as void*);
+    if (param_name2 != null) {
+        ptr_vec_push(params, type_new_builtin(param_name2 as string) as void*);
+    }
+    let func_type = type_new_func(params, result_type, false);
+    let sym = symbol_create(name, SYM_FUNC, dea_module_name(), "", null, dea_zero_span());
+    symbol_set_type_clone(sym, func_type);
+    dea_put_local_symbol(locals, all, sym);
+    type_free(func_type);
+}
+
+/**
+ * Add one synthesized type alias to the prelude environment.
+ *
+ * @param locals Prelude locals map.
+ * @param all Prelude visible-symbol map.
+ * @param alias_name Alias name to publish.
+ * @param target_type Target type to clone into the alias symbol.
+ */
+func dea_add_type_alias(locals: StringPtrMap*, all: StringPtrMap*, alias_name: string, target_type: Type*) {
+    let sym = symbol_create(alias_name, SYM_TYPE_ALIAS, dea_module_name(), "", null, dea_zero_span());
+    symbol_set_type_clone(sym, target_type);
+    dea_put_local_symbol(locals, all, sym);
+}
+
+/**
+ * Populate one module environment's local symbol tables with the current `dea` exports.
+ *
+ * @param locals Prelude locals map to populate.
+ * @param all Prelude visible-symbol map to populate.
+ */
+func dea_populate_locals(locals: StringPtrMap*, all: StringPtrMap*) {
+    dea_add_intrinsic(locals, all, "sizeof", "type", null, type_builtin_int());
+    dea_add_intrinsic(locals, all, "ord", "enum", null, type_builtin_int());
+    dea_add_intrinsic(locals, all, "is", "enum", "variant", type_builtin_bool());
+    dea_add_intrinsic(locals, all, "len", "value", null, type_builtin_int());
+    dea_add_intrinsic(locals, all, "slice", "value", null, type_builtin_int());
+}

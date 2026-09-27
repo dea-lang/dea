@@ -1,0 +1,31 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_dea_local_shadow;
+
+enum Flag {
+    Off;
+    On;
+}
+
+func sizeof(x: int) -> int {
+    return x + 1;
+}
+
+func ord(x: int) -> int {
+    return x + 2;
+}
+
+func is(x: int, y: int) -> int {
+    return x + y + 3;
+}
+
+func main() -> int {
+    let check = 0;
+    if (dea::is(On, On)) {
+        check = 1;
+    }
+    return sizeof(4) + ord(5) + is(6, 7) + dea::sizeof(Flag) + dea::ord(On) + check;
+}

@@ -1,0 +1,99 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module signatures;
+
+import std.hashset;
+import std.vector;
+import util.diag;
+import ast;
+import driver.state;
+import name_resolver.query;
+import name_resolver.state;
+import symbols;
+import type_resolve.materialize;
+import type_resolve.ref;
+import types;
+import signatures.const_init;
+import signatures.cycles;
+import signatures.declarations;
+import signatures.interface;
+import signatures.tables;
+import signatures.visibility;
+
+/**
+ * Resolve top-level type signatures for parsed modules.
+ *
+ * @param driver_state Parsed driver state.
+ * @param nr Name-resolution result.
+ * @param diags Diagnostic collector.
+ * @return Populated signature tables.
+ */
+func sig_resolve(driver_state: DriverState*, nr: NameResolution*, diags: DiagCollector*) -> SignatureTables* {
+    let tables = sig_make_tables();
+    let pending_shapes = ptr_vec_create(4);
+
+    sig_replay_interfaces(tables, driver_state);
+
+    for (let i = 0; i < nr_env_count(nr); i = i + 1) {
+        let env = nr_env_get(nr, i);
+        let mod = env.module_ptr;
+        for (let j = 0; j < vec_size(mod.decls); j = j + 1) {
+            let top = ptr_vec_get(mod.decls, j) as TopLevelDecl*;
+            let canonical_sym = nr_module_env_local(env, sig_top_decl_name(top));
+            if (canonical_sym != null) {
+                let canonical_span = (canonical_sym as Symbol*).span;
+                let top_span = sig_top_decl_span(top);
+                if (canonical_span.start_line != top_span.start_line ||
+                    canonical_span.start_column != top_span.start_column ||
+                    canonical_span.end_line != top_span.end_line ||
+                    canonical_span.end_column != top_span.end_column) {
+                    continue;
+                }
+            }
+            match (top.kind) {
+                TD_STRUCT => {
+                    sig_resolve_struct(tables, nr, driver_state, env, top.data as StructDecl*, diags,
+                        pending_shapes);
+                }
+                TD_ENUM => {
+                    sig_resolve_enum(tables, nr, driver_state, env, top.data as EnumDecl*, diags,
+                        pending_shapes);
+                }
+                TD_FUNC => {
+                    sig_resolve_func(tables, nr, driver_state, env, top.data as FuncDecl*, diags,
+                        pending_shapes);
+                }
+                TD_TYPE_ALIAS => {
+                    let sym = nr_module_env_local(env, (top.data as TypeAliasDecl*).name);
+                    if (sym != null) {
+                        with (let seen = ss_create() => ss_free(seen)) {
+                            let resolved_alias = tr_resolve_alias(tables, nr, driver_state, env, sym as Symbol*, diags,
+                                seen);
+                            if (resolved_alias != null) {
+                                type_free(resolved_alias as Type*);
+                            }
+                        }
+                    }
+                }
+                TD_LET => {
+                    sig_resolve_let(tables, nr, env, driver_state, top.data as LetDecl*, diags,
+                        pending_shapes);
+                }
+            }
+        }
+    }
+
+    tr_finalize_materialized_types(tables, nr, driver_state, diags);
+    sig_check_interface_semantic_closures(driver_state, diags);
+    sig_check_pending_materialized_shapes(pending_shapes, tables, nr, driver_state, diags);
+    sig_check_materialized_interface_shapes(nr, driver_state, diags);
+    sig_detect_value_type_cycles(tables, diags);
+    sig_check_pending_extern_shadows(tables, nr, diags);
+    sig_check_internal_opaque_layouts(tables, nr, diags);
+    sig_check_exported_surfaces(tables, nr, diags);
+    sig_pending_shapes_free(pending_shapes);
+    return tables;
+}

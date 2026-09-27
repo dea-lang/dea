@@ -1,0 +1,42 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_drop_err;
+
+struct Box {
+    value: int;
+}
+
+let gp: Box*? = null;
+
+/**
+ * Triggers an unknown-variable drop error.
+ */
+func err_drop_unknown() {
+    drop missing; // TYP-0060
+}
+
+/**
+ * Triggers a non-pointer drop error.
+ */
+func err_drop_non_pointer() {
+    let value: int = 1;
+    drop value; // TYP-0061
+}
+
+/**
+ * Triggers a module-let drop error.
+ */
+func err_drop_module_let() {
+    drop gp; // TYP-0063
+}
+
+/**
+ * Valid drop for a pointer local.
+ */
+func ok_drop_pointer() {
+    let p: Box* = new Box(1);
+    drop p;
+}

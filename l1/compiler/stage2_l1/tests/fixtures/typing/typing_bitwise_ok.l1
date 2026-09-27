@@ -1,0 +1,16 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_bitwise_ok;
+
+func combine(x: int, y: uint, z: byte) -> long {
+    let inverted: byte = ~z;
+    let masked: int = inverted & 15;
+    let merged: long = x ^ y;
+    let unioned: long = merged | 3;
+    let shifted: long = unioned << y;
+    let restored: long = shifted >> y;
+    return masked + restored;
+}

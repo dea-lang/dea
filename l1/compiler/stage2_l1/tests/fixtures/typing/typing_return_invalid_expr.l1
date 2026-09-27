@@ -1,0 +1,16 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_return_invalid_expr;
+
+/**
+ * Triggers an expression error in a return statement.
+ *
+ * The expression checker should report the missing identifier without adding
+ * a secondary return-type mismatch.
+ */
+func err_return_invalid_expr() -> int {
+    return missing_name; // TYP-0159
+}

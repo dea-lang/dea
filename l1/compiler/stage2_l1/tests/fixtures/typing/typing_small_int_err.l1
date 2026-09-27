@@ -1,0 +1,31 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_small_int_err;
+
+struct Packet {
+    a: tiny;
+}
+
+func take_tiny(x: tiny) -> int {
+    return x;
+}
+
+func return_nonliteral_narrow(x: int) -> tiny {
+    return x; // TYP-0315
+}
+
+func assign_nonliteral_narrow(x: int) {
+    let t: tiny = 0;
+    t = x; // TYP-0311
+}
+
+func call_nonliteral_narrow(x: int) -> int {
+    return take_tiny(x); // TYP-0312
+}
+
+func struct_nonliteral_narrow(x: int) -> Packet {
+    return Packet(x); // TYP-0313
+}

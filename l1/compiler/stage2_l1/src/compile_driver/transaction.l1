@@ -1,0 +1,518 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module compile_driver.transaction;
+
+import std.path;
+import std.string;
+import std.system;
+import std.text;
+import std.time;
+import util.diag;
+import util.log;
+import cli_args.model;
+import compiler_filesystem;
+import module_graph;
+
+/** Paths owned by one compile-only transaction directory. */
+struct CompileTransaction {
+    root: string;
+    staged_c: string;
+    staged_object: string;
+    staged_interface: string;
+    compiler_c_input: string;
+    compiler_object_output: string;
+    backup_c: string;
+    backup_object: string;
+    backup_interface: string;
+    compiler_stdout: string;
+    compiler_stderr: string;
+}
+
+/** Mutable state for a publication attempt. */
+struct CompilePublicationState {
+    backup_c: bool;
+    backup_object: bool;
+    backup_interface: bool;
+    published_c: bool;
+    published_object: bool;
+    published_interface: bool;
+}
+
+/** Rename fault-injection state used by focused transaction tests. */
+struct CompileRenameState {
+    ordinal: int;
+    fail_at: int;
+}
+
+/** Release one transaction-path bundle. */
+func cd_transaction_free(self: CompileTransaction*) {
+    drop self;
+}
+
+/** Emit one compile-driver error without source coordinates. */
+func cd_error(diags: DiagCollector*, code: string, message: string, path: string) {
+    diag_error(diags, "l1c", code, message, path, 0, 0, 0, 0);
+}
+
+/**
+ * Create a directory and all missing lexical parents.
+ *
+ * Existing directory aliases are trusted and followed through the
+ * compiler-private support ABI. Missing components are also classified
+ * without following aliases so a dangling alias is never mistaken for an
+ * absent path that may be created.
+ */
+func cd_ensure_directory(path: string, diags: DiagCollector*) -> bool {
+    let followed_kind = cfs_path_kind_follow(path);
+    if (followed_kind == CFS_PATH_DIRECTORY) {
+        return true;
+    }
+    if (followed_kind < 0) {
+        cd_error(diags, "L1C-2033", "cannot inspect compile output parent: " + path, path);
+        return false;
+    }
+    if (followed_kind != CFS_PATH_ABSENT) {
+        cd_error(diags, "L1C-2033", "compile output parent is not a directory: " + path, path);
+        return false;
+    }
+
+    let entry_kind = cfs_path_kind(path);
+    if (entry_kind < 0) {
+        cd_error(diags, "L1C-2033", "cannot inspect compile output parent: " + path, path);
+        return false;
+    }
+    if (entry_kind == CFS_PATH_DIRECTORY) {
+        /* A real directory appeared between the follow and no-follow checks. */
+        return true;
+    }
+    if (entry_kind != CFS_PATH_ABSENT) {
+        cd_error(diags, "L1C-2033", "compile output parent is not a directory: " + path, path);
+        return false;
+    }
+
+    let ancestor = parent(path);
+    if (ancestor == path) {
+        cd_error(diags, "L1C-2033", "cannot create compile output parent: " + path, path);
+        return false;
+    }
+    if (!cd_ensure_directory(ancestor, diags)) {
+        return false;
+    }
+
+    /* 0777, filtered by the process umask. */
+    let created = cfs_mkdir(path, 511);
+    if (created == 1) {
+        return true;
+    }
+    if (created == 0) {
+        let collision_kind = cfs_path_kind_follow(path);
+        if (collision_kind == CFS_PATH_DIRECTORY) {
+            return true;
+        }
+        if (collision_kind < 0) {
+            cd_error(diags, "L1C-2033",
+                "cannot inspect compile output parent after create collision: " + path,
+                path);
+            return false;
+        }
+    }
+    cd_error(diags, "L1C-2033", "cannot create compile output parent: " + path, path);
+    return false;
+}
+
+/** Validate one final artifact destination. */
+func cd_validate_destination(path: string, diags: DiagCollector*) -> bool {
+    let kind = cfs_path_kind(path);
+    if (kind == CFS_PATH_ABSENT || kind == CFS_PATH_REGULAR) {
+        return true;
+    }
+    if (kind < 0) {
+        cd_error(diags, "L1C-2033", "cannot inspect compile artifact destination: " + path, path);
+    } else {
+        cd_error(diags, "L1C-2033",
+            "compile artifact destination is not absent or a regular file: " + path, path);
+    }
+    return false;
+}
+
+/** Validate the common parent and selected final destinations. */
+func cd_prepare_destinations(
+    artifacts: ModuleArtifactPaths*,
+    publish_c: bool,
+    diags: DiagCollector*
+) -> bool {
+    let output_parent = parent(artifacts.object_path);
+    if (!cd_ensure_directory(output_parent, diags)) {
+        return false;
+    }
+    let ok = true;
+    if (publish_c && !cd_validate_destination(artifacts.c_path, diags)) {
+        ok = false;
+    }
+    if (!cd_validate_destination(artifacts.object_path, diags)) {
+        ok = false;
+    }
+    if (!cd_validate_destination(artifacts.interface_path, diags)) {
+        ok = false;
+    }
+    return ok;
+}
+
+/** Construct the fixed paths inside a newly created transaction directory. */
+func cd_transaction_create(root: string) -> CompileTransaction* {
+    return new CompileTransaction(
+        root,
+        join(root, "staged.c"),
+        join(root, "staged.o"),
+        join(root, "staged.l1m"),
+        "staged.c",
+        "staged.o",
+        join(root, "previous.c"),
+        join(root, "previous.o"),
+        join(root, "previous.l1m"),
+        join(root, "compiler.stdout"),
+        join(root, "compiler.stderr")
+    );
+}
+
+/**
+ * Select canonical module-relative staging paths for one transaction.
+ *
+ * The full paths remain private publication inputs. The relative C and object
+ * paths are passed to a host compiler whose working directory is the
+ * transaction root, so neither the random transaction identity nor the final
+ * destination appears in compiler-visible input paths.
+ *
+ * @param txn Transaction to configure.
+ * @param module_name Canonical source module name.
+ * @param diags Diagnostic collector for path and directory failures.
+ * @return `true` when the module-relative staging directory is ready.
+ */
+func cd_configure_module_staging(
+    txn: CompileTransaction*,
+    module_name: string,
+    diags: DiagCollector*
+) -> bool {
+    let relative_opt = mg_artifacts_for_module("", module_name, diags);
+    if (relative_opt == null) {
+        return false;
+    }
+    let relative = relative_opt as ModuleArtifactPaths*;
+    txn.compiler_c_input = relative.c_path;
+    txn.compiler_object_output = relative.object_path;
+    txn.staged_c = join(txn.root, relative.c_path);
+    txn.staged_object = join(txn.root, relative.object_path);
+    txn.staged_interface = join(txn.root, relative.interface_path);
+    mg_artifacts_free(relative);
+    return cd_ensure_directory(parent(txn.staged_c), diags);
+}
+
+/**
+ * Create an exclusive hidden transaction directory for one identity tuple.
+ *
+ * Keeping the identity components explicit gives focused tests a deterministic
+ * way to prove that a pre-existing candidate is skipped rather than reused.
+ */
+func cd_create_transaction_for_identity(
+    output_parent: string,
+    pid: int,
+    sec: int,
+    nsec: int,
+    diags: DiagCollector*
+) -> CompileTransaction*? {
+    for (let attempt = 0; attempt < 100; attempt = attempt + 1) {
+        let name = ".l1c-compile-" + int_to_string(pid) + "-" +
+            int_to_string(sec) + "-" + int_to_string(nsec) + "-" +
+            int_to_string(attempt);
+        let root = join(output_parent, name);
+        /* POSIX 0700; MinGW inherits access control from the trusted parent. */
+        let created = cfs_mkdir(root, 448);
+        if (created == 1) {
+            return cd_transaction_create(root);
+        }
+        if (created < 0) {
+            cd_error(diags, "L1C-9511",
+                "cannot create compile transaction directory: " + root, root);
+            return null;
+        }
+    }
+
+    cd_error(diags, "L1C-9511",
+        "cannot create a unique compile transaction directory under: " + output_parent,
+        output_parent);
+    return null;
+}
+
+/** Create an exclusive hidden transaction directory beside the final set. */
+func cd_create_transaction(output_parent: string, diags: DiagCollector*) -> CompileTransaction*? {
+    let pid = get_pid();
+    let sec = 0;
+    let nsec = 0;
+    let now_opt = wall_now();
+    if (now_opt != null) {
+        let now = now_opt as WallTime;
+        sec = now.sec;
+        nsec = now.nsec;
+    }
+    return cd_create_transaction_for_identity(output_parent, pid, sec, nsec, diags);
+}
+
+/** Delete a regular transaction file when present. */
+func cd_delete_if_present(path: string) -> bool {
+    return cfs_remove_regular_file(path) >= 0;
+}
+
+/**
+ * Remove all known transaction files and then its empty directory.
+ *
+ * Deliberately avoid recursive deletion: an unexpected compiler side artifact
+ * makes empty-directory removal fail, after which checked cleanup reports and
+ * retains the transaction path for inspection.
+ */
+func cd_cleanup_transaction(txn: CompileTransaction*) -> bool {
+    let ok = cd_delete_if_present(txn.staged_c);
+    if (!cd_delete_if_present(txn.staged_object)) ok = false;
+    if (!cd_delete_if_present(txn.staged_interface)) ok = false;
+    if (!cd_delete_if_present(txn.backup_c)) ok = false;
+    if (!cd_delete_if_present(txn.backup_object)) ok = false;
+    if (!cd_delete_if_present(txn.backup_interface)) ok = false;
+    if (!cd_delete_if_present(txn.compiler_stdout)) ok = false;
+    if (!cd_delete_if_present(txn.compiler_stderr)) ok = false;
+    let staging_dir = parent(txn.staged_c);
+    while (staging_dir != txn.root) {
+        if (cfs_remove_empty_dir(staging_dir) < 0) ok = false;
+        staging_dir = parent(staging_dir);
+    }
+    if (cfs_remove_empty_dir(txn.root) != 1) ok = false;
+    return ok;
+}
+
+/**
+ * Clean one transaction and surface retained files through the ordinary log.
+ *
+ * Cleanup after a committed publication cannot invalidate the verified final
+ * artifacts, so this operational failure does not invent a new public
+ * diagnostic or change the compile result.
+ */
+func cd_cleanup_transaction_checked(txn: CompileTransaction*, cfg: LogConfig*) -> bool {
+    if (cd_cleanup_transaction(txn)) {
+        return true;
+    }
+    log_error(cfg, "compile transaction cleanup failed; retained files in " + txn.root);
+    return false;
+}
+
+/** Invoke a rename, optionally failing one exact ordinal for focused tests. */
+func cd_testable_rename(state: CompileRenameState*, source: string, destination: string) -> int {
+    let ordinal = state.ordinal;
+    state.ordinal = state.ordinal + 1;
+    if (ordinal == state.fail_at) {
+        return -1;
+    }
+    return cfs_rename_absent(source, destination);
+}
+
+/** Back up one existing final destination. */
+func cd_backup_one(
+    rename_state: CompileRenameState*,
+    final_path: string,
+    backup_path: string,
+    should_backup: bool
+) -> bool {
+    if (!should_backup) {
+        return true;
+    }
+    if (cd_testable_rename(rename_state, final_path, backup_path) != 1) {
+        return false;
+    }
+    return true;
+}
+
+/** Publish one staged artifact into an absent final destination. */
+func cd_publish_one(
+    rename_state: CompileRenameState*,
+    staged_path: string,
+    final_path: string
+) -> bool {
+    if (cd_testable_rename(rename_state, staged_path, final_path) != 1) {
+        return false;
+    }
+    return true;
+}
+
+/** Undo one publication step and restore its backup when present. */
+func cd_rollback_one(
+    rename_state: CompileRenameState*,
+    published: bool,
+    backed_up: bool,
+    final_path: string,
+    backup_path: string
+) -> bool {
+    let ok = true;
+    if (published && !cd_delete_if_present(final_path)) {
+        ok = false;
+    }
+    if (backed_up && cd_testable_rename(rename_state, backup_path, final_path) != 1) {
+        ok = false;
+    }
+    return ok;
+}
+
+/** Roll back in reverse publication order. */
+func cd_rollback_publication(
+    artifacts: ModuleArtifactPaths*,
+    txn: CompileTransaction*,
+    state: CompilePublicationState*,
+    publish_c: bool,
+    fail_rename_at: int
+) -> bool {
+    let rename_state = new CompileRenameState(0, fail_rename_at);
+    let ok = cd_rollback_one(
+        rename_state,
+        state.published_interface,
+        state.backup_interface,
+        artifacts.interface_path,
+        txn.backup_interface
+    );
+    if (!cd_rollback_one(
+        rename_state,
+        state.published_object,
+        state.backup_object,
+        artifacts.object_path,
+        txn.backup_object
+    )) {
+        ok = false;
+    }
+    if (publish_c) {
+        if (!cd_rollback_one(
+            rename_state,
+            state.published_c,
+            state.backup_c,
+            artifacts.c_path,
+            txn.backup_c
+        )) {
+            ok = false;
+        }
+    }
+    drop rename_state;
+    return ok;
+}
+
+/**
+ * Publish a verified staged artifact set.
+ *
+ * The failure ordinals are `-1` in production and are exposed only so the
+ * focused L0 transaction test can deterministically cover every rename and a
+ * rollback failure without a public CLI test hook.
+ */
+func cd_publish_artifacts(
+    artifacts: ModuleArtifactPaths*,
+    txn: CompileTransaction*,
+    publish_c: bool,
+    fail_publish_rename_at: int,
+    fail_rollback_rename_at: int,
+    diags: DiagCollector*,
+    cfg: LogConfig*
+) -> bool {
+    let state = new CompilePublicationState(false, false, false, false, false, false);
+    let rename_state = new CompileRenameState(0, fail_publish_rename_at);
+
+    let existing_c = false;
+    if (publish_c) {
+        existing_c = cfs_path_kind(artifacts.c_path) == CFS_PATH_REGULAR;
+    }
+    let existing_object = cfs_path_kind(artifacts.object_path) == CFS_PATH_REGULAR;
+    let existing_interface = cfs_path_kind(artifacts.interface_path) == CFS_PATH_REGULAR;
+
+    let published = true;
+    if (publish_c) {
+        if (!cd_backup_one(
+            rename_state, artifacts.c_path, txn.backup_c, existing_c)) {
+            published = false;
+        } else {
+            state.backup_c = existing_c;
+        }
+    }
+    if (published && !cd_backup_one(
+        rename_state, artifacts.object_path, txn.backup_object, existing_object)) {
+        published = false;
+    } else if (published) {
+        state.backup_object = existing_object;
+    }
+    if (published && !cd_backup_one(
+        rename_state, artifacts.interface_path, txn.backup_interface, existing_interface)) {
+        published = false;
+    } else if (published) {
+        state.backup_interface = existing_interface;
+    }
+    if (published && publish_c) {
+        if (!cd_publish_one(rename_state, txn.staged_c, artifacts.c_path)) {
+            published = false;
+        } else {
+            state.published_c = true;
+        }
+    }
+    if (published && !cd_publish_one(
+        rename_state, txn.staged_object, artifacts.object_path)) {
+        published = false;
+    } else if (published) {
+        state.published_object = true;
+    }
+    /* The verified interface is deliberately the final visible replacement. */
+    if (published && !cd_publish_one(
+        rename_state, txn.staged_interface, artifacts.interface_path)) {
+        published = false;
+    } else if (published) {
+        state.published_interface = true;
+    }
+    drop rename_state;
+
+    if (!published) {
+        let restored = cd_rollback_publication(
+            artifacts, txn, state, publish_c, fail_rollback_rename_at);
+        drop state;
+        if (restored) {
+            cd_cleanup_transaction_checked(txn, cfg);
+            cd_error(diags, "L1C-2035",
+                "compile artifact publication failed; the previous artifact set was restored",
+                artifacts.object_path);
+        } else {
+            cd_error(diags, "L1C-2036",
+                "compile artifact rollback failed; recovery files were retained in " + txn.root,
+                txn.root);
+        }
+        return false;
+    }
+
+    drop state;
+    /*
+     * Backups are no longer needed after the interface rename commits the set.
+     * Cleanup failures cannot invalidate the verified final artifacts.
+     */
+    cd_cleanup_transaction_checked(txn, cfg);
+    return true;
+}
+
+/** Resolve canonical output companions for one compile-only invocation. */
+func cd_resolve_artifacts(
+    opts: CliOptions*,
+    entry_module: string,
+    diags: DiagCollector*
+) -> ModuleArtifactPaths*? {
+    if (opts.output != null) {
+        let object_path = opts.output as string;
+        if (is_empty_s(object_path) ||
+            is_sep(char_at_s(object_path, len_s(object_path) - 1)) ||
+            !has_extension(object_path, ".o")) {
+            cd_error(diags, "L1C-2033",
+                "compile-only output must name a regular '.o' file: " + object_path,
+                object_path);
+            return null;
+        }
+        return mg_artifacts_from_object(entry_module, object_path, diags);
+    }
+    return mg_artifacts_for_module(".", entry_module, diags);
+}

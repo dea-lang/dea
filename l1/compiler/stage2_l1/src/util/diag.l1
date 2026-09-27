@@ -1,0 +1,281 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/**
+ * Diagnostic module for collecting and managing compiler diagnostics such as errors, warnings, and notes.
+ * It provides a structured way to represent diagnostics with relevant information and a collector to accumulate them.
+ */
+module util.diag;
+
+import std.vector;
+
+/**
+ * Defines the DiagnosticSeverity enumeration.
+ */
+enum DiagnosticSeverity {
+    Error;
+    Warning;
+    Note;
+}
+
+/**
+ * Diagnostic represents an error, warning, or note message produced during compilation.
+ * It includes information about the phase of compilation, a code for the specific issue,
+ * the severity level, a human-readable message, and the location in the source code.
+ */
+struct Diagnostic {
+    phase: string;      // descriptive name of the compiler phase (e.g., "Lexer", "Parser", "TypeChecker")
+    code: string;       // a short code in the form "XXX-NNNN" for categorizing the diagnostic (e.g., "LEX-0001")
+    severity: DiagnosticSeverity;   // severity level of the diagnostic (Error, Warning, Note)
+    message: string;    // human-readable message describing the issue
+    filename: string;   // source file where the issue occurred, or empty string if not applicable
+    line: int;          // line number in the source file (1-based), or 0 if not applicable
+    column: int;        // column number in the source file (1-based), or 0 if not applicable
+    line_end: int;      // spanning line number for the diagnostic context, or 0 if not applicable
+    column_end: int;    // spanning column number for the diagnostic context, or 0 if not applicable
+}
+
+/* ---------------------------------
+   Vector of Diagnostics
+   --------------------------------- */
+
+type DiagnosticVector = VectorBase;
+
+/**
+ * Create an empty vector of diagnostics.
+ *
+ * @return Diagnostic vector with an initial small capacity.
+ */
+func dgv_create() -> DiagnosticVector* {
+    return vec_create(sizeof(Diagnostic), 4);
+}
+
+/**
+ * Append a diagnostic to the vector.
+ *
+ * @param self Diagnostic vector to extend.
+ * @param diag Diagnostic value to copy into the vector.
+ */
+func dgv_push(self: DiagnosticVector*, diag: Diagnostic) {
+    vec_grow(self);
+    let index = self.length - 1;
+    let slot = vec_get(self, index) as Diagnostic*;
+    *slot = diag;  // copy the diagnostic into the vector
+}
+
+/**
+ * Return a diagnostic from the vector.
+ *
+ * @param self Diagnostic vector to inspect.
+ * @param index Zero-based diagnostic index.
+ * @return Diagnostic at `index`.
+ */
+func dgv_get(self: DiagnosticVector*, index: int) -> Diagnostic* {
+    return vec_get(self, index) as Diagnostic*;
+}
+
+/**
+ * Return the number of diagnostics stored in the vector.
+ *
+ * @param self Diagnostic vector to inspect.
+ * @return Total diagnostic count.
+ */
+func dgv_length(self: DiagnosticVector*) -> int {
+    return self.length;
+}
+
+/**
+ * Free a diagnostic vector and release ARC-owned fields in each entry.
+ *
+ * @param self Diagnostic vector to free.
+ */
+func dgv_free(self: DiagnosticVector*) {
+    // release all ARC resources held by diagnostics (e.g., strings)
+    for (let i = 0; i < self.length; i = i + 1) {
+        let diag = vec_get(self, i) as Diagnostic*;
+        diag.phase = "";
+        diag.code = "";
+        diag.message = "";
+        diag.filename = "";
+    }
+    vec_free(self);
+}
+
+/* ---------------------------------
+   DiagCollector: Collects Diagnostics
+   --------------------------------- */
+
+/**
+ * Represents the DiagCollector structure.
+ */
+struct DiagCollector {
+    items: DiagnosticVector*;
+    error_count: int;    // avoids scanning the vector
+}
+
+/**
+ * Create an empty diagnostic collector.
+ *
+ * @return New collector with no diagnostics.
+ */
+func diag_create() -> DiagCollector* {
+    let self = new DiagCollector(
+        dgv_create(),
+        0
+    );
+    return self;
+}
+
+/**
+ * Record an error diagnostic.
+ *
+ * @param dc Collector receiving the diagnostic.
+ * @param phase Compiler phase name.
+ * @param code Diagnostic code.
+ * @param message Diagnostic message.
+ * @param filename Source filename, or empty when unavailable.
+ * @param line Starting line number.
+ * @param column Starting column number.
+ * @param line_end Ending line number.
+ * @param column_end Ending column number.
+ */
+func diag_error(dc: DiagCollector*, phase: string, code: string,
+                message: string, filename: string,
+                line: int, column: int, line_end: int, column_end: int) {
+    let diag = Diagnostic(
+        phase,
+        code,
+        Error,
+        message,
+        filename,
+        line,
+        column,
+        line_end,
+        column_end
+    );
+    dgv_push(dc.items, diag);
+    dc.error_count = dc.error_count + 1;
+}
+
+/**
+ * Record a warning diagnostic.
+ *
+ * @param dc Collector receiving the diagnostic.
+ * @param phase Compiler phase name.
+ * @param code Diagnostic code.
+ * @param message Diagnostic message.
+ * @param filename Source filename, or empty when unavailable.
+ * @param line Starting line number.
+ * @param column Starting column number.
+ * @param line_end Ending line number.
+ * @param column_end Ending column number.
+ */
+func diag_warn(dc: DiagCollector*, phase: string, code: string,
+               message: string, filename: string,
+               line: int, column: int, line_end: int, column_end: int) {
+    let diag = Diagnostic(
+        phase,
+        code,
+        Warning,
+        message,
+        filename,
+        line,
+        column,
+        line_end,
+        column_end
+    );
+    dgv_push(dc.items, diag);
+}
+
+/**
+ * Record an informational note diagnostic.
+ *
+ * @param dc Collector receiving the diagnostic.
+ * @param phase Compiler phase name.
+ * @param code Diagnostic code.
+ * @param message Diagnostic message.
+ * @param filename Source filename, or empty when unavailable.
+ * @param line Starting line number.
+ * @param column Starting column number.
+ * @param line_end Ending line number.
+ * @param column_end Ending column number.
+ */
+func diag_note(dc: DiagCollector*, phase: string, code: string,
+               message: string, filename: string,
+               line: int, column: int, line_end: int, column_end: int) {
+    let diag = Diagnostic(
+        phase,
+        code,
+        Note,
+        message,
+        filename,
+        line,
+        column,
+        line_end,
+        column_end
+    );
+    dgv_push(dc.items, diag);
+}
+
+/**
+ * Report whether the collector contains any errors.
+ *
+ * @param dc Diagnostic collector to inspect.
+ * @return `true` if at least one error diagnostic has been recorded.
+ */
+func diag_has_errors(dc: DiagCollector*) -> bool {
+    return dc.error_count > 0;
+}
+
+/**
+ * Return the number of collected diagnostics.
+ *
+ * @param dc Diagnostic collector to inspect.
+ * @return Total diagnostic count.
+ */
+func diag_count(dc: DiagCollector*) -> int {
+    return dgv_length(dc.items);
+}
+
+/**
+ * Return a diagnostic from the collector.
+ *
+ * @param dc Diagnostic collector to inspect.
+ * @param index Zero-based diagnostic index.
+ * @return Diagnostic at `index`.
+ */
+func diag_get(dc: DiagCollector*, index: int) -> Diagnostic* {
+    return dgv_get(dc.items, index);
+}
+
+/**
+ * Copy a diagnostic into another collector.
+ *
+ * @param dst Destination collector.
+ * @param src Diagnostic to copy.
+ */
+func diag_copy(dst: DiagCollector*, src: Diagnostic*) {
+    match (src.severity) {
+        Error => {
+            diag_error(dst, src.phase, src.code, src.message, src.filename, src.line, src.column, src.line_end, src.column_end);
+        }
+        Warning => {
+            diag_warn(dst, src.phase, src.code, src.message, src.filename, src.line, src.column, src.line_end, src.column_end);
+        }
+        Note => {
+            diag_note(dst, src.phase, src.code, src.message, src.filename, src.line, src.column, src.line_end, src.column_end);
+        }
+    }
+}
+
+/**
+ * Free a diagnostic collector and its backing storage.
+ *
+ * @param dc Diagnostic collector to free.
+ */
+func diag_free(dc: DiagCollector*) {
+    dgv_free(dc.items);
+    drop dc;
+}

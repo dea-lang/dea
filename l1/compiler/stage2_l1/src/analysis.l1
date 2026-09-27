@@ -1,0 +1,160 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module analysis;
+
+import std.hashmap;
+import std.text;
+import std.vector;
+import util.diag;
+import driver;
+import driver.state;
+import expr_types;
+import interface_emitter;
+import locals;
+import mi_utils;
+import module_interface;
+import module_graph;
+import name_resolver;
+import sem_context;
+import signatures;
+import source_paths;
+import util.log;
+import interface_projection;
+
+/**
+ * Run semantic analysis over an already resolved driver state.
+ *
+ * @param driver_state Owned resolved driver state.
+ * @param cfg Logging configuration.
+ * @return The complete analysis result including semantic context.
+ */
+func analysis_analyze_driver_state(driver_state: DriverState*, cfg: LogConfig*) -> AnalysisResult* {
+    let result = new AnalysisResult(
+        driver_state,
+        diag_create(),
+        null,
+        null,
+        null,
+        spm_create(),
+        sim_create(),
+        spm_create()
+    );
+    for (let i = 0; i < driver_diag_count(driver_state); i = i + 1) {
+        diag_copy(result.diags, driver_diag_get(driver_state, i));
+    }
+
+    if (driver_has_errors(driver_state)) {
+        return result;
+    }
+
+    log_stage(cfg, "Resolving module-level names", "");
+    let nr_diag_start = diag_count(result.diags);
+    let names = nr_resolve(driver_state, result.diags);
+    result.names = names;
+    log_debug(cfg, "Name resolution produced " + int_to_string(diag_count(result.diags) - nr_diag_start) + " diagnostic(s)");
+
+    log_stage(cfg, "Resolving type signatures", "");
+    let sigs = sig_resolve(driver_state, names, result.diags);
+    result.signatures = sigs;
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "Signature resolution found ");
+        sb_append(sb, int_to_string(spm_size(sigs.func_types)));
+        sb_append(sb, " function(s), ");
+        sb_append(sb, int_to_string(spm_size(sigs.struct_infos)));
+        sb_append(sb, " struct(s), ");
+        sb_append(sb, int_to_string(spm_size(sigs.enum_infos)));
+        sb_append(sb, " enum(s), ");
+        sb_append(sb, int_to_string(spm_size(sigs.let_types)));
+        sb_append(sb, " top-level binding(s)");
+        log_debug(cfg, sb_to_string(sb));
+    }
+
+    log_stage(cfg, "Resolving local scopes", "");
+    let local_envs = locals_resolve(driver_state, result.diags);
+    result.locals_result = local_envs;
+    log_debug(cfg, "Local scope resolution processed " + int_to_string(locals_env_count(local_envs)) + " function(s)");
+
+    log_stage(cfg, "Type-checking expressions", "");
+    let expr_diag_start = diag_count(result.diags);
+    expr_types_check(result);
+    log_debug(cfg, "Expression type checking produced " + int_to_string(diag_count(result.diags) - expr_diag_start) + " diagnostic(s)");
+    log_info(cfg, "Analysis complete: " + int_to_string(analysis_diag_count(result)) + " total diagnostic(s), " + int_to_string(result.diags.error_count) + " error(s)");
+
+    return result;
+}
+
+/**
+ * Analyzes the entry module and its source-fallback dependencies.
+ *
+ * @param search_paths The source search paths configuration.
+ * @param entry_module The name of the entry module.
+ * @param cfg The logging configuration.
+ * @return The complete analysis result including semantic context.
+ */
+func analysis_analyze_entry(search_paths: SourceSearchPaths*, entry_module: string, cfg: LogConfig*) -> AnalysisResult* {
+    return analysis_analyze_driver_state(driver_analyze_entry(search_paths, entry_module, cfg), cfg);
+}
+
+/**
+ * Analyze an entry through ordered filesystem-interface resolution.
+ *
+ * @param search_paths Source search paths used for source fallback.
+ * @param entry_module Canonical source entry module.
+ * @param interface_roots Ordered filesystem interface roots.
+ * @param policy Missing-interface policy for imported modules.
+ * @param artifact_root Optional artifact root associated with source nodes.
+ * @param cfg Logging configuration.
+ * @return Complete analysis result including the resolved module graph.
+ */
+func analysis_analyze_entry_with_resolution(search_paths: SourceSearchPaths*, entry_module: string,
+                                            interface_roots: StringVector*, policy: ModuleResolutionPolicy,
+                                            artifact_root: string?, cfg: LogConfig*) -> AnalysisResult* {
+    let driver_state = driver_analyze_entry_with_resolution(
+        search_paths,
+        entry_module,
+        interface_roots,
+        policy,
+        artifact_root,
+        cfg
+    );
+    return analysis_analyze_driver_state(driver_state, cfg);
+}
+
+/**
+ * Analyzes the entry module with a supplied direct-provider interface registry.
+ *
+ * @param search_paths The source search paths configuration.
+ * @param entry_module The name of the entry module.
+ * @param interfaces Borrowed vector of `ModuleInterface*` direct-provider candidates.
+ * @param cfg The logging configuration.
+ * @return The complete analysis result including semantic context.
+ */
+func analysis_analyze_entry_with_interfaces(search_paths: SourceSearchPaths*, entry_module: string,
+                                            interfaces: VectorBase*?, cfg: LogConfig*) -> AnalysisResult* {
+    let driver_state = driver_analyze_entry_with_interfaces(search_paths, entry_module, interfaces, cfg);
+    return analysis_analyze_driver_state(driver_state, cfg);
+}
+
+/**
+ * Emit the `.l1m` module interface text for an analyzed module.
+ *
+ * Returns `null` if the analysis result lacks name-resolution or signature
+ * tables. Callers should check `analysis_has_errors` before calling this
+ * function.
+ *
+ * @param result Analysis result to emit the interface for.
+ * @param module_name Module whose interface to emit.
+ * @return Canonical `.l1m` text, or `null` if projection fails.
+ */
+func analysis_emit_interface(result: AnalysisResult*, module_name: string) -> string? {
+    let mi = mi_project(result, module_name);
+    if (mi == null) {
+        return null;
+    }
+    let text = ie_emit(mi as ModuleInterface*);
+    mi_free(mi as ModuleInterface*);
+    return text;
+}

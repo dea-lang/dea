@@ -1,0 +1,152 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module util.log;
+
+import std.io;
+import std.string;
+import std.text;
+
+/**
+ * Defines the LogLevel enumeration.
+ */
+enum LogLevel {
+    LL_SILENT;
+    LL_ERROR;
+    LL_WARNING;
+    LL_INFO;
+    LL_DEBUG;
+}
+
+/**
+ * Represents the LogConfig structure.
+ */
+struct LogConfig {
+    level: LogLevel;
+    rich: bool;
+}
+
+/**
+ * Create a logging configuration.
+ *
+ * @param level Minimum log level to emit.
+ * @param rich Whether to prefix messages with level labels.
+ * @return A new logging configuration.
+ */
+func log_config_create(level: LogLevel, rich: bool) -> LogConfig* {
+    return new LogConfig(level, rich);
+}
+
+/**
+ * Map a CLI verbosity count to a log level.
+ *
+ * @param verbosity Verbosity count from command-line flags.
+ * @return Log level implied by `verbosity`.
+ */
+func log_level_from_verbosity(verbosity: int) -> LogLevel {
+    if (verbosity >= 3) { return LL_DEBUG; }
+    if (verbosity >= 1) { return LL_INFO; }
+    return LL_ERROR;
+}
+
+/**
+ * Return the printable name for a log level.
+ *
+ * @param level Log level to format.
+ * @return Uppercase display name for `level`.
+ */
+func log_level_name(level: LogLevel) -> string {
+    match (level) {
+        LL_SILENT => { return "SILENT"; }
+        LL_ERROR => { return "ERROR"; }
+        LL_WARNING => { return "WARNING"; }
+        LL_INFO => { return "INFO"; }
+        LL_DEBUG => { return "DEBUG"; }
+    }
+}
+
+/**
+ * Emit a log message if the configuration allows the given level.
+ *
+ * @param cfg Logging configuration.
+ * @param level Severity level of the message.
+ * @param message Message text to emit.
+ */
+func log_msg(cfg: LogConfig*, level: LogLevel, message: string) {
+    if (ord(cfg.level) < ord(level)) {
+        return;
+    }
+
+    if (cfg.rich) {
+        err_printl_s("[" + log_level_name(level) + "] " + message);
+    } else {
+        err_printl_s(message);
+    }
+}
+
+/**
+ * Log an error message.
+ *
+ * @param cfg Logging configuration.
+ * @param message Message text to emit.
+ */
+func log_error(cfg: LogConfig*, message: string) {
+    log_msg(cfg, LL_ERROR, message);
+}
+
+/**
+ * Log a warning message.
+ *
+ * @param cfg Logging configuration.
+ * @param message Message text to emit.
+ */
+func log_warning(cfg: LogConfig*, message: string) {
+    log_msg(cfg, LL_WARNING, message);
+}
+
+/**
+ * Log an informational message.
+ *
+ * @param cfg Logging configuration.
+ * @param message Message text to emit.
+ */
+func log_info(cfg: LogConfig*, message: string) {
+    log_msg(cfg, LL_INFO, message);
+}
+
+/**
+ * Log a debug message.
+ *
+ * @param cfg Logging configuration.
+ * @param message Message text to emit.
+ */
+func log_debug(cfg: LogConfig*, message: string) {
+    log_msg(cfg, LL_DEBUG, message);
+}
+
+/**
+ * Format a stage progress message.
+ *
+ * @param stage Human-readable stage label.
+ * @param module_name Module name to include when available.
+ * @return Formatted stage message.
+ */
+func log_format_stage(stage: string, module_name: string) -> string {
+    if (!is_empty_s(module_name)) {
+        return stage + " module '" + module_name + "'";
+    }
+    return stage + "...";
+}
+
+/**
+ * Log a stage progress message at info level.
+ *
+ * @param cfg Logging configuration.
+ * @param stage Human-readable stage label.
+ * @param module_name Module name to include when available.
+ */
+func log_stage(cfg: LogConfig*, stage: string, module_name: string) {
+    log_info(cfg, log_format_stage(stage, module_name));
+}

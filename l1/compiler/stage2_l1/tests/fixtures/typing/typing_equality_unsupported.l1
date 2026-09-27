@@ -1,0 +1,34 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_equality_unsupported;
+
+/**
+ * Simple non-comparable struct for equality diagnostics.
+ */
+struct Pair {
+    value: int;
+}
+
+/**
+ * Triggers unsupported struct equality.
+ */
+func err_struct_eq(a: Pair, b: Pair) -> bool {
+    return a == b; // TYP-0173
+}
+
+/**
+ * Triggers unsupported struct inequality.
+ */
+func err_struct_ne(a: Pair, b: Pair) -> bool {
+    return a != b; // TYP-0173
+}
+
+/**
+ * Triggers mixed string equality mismatch.
+ */
+func err_string_mismatch(a: string, b: int) -> bool {
+    return a == b; // TYP-0172
+}

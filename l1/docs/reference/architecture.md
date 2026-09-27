@@ -1,13 +1,13 @@
 # L1 Compiler Architecture
 
-Version: 2026-09-24
+Version: 2026-09-27
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
-Today there is one implemented compiler pipeline:
+Both compiler stages implement the same pipeline:
 
 - `compiler/stage1_l0/` contains the runnable L1 compiler implemented in Dea/L0.
-- `compiler/stage2_l1/` is reserved for the future self-hosted compiler and is not implemented yet.
+- `compiler/stage2_l1/` is the mechanical L1 port of Stage 1, using the same pass structure and shared assets.
 - `compiler/shared/l1/stdlib/` and `compiler/shared/runtime/` are the current copied stdlib/runtime source inputs
   consumed by the bootstrap toolchain.
 - `$L1_BUILD_DIR/include/` and `$L1_BUILD_DIR/interfaces/` contain bootstrap-owned public headers and verified bundled
@@ -24,6 +24,20 @@ Related canonical docs:
 - Bootstrap status snapshot: [l1/docs/project-status.md](../project-status.md)
 - Shared CLI behavior: [docs/specs/compiler/cli-contract.md](../../../docs/specs/compiler/cli-contract.md)
 - External native-library workflow: [l1/docs/user/linking.md](../user/linking.md)
+
+## Stage 2 Development
+
+`make build-stage2` builds the L1 source port through the explicit repo-local Stage 1 artifact. `use-dev-stage2` selects
+it as `l1c`; `use-dev-stage1` selects the bootstrap compiler. Ordinary builds and tests preserve that selection. The
+port reuses common compiler support and native preparation support; the runtime supplies fingerprint bridge symbols.
+
+`make test` covers both normal stage suites, parity, environment checks, and Stage 2 examples. `make test-all` adds both
+default trace suites and each stage's independently selected child fixtures. Slow trace cases remain opt-in.
+`make triple-test` builds three Stage 2 generations and requires identical relative retained-C inventories and bytes,
+including the lifecycle wrapper, between the second and third generations. Native comparison follows the L0 platform
+policy; the complete Stage 2 normal suite and example checks then run through the final compiler. `test-ci` includes
+this fixed-point gate; local `test-all` leaves it explicit. `KEEP_ARTIFACTS=1` retains successful bootstrap evidence;
+failures always retain their artifacts. No install, distribution, or release interface is added.
 
 ## 1. High-Level Pipeline
 
@@ -221,12 +235,12 @@ order.
 Normal developer workflow:
 
 ```bash
-make use-dev-stage1
+make use-dev-stage2
 source build/dea/bin/l1-env.sh
 l1c --help
 ```
 
-`make use-dev-stage1` auto-prepares the default repo-local upstream `../l0/build/dea/bin/l0c-stage2` when needed.
+`make use-dev-stage2` auto-prepares the default repo-local upstream `../l0/build/dea/bin/l0c-stage2` when needed.
 
 ## 2. Pass Responsibilities
 
@@ -389,7 +403,8 @@ Important analysis tables include:
 
 ## 4. Invariants
 
-01. The current L1 compiler is bootstrap-only and implemented in Dea/L0.
+01. Stage 1 is implemented in Dea/L0 and remains the behavioral oracle for the self-hosted Stage 2 implementation in
+    Dea/L1.
 02. Import closure construction is explicit and checked before later semantic passes; each canonical module has one
     source, interface, registry, or virtual origin in the module graph.
 03. Source locations are propagated for diagnostics.
@@ -418,8 +433,8 @@ Important analysis tables include:
     selected entry bridge is the only Dea entry invoked, and the wrapper owns process `main`.
 14. External host dependencies are explicit CLI/build-tool inputs, not module identities or `.l1m` dependency metadata.
     The selected runtime follows the user stream by exact path.
-15. Any future `stage2_l1` implementation should match the public L1 language/runtime behavior documented here and in
-    the other L1 reference documents.
+15. The `stage2_l1` implementation must match the public L1 language/runtime behavior documented here and in the other
+    L1 reference documents.
 
 ## 5. File/Module Layout
 

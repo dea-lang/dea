@@ -4,12 +4,12 @@ Version: 2026-09-27
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
-Dea/L1 is currently in bootstrap status:
+Dea/L1 currently supports local self-hosted development:
 
-- the runnable compiler is `compiler/stage1_l0/`, implemented in Dea/L0
+- the bootstrap compiler is `compiler/stage1_l0/`, implemented in Dea/L0; Stage 2 is implemented in Dea/L1
 - the current shared assets are `compiler/shared/l1/stdlib/` plus the copied runtime sources under
   `compiler/shared/runtime/`
-- `compiler/stage2_l1/` exists only as a placeholder for a future self-hosted compiler
+- `compiler/stage2_l1/` contains the mechanical L1 compiler port and its self-hosting validation workflow
 
 L0 remains the active release line. The L1 subtree is the current home for bootstrap compiler work, library surface, and
 future language growth beyond L0.
@@ -40,11 +40,12 @@ The live L1 roadmap lives at [l1/docs/roadmap.md](roadmap.md).
 
 ### Compiler
 
-`compiler/stage1_l0/` is the only implemented L1 compiler today. It provides the bootstrap frontend, semantic analysis,
-C generation, compile-only artifact production, interface-authoritative standalone linking, and host build/run
-integration for `.l1` inputs.
+`compiler/stage1_l0/` is the bootstrap compiler and semantic/diagnostic oracle. It provides the bootstrap frontend,
+semantic analysis, C generation, compile-only artifact production, interface-authoritative standalone linking, and host
+build/run integration for `.l1` inputs.
 
-The implementation sources remain `.l0`, while user-facing L1 source inputs, examples, and stdlib modules use `.l1`.
+Stage 1 implementation sources remain `.l0`; Stage 2 implementation sources, L1 inputs, examples, and stdlib modules use
+`.l1`.
 
 The current compiler also synthesizes the implicit `dea` prelude module for language intrinsics. Unqualified
 `sizeof(...)`, `ord(...)`, `is(...)`, `len(...)`, and `slice(...)` remain ergonomic bootstrap-stage spellings, while
@@ -243,11 +244,14 @@ empty paths as failures without host calls; whole-file writes also report stream
 The practical local workflow today is:
 
 ```bash
-make use-dev-stage1
+make use-dev-stage2
 source build/dea/bin/l1-env.sh
 l1c --version
 make runtime
 make test-stage1
+make test-stage2
+make test-stage2-trace
+make triple-test
 make test
 make test-stage1-trace
 make test-stage1-trace-smoke
@@ -257,7 +261,7 @@ make test-all
 make test-ci
 ```
 
-`make use-dev-stage1` auto-prepares the default repo-local upstream `../l0/build/dea/bin/l0c-stage2` when needed.
+`make use-dev-stage2` auto-prepares the default repo-local upstream `../l0/build/dea/bin/l0c-stage2` when needed.
 `make runtime` rebuilds the repo-local runtime archives and public headers used by `--build` / `--run`. The runtime
 archive compiler is controlled by `L1_RUNTIME_CC` (defaulting to `L1_CC`, then `clang` / `gcc` / `cc`, then `CC` as a
 last resort); run `make clean-runtime runtime L1_RUNTIME_CC=<compiler>` when switching runtime compiler families so
@@ -275,23 +279,27 @@ default ARC/memory trace checks and both declared child trace fixtures. Linux po
 supplies unsupported Clang 14. Use `DOCKER_CC=clang` to switch all three roles together only in a separately verified
 environment providing supported Clang. Clang 14/15 compatibility remains planned in
 [l1/work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md][legacy-clang-plan].
-`make test-stage1-trace-smoke` retains a focused ARC/memory subset for quick developer diagnostics. `make test-ci`
-delegates to `make test-all` on every supported host, so Windows, Linux, and macOS all run the full normal suite,
-default dedicated trace sweep, and child trace fixtures. The legacy `DOCKER_L0_CC` selector remains a compatibility
-fallback when `DOCKER_CC` is unset. Run the Docker lane after runtime, Makefile, or build-driver changes.
+`make test-stage1-trace-smoke` retains a focused ARC/memory subset for quick developer diagnostics. `make test-ci` runs
+`make test-all` and `make triple-test` on every supported host, so Windows, Linux, and macOS validate both stages, their
+traces, and the strict fixed point. The legacy `DOCKER_L0_CC` selector remains a compatibility fallback when `DOCKER_CC`
+is unset. Run the Docker lane after runtime, Makefile, or build-driver changes.
 
 `make test-stage1-trace-children` builds the declared successful math runtime fixtures with ARC and memory tracing, runs
 each executable directly, and analyzes each child stderr file independently. `TESTS="wide_math_main"` selects one
-fixture. `make test-all` always runs both children, independently of parent `TESTS` selectors. The child suite retains
-its build, output, trace, and report files when a fixture fails.
+fixture. `make test-all` always runs both children for each compiler stage, independently of parent `TESTS` selectors.
+The child suite retains its build, output, trace, and report files when a fixture fails.
+
+Stage 2 provides the same trace-target suffixes and selectors as Stage 1. `make triple-test` compares complete
+retained-C inventories and bytes, applies the native platform policy, and exercises the complete normal suite and
+examples through the final self-built compiler. It is required by `test-ci`, and stays separate from local `test-all`.
 
 Validation is currently centered on:
 
 - automated CI via `.github/workflows/ci.yml`, which routes L1-relevant `push`/`pull_request` changes into the reusable
   `l1-ci.yml` workflow; `workflow_dispatch` remains available for platform selection, manual C compiler selection, and
-  explicit Make-target selection. Hosted CI defaults to `make test-ci`, which runs the full normal and default trace
-  suites on Linux, macOS, and Windows. Each selected compiler is applied to `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC`, and
-  the resolved executable plus version is logged before the Make target runs.
+  explicit Make-target selection. Hosted CI defaults to `make test-ci`, which runs both full normal and default trace
+  suites plus strict triple bootstrap on Linux, macOS, and Windows. Each selected compiler is applied to `L0_CC`,
+  `L1_CC`, and `L1_RUNTIME_CC`, and the resolved executable plus version is logged before the Make target runs.
 
 - `make test-stage1` and the `.l0` implementation tests under `compiler/stage1_l0/tests/`
 
@@ -309,12 +317,12 @@ Validation is currently centered on:
 
 - `make test-env` for generated launcher and environment-stackability coverage
 
-- `make test` as the normal local Stage 1, environment, and example validation entry point without the dedicated broad
+- `make test` as the normal local two-stage, environment, and example validation entry point without the dedicated broad
   trace sweep
 
-- `make test-all` as the combined local Stage 1, trace, environment, and example validation entry point
+- `make test-all` as the combined local two-stage, trace, environment, and example validation entry point
 
-- `make test-ci` as the full trace-inclusive hosted-CI entry point on every supported platform
+- `make test-ci` as the full trace-inclusive and fixed-point hosted-CI entry point on every supported platform
 
 - `make test-docker` as the Linux container reference path for runtime/build-driver portability
 
@@ -337,7 +345,8 @@ bootstrap path:
 
 These remain true today:
 
-1. There is no implemented `stage2_l1` compiler yet.
+1. The Stage 2 port is implemented; supported-host completion evidence remains tracked by the active shared self-hosting
+   plan.
 2. Standalone linking consumes explicit object paths plus derived sibling interfaces; it does not discover implicit Dea
    objects, compile sources, or infer external-library dependencies from modules or manifests.
 3. Fixed-size arrays `T[N]` and escape-restricted non-owning slices `T[]` are implemented; owning dynamic buffers,

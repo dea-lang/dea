@@ -1,0 +1,36 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module backend;
+
+import codegen_options;
+import sem_context;
+import util.log;
+import backend.output;
+import backend.state;
+
+/**
+ * Generate C source defining exactly one source-backed module.
+ *
+ * @param result Typed analysis result to lower.
+ * @param target_module Canonical source module whose definitions to emit.
+ * @param opts Codegen options to honor.
+ * @param cfg Logging configuration to use.
+ * @return Complete generated module translation unit.
+ */
+func backend_generate_module(
+    result: AnalysisResult*,
+    target_module: string,
+    opts: CodegenOptions*,
+    cfg: LogConfig*
+) -> string {
+    if (analysis_has_errors(result)) {
+        be_ice("[ICE-9303] backend_generate_module requires analysis without errors");
+    }
+
+    with (let self = be_create_module(result, target_module, opts, cfg) => be_free(self)) {
+        return be_generate_output(self);
+    }
+}

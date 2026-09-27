@@ -1,0 +1,175 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module io_numeric_main;
+
+import sys.rt;
+import std.io;
+import std.integer;
+import std.string;
+import std.system;
+import std.text;
+
+func mode_delim() -> int {
+    let first = read_delim(',');
+    let second = read_delim_ws();
+    let third = read_delim(';');
+    let fourth = read_delim_any("|:");
+    if (first == null || second == null || third == null || fourth == null) {
+        return 11;
+    }
+    printl_s(first as string);
+    printl_s(second as string);
+    printl_s(third as string);
+    printl_s(fourth as string);
+    return 0;
+}
+
+func mode_reads() -> int {
+    let i = read_i();
+    let ui = read_ui();
+    let l = read_l();
+    let ul = read_ul();
+    let invalid = read_ui();
+    if (i == null || ui == null || l == null || ul == null || invalid != null) {
+        return 12;
+    }
+    printl_i(i as int);
+    printl_ui(ui as uint);
+    printl_l(l as long);
+    printl_ul(ul as ulong);
+    printl_s("invalid");
+    return 0;
+}
+
+func mode_prints() -> int {
+    print_ui(1 as uint);
+    print_s(" ");
+    print_l(-2 as long);
+    print_s(" ");
+    print_ul(3 as ulong);
+    print_s(" ");
+    print_f(1.5f);
+    print_s(" ");
+    printl_d(0.25);
+
+    err_print_ui(4 as uint);
+    err_print_s(" ");
+    err_print_l(-5 as long);
+    err_print_s(" ");
+    err_print_ul(6 as ulong);
+    err_print_s(" ");
+    err_print_f(2.5f);
+    err_print_s(" ");
+    err_printl_d(0.125);
+    return 0;
+}
+
+func mode_text() -> int {
+    printl_s(uint_to_string(uint_max()));
+    printl_s(uint_to_string_base(uint_max(), 16));
+    printl_s(long_to_string(long_min()));
+    printl_s(long_to_string_base(long_min(), 16));
+    printl_s(ulong_to_string(ulong_max()));
+    printl_s(ulong_to_string_base(ulong_max(), 16));
+
+    let ui = string_to_uint("4294967295");
+    let l = string_to_long("-9223372036854775808");
+    let ul = string_to_ulong("18446744073709551615");
+    if (ui == null || l == null || ul == null) {
+        return 21;
+    }
+    printl_ui(ui as uint);
+    printl_l(l as long);
+    printl_ul(ul as ulong);
+
+    if (string_to_uint("-1") != null || string_to_uint("4294967296") != null) {
+        return 22;
+    }
+    if (string_to_long("9223372036854775808") != null || string_to_long("-9223372036854775809") != null) {
+        return 23;
+    }
+    if (string_to_ulong("-1") != null || string_to_ulong("18446744073709551616") != null) {
+        return 24;
+    }
+    printl_s("invalids");
+    return 0;
+}
+
+func mode_bytes() -> int {
+    let line_opt = read_line();
+    if (line_opt == null) {
+        return 25;
+    }
+    let line = line_opt as string;
+    let p = rt_string_bytes_ptr(line);
+    let b = *p;
+    if ((b as int) != 65) {
+        return 26;
+    }
+    printl_s("bytes-ok");
+    return 0;
+}
+
+func mode_bytes_write_static() -> int {
+    let p = rt_string_bytes_ptr("Hi");
+    *p = 'X';
+    return 0;
+}
+
+struct BytePair {
+    a: byte;
+    b: byte;
+}
+
+func mode_bytes_write_field() -> int {
+    let raw = rt_string_bytes_ptr("Hi") as void*;
+    let q = raw as BytePair*;
+    (*q).b = 'X';
+    return 0;
+}
+
+func mode_bytes_write_heap() -> int {
+    let line_opt = read_line();
+    if (line_opt == null) {
+        return 27;
+    }
+    let line = line_opt as string;
+    let p = rt_string_bytes_ptr(line);
+    *p = 'X';
+    return 0;
+}
+
+func main() -> int {
+    if (argc() < 2) {
+        return 2;
+    }
+    let mode = argv(1);
+    if (mode == "delim") {
+        return mode_delim();
+    }
+    if (mode == "reads") {
+        return mode_reads();
+    }
+    if (mode == "prints") {
+        return mode_prints();
+    }
+    if (mode == "text") {
+        return mode_text();
+    }
+    if (mode == "bytes") {
+        return mode_bytes();
+    }
+    if (mode == "bytes-write-static") {
+        return mode_bytes_write_static();
+    }
+    if (mode == "bytes-write-field") {
+        return mode_bytes_write_field();
+    }
+    if (mode == "bytes-write-heap") {
+        return mode_bytes_write_heap();
+    }
+    return 3;
+}

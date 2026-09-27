@@ -1,0 +1,50 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module module_lifecycle;
+
+import std.string;
+import std.text;
+
+/**
+ * Mangle one compiler-generated module lifecycle symbol.
+ *
+ * @param module_name Canonical dotted module name.
+ * @param terminal Lifecycle terminal text.
+ * @return Canonical LBI symbol.
+ */
+func ml_mangle_symbol(module_name: string, terminal: string) -> string {
+    with (let out = cb_create() => cb_free(out)) {
+        cb_append_s(out, "__deaM");
+        let segment_start = 0;
+        for (let i = 0; i <= len_s(module_name); i = i + 1) {
+            if (i == len_s(module_name) || char_at_s(module_name, i) == '.') {
+                let segment_length = i - segment_start;
+                cb_append_int(out, segment_length);
+                cb_append_slice(out, module_name, segment_start, segment_length);
+                segment_start = i + 1;
+            }
+        }
+        cb_append_s(out, "I");
+        cb_append_int(out, len_s(terminal));
+        cb_append_s(out, terminal);
+        return cb_to_string(out);
+    }
+}
+
+/** Return the canonical `I4init` symbol for a module. */
+func ml_init_symbol_name(module_name: string) -> string {
+    return ml_mangle_symbol(module_name, "init");
+}
+
+/** Return the canonical `I4fini` symbol for a module. */
+func ml_fini_symbol_name(module_name: string) -> string {
+    return ml_mangle_symbol(module_name, "fini");
+}
+
+/** Return the canonical `I5entry` symbol for a module. */
+func ml_entry_symbol_name(module_name: string) -> string {
+    return ml_mangle_symbol(module_name, "entry");
+}

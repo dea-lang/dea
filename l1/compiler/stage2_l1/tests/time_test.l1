@@ -1,0 +1,127 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module time_test;
+
+import std.assert;
+import std.io;
+import std.time;
+
+/**
+ * Tests test_wall_now.
+ */
+func test_wall_now() {
+    let now_opt = wall_now();
+    assert(now_opt != null, "wall_now should return a value");
+
+    let now = now_opt as WallTime;
+    assert(now.nsec >= 0, "wall_now nsec must be >= 0");
+    assert(now.nsec < 1000000000, "wall_now nsec must be < 1e9");
+}
+
+/**
+ * Tests test_utc_epoch.
+ */
+func test_utc_epoch() {
+    let dt_opt = wall_to_utc_datetime(WallTime(0, 0));
+    assert(dt_opt != null, "wall_to_utc_datetime(epoch) should succeed");
+
+    let dt = dt_opt as DateTime;
+    assert(dt.year == 1970, "epoch year must be 1970");
+    assert(dt.month == 1, "epoch month must be 1");
+    assert(dt.day == 1, "epoch day must be 1");
+    assert(dt.hour == 0, "epoch hour must be 0");
+    assert(dt.minute == 0, "epoch minute must be 0");
+    assert(dt.second == 0, "epoch second must be 0");
+    assert(dt.nanosecond == 0, "epoch nanosecond must be 0");
+    assert(dt.weekday == 4, "epoch weekday must be Thursday (4)");
+    assert(dt.yearday == 1, "epoch yearday must be 1");
+    assert(dt.utc_offset_sec == 0, "utc offset for utc conversion must be 0");
+    assert(!dt.is_dst, "utc conversion should never set dst");
+}
+
+/**
+ * Tests test_utc_before_epoch.
+ */
+func test_utc_before_epoch() {
+    let dt_opt = wall_to_utc_datetime(WallTime(-1, 0));
+    assert(dt_opt != null, "wall_to_utc_datetime(-1) should succeed");
+
+    let dt = dt_opt as DateTime;
+    assert(dt.year == 1969, "-1 sec year must be 1969");
+    assert(dt.month == 12, "-1 sec month must be 12");
+    assert(dt.day == 31, "-1 sec day must be 31");
+    assert(dt.hour == 23, "-1 sec hour must be 23");
+    assert(dt.minute == 59, "-1 sec minute must be 59");
+    assert(dt.second == 59, "-1 sec second must be 59");
+}
+
+/**
+ * Tests test_monotonic_contract.
+ */
+func test_monotonic_contract() {
+    if (!monotonic_supported()) {
+        assert(monotonic_now() == null, "monotonic_now should return null when unsupported");
+        return;
+    }
+
+    let a_opt = monotonic_now();
+    let b_opt = monotonic_now();
+    assert(a_opt != null, "monotonic_now first read should not be null when supported");
+    assert(b_opt != null, "monotonic_now second read should not be null when supported");
+
+    let a = a_opt as MonotonicTime;
+    let b = b_opt as MonotonicTime;
+
+    let d_opt = monotonic_diff(a, b);
+    assert(d_opt != null, "monotonic_diff(a, b) should be non-null for ordered reads");
+    let d = d_opt as Duration;
+
+    assert(d.sec >= 0, "duration sec must be non-negative");
+    assert(d.nsec >= 0, "duration nsec must be non-negative");
+    assert(d.nsec < 1000000000, "duration nsec must be normalized");
+}
+
+/**
+ * Tests test_invalid_nsec_rejected.
+ */
+func test_invalid_nsec_rejected() {
+    let a = wall_to_utc_datetime(WallTime(0, -1));
+    let b = wall_to_utc_datetime(WallTime(0, 1000000000));
+    assert(a == null, "negative nsec should be rejected");
+    assert(b == null, "nsec >= 1e9 should be rejected");
+}
+
+/**
+ * Tests test_local_datetime_shape.
+ */
+func test_local_datetime_shape() {
+    let dt_opt = wall_to_local_datetime(WallTime(0, 123));
+    assert(dt_opt != null, "local conversion for epoch should succeed");
+
+    let dt = dt_opt as DateTime;
+    assert(dt.nanosecond == 123, "local conversion must preserve nanoseconds");
+    assert(dt.month >= 1 && dt.month <= 12, "month must be in [1,12]");
+    assert(dt.day >= 1 && dt.day <= 31, "day must be in [1,31]");
+    assert(dt.hour >= 0 && dt.hour <= 23, "hour must be in [0,23]");
+    assert(dt.minute >= 0 && dt.minute <= 59, "minute must be in [0,59]");
+    assert(dt.second >= 0 && dt.second <= 59, "second must be in [0,59]");
+    assert(dt.weekday >= 0 && dt.weekday <= 6, "weekday must be in [0,6]");
+    assert(dt.yearday >= 1 && dt.yearday <= 366, "yearday must be in [1,366]");
+    assert(dt.utc_offset_sec > -86400 && dt.utc_offset_sec < 86400, "offset must be within one day");
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    test_wall_now();
+    test_utc_epoch();
+    test_utc_before_epoch();
+    test_monotonic_contract();
+    test_invalid_nsec_rejected();
+    test_local_datetime_shape();
+    printl_s("time_test: all tests passed");
+}

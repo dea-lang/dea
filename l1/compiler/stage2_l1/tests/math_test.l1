@@ -1,0 +1,139 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module math_test;
+
+import std.assert;
+import std.io;
+import std.integer;
+import std.text;
+
+/**
+ * Assert one integer result.
+ *
+ * @param label Human-readable case label.
+ * @param actual Computed value.
+ * @param expected Expected value.
+ */
+func mt_expect_eq(label: string, actual: int, expected: int) {
+    assert(actual == expected, "integer mismatch: " + label + "");
+    printl_ss("[PASS]", label);
+}
+
+/**
+ * Assert one boolean result.
+ *
+ * @param label Human-readable case label.
+ * @param actual Computed value.
+ * @param expected Expected value.
+ */
+func mt_expect_bool(label: string, actual: bool, expected: bool) {
+    assert(actual == expected, "bool mismatch: " + label + "");
+    printl_ss("[PASS]", label);
+}
+
+/**
+ * Assert one non-null optional integer result.
+ *
+ * @param label Human-readable case label.
+ * @param actual Computed optional value.
+ * @param expected Expected payload.
+ */
+func mt_expect_opt_eq(label: string, actual: int?, expected: int) {
+    assert(actual != null, "expected int value: " + label + "");
+    let value = actual as int;
+    assert(value == expected, "optional mismatch: " + label + "");
+    printl_ss("[PASS]", label);
+}
+
+/**
+ * Assert one null optional integer result.
+ *
+ * @param label Human-readable case label.
+ * @param actual Computed optional value.
+ */
+func mt_expect_opt_null(label: string, actual: int?) {
+    assert(actual == null, "expected null: " + label + "");
+    printl_ss("[PASS]", label);
+}
+
+/**
+ * Tests quotient and bounds helpers.
+ */
+func test_quotient_and_bounds() {
+    printl_s("== Quotient and bounds ==");
+    mt_expect_eq("emod(-7, 3)", emod(-7, 3), 2);
+    mt_expect_eq("ediv(-7, 3)", ediv(-7, 3), -3);
+    mt_expect_eq("div_floor(7, -3)", div_floor(7, -3), -3);
+    mt_expect_eq("div_ceil(7, -3)", div_ceil(7, -3), -2);
+    mt_expect_eq("div_floor(-7, -3)", div_floor(-7, -3), 2);
+    mt_expect_eq("div_ceil(-7, -3)", div_ceil(-7, -3), 3);
+    mt_expect_eq("min(5, -2)", min(5, -2), -2);
+    mt_expect_eq("max(5, -2)", max(5, -2), 5);
+    mt_expect_eq("clamp(20, 0, 10)", clamp(20, 0, 10), 10);
+    mt_expect_eq("clamp(-5, 0, 10)", clamp(-5, 0, 10), 0);
+}
+
+/**
+ * Tests sign and divisibility helpers.
+ */
+func test_sign_and_divisibility() {
+    printl_s("== Sign and divisibility ==");
+    mt_expect_eq("sign(-9)", sign(-9), -1);
+    mt_expect_eq("sign(0)", sign(0), 0);
+    mt_expect_eq("sign(9)", sign(9), 1);
+    mt_expect_bool("is_even(-4)", is_even(-4), true);
+    mt_expect_bool("is_odd(-5)", is_odd(-5), true);
+    mt_expect_bool("is_multiple(INT32_MIN, -1)", is_multiple(-2147483648, -1), true);
+    mt_expect_bool("is_multiple(21, -7)", is_multiple(21, -7), true);
+    mt_expect_bool("is_multiple(22, -7)", is_multiple(22, -7), false);
+}
+
+/**
+ * Tests checked arithmetic-style helpers.
+ */
+func test_checked_algorithms() {
+    printl_s("== Checked algorithms ==");
+    mt_expect_opt_eq("abs(-17)", abs(-17), 17);
+    mt_expect_opt_null("abs(INT32_MIN)", abs(-2147483648));
+    mt_expect_opt_eq("gcd(-48, 18)", gcd(-48, 18), 6);
+    mt_expect_opt_eq("gcd(0, 0)", gcd(0, 0), 0);
+    mt_expect_opt_null("gcd(INT32_MIN, 0)", gcd(-2147483648, 0));
+    mt_expect_opt_eq("lcm(-21, 6)", lcm(-21, 6), 42);
+    mt_expect_opt_null("lcm(INT32_MIN, 1)", lcm(-2147483648, 1));
+    mt_expect_opt_eq("pow(-2, 5)", pow(-2, 5), -32);
+    mt_expect_opt_eq("pow(0, 0)", pow(0, 0), 1);
+    mt_expect_opt_null("pow(2, -1)", pow(2, -1));
+    mt_expect_opt_null("pow(2, 31)", pow(2, 31));
+    mt_expect_opt_eq("isqrt(INT32_MAX)", isqrt(2147483647), 46340);
+    mt_expect_opt_null("isqrt(-1)", isqrt(-1));
+}
+
+/**
+ * Tests alignment helpers.
+ */
+func test_alignment() {
+    printl_s("== Alignment ==");
+    mt_expect_opt_eq("align_down(17, 8)", align_down(17, 8), 16);
+    mt_expect_opt_eq("align_down(-17, 8)", align_down(-17, 8), -24);
+    mt_expect_opt_null("align_down(INT32_MIN, 3)", align_down(-2147483648, 3));
+    mt_expect_opt_eq("align_up(17, 8)", align_up(17, 8), 24);
+    mt_expect_opt_eq("align_up(-17, 8)", align_up(-17, 8), -16);
+    mt_expect_opt_eq("align_up(INT32_MIN, 3)", align_up(-2147483648, 3), -2147483646);
+    mt_expect_opt_null("align_up(INT32_MAX, 2)", align_up(2147483647, 2));
+    mt_expect_bool("is_aligned(-16, 8)", is_aligned(-16, 8), true);
+    mt_expect_bool("is_aligned(-17, 8)", is_aligned(-17, 8), false);
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    test_quotient_and_bounds();
+    test_sign_and_divisibility();
+    test_checked_algorithms();
+    test_alignment();
+    printl_s("math_test: all tests passed");
+}

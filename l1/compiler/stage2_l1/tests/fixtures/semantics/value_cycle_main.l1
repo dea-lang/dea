@@ -1,0 +1,27 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module value_cycle_main;
+
+/**
+ * Represents the A structure.
+ */
+struct A {
+    b: B;
+}
+
+/**
+ * Represents the B structure.
+ */
+struct B {
+    a: A;
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() -> int {
+    return 0;
+}

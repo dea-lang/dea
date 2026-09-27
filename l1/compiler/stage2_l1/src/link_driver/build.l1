@@ -1,0 +1,222 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module link_driver.build;
+
+import std.hashset;
+import std.fs;
+import std.path;
+import std.vector;
+import util.diag;
+import util.log;
+import analysis;
+import build_driver;
+import cli_args.model;
+import compile_driver.compile;
+import compile_driver.transaction;
+import preparation.frontend;
+import source_paths;
+import compiler_filesystem;
+import diag_print;
+import module_graph;
+import module_graph.order;
+import sem_context;
+import link_driver.model;
+import link_driver.transaction;
+
+/** Return the shared dependency-first ordering for a resolved build graph. */
+func ld_build_order(graph: ModuleGraph*, entry_module: string, diags: DiagCollector*) -> VectorBase*? {
+    return mg_dependency_order(graph, entry_module, diags);
+}
+
+/** Register the common link scratch paths beneath a disjoint hidden directory. */
+func ld_build_run_transaction(
+    workspace: CompilerWorkspace*,
+    diags: DiagCollector*
+) -> LinkTransaction*? {
+    /* A leading dot cannot collide with a canonical Dea module segment. */
+    let scratch_root = join(workspace.root, ".link");
+    if (cfs_mkdir(scratch_root, 448) != 1) {
+        ld_error(
+            diags,
+            "L1C-2107",
+            "cannot create build/run link scratch directory: " +
+                scratch_root,
+            scratch_root
+        );
+        return null;
+    }
+    cfs_workspace_register_directory(workspace, scratch_root);
+    let wrapper_c = join(scratch_root, "__dea_wrapper.c");
+    let wrapper_object = join(scratch_root, "__dea_wrapper.o");
+    let compile_stdout = join(scratch_root, "wrapper-compile.stdout");
+    let compile_stderr = join(scratch_root, "wrapper-compile.stderr");
+    let link_stdout = join(scratch_root, "final-link.stdout");
+    let link_stderr = join(scratch_root, "final-link.stderr");
+    cfs_workspace_register_file(workspace, wrapper_c);
+    cfs_workspace_register_file(workspace, wrapper_object);
+    cfs_workspace_register_file(workspace, compile_stdout);
+    cfs_workspace_register_file(workspace, compile_stderr);
+    cfs_workspace_register_file(workspace, link_stdout);
+    cfs_workspace_register_file(workspace, link_stderr);
+    return new LinkTransaction(
+        scratch_root,
+        wrapper_c,
+        wrapper_object,
+        compile_stdout,
+        compile_stderr,
+        link_stdout,
+        link_stderr
+    );
+}
+
+/** Regenerate retained managed C in the command workspace; cache scratch is never authoritative. */
+func ld_stage_managed_c(opts: CliOptions*, cfg: LogConfig*, paths: SourceSearchPaths*,
+    node: ModuleGraphNode*, workspace: CompilerWorkspace*, diags: DiagCollector*) -> bool {
+    with (let search = sp_create() => sp_free(search),
+          let interfaces = sv_create(1) => sv_free(interfaces)) {
+        sp_add_system_root(search, paths.managed_source_root as string);
+        sv_push(interfaces, paths.managed_interfaces as string);
+        let text = pr_generate_module(node.module_name, search, interfaces, opts, cfg, diags);
+        if (text == null) { return false; }
+        let artifact = mg_artifacts_for_module(workspace.root, node.module_name, diags);
+        if (artifact == null) { return false; }
+        let path = (artifact as ModuleArtifactPaths*).c_path;
+        mg_artifacts_free(artifact);
+        if (!cd_ensure_directory(parent(path), diags)) { return false; }
+        cd_register_workspace_directory_chain(workspace, parent(path));
+        cfs_workspace_register_file(workspace, path);
+        if (write_file(path, text as string) == null) {
+            ld_error(diags, "L1C-2132", "cannot stage regenerated managed C", path);
+            return false;
+        }
+        (node.artifacts as ModuleArtifactPaths*).c_path = path;
+        return true;
+    }
+}
+
+/** Compile every source-backed node in deterministic dependency order. */
+func ld_compile_source_nodes(
+    opts: CliOptions*,
+    cfg: LogConfig*,
+    prepared: BuildPreparedInput*,
+    ordered: VectorBase*,
+    workspace: CompilerWorkspace*,
+    compiler: string,
+    extra_opts: StringVector*,
+    runtime_include: string,
+    diags: DiagCollector*
+) -> bool {
+    with (let interface_roots = sv_create(
+            sv_size(opts.interface_paths) + 1) =>
+            sv_free(interface_roots)) {
+        /* Preserve authoritative -I precedence, then expose staged providers. */
+        for (let root_i = 0;
+             root_i < sv_size(opts.interface_paths);
+             root_i = root_i + 1) {
+            sv_push(interface_roots, sv_get(opts.interface_paths, root_i));
+        }
+        sv_push(interface_roots, workspace.root);
+
+        for (let i = 0; i < vec_size(ordered); i = i + 1) {
+            let node = ld_ptr_vec_get(ordered, i) as ModuleGraphNode*;
+            if (ord(node.origin.kind) != ord(MOK_SOURCE)) {
+                if (node.managed && opts.keep_c &&
+                    !ld_stage_managed_c(opts, cfg, prepared.search_paths, node, workspace, diags)) { return false; }
+                continue;
+            }
+            if (node.artifacts == null) {
+                ld_error(
+                    diags,
+                    "L1C-2131",
+                    "source-backed build/run module has no private artifact association: " +
+                        node.module_name,
+                    ""
+                );
+                return false;
+            }
+
+            /*
+             * Re-enter the one-module semantic boundary. The entry itself is
+             * always loaded from source, while every non-virtual dependency
+             * must resolve through an authoritative or already staged .l1m.
+             */
+            let unit_result = analysis_analyze_entry_with_resolution(
+                prepared.search_paths,
+                node.module_name,
+                interface_roots,
+                MRP_REQUIRE_INTERFACE,
+                workspace.root,
+                cfg
+            );
+            if (analysis_diag_count(unit_result) > 0) {
+                dp_print_collector_with_sources(
+                    unit_result.diags,
+                    analysis_source_names(unit_result),
+                    analysis_source_texts(unit_result)
+                );
+            }
+            if (analysis_has_errors(unit_result)) {
+                analysis_result_free(unit_result);
+                return false;
+            }
+            let compiled = cd_compile_analyzed_to_workspace(
+                opts,
+                cfg,
+                unit_result,
+                node.module_name,
+                node.artifacts as ModuleArtifactPaths*,
+                workspace,
+                compiler,
+                extra_opts,
+                runtime_include,
+                diags
+            );
+            analysis_result_free(unit_result);
+            if (!compiled) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/** Inject the graph Dea set where the source target occurred in CLI order. */
+func ld_build_run_operands(
+    cli_operands: VectorBase*,
+    ordered: VectorBase*
+) -> VectorBase* {
+    let operands = cli_link_operands_create();
+    for (let cli_i = 0;
+         cli_i < cli_link_operands_count(cli_operands);
+         cli_i = cli_i + 1) {
+        let cli_operand = cli_link_operands_get(
+            cli_operands, cli_i);
+        if (ord(cli_operand.kind) != ord(LOK_DEA_OBJECT)) {
+            cli_link_operands_push(
+                operands, cli_operand.kind, cli_operand.value);
+            continue;
+        }
+
+        for (let node_i = 0;
+             node_i < vec_size(ordered);
+             node_i = node_i + 1) {
+            let node = ld_ptr_vec_get(
+                ordered, node_i) as ModuleGraphNode*;
+            if (ord(node.origin.kind) != ord(MOK_SOURCE) &&
+                ord(node.origin.kind) != ord(MOK_INTERFACE)) {
+                continue;
+            }
+            if (node.artifacts != null) {
+                cli_link_operands_push(
+                    operands,
+                    LOK_DEA_OBJECT,
+                    (node.artifacts as ModuleArtifactPaths*).object_path
+                );
+            }
+        }
+    }
+    return operands;
+}

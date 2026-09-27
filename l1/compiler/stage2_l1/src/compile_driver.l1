@@ -1,0 +1,71 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module compile_driver;
+
+import util.diag;
+import util.log;
+import analysis;
+import preparation.consumer;
+import build_driver;
+import cli_args.model;
+import diag_print;
+import module_graph;
+import sem_context;
+import compile_driver.compile;
+import compile_driver.transaction;
+
+/** Execute Stage 1 compile-only mode for exactly one source module. */
+func cd_cmd_compile(opts: CliOptions*, cfg: LogConfig*) -> int {
+    with (let diags = diag_create() => diag_free(diags),
+          let managed = mp_create(opts, cfg, false) => mp_free(managed)) {
+        let prepared = bd_prepare_input(opts, diags, cfg);
+        if (prepared == null) {
+            dp_print_collector(diags);
+            return 1;
+        }
+        let prep = prepared as BuildPreparedInput*;
+        let entry_module = prep.entry_module;
+        let artifacts_opt = cd_resolve_artifacts(opts, entry_module, diags);
+        if (artifacts_opt == null) {
+            bd_prepared_input_free(prep);
+            prepared = null;
+            dp_print_collector(diags);
+            return 1;
+        }
+        let artifacts = artifacts_opt as ModuleArtifactPaths*;
+        let result = mp_analyze(
+            managed,
+            prep.search_paths,
+            entry_module,
+            MRP_REQUIRE_INTERFACE,
+            null
+        );
+        bd_prepared_input_free(prep);
+        prepared = null;
+
+        if (analysis_diag_count(result) > 0) {
+            dp_print_collector_with_sources(
+                result.diags, analysis_source_names(result), analysis_source_texts(result));
+        }
+        if (analysis_has_errors(result)) {
+            analysis_result_free(result);
+            mg_artifacts_free(artifacts);
+            return 1;
+        }
+        if (!cd_prepare_destinations(artifacts, opts.keep_c, diags)) {
+            dp_print_collector(diags);
+            analysis_result_free(result);
+            mg_artifacts_free(artifacts);
+            return 1;
+        }
+
+        let rc = cd_compile_analyzed(
+            opts, cfg, result, entry_module, artifacts, diags);
+        analysis_result_free(result);
+        mg_artifacts_free(artifacts);
+        return rc;
+    }
+}

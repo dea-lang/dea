@@ -1,0 +1,62 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module driver;
+
+import std.vector;
+import util.log;
+import module_graph;
+import source_paths;
+import driver.resolve;
+import driver.state;
+
+/**
+ * Load and parse an entry module and its source-fallback closure.
+ *
+ * @param search_paths Source search paths used for module resolution.
+ * @param entry_module Entry module name.
+ * @param cfg Logging configuration.
+ * @return Driver state containing parsed modules, graph data, and diagnostics.
+ */
+func driver_analyze_entry(search_paths: SourceSearchPaths*, entry_module: string, cfg: LogConfig*) -> DriverState* {
+    with (let interface_roots = sv_create(0) => sv_free(interface_roots)) {
+        return dr_analyze_entry_core(search_paths, entry_module, interface_roots,
+            MRP_ALLOW_SOURCE_FALLBACK, null, null, cfg);
+    }
+}
+
+/**
+ * Analyze a source entry with ordered filesystem interface resolution.
+ *
+ * @param search_paths Source search paths used for source fallback.
+ * @param entry_module Canonical source entry module.
+ * @param interface_roots Ordered filesystem interface roots.
+ * @param policy Missing-interface policy for imported modules.
+ * @param artifact_root Optional artifact root associated with source nodes.
+ * @param cfg Logging configuration.
+ * @return Driver state containing the resolved graph and diagnostics.
+ */
+func driver_analyze_entry_with_resolution(search_paths: SourceSearchPaths*, entry_module: string,
+                                          interface_roots: StringVector*, policy: ModuleResolutionPolicy,
+                                          artifact_root: string?, cfg: LogConfig*) -> DriverState* {
+    return dr_analyze_entry_core(search_paths, entry_module, interface_roots, policy, artifact_root, null, cfg);
+}
+
+/**
+ * Load a source entry through the test registry adapter over the graph loader.
+ *
+ * @param search_paths Source search paths used for module resolution.
+ * @param entry_module Entry module name.
+ * @param interfaces Borrowed vector of parsed provider interfaces.
+ * @param cfg Logging configuration.
+ * @return Driver state containing active cloned interfaces, graph data, and diagnostics.
+ */
+func driver_analyze_entry_with_interfaces(search_paths: SourceSearchPaths*, entry_module: string,
+                                          interfaces: VectorBase*?, cfg: LogConfig*) -> DriverState* {
+    with (let interface_roots = sv_create(0) => sv_free(interface_roots)) {
+        return dr_analyze_entry_core(search_paths, entry_module, interface_roots,
+            MRP_ALLOW_SOURCE_FALLBACK, null, interfaces, cfg);
+    }
+}

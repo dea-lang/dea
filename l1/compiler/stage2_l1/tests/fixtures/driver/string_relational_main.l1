@@ -1,0 +1,28 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module string_relational_main;
+
+import std.string;
+
+func main() -> int {
+    let short_value = "dea";
+    let same_value = "dea";
+    let longer_value = "dea!";
+    let empty_value = "";
+    let built_same = "de" + "a";
+    let built_higher = "de" + "b";
+    if (short_value < longer_value &&
+        short_value <= same_value &&
+        longer_value > short_value &&
+        longer_value >= same_value &&
+        empty_value < short_value &&
+        built_same <= short_value &&
+        built_same >= short_value &&
+        built_higher > built_same) {
+        return 23;
+    }
+    return 0;
+}

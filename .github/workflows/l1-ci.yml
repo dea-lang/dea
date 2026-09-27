@@ -111,7 +111,7 @@ jobs:
 
   bootstrap:
     needs: select-matrix
-    name: bootstrap (${{ matrix.runner }}, ${{ matrix.os }}, ${{ matrix.arch }}, ${{ (matrix.os == 'linux' || matrix.os == 'windows') && inputs.c_compiler || matrix.c_compiler }}, ${{ matrix.platform }})
+    name: self-hosting (${{ matrix.runner }}, ${{ matrix.os }}, ${{ matrix.arch }}, ${{ (matrix.os == 'linux' || matrix.os == 'windows') && inputs.c_compiler || matrix.c_compiler }}, ${{ matrix.platform }})
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.select-matrix.outputs.matrix) }}

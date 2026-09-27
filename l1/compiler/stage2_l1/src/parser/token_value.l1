@@ -1,0 +1,290 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module parser.token_value;
+
+import std.string;
+import util.numbers;
+import tokens;
+
+/* ---------------------------------
+   Token utilities
+   --------------------------------- */
+
+/**
+ * Check whether a token has the given kind ordinal.
+ *
+ * @param tok Token to inspect.
+ * @param kind_ord Token kind ordinal to compare against.
+ * @return `true` if `tok` has the requested kind.
+ */
+func tok_is(tok: Token, kind_ord: int) -> bool {
+    return ord(tok.token_type) == kind_ord;
+}
+
+/**
+ * Check whether a token is an identifier.
+ *
+ * @param tok Token to inspect.
+ * @return `true` if `tok` is a `TT_IDENT`.
+ */
+func tok_is_ident(tok: Token) -> bool {
+    match (tok.token_type) {
+        TT_IDENT(t) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Check whether a token is an integer literal.
+ *
+ * @param tok Token to inspect.
+ * @return `true` if `tok` is a `TT_INT`.
+ */
+func tok_is_int(tok: Token) -> bool {
+    match (tok.token_type) {
+        TT_INT(t, v) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Check whether a token is a bigint literal.
+ *
+ * @param tok Token to inspect.
+ * @return `true` if `tok` is a `TT_BIGINT`.
+ */
+func tok_is_bigint(tok: Token) -> bool {
+    match (tok.token_type) {
+        TT_BIGINT(t, b) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Check whether a token is a real literal.
+ *
+ * @param tok Token to inspect.
+ * @return `true` if `tok` is a `TT_REALNUM`.
+ */
+func tok_is_real(tok: Token) -> bool {
+    match (tok.token_type) {
+        TT_REALNUM(sig, exp_text, is_float) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Check whether a token is a byte literal.
+ *
+ * @param tok Token to inspect.
+ * @return `true` if `tok` is a `TT_BYTE`.
+ */
+func tok_is_byte(tok: Token) -> bool {
+    match (tok.token_type) {
+        TT_BYTE(t, v) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Check whether a token is a string literal.
+ *
+ * @param tok Token to inspect.
+ * @return `true` if `tok` is a `TT_STRING`.
+ */
+func tok_is_string(tok: Token) -> bool {
+    match (tok.token_type) {
+        TT_STRING(t, v) => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Check whether a token is reserved for a future language extension.
+ *
+ * @param tok Token to inspect.
+ * @return `true` if `tok` is `TT_FUTURE_EXTENSION`.
+ */
+func tok_is_future_extension(tok: Token) -> bool {
+    return ord(tok.token_type) == ord(TT_FUTURE_EXTENSION);
+}
+
+/**
+ * Extract identifier text from a token.
+ *
+ * @param tok Token to inspect.
+ * @return Identifier spelling, or `null` if `tok` is not `TT_IDENT`.
+ */
+func token_ident_text(tok: Token) -> string? {
+    match (tok.token_type) {
+        TT_IDENT(t) => { return t; }
+        _ => { return null; }
+    }
+}
+
+/**
+ * Extract integer literal text from a token.
+ *
+ * @param tok Token to inspect.
+ * @return Integer literal spelling, or `null` if `tok` is not `TT_INT`.
+ */
+func token_int_text(tok: Token) -> string? {
+    match (tok.token_type) {
+        TT_INT(t, v) => { return t; }
+        _ => { return null; }
+    }
+}
+
+/**
+ * Extract the parsed integer value from a token.
+ *
+ * @param tok Token to inspect.
+ * @return Parsed integer value, or `null` if `tok` is not `TT_INT`.
+ */
+func token_int_value(tok: Token) -> int? {
+    match (tok.token_type) {
+        TT_INT(t, v) => { return v; }
+        _ => { return null; }
+    }
+}
+
+/**
+ * Extract bigint literal text from a token.
+ *
+ * @param tok Token to inspect.
+ * @return Bigint literal payload text, or `null` if `tok` is not `TT_BIGINT`.
+ */
+func token_bigint_text(tok: Token) -> string? {
+    match (tok.token_type) {
+        TT_BIGINT(t, b) => { return t; }
+        _ => { return null; }
+    }
+}
+
+/**
+ * Extract canonical real literal text from a token.
+ *
+ * @param tok Token to inspect.
+ * @return Canonical real literal spelling, or `null` if `tok` is not `TT_REALNUM`.
+ */
+func token_real_text(tok: Token) -> string? {
+    match (tok.token_type) {
+        TT_REALNUM(sig, exp_text, is_float) => { return realnum_to_string(sig, exp_text, is_float); }
+        _ => { return null; }
+    }
+}
+
+/**
+ * Extract the parsed bigint base from a token.
+ *
+ * @param tok Token to inspect.
+ * @return Parsed base, or `null` if `tok` is not `TT_BIGINT`.
+ */
+func token_bigint_base(tok: Token) -> int? {
+    match (tok.token_type) {
+        TT_BIGINT(t, b) => { return b; }
+        _ => { return null; }
+    }
+}
+
+/**
+ * Report whether a real literal token uses the `float` suffix.
+ *
+ * @param tok Token to inspect.
+ * @return `true` for `float` literals, `false` for `double` literals, or `false` when `tok` is not `TT_REALNUM`.
+ */
+func token_real_is_float(tok: Token) -> bool {
+    match (tok.token_type) {
+        TT_REALNUM(sig, exp_text, is_float) => { return is_float; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Extract byte literal text from a token.
+ *
+ * @param tok Token to inspect.
+ * @return Byte literal spelling, or `null` if `tok` is not `TT_BYTE`.
+ */
+func token_byte_text(tok: Token) -> string? {
+    match (tok.token_type) {
+        TT_BYTE(t, v) => { return t; }
+        _ => { return null; }
+    }
+}
+
+/**
+ * Extract byte literal numeric value from a token.
+ *
+ * @param tok Token to inspect.
+ * @return Byte literal value, or `null` if `tok` is not `TT_BYTE`.
+ */
+func token_byte_value(tok: Token) -> byte? {
+    match (tok.token_type) {
+        TT_BYTE(t, v) => { return v; }
+        _ => { return null; }
+    }
+}
+
+/**
+ * Extract string literal text from a token.
+ *
+ * @param tok Token to inspect.
+ * @return String literal spelling, or `null` if `tok` is not `TT_STRING`.
+ */
+func token_string_text(tok: Token) -> string? {
+    match (tok.token_type) {
+        TT_STRING(t, v) => { return t; }
+        _ => { return null; }
+    }
+}
+
+/**
+ * Extract decoded string-literal bytes from a token.
+ *
+ * @param tok Token to inspect.
+ * @return Decoded string bytes, or `null` if `tok` is not `TT_STRING`.
+ */
+func token_string_value(tok: Token) -> string? {
+    match (tok.token_type) {
+        TT_STRING(t, v) => { return v; }
+        _ => { return null; }
+    }
+}
+
+/**
+ * Return the source-like text used to measure a token's display width.
+ *
+ * @param tok Token to inspect.
+ * @return Source spelling or token label used for width calculations.
+ */
+func token_text_for_width(tok: Token) -> string {
+    match (tok.token_type) {
+        TT_IDENT(t) => { return t; }
+        TT_INT(t, v) => { return t; }
+        TT_BIGINT(t, b) => { return bigint_to_string(t, b); }
+        TT_REALNUM(s, e, ff) => { return realnum_to_string(s, e, ff); }
+        TT_BYTE(t, v) => { return t; }
+        TT_STRING(t, v) => { return t; }
+        TT_EOF => { return ""; }
+        _ => { return token_to_string(tok); }
+    }
+}
+
+/**
+ * Compute the display width of a token for diagnostics.
+ *
+ * @param tok Token to measure.
+ * @return Width of the token text in bytes.
+ */
+func token_width(tok: Token) -> int {
+    match (tok.token_type) {
+        TT_BYTE(t, v) => { return len_s(t) + 2; }
+        TT_STRING(t, v) => { return len_s(t) + 2; }
+        _ => {}
+    }
+    return len_s(token_text_for_width(tok));
+}

@@ -1,0 +1,162 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+module linear_map_base_test;
+
+import sys.hash;
+import std.io;
+
+import std.linear_map;
+import std.vector;
+
+/**
+ * Helper function to print a labeled boolean value.
+ *
+ * @param label The label to print.
+ * @param val The value to process.
+ */
+func print_bool(label: string, val: bool) {
+    if (val) {
+        printl_ss(label, "true");
+    } else {
+        printl_ss(label, "false");
+    }
+}
+
+/**
+ * Tests test_linear_map_base_ints.
+ */
+func test_linear_map_base_ints() {
+    printl_s("=== LinearMapBase (int -> int) Test ===");
+
+    let map = lm_create(sizeof(int), sizeof(int), 2);
+    printl_si("Length:", lm_len(map));
+
+    let key1 = new int;
+    let key2 = new int;
+    let key3 = new int;
+    *key1 = 1;
+    *key2 = 2;
+    *key3 = 3;
+
+    let value1 = new int;
+    let value2 = new int;
+    let value3 = new int;
+    *value1 = 10;
+    *value2 = 20;
+    *value3 = 30;
+
+    printl_s("\nAdding entries...");
+    lm_set(map, key1 as void*, value1 as void*);
+    lm_set(map, key2 as void*, value2 as void*);
+    printl_si("Length:", lm_len(map));
+
+    printl_s("\nTesting get...");
+    let got1 = lm_get(map, key1 as void*);
+    if (got1 != null) {
+        printl_si("  key1 =>", *(got1 as int*));
+    } else {
+        printl_s("  key1 => NOT FOUND");
+    }
+
+    let got2 = lm_get(map, key2 as void*);
+    if (got2 != null) {
+        printl_si("  key2 =>", *(got2 as int*));
+    } else {
+        printl_s("  key2 => NOT FOUND");
+    }
+
+    let got_missing = lm_get(map, key3 as void*);
+    if (got_missing != null) {
+        printl_s("  key3 => UNEXPECTED VALUE");
+    } else {
+        printl_s("  key3 => null (expected)");
+    }
+
+    printl_s("\nTesting contains...");
+    print_bool("  contains key1: ", lm_contains_key(map, key1 as void*));
+    print_bool("  contains key3: ", lm_contains_key(map, key3 as void*));
+    print_bool("  contains value1: ", lm_contains_value(map, value1 as void*));
+    print_bool("  contains value3: ", lm_contains_value(map, value3 as void*));
+
+    printl_s("\nUpdating key1...");
+    lm_set(map, key1 as void*, value3 as void*);
+    let updated = lm_get(map, key1 as void*);
+    if (updated != null) {
+        printl_si("  key1 =>", *(updated as int*));
+    }
+    printl_si("Length (should still be 2):", lm_len(map));
+    print_bool("  contains value1: ", lm_contains_value(map, value1 as void*));
+    print_bool("  contains value3: ", lm_contains_value(map, value3 as void*));
+
+    printl_s("\nTesting remove...");
+    let removed = lm_remove(map, key2 as void*);
+    print_bool("  removed key2: ", removed);
+    printl_si("Length:", lm_len(map));
+    print_bool("  contains key2: ", lm_contains_key(map, key2 as void*));
+
+    let removed_missing = lm_remove(map, key2 as void*);
+    print_bool("  removed key2 again: ", removed_missing);
+
+    lm_free(map);
+    drop key1;
+    drop key2;
+    drop key3;
+    drop value1;
+    drop value2;
+    drop value3;
+
+    printl_s("LinearMapBase int test passed!\n");
+}
+
+/**
+ * Tests test_linear_map_base_hash_guard.
+ */
+func test_linear_map_base_hash_guard() {
+    printl_s("=== LinearMapBase hash/memcmp guard Test ===");
+
+    let map = lm_create(sizeof(int), sizeof(int), 2);
+
+    let key_a = new int;
+    let key_b = new int;
+    let value_a = new int;
+    *key_a = 100;
+    *key_b = 200;
+    *value_a = 900;
+
+    lm_set(map, key_a as void*, value_a as void*);
+    printl_si("Length:", lm_len(map));
+
+    let entry_ptr = vec_get(map.entries, 0) as LinearMapEntryBase*;
+    let hash_b = rt_hash_data(key_b as void*, sizeof(int));
+    entry_ptr.hash_key = hash_b;
+
+    let removed = lm_remove(map, key_b as void*);
+    print_bool("  removed with hash match but memcmp mismatch: ", removed);
+    printl_si("Length (should still be 1):", lm_len(map));
+
+    lm_free(map);
+    drop key_a;
+    drop key_b;
+    drop value_a;
+
+    printl_s("Hash guard test passed!\n");
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    printl_s("======================================");
+    printl_s("     LinearMapBase Test Suite");
+    printl_s("======================================\n");
+
+    test_linear_map_base_ints();
+    test_linear_map_base_hash_guard();
+
+    printl_s("======================================");
+    printl_s("  All LinearMapBase tests passed!");
+    printl_s("======================================");
+}

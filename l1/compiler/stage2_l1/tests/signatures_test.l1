@@ -1,0 +1,197 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module signatures_test;
+
+import std.io;
+import std.assert;
+import std.vector;
+
+import analysis;
+import sem_context;
+import ast;
+import signatures.tables;
+import source_paths;
+import types;
+import util.log;
+
+/**
+ * Returns the root directory for test fixtures.
+ *
+ * @return The semantics fixture directory used by these tests.
+ */
+func fixture_root() -> string {
+    return "compiler/stage2_l1/tests/fixtures/semantics";
+}
+
+/**
+ * Creates and configures source search paths for testing.
+ *
+ * @return Source search paths rooted at the semantics fixtures directory.
+ */
+func make_paths() -> SourceSearchPaths* {
+    let sp = sp_create();
+    sp_add_project_root(sp, fixture_root());
+    return sp;
+}
+
+/**
+ * Checks if a specific diagnostic code is present in the results.
+ *
+ * @param result The analysis result to inspect.
+ * @param code The diagnostic code to look for.
+ * @return `true` if the diagnostic code is present, otherwise `false`.
+ */
+func has_analysis_diag_code(result: AnalysisResult*, code: string) -> bool {
+    for (let i = 0; i < analysis_diag_count(result); i = i + 1) {
+        let d = analysis_diag_get(result, i);
+        if (d.code == code) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Tests test_signature_tables_ok.
+ */
+func test_signature_tables_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "ok_main", cfg);
+        assert(!analysis_has_errors(result), "expected no semantic errors");
+
+        let sigs = analysis_signature_tables(result);
+        assert(sigs != null, "expected signature tables");
+        let tables = sigs as SignatureTables*;
+
+        let point = sig_lookup_struct_info(tables, "shared_types", "Point");
+        assert(point != null, "expected Point struct info");
+        let point_info = point as StructInfo*;
+        assert(vec_size(point_info.fields) == 2, "Point should have 2 fields");
+        let x_field = ptr_vec_get(point_info.fields, 0) as StructFieldInfo*;
+        assert(type_format(x_field.field_type) == "int", "Point.x should resolve to int");
+
+        let opt = sig_lookup_enum_info(tables, "shared_types", "OptionInt");
+        assert(opt != null, "expected OptionInt enum info");
+        let opt_info = opt as EnumInfo*;
+        assert(vec_size(opt_info.variants) == 2, "OptionInt should have 2 variants");
+
+        let func_ty = sig_lookup_func_type(tables, "ok_main", "scope_demo");
+        assert(func_ty != null, "expected scope_demo function type");
+        assert(type_format(func_ty as Type*) == "func(bool) -> int", "unexpected function type");
+
+        let point_let = sig_lookup_let_type(tables, "shared_types", "default_point");
+        assert(point_let != null, "expected inferred Point let type");
+        assert(type_format(point_let as Type*) == "shared_types::Point", "default_point type mismatch");
+
+        let count_let = sig_lookup_let_type(tables, "shared_types", "default_count");
+        assert(count_let != null, "expected annotated let type");
+        assert(type_format(count_let as Type*) == "int", "default_count should resolve alias to int");
+
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests test_alias_cycle_reports_error.
+ */
+func test_alias_cycle_reports_error() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "alias_cycle_main", cfg);
+        assert(analysis_has_errors(result), "expected alias cycle diagnostics");
+        assert(has_analysis_diag_code(result, "SIG-0020"), "expected SIG-0020 alias cycle diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests that unsafe function signatures are preserved semantically.
+ */
+func test_unsafe_function_signatures_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "unsafe_signature_main", cfg);
+        assert(!analysis_has_errors(result), "expected no semantic errors for unsafe signatures");
+
+        let sigs = analysis_signature_tables(result);
+        assert(sigs != null, "expected signature tables");
+        let tables = sigs as SignatureTables*;
+
+        let wrap_ty = sig_lookup_func_type(tables, "unsafe_signature_main", "wrap");
+        assert(wrap_ty != null, "expected wrap function type");
+        assert(type_format(wrap_ty as Type*) == "func(unsafe func(int) -> int) -> unsafe func(int) -> int",
+            "unexpected unsafe function signature");
+
+        let apply_ty = sig_lookup_func_type(tables, "unsafe_signature_main", "apply");
+        assert(apply_ty != null, "expected apply function type");
+        assert(type_format(apply_ty as Type*) == "unsafe func(unsafe func(int) -> int, int) -> int",
+            "unexpected unsafe top-level function signature");
+
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests test_value_cycle_reports_error.
+ */
+func test_value_cycle_reports_error() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "value_cycle_main", cfg);
+        assert(analysis_has_errors(result), "expected value-cycle diagnostics");
+        assert(has_analysis_diag_code(result, "SIG-0040"), "expected SIG-0040 value-cycle diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests test_infer_fail_reports_error.
+ */
+func test_infer_fail_reports_error() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "infer_fail_main", cfg);
+        assert(analysis_has_errors(result), "expected let inference diagnostics");
+        assert(has_analysis_diag_code(result, "SIG-0030"), "expected SIG-0030 inference diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests shape checks remain bound to each declaration when duplicate names
+ * overwrite the corresponding signature-table key.
+ */
+func test_duplicate_declarations_keep_exact_shape_checks() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "duplicate_shape_main", cfg);
+        assert(analysis_has_errors(result), "expected duplicate declaration and slice-shape diagnostics");
+        assert(has_analysis_diag_code(result, "RES-0010"), "expected duplicate top-level diagnostic");
+        assert(has_analysis_diag_code(result, "TYP-0811"),
+            "expected the first duplicate struct's retained slice-field diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    test_signature_tables_ok();
+    test_unsafe_function_signatures_ok();
+    test_alias_cycle_reports_error();
+    test_value_cycle_reports_error();
+    test_infer_fail_reports_error();
+    test_duplicate_declarations_keep_exact_shape_checks();
+    printl_s("signatures_test: all tests passed");
+}

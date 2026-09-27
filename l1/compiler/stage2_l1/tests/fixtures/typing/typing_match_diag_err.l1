@@ -1,0 +1,41 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_match_diag_err;
+
+enum Packet {
+    Data(value: int);
+    Empty;
+}
+
+/**
+ * Triggers `match` scrutinee and arm diagnostics.
+ */
+func err_match_non_enum(x: int) -> int {
+    match (x) {
+        Foo => { return 1; } // TYP-0100
+        _ => { return 0; }
+    }
+}
+
+/**
+ * Triggers TYP-0102 for an unknown variant.
+ */
+func err_match_unknown_variant(x: Packet) -> int {
+    match (x) {
+        Missing => { return 1; } // TYP-0102
+        _ => { return 0; }
+    }
+}
+
+/**
+ * Triggers TYP-0101 for a payload arity mismatch.
+ */
+func err_match_pattern_arity(x: Packet) -> int {
+    match (x) {
+        Data(a, b) => { return 1; } // TYP-0101
+        _ => { return 0; }
+    }
+}

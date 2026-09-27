@@ -1,0 +1,174 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module diag_print_test;
+
+import std.io;
+import std.assert;
+import std.string;
+import util.diag;
+
+import diag_print;
+
+/**
+ * Returns the path to a fixture file.
+ *
+ * @return The source file used for located diagnostic printing tests.
+ */
+func fixture_file() -> string {
+    return "compiler/stage2_l1/tests/fixtures/driver/ok_main.l1";
+}
+
+/**
+ * Tests test_format_header_full_location.
+ */
+func test_format_header_full_location() {
+    with (let dc = diag_create() => diag_free(dc)) {
+        diag_error(dc, "Parser", "PAR-0010", "message", "path", 10, 5, 0, 0);
+        let header = dp_format_header(diag_get(dc, 0));
+        assert(header == "path:10:5: error: [PAR-0010] message",
+            "full location header mismatch");
+    }
+}
+
+/**
+ * Tests test_format_header_no_file.
+ */
+func test_format_header_no_file() {
+    with (let dc = diag_create() => diag_free(dc)) {
+        diag_error(dc, "Parser", "PAR-0010", "message", "", 0, 0, 0, 0);
+        let header = dp_format_header(diag_get(dc, 0));
+        assert(header == "error: [PAR-0010] message",
+            "no-file header mismatch");
+    }
+}
+
+/**
+ * Tests test_format_header_no_column.
+ */
+func test_format_header_no_column() {
+    with (let dc = diag_create() => diag_free(dc)) {
+        diag_error(dc, "Parser", "PAR-0010", "message", "path", 10, 0, 0, 0);
+        let header = dp_format_header(diag_get(dc, 0));
+        assert(header == "path:10: error: [PAR-0010] message",
+            "no-column header mismatch");
+    }
+}
+
+/**
+ * Tests test_format_header_no_code.
+ */
+func test_format_header_no_code() {
+    with (let dc = diag_create() => diag_free(dc)) {
+        diag_error(dc, "", "", "message", "path", 10, 5, 0, 0);
+        let header = dp_format_header(diag_get(dc, 0));
+        assert(header == "path:10:5: error: message",
+            "no-code header mismatch");
+    }
+}
+
+/**
+ * Tests test_prints_snippet_for_located_diag.
+ */
+func test_prints_snippet_for_located_diag() {
+    with (let diags = diag_create() => diag_free(diags)) {
+        diag_error(diags, "diag_print_test", "DPT-0001", "synthetic located diagnostic", fixture_file(), 1, 1, 1, 6);
+        assert(diag_count(diags) == 1, "expected one diagnostic");
+        dp_print_collector(diags);
+    }
+}
+
+/**
+ * Tests that tab normalization replaces each horizontal tab with a single space.
+ */
+func test_normalize_line_tabs() {
+    assert(dp_normalize_line_for_display("\tlet x = 1;") == " let x = 1;",
+        "single leading tab should become one space");
+    assert(dp_normalize_line_for_display("\t\tlet y = 2;") == "  let y = 2;",
+        "two leading tabs should become two spaces");
+    assert(dp_normalize_line_for_display("a\tb\tc") == "a b c",
+        "tabs inside line should each become one space");
+    assert(dp_normalize_line_for_display("no tabs here") == "no tabs here",
+        "non-tab lines should be unchanged");
+}
+
+/**
+ * Tests that with a tab before the highlighted token the caret aligns under
+ * the token in the displayed (tab-normalized) source line.
+ */
+func test_format_snippet_tab_before_token() {
+    with (let dc = diag_create() => diag_free(dc)) {
+        // Source: "\tlet x = 1;" — logical columns: tab=1, 'l'=2, 'e'=3, 't'=4, ' '=5, 'x'=6.
+        let src = "\tlet x = 1;\n";
+        diag_error(dc, "Test", "DPT-0100", "x here", "<mem>", 1, 6, 1, 7);
+        let out = dp_format_snippet(diag_get(dc, 0), src);
+        // Gutter width 5: "    1 |  let x = 1;\n            ^"
+        //   displayed line: "    1 |  let x = 1;" (tab → space)
+        //   caret prefix:   gutter (5) + " | " (3) + start_col-1 (5) = 13 spaces + "^"
+        let expected = "    1 |  let x = 1;\n" + "             ^";
+        assert(out == expected, "caret should line up under 'x' on tab-indented line");
+    }
+}
+
+/**
+ * Tests that a multi-column highlight covering a tab inside the span underlines
+ * the correct normalized-column range.
+ */
+func test_format_snippet_tab_inside_span() {
+    with (let dc = diag_create() => diag_free(dc)) {
+        // Source: "let\ty = 2;" — logical columns: l=1,e=2,t=3,tab=4,'y'=5,' '=6,'='=7,' '=8,'2'=9,';'=10.
+        let src = "let\ty = 2;\n";
+        // Highlight cols 1..5 ("let\ty"): start=1, end_exclusive=6.
+        diag_error(dc, "Test", "DPT-0101", "span covers tab", "<mem>", 1, 1, 1, 6);
+        let out = dp_format_snippet(diag_get(dc, 0), src);
+        let expected = "    1 | let y = 2;\n" + "        ^^^^^";
+        assert(out == expected, "caret span should cover 5 normalized columns");
+    }
+}
+
+/**
+ * Tests that mixed leading tabs and spaces still produce a correctly positioned caret.
+ */
+func test_format_snippet_mixed_tabs_spaces() {
+    with (let dc = diag_create() => diag_free(dc)) {
+        // Source: "\t let y =\tx + 2;" — logical columns: tab=1,' '=2,'l'=3,'e'=4,'t'=5,' '=6,'y'=7,...
+        // '=' at 9, tab at 10, 'x' at 11.
+        let src = "\t let y =\tx + 2;\n";
+        diag_error(dc, "Test", "DPT-0102", "x with mixed prefix", "<mem>", 1, 11, 1, 12);
+        let out = dp_format_snippet(diag_get(dc, 0), src);
+        let expected = "    1 |   let y = x + 2;\n" + "                  ^";
+        assert(out == expected, "caret should line up under 'x' with mixed tabs/spaces");
+    }
+}
+
+/**
+ * Tests that non-tab source produces the legacy single-space-aligned snippet.
+ */
+func test_format_snippet_no_tab_unchanged() {
+    with (let dc = diag_create() => diag_free(dc)) {
+        let src = "let x = 1;\n";
+        diag_error(dc, "Test", "DPT-0103", "x here", "<mem>", 1, 5, 1, 6);
+        let out = dp_format_snippet(diag_get(dc, 0), src);
+        let expected = "    1 | let x = 1;\n" + "            ^";
+        assert(out == expected, "non-tab snippet should match legacy layout");
+    }
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    test_format_header_full_location();
+    test_format_header_no_file();
+    test_format_header_no_column();
+    test_format_header_no_code();
+    test_prints_snippet_for_located_diag();
+    test_normalize_line_tabs();
+    test_format_snippet_tab_before_token();
+    test_format_snippet_tab_inside_span();
+    test_format_snippet_mixed_tabs_spaces();
+    test_format_snippet_no_tab_unchanged();
+    printl_s("diag_print_test: all tests passed");
+}

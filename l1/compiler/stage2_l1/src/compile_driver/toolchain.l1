@@ -1,0 +1,198 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module compile_driver.toolchain;
+
+import std.path;
+import std.text;
+import std.vector;
+import util.diag;
+import build_driver;
+import compiler_filesystem;
+import compile_driver.transaction;
+
+/** Return whether one compiler spelling is the generic `cc` driver name. */
+func cd_is_generic_cc_name(compiler: string) -> bool {
+    let base = to_lower_s(basename(compiler));
+    return base == "cc" || base == "cc.exe";
+}
+
+/** Return whether a Darwin compiler is one of Apple's Clang hard links. */
+func cd_is_darwin_system_clang_alias(
+    compiler_command: string,
+    configured_family: string,
+    canonical_family: string,
+    configured_compiler: string,
+    canonical_compiler: string
+) -> bool {
+    if (!cfs_host_is_darwin()) {
+        return false;
+    }
+    let recognizable =
+        configured_family != "unknown" ||
+        canonical_family != "unknown" ||
+        cd_is_generic_cc_name(configured_compiler) ||
+        cd_is_generic_cc_name(canonical_compiler);
+    if (!recognizable) {
+        return false;
+    }
+    return cfs_same_file(compiler_command, "/usr/bin/clang") == 1;
+}
+
+/**
+ * Classify debug-path behavior without changing compiler invocation spelling.
+ */
+func cd_debug_compiler_family(
+    configured_compiler: string,
+    compiler_command: string
+) -> string {
+    let configured_family = bd_compiler_debug_family(configured_compiler);
+    let canonical_opt = cfs_canonical_existing_path(compiler_command);
+    if (canonical_opt == null) {
+        return configured_family;
+    }
+    let canonical = canonical_opt as string;
+    canonical_opt = null;
+    let canonical_family = bd_compiler_debug_family(canonical);
+
+    /* A recognized symlink target is stronger evidence than alias spelling. */
+    if (canonical_family == "clang") {
+        return canonical_family;
+    }
+    /* macOS ships `cc`, `gcc`, and `clang` as hard links to one Clang image. */
+    if (cd_is_darwin_system_clang_alias(
+            compiler_command,
+            configured_family,
+            canonical_family,
+            configured_compiler,
+            canonical)) {
+        return "clang";
+    }
+    if (canonical_family != "unknown") {
+        return canonical_family;
+    }
+    return configured_family;
+}
+
+/** Add compile-only host-compiler words without any link inputs or flags. */
+func cd_push_object_compile_words(
+    words: StringVector*,
+    compiler: string,
+    family: string,
+    debug_family: string,
+    extra_opts: StringVector*,
+    optimize: string?,
+    runtime_include: string?,
+    debug_working_directory: string,
+    c_path: string,
+    object_path: string
+) {
+    sv_push(words, compiler);
+    for (let i = 0; i < sv_size(extra_opts); i = i + 1) {
+        sv_push(words, sv_get(extra_opts, i));
+    }
+    bd_push_standard_flags(words, family);
+    if (optimize != null) {
+        sv_push(words, optimize as string);
+    }
+    if (runtime_include != null) {
+        sv_push(words, "-I");
+        sv_push(words, runtime_include as string);
+    }
+    if (debug_working_directory != "" &&
+        bd_has_debug_flag(extra_opts)) {
+        if (debug_family == "clang") {
+            sv_push(words, "-fdebug-compilation-dir=.");
+        } else if (debug_family == "gcc") {
+            sv_push(words, "-fdebug-prefix-map=" +
+                debug_working_directory + "=.");
+            /*
+             * Darwin GCC delegates assembly to Apple's assembler, which
+             * otherwise expands relative `.file` entries against the private
+             * transaction cwd after GCC has applied its prefix mapping.
+             */
+            if (cfs_host_is_darwin()) {
+                sv_push(words, "-Wa,-fdebug-compilation-dir=.");
+            }
+        }
+    }
+
+    if (family == "msvc") {
+        sv_push(words, "/c");
+        sv_push(words, c_path);
+        sv_push(words, "/Fo:" + object_path);
+        return;
+    }
+    sv_push(words, "-c");
+    sv_push(words, c_path);
+    sv_push(words, "-o");
+    sv_push(words, object_path);
+}
+
+/** Return a compiler executable that remains addressable after changing cwd. */
+func cd_compiler_for_transaction(compiler: string) -> string? {
+    if (is_absolute(compiler)) {
+        return compiler;
+    }
+    if (!has_parent(compiler)) {
+        return cfs_resolve_executable(compiler);
+    }
+    let absolute = cfs_absolute_path(compiler);
+    if (absolute == null) {
+        return compiler;
+    }
+    return absolute as string;
+}
+
+/** Return a path that preserves its original-cwd meaning after changing cwd. */
+func cd_path_for_transaction(path: string) -> string {
+    if (is_absolute(path)) {
+        return path;
+    }
+    let absolute = cfs_absolute_path(path);
+    if (absolute == null) {
+        return path;
+    }
+    return absolute as string;
+}
+
+/** Build the shell command that runs the compiler inside its transaction. */
+func cd_compile_shell_command(
+    txn: CompileTransaction*,
+    command_words: StringVector*
+) -> string {
+    let change_dir = "cd ";
+    if (bd_is_windows()) {
+        change_dir = "cd /d ";
+    }
+    return change_dir + bd_shell_quote(txn.root) + " && " +
+        bd_join_shell_words(command_words) + " > " +
+        bd_shell_quote(basename(txn.compiler_stdout)) + " 2> " +
+        bd_shell_quote(basename(txn.compiler_stderr));
+}
+
+/** Validate every exact value used by one Windows compile shell command. */
+func cd_validate_windows_compile_values(
+    txn: CompileTransaction*,
+    command_words: StringVector*,
+    diags: DiagCollector*
+) -> bool {
+    with (let values = sv_create(sv_size(command_words) + 3) =>
+              sv_free(values)) {
+        sv_push(values, txn.root);
+        for (let i = 0; i < sv_size(command_words); i = i + 1) {
+            sv_push(values, sv_get(command_words, i));
+        }
+        sv_push(values, basename(txn.compiler_stdout));
+        sv_push(values, basename(txn.compiler_stderr));
+        return bd_validate_windows_shell_words(
+            values,
+            "L1C-2106",
+            "C compilation does not support '%', '!', double quotes, " +
+                "or line breaks in Windows host-command values",
+            diags
+        );
+    }
+}

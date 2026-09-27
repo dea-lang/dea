@@ -1,0 +1,37 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_try_ok;
+
+/**
+ * Returns the incremented input after nullable propagation.
+ *
+ * @param x Nullable source value.
+ * @return Incremented value, or null when `x` is null.
+ */
+func add_one(x: int?) -> int? {
+    let y: int = x?;
+    return y + 1;
+}
+
+/**
+ * Forwards an unwrapped value through a normal function call.
+ *
+ * @param x Nullable source value.
+ * @return The unwrapped value, or null when `x` is null.
+ */
+func forward_unwrapped(x: int?) -> int? {
+    return take_int((x?));
+}
+
+/**
+ * Identity helper used by the try-typing regression.
+ *
+ * @param value Non-nullable input value.
+ * @return The same input value.
+ */
+func take_int(value: int) -> int {
+    return value;
+}

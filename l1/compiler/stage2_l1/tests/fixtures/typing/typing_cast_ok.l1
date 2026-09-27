@@ -1,0 +1,18 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_cast_ok;
+
+func cast_int_to_byte_ok() -> byte {
+    return 10 as byte;
+}
+
+func cast_pointer_to_void(p: int*) -> void* {
+    return p as void*;
+}
+
+func cast_nullable_to_non_nullable(x: int?) -> int {
+    return x as int;
+}

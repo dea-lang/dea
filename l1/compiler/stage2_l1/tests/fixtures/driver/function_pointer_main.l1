@@ -1,0 +1,29 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module function_pointer_main;
+
+type BinaryOp = func(int, int) -> int;
+
+func add(a: int, b: int) -> int {
+    return a + b;
+}
+
+func sub(a: int, b: int) -> int {
+    return a - b;
+}
+
+func apply(op: BinaryOp, left: int, right: int) -> int {
+    return op(left, right);
+}
+
+func main() -> int {
+    let op: BinaryOp = add;
+    let other: BinaryOp = sub;
+    if (op == other) {
+        return 1;
+    }
+    return apply(op, 40, 2);
+}

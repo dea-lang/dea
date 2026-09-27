@@ -1,0 +1,2790 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module backend_test;
+
+import std.assert;
+import std.hashmap;
+import std.hashset;
+import std.io;
+import std.string;
+import std.text;
+import std.vector;
+import util.diag;
+
+import ast;
+import backend;
+import backend.lifetime;
+import backend.state;
+import cli_args.model;
+import codegen_options;
+import driver.state;
+import expr_types;
+import interface_fingerprint;
+import locals;
+import mi_utils;
+import module_interface;
+import module_graph;
+import name_resolver;
+import name_resolver.query;
+import name_resolver.state;
+import parser;
+import parser.interface;
+import scope_context;
+import sem_context;
+import signatures;
+import signatures.tables;
+import types;
+import util.log;
+
+/**
+ * Create an empty driver state for isolated semantic helper tests.
+ *
+ * @return New empty driver state.
+ */
+func bt_empty_driver_state() -> DriverState* {
+    return dr_state_create("", null);
+}
+
+/**
+ * Create an empty analysis result for isolated helper tests.
+ *
+ * @return New empty analysis result.
+ */
+func bt_empty_analysis_result() -> AnalysisResult* {
+    return new AnalysisResult(bt_empty_driver_state(), diag_create(), null, null, null, spm_create(), sim_create(), spm_create());
+}
+
+/**
+ * Parse and add one source module to a driver state.
+ *
+ * @param state Driver state to update.
+ * @param source Module source text.
+ * @param filename Source filename for diagnostics.
+ */
+func bt_push_source_unit(state: DriverState*, source: string, filename: string) {
+    let pr = parse_module_source(source, filename);
+    if (pr.root_module == null) {
+        dr_register_unit(state, new DriverUnit("", filename, pr));
+        return;
+    }
+
+    let mod = pr.root_module as Module*;
+    sv_push(state.source_names, filename);
+    sv_push(state.source_texts, source);
+    dr_register_unit(state, new DriverUnit(mod.name, filename, pr));
+
+    let node = mg_node_from_source(mod.name, filename, null);
+    for (let i = 0; i < vec_size(mod.imports); i = i + 1) {
+        mg_node_add_direct_import(node, (ptr_vec_get(mod.imports, i) as Import*).name);
+    }
+    mg_node_set_state(node, MNS_RESOLVED);
+    if (!mg_add_node(driver_graph(state), node)) {
+        mg_node_free(node);
+        assert(false, "backend fixture source graph node should be unique");
+    }
+}
+
+/**
+ * Build a full semantic analysis result from in-memory module sources.
+ *
+ * @param entry_module Entry-module name.
+ * @param filenames Source filenames aligned with `sources`.
+ * @param sources Module source texts aligned with `filenames`.
+ * @return Fully analyzed result.
+ */
+func bt_analyze_sources(entry_module: string, filenames: StringVector*, sources: StringVector*) -> AnalysisResult* {
+    let state = dr_state_create(entry_module, null);
+
+    for (let i = 0; i < sv_size(sources); i = i + 1) {
+        bt_push_source_unit(state, sv_get(sources, i), sv_get(filenames, i));
+    }
+
+    let result = new AnalysisResult(state, diag_create(), null, null, null, spm_create(), sim_create(), spm_create());
+    result.names = nr_resolve(state, result.diags);
+    result.signatures = sig_resolve(state, result.names as NameResolution*, result.diags);
+    result.locals_result = locals_resolve(state, result.diags);
+    expr_types_check(result);
+    return result;
+}
+
+/** Generate C for the analyzed entry module. */
+func bt_generate_entry(result: AnalysisResult*, opts: CodegenOptions*, cfg: LogConfig*) -> string {
+    return backend_generate_module(result, result.driver_state.entry_module, opts, cfg);
+}
+
+/**
+ * Build a semantic result from in-memory sources plus one interface-only provider.
+ *
+ * @param entry_module Entry-module name.
+ * @param filenames Source filenames aligned with `sources`.
+ * @param sources Module source texts aligned with `filenames`.
+ * @param interface_text Provider `.l1m` text.
+ * @return Fully analyzed result retaining the active interface.
+ */
+func bt_analyze_sources_with_interface(
+    entry_module: string,
+    filenames: StringVector*,
+    sources: StringVector*,
+    interface_text: string
+) -> AnalysisResult* {
+    let state = dr_state_create(entry_module, null);
+    for (let i = 0; i < sv_size(sources); i = i + 1) {
+        bt_push_source_unit(state, sv_get(sources, i), sv_get(filenames, i));
+    }
+
+    let parsed = pi_parse_interface(interface_text, "<backend-interface.l1m>");
+    assert(!ipr_has_errors(parsed) && parsed.interface != null, "interface fixture should parse");
+    let mi = parsed.interface as ModuleInterface*;
+    parsed.interface = null;
+    assert(ifp_assign(mi, state.diags, "<backend-interface.l1m>"),
+        "interface fixture fingerprint should compute");
+    let provider_node = mg_node_from_registry(mi.module_name);
+    mg_node_set_state(provider_node, MNS_RESOLVED);
+    if (!mg_add_node(driver_graph(state), provider_node)) {
+        mg_node_free(provider_node);
+        assert(false, "backend fixture interface graph node should be unique");
+    }
+    dr_register_graph_interface(state, mi);
+    dr_register_projection_interface(state, miu_clone_interface(mi));
+    let semantic = miu_clone_interface(mi);
+    miu_resolve_interface_alias_refs(semantic);
+    dr_register_interface(state, semantic);
+    ipr_free(parsed);
+
+    let result = new AnalysisResult(state, diag_create(), null, null, null, spm_create(), sim_create(), spm_create());
+    result.names = nr_resolve(state, result.diags);
+    result.signatures = sig_resolve(state, result.names as NameResolution*, result.diags);
+    result.locals_result = locals_resolve(state, result.diags);
+    expr_types_check(result);
+    return result;
+}
+
+/**
+ * Return whether analysis reported one diagnostic code.
+ *
+ * @param result Analysis result to inspect.
+ * @param code Diagnostic code to find.
+ * @return `true` when the code is present.
+ */
+func bt_has_diag_code(result: AnalysisResult*, code: string) -> bool {
+    for (let i = 0; i < analysis_diag_count(result); i = i + 1) {
+        if (analysis_diag_get(result, i).code == code) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/** Count diagnostics carrying one code. */
+func bt_diag_code_count(result: AnalysisResult*, code: string) -> int {
+    let count = 0;
+    for (let i = 0; i < analysis_diag_count(result); i = i + 1) {
+        if (analysis_diag_get(result, i).code == code) {
+            count = count + 1;
+        }
+    }
+    return count;
+}
+
+/**
+ * Join newline-terminated source lines into one module source string.
+ *
+ * @param lines Source lines in order.
+ * @return Combined source text with trailing newlines.
+ */
+func bt_source(lines: StringVector*) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < sv_size(lines); i = i + 1) {
+            sb_append(sb, sv_get(lines, i));
+            sb_append(sb, "\n");
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Count non-overlapping occurrences of one substring.
+ *
+ * @param text Text to scan.
+ * @param needle Substring to count.
+ * @return Occurrence count.
+ */
+func bt_count_substring(text: string, needle: string) -> int {
+    let count = 0;
+    let pos = 0;
+    while (true) {
+        let found = find_from_s(text, needle, pos);
+        if (found < 0) {
+            return count;
+        }
+        count = count + 1;
+        pos = found + len_s(needle);
+    }
+    return count;
+}
+
+/**
+ * Tests test_codegen_options_defaults.
+ */
+func test_codegen_options_defaults() {
+    let opts = cg_options_create();
+    assert(opts.emit_line_directives, "line directives should default to enabled");
+    assert(!opts.trace_arc, "trace_arc should default to false");
+    assert(!opts.trace_memory, "trace_memory should default to false");
+    cg_options_free(opts);
+}
+
+/** Tests every generated-C caller shares one CLI option projection. */
+func test_codegen_options_from_cli() {
+    with (let cli = cli_options_create() => cli_options_free(cli)) {
+        cli.no_line_directives = true;
+        cli.trace_arc = true;
+        cli.trace_memory = true;
+        cli.unchecked = true;
+        cli.check_basic = true;
+        let projected = cg_options_from_cli(cli);
+        assert(!projected.emit_line_directives, "line-directive projection mismatch");
+        assert(projected.trace_arc, "trace-ARC projection mismatch");
+        assert(projected.trace_memory, "trace-memory projection mismatch");
+        assert(projected.rt_unchecked, "unchecked-runtime projection mismatch");
+        assert(projected.rt_check_basic, "basic-check projection mismatch");
+        cg_options_free(projected);
+    }
+}
+
+/**
+ * Tests test_scope_context_tracks_declared_and_owned_variables.
+ */
+func test_scope_context_tracks_declared_and_owned_variables() {
+    let scope = sc_create(null);
+    let ty = type_builtin_int();
+    sc_add_declared(scope, "plain", ty);
+    sc_add_owned(scope, "owned", ty);
+
+    assert(sc_lookup_declared_type(scope, "plain") != null, "declared variable should be found");
+    assert(sc_lookup_declared_type(scope, "owned") != null, "owned variable should be found");
+    assert(vec_size(scope.owned_vars) == 1, "expected one owned variable");
+
+    sc_remove_owned(scope, "owned");
+    assert(vec_size(scope.owned_vars) == 0, "owned variable should be removed");
+
+    type_free(ty);
+    sc_free(scope);
+}
+
+/**
+ * Tests test_scope_context_inline_cleanup_tracking.
+ */
+func test_scope_context_inline_cleanup_tracking() {
+    let scope = sc_create(null);
+    assert(!sc_has_inline_cleanup(scope), "inline cleanup should start empty");
+    sc_push_inline_cleanup(scope, 3);
+    sc_push_inline_cleanup(scope, 9);
+    assert(sc_has_inline_cleanup(scope), "inline cleanup should be present");
+    assert(vec_size(scope.with_cleanup_inline as VectorBase*) == 2, "expected two cleanup items");
+    sc_free(scope);
+}
+
+/**
+ * Tests test_backend_scope_helpers_manage_cleanup_state.
+ */
+func test_backend_scope_helpers_manage_cleanup_state() {
+    with (let result = bt_empty_analysis_result() => analysis_result_free(result),
+          let opts = cg_options_create() => cg_options_free(opts),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let self = be_create_module(result, "demo.main", opts, cfg) => be_free(self)) {
+        let borrowed_ty = type_builtin_int();
+        let owned_ty = type_builtin_string();
+        let temp_ty = type_builtin_string();
+        let root = be_push_scope(self);
+        sc_add_declared(root, "borrowed", borrowed_ty);
+        sc_add_owned(root, "owned_name", owned_ty);
+
+        assert(be_lookup_local_var_type(self, "borrowed") != null, "declared local lookup should succeed");
+        assert(be_scope_chain_has_cleanup(self), "owned ARC local should trigger cleanup detection");
+
+        let temp = be_materialize_arc_temp(self, "((dea_string)DEA_STRING_CONST(\"x\", 1))", temp_ty);
+        assert(temp == "dea_arc_1", "ARC temp naming mismatch");
+        assert(vec_size(root.owned_vars) == 2, "materialized ARC temp should become owned");
+
+        let child = be_push_scope(self);
+        sc_push_inline_cleanup(child, 7);
+        assert(be_scope_chain_has_cleanup(self), "inline cleanup in child scope should be visible");
+        be_pop_scope(self);
+        be_pop_scope(self);
+        type_free(borrowed_ty);
+        type_free(owned_ty);
+        type_free(temp_ty);
+    }
+}
+
+/**
+ * Tests test_analysis_expr_lookup_helpers.
+ */
+func test_analysis_expr_lookup_helpers() {
+    let result = bt_empty_analysis_result();
+    let expr_key = analysis_expr_key("demo.main", 7);
+    assert(expr_key == "demo.main::7", "expression key mismatch");
+
+    spm_put(result.expr_types, analysis_expr_key("demo.main", 7), type_builtin_bool() as void*);
+    spm_put(result.intrinsic_targets, analysis_expr_key("demo.main", 8), type_builtin_int() as void*);
+    sim_put(result.var_ref_resolution, analysis_expr_key("demo.main", 9), ord(VAR_RES_LOCAL));
+
+    let expr_ty = analysis_get_expr_type(result, "demo.main", 7);
+    let intrinsic_ty = analysis_get_intrinsic_target(result, "demo.main", 8);
+    let var_res = analysis_get_var_ref_resolution(result, "demo.main", 9);
+
+    assert(expr_ty != null, "expression type lookup should succeed");
+    assert(type_is_builtin(expr_ty as Type*, "bool"), "expression type should be bool");
+    assert(intrinsic_ty != null, "intrinsic target lookup should succeed");
+    assert(type_is_builtin(intrinsic_ty as Type*, "int"), "intrinsic target should be int");
+    assert(var_res != null && (var_res as int) == ord(VAR_RES_LOCAL), "var-ref resolution mismatch");
+
+    type_free(expr_ty as Type*);
+    type_free(intrinsic_ty as Type*);
+    analysis_result_free(result);
+}
+
+/**
+ * Tests test_analysis_has_arc_data_for_struct_and_nullable_pointer.
+ */
+func test_analysis_has_arc_data_for_struct_and_nullable_pointer() {
+    let result = bt_empty_analysis_result();
+
+    let struct_fields = ptr_vec_create(1);
+    ptr_vec_push(struct_fields, new StructFieldInfo("name", type_builtin_string()) as void*);
+    let struct_info = new StructInfo(
+        "demo.main::Thing",
+        "demo.main",
+        "Thing",
+        "",
+        span_here(1, 1),
+        type_new_struct("demo.main", "Thing"),
+        struct_fields,
+        false
+    );
+
+    result.signatures = sig_make_tables();
+    spm_put((result.signatures as SignatureTables*).struct_infos, "demo.main::Thing", struct_info as void*);
+
+    let query_struct = type_new_struct("demo.main", "Thing");
+    let query_nullable_ptr = type_new_nullable(type_new_pointer(type_builtin_int()));
+
+    assert(analysis_has_arc_data(result, query_struct), "struct with string field should have ARC data");
+    assert(!analysis_has_arc_data(result, query_nullable_ptr), "nullable pointer should use niche encoding without ARC");
+
+    type_free(query_struct);
+    type_free(query_nullable_ptr);
+    analysis_result_free(result);
+}
+
+/**
+ * Tests test_backend_generate_types_and_top_level_lets.
+ */
+func test_backend_generate_types_and_top_level_lets() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "struct Point {");
+        sv_push(lines, "    x: int;");
+        sv_push(lines, "    y: int;");
+        sv_push(lines, "}");
+        sv_push(lines, "enum MaybePoint {");
+        sv_push(lines, "    None;");
+        sv_push(lines, "    Some(value: Point);");
+        sv_push(lines, "}");
+        sv_push(lines, "type Alias = Point;");
+        sv_push(lines, "let origin: Alias = Alias(0, 0);");
+        sv_push(lines, "let empty = None;");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let p: Alias = Alias(origin.x, origin.y);");
+        sv_push(lines, "    return p.x + ord(empty);");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for type-order fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "/* Type definitions (dependency-ordered) */"),
+            "type-definition section comment missing");
+        assert(contains_s(generated,
+            "struct __deaM4demo4mainS5Point {\n    dea_int x;\n    dea_int y;\n};\n#endif\n\n#ifndef DEA_DEFINED___deaM4demo4mainE10MaybePoint"),
+            "struct should be emitted before dependent enum");
+        assert(contains_s(generated, "struct __deaM4demo4mainS5Point __deaM4demo4mainN6origin = { .x = 0, .y = 0 };"),
+            "top-level alias-backed struct constructor let mismatch");
+        assert(contains_s(generated, "struct __deaM4demo4mainS5Point p = (struct __deaM4demo4mainS5Point){ .x = (__deaM4demo4mainN6origin).x, .y = (__deaM4demo4mainN6origin).y };"),
+            "local alias-backed struct constructor lowering mismatch");
+        assert(contains_s(generated, "struct __deaM4demo4mainE10MaybePoint __deaM4demo4mainN5empty = { .tag = __deaM4demo4mainE10MaybePoint_None };"),
+            "top-level bare variant let mismatch");
+        assert(contains_s(generated, "(p).x"), "field access lowering mismatch");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests `const` top-level bindings lower to `static const` C declarations.
+ */
+func test_backend_generate_top_level_consts() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(15) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "struct Point {");
+        sv_push(lines, "    x: int;");
+        sv_push(lines, "    y: int;");
+        sv_push(lines, "}");
+        sv_push(lines, "type Alias = Point;");
+        sv_push(lines, "const origin: Alias = Alias(0, 0);");
+        sv_push(lines, "enum Color {");
+        sv_push(lines, "    Red;");
+        sv_push(lines, "    Green(value: int);");
+        sv_push(lines, "}");
+        sv_push(lines, "const answer: int = 42;");
+        sv_push(lines, "const folded: int = (answer + 6) / 4;");
+        sv_push(lines, "const color: Color = Red;");
+        sv_push(lines, "func main() -> int { return answer + folded + origin.x + origin.y + ord(color); }");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for top-level const fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "const struct __deaM4demo4mainS5Point __deaM4demo4mainN6origin = { .x = 0, .y = 0 };"),
+            "top-level const alias-backed struct lowering mismatch");
+        assert(contains_s(generated, "const dea_int __deaM4demo4mainN6answer = 42;"),
+            "top-level const scalar lowering mismatch");
+        assert(contains_s(generated, "const dea_int __deaM4demo4mainN6folded = 12;"),
+            "top-level folded const scalar lowering mismatch");
+        assert(contains_s(generated, "const struct __deaM4demo4mainE5Color __deaM4demo4mainN5color = { .tag = __deaM4demo4mainE5Color_Red };"),
+            "top-level const bare variant lowering mismatch");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests module output owns definitions and lifecycle work for exactly one source module.
+ */
+func test_backend_generate_module_isolates_definitions_and_lifecycle() {
+    with (let filenames = sv_create(3) => sv_free(filenames),
+          let sources = sv_create(3) => sv_free(sources),
+          let dep_lines = sv_create(12) => sv_free(dep_lines),
+          let unused_lines = sv_create(4) => sv_free(unused_lines),
+          let main_lines = sv_create(14) => sv_free(main_lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/dep.l1");
+        sv_push(dep_lines, "module demo.dep;");
+        sv_push(dep_lines, "export BASE, get_base;");
+        sv_push(dep_lines, "let BASE: int = seed();");
+        sv_push(dep_lines, "let dep_text: string = \"dep\";");
+        sv_push(dep_lines, "func seed() -> int { return 20; }");
+        sv_push(dep_lines, "func get_base() -> int { return BASE; }");
+        sv_push(sources, bt_source(dep_lines));
+
+        sv_push(filenames, "demo/unused.l1");
+        sv_push(unused_lines, "module demo.unused;");
+        sv_push(unused_lines, "func side_effect() -> void {}");
+        sv_push(sources, bt_source(unused_lines));
+
+        sv_push(filenames, "demo/main.l1");
+        sv_push(main_lines, "module demo.main;");
+        sv_push(main_lines, "export ANSWER, FROM_BASE;");
+        sv_push(main_lines, "import demo.dep;");
+        sv_push(main_lines, "import dea;");
+        sv_push(main_lines, "import demo.unused;");
+        sv_push(main_lines, "import demo.dep;");
+        sv_push(main_lines, "let ANSWER: int = demo.dep::get_base();");
+        sv_push(main_lines, "let FROM_BASE: int = demo.dep::BASE;");
+        sv_push(main_lines, "let main_text: string = \"main\";");
+        sv_push(main_lines, "func main() -> int { return ANSWER + FROM_BASE; }");
+        sv_push(sources, bt_source(main_lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for per-module backend fixture");
+
+        let main_generated = backend_generate_module(result, "demo.main", opts, cfg);
+        assert(!contains_s(main_generated, "I8metadata") && !contains_s(main_generated, "I7imports") &&
+            !contains_s(main_generated, "volatile const uint8_t"),
+            "module output must not contain retired native metadata or retention anchors");
+        assert(contains_s(main_generated, "\nextern dea_int __deaM4demo3depN4BASE;\n"),
+            "module output should declare a consumed imported binding");
+        assert(!contains_s(main_generated, "static extern dea_int __deaM4demo3depN4BASE;"),
+            "consumed imported binding declaration must have external linkage");
+        assert(contains_s(main_generated, "\ndea_int __deaM4demo3depN8get_baseF0i(void);\n"),
+            "module output should declare a consumed imported function");
+        assert(!contains_s(main_generated, "static dea_int __deaM4demo3depN8get_baseF0i(void);"),
+            "consumed imported function declaration must have external linkage");
+        assert(!contains_s(main_generated, "dea_int __deaM4demo3depN4BASE = "),
+            "module output must not define an imported binding");
+        assert(!contains_s(main_generated, "dea_int __deaM4demo3depN8get_baseF0i(void)\n{"),
+            "module output must not define an imported function");
+        assert(!contains_s(main_generated, "__deaM4demo3depN4seed"),
+            "module output must not declare or define an unconsumed private import");
+        assert(!contains_s(main_generated, "__deaM4demo3depN8dep_text"),
+            "module output must not emit private imported storage");
+        assert(contains_s(main_generated, "\ndea_int __deaM4demo4mainN6ANSWER = 0;\n"),
+            "module output should define its exported deferred binding externally");
+        assert(!contains_s(main_generated, "static dea_int __deaM4demo4mainN6ANSWER = 0;"),
+            "exported target binding must not become static");
+        assert(contains_s(main_generated, "\ndea_int __deaM4demo4mainN9FROM_BASE = 0;\n"),
+            "module output should define every owned deferred binding");
+        assert(!contains_s(main_generated, "static dea_int __deaM4demo4mainN9FROM_BASE = 0;"),
+            "every exported target binding must retain external linkage");
+        assert(contains_s(main_generated, "static dea_string __deaM4demo4mainN9main_text"),
+            "module output should keep a non-exported target binding static");
+        assert(contains_s(main_generated, "static dea_int __deaM4demo4mainN4mainF0i(void)"),
+            "non-exported source main should remain static");
+        assert(contains_s(main_generated, "\nvoid __deaM4demo4mainI4init(void)\n{"),
+            "module init must have external linkage");
+        assert(contains_s(main_generated, "\nvoid __deaM4demo4mainI4fini(void)\n{"),
+            "module fini must have external linkage");
+        assert(!contains_s(main_generated, "static void __deaM4demo4mainI4init(void)"),
+            "module init must not follow source export linkage");
+        assert(!contains_s(main_generated, "static void __deaM4demo4mainI4fini(void)"),
+            "module fini must not follow source export linkage");
+        assert(bt_count_substring(main_generated, "__deaM4demo4mainI4init(void)") == 1,
+            "module output should define exactly one init function");
+        assert(bt_count_substring(main_generated, "__deaM4demo4mainI4fini(void)") == 1,
+            "module output should define exactly one fini function");
+        assert(contains_s(main_generated,
+            "void __deaM4demo4mainI4init(void)\n" +
+            "{\n" +
+            "    __deaM4demo4mainN6ANSWER = __deaM4demo3depN8get_baseF0i();"),
+            "module init should begin directly with owned deferred initialization");
+        assert(contains_s(main_generated,
+            "__deaM4demo4mainN6ANSWER = __deaM4demo3depN8get_baseF0i();"),
+            "module init should initialize its owned call-backed binding");
+        assert(contains_s(main_generated, "__deaM4demo4mainN9FROM_BASE = __deaM4demo3depN4BASE;"),
+            "module init should initialize its owned imported-value binding");
+        assert(contains_s(main_generated, "rt_string_release(__deaM4demo4mainN9main_text);"),
+            "module fini should clean its owned ARC binding");
+        assert(!contains_s(main_generated, "rt_string_release(__deaM4demo3depN8dep_text);"),
+            "module fini must not clean imported ARC storage");
+        assert(contains_s(main_generated, "\nint __deaM4demo4mainI5entry(void)\n{"),
+            "private source main should have an external entry bridge");
+        assert(!contains_s(main_generated, "static int __deaM4demo4mainI5entry(void)"),
+            "entry bridge must not follow source main linkage");
+        assert(contains_s(main_generated,
+            "int dea_exit_code = (int) __deaM4demo4mainN4mainF0i();\n    return dea_exit_code;"),
+            "int entry bridge normalization mismatch");
+        assert(!contains_s(main_generated, "__deaM4demo3depI4init"),
+            "module output must not mention an imported module init");
+        assert(!contains_s(main_generated, "__deaM4demo3depI4fini"),
+            "module output must not mention an imported module fini");
+        assert(!contains_s(main_generated, "_dea_init_modules"),
+            "module output must not contain the legacy global init chain");
+        assert(!contains_s(main_generated, "_rt_init_args("),
+            "module entry bridge must not initialize process arguments");
+        assert(!contains_s(main_generated, "int main(int argc"),
+            "module output must not contain a process-level C main");
+
+        let dep_generated = backend_generate_module(result, "demo.dep", opts, cfg);
+        assert(!contains_s(dep_generated, "I8metadata") && !contains_s(dep_generated, "I7imports") &&
+            !contains_s(dep_generated, "volatile const uint8_t"),
+            "provider output must not contain retired native metadata or retention anchors");
+        assert(contains_s(dep_generated, "\ndea_int __deaM4demo3depN4BASE = 0;\n"),
+            "provider output should define its exported binding");
+        assert(!contains_s(dep_generated, "static dea_int __deaM4demo3depN4BASE = 0;"),
+            "provider exported binding must have external linkage");
+        assert(contains_s(dep_generated, "static dea_string __deaM4demo3depN8dep_text"),
+            "provider output should define its private binding as static");
+        assert(contains_s(dep_generated, "static dea_int __deaM4demo3depN4seedF0i(void)"),
+            "provider output should define its private function as static");
+        assert(contains_s(dep_generated, "\ndea_int __deaM4demo3depN8get_baseF0i(void)\n{"),
+            "provider output should define its exported function externally");
+        assert(!contains_s(dep_generated, "static dea_int __deaM4demo3depN8get_baseF0i(void)\n{"),
+            "provider exported function must not become static");
+        assert(!contains_s(dep_generated, "__deaM4demo4mainN6ANSWER"),
+            "provider output must not emit a dependent module binding");
+        assert(!contains_s(dep_generated, "__deaM4demo4mainN4main"),
+            "provider output must not emit a dependent module function");
+        assert(contains_s(dep_generated, "\nvoid __deaM4demo3depI4init(void)\n{"),
+            "provider init must have external linkage");
+        assert(contains_s(dep_generated, "\nvoid __deaM4demo3depI4fini(void)\n{"),
+            "provider fini must have external linkage");
+        assert(bt_count_substring(dep_generated, "__deaM4demo3depI4init(void)") == 1,
+            "provider output should define exactly one init function");
+        assert(bt_count_substring(dep_generated, "__deaM4demo3depI4fini(void)") == 1,
+            "provider output should define exactly one fini function");
+        assert(contains_s(dep_generated,
+            "void __deaM4demo3depI4init(void)\n" +
+            "{\n" +
+            "    __deaM4demo3depN4BASE = __deaM4demo3depN4seedF0i();"),
+            "provider init should begin directly with owned initialization");
+        assert(contains_s(dep_generated,
+            "__deaM4demo3depN4BASE = __deaM4demo3depN4seedF0i();"),
+            "provider init should initialize only provider-owned storage");
+        assert(contains_s(dep_generated, "rt_string_release(__deaM4demo3depN8dep_text);"),
+            "provider fini should clean provider-owned ARC storage");
+        assert(!contains_s(dep_generated, "rt_string_release(__deaM4demo4mainN9main_text);"),
+            "provider fini must not clean dependent ARC storage");
+        assert(!contains_s(dep_generated, "__deaM4demo3depI5entry"),
+            "module without source main must not emit an entry bridge");
+        assert(!contains_s(dep_generated, "_dea_init_modules"),
+            "provider output must not contain the legacy global init chain");
+        assert(!contains_s(dep_generated, "int main(int argc"),
+            "provider output must not contain a process-level C main");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests every module defines callable no-op lifecycle functions and extern-only main is not an entry candidate.
+ */
+func test_backend_generate_module_noop_lifecycle_without_entry() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(4) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/empty.l1");
+        sv_push(lines, "module demo.empty;");
+        sv_push(lines, "extern func main() -> int;");
+        sv_push(lines, "func helper() -> int { return 1; }");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.empty", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for no-op lifecycle fixture");
+
+        let generated = backend_generate_module(result, "demo.empty", opts, cfg);
+        assert(contains_s(generated, "dea_int (main)(void);"),
+            "extern-only main declaration should remain in module output");
+        assert(contains_s(generated,
+            "\nvoid __deaM4demo5emptyI4init(void)\n" +
+            "{\n" +
+            "}\n"),
+            "module without deferred work should emit an empty external init");
+        assert(!contains_s(generated, "static void __deaM4demo5emptyI4init(void)"),
+            "empty module init must not become static");
+        assert(contains_s(generated, "\nvoid __deaM4demo5emptyI4fini(void)\n{\n}\n"),
+            "module without ARC storage should emit an empty external fini");
+        assert(!contains_s(generated, "static void __deaM4demo5emptyI4fini(void)"),
+            "empty module fini must not become static");
+        assert(bt_count_substring(generated, "__deaM4demo5emptyI4init(void)") == 1,
+            "no-op module output should define exactly one init function");
+        assert(bt_count_substring(generated, "__deaM4demo5emptyI4fini(void)") == 1,
+            "no-op module output should define exactly one fini function");
+        assert(!contains_s(generated, "__deaM4demo5emptyI5entry"),
+            "extern-only main must not make the module an entry candidate");
+        assert(!contains_s(generated, "I8metadata") && !contains_s(generated, "I7imports") &&
+            !contains_s(generated, "volatile const uint8_t"),
+            "no-op lifecycle output must not contain retired metadata or anchors");
+        assert(!contains_s(generated, "_rt_init_args("),
+            "no-op module output must not initialize process arguments");
+        assert(!contains_s(generated, "_dea_init_modules"),
+            "no-op module output must not contain the legacy global init chain");
+        assert(!contains_s(generated, "int main(int argc"),
+            "no-op module output must not contain a process-level C main");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests module output preserves opaque imported layout hiding.
+ */
+func test_backend_generate_module_hides_imported_opaque_layouts() {
+    with (let filenames = sv_create(2) => sv_free(filenames),
+          let sources = sv_create(2) => sv_free(sources),
+          let dep_lines = sv_create(22) => sv_free(dep_lines),
+          let main_lines = sv_create(8) => sv_free(main_lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/opaque_dep.l1");
+        sv_push(dep_lines, "module demo.opaque_dep;");
+        sv_push(dep_lines, "export opaque { Handle }, Inner, Public, make_handle, make_public;");
+        sv_push(dep_lines, "struct Handle {");
+        sv_push(dep_lines, "    value: int;");
+        sv_push(dep_lines, "}");
+        sv_push(dep_lines, "struct Inner {");
+        sv_push(dep_lines, "    value: int;");
+        sv_push(dep_lines, "}");
+        sv_push(dep_lines, "struct Public {");
+        sv_push(dep_lines, "    inner: Inner;");
+        sv_push(dep_lines, "}");
+        sv_push(dep_lines, "struct Private {");
+        sv_push(dep_lines, "    handle: Handle;");
+        sv_push(dep_lines, "}");
+        sv_push(dep_lines, "let hidden: Handle? = null;");
+        sv_push(dep_lines, "func make_handle(value: int) -> Handle* {");
+        sv_push(dep_lines, "    return new Handle(value);");
+        sv_push(dep_lines, "}");
+        sv_push(dep_lines, "func make_public(value: int) -> Public {");
+        sv_push(dep_lines, "    return Public(inner: Inner(value: value));");
+        sv_push(dep_lines, "}");
+        sv_push(sources, bt_source(dep_lines));
+
+        sv_push(filenames, "demo/opaque_main.l1");
+        sv_push(main_lines, "module demo.opaque_main;");
+        sv_push(main_lines, "import demo.opaque_dep;");
+        sv_push(main_lines, "func main() -> int {");
+        sv_push(main_lines, "    let maybe: Public? = null;");
+        sv_push(main_lines, "    demo.opaque_dep::make_handle(1);");
+        sv_push(main_lines, "    demo.opaque_dep::make_public(2);");
+        sv_push(main_lines, "    return 0;");
+        sv_push(main_lines, "}");
+        sv_push(sources, bt_source(main_lines));
+
+        let result = bt_analyze_sources("demo.opaque_main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for opaque module-output fixture");
+
+        let consumer = backend_generate_module(result, "demo.opaque_main", opts, cfg);
+        assert(contains_s(consumer, "struct __deaM4demo10opaque_depS6Handle;"),
+            "consumer output should retain an opaque imported forward declaration");
+        assert(!contains_s(consumer, "#define DEA_DEFINED___deaM4demo10opaque_depS6Handle"),
+            "consumer output must not reproduce an opaque imported layout");
+        assert(!contains_s(consumer, "dea_opt_s___deaM4demo10opaque_depS6Handle"),
+            "consumer output must not collect wrappers from unconsumed opaque provider storage");
+        assert(!contains_s(consumer, "__deaM4demo10opaque_depS7Private"),
+            "consumer output must not expose an unrelated private provider layout");
+        assert(contains_s(consumer, "struct __deaM4demo10opaque_depS5Inner {"),
+            "consumer output should reproduce a required nested transparent layout");
+        assert(contains_s(consumer, "struct __deaM4demo10opaque_depS6Public {"),
+            "consumer output should reproduce a required transparent layout");
+        assert(contains_s(consumer, "struct __deaM4demo10opaque_depS5Inner inner;"),
+            "consumer transparent layout should retain its nested value field");
+        assert(contains_s(consumer,
+            "typedef struct { dea_bool has_value; struct __deaM4demo10opaque_depS6Public value; } dea_opt_s___deaM4demo10opaque_depS6Public;"),
+            "consumer output should emit wrappers required by a selected transparent type");
+        assert(contains_s(consumer,
+            "struct __deaM4demo10opaque_depS6Handle* __deaM4demo10opaque_depN11make_handleF1iPM4demo10opaque_depS6Handle(dea_int value);"),
+            "consumer output should declare the consumed opaque-pointer function");
+
+        let provider = backend_generate_module(result, "demo.opaque_dep", opts, cfg);
+        assert(contains_s(provider, "#define DEA_DEFINED___deaM4demo10opaque_depS6Handle"),
+            "provider output should define its own opaque-exported layout");
+        assert(contains_s(provider, "dea_int value;"),
+            "provider output should contain its owned opaque layout fields");
+        assert(contains_s(provider, "struct __deaM4demo10opaque_depS7Private {"),
+            "provider output should retain its owned private layout");
+        assert(contains_s(provider,
+            "typedef struct { dea_bool has_value; struct __deaM4demo10opaque_depS6Handle value; } dea_opt_s___deaM4demo10opaque_depS6Handle;"),
+            "provider output should retain wrappers required by its owned storage");
+
+        analysis_result_free(result);
+    }
+}
+
+/** Tests intrinsic-only imported aliases retain their generated wrapper dependencies. */
+func test_backend_generate_module_collects_imported_alias_intrinsic_wrappers() {
+    with (let filenames = sv_create(2) => sv_free(filenames),
+          let sources = sv_create(2) => sv_free(sources),
+          let dep_lines = sv_create(4) => sv_free(dep_lines),
+          let main_lines = sv_create(3) => sv_free(main_lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/alias_dep.l1");
+        sv_push(dep_lines, "module demo.alias_dep;");
+        sv_push(dep_lines, "export Public, Maybe;");
+        sv_push(dep_lines, "struct Public { value: int; }");
+        sv_push(dep_lines, "type Maybe = Public?;");
+        sv_push(sources, bt_source(dep_lines));
+
+        sv_push(filenames, "demo/alias_main.l1");
+        sv_push(main_lines, "module demo.alias_main;");
+        sv_push(main_lines, "import demo.alias_dep;");
+        sv_push(main_lines, "func main() -> int { return sizeof(Maybe); }");
+        sv_push(sources, bt_source(main_lines));
+
+        let result = bt_analyze_sources("demo.alias_main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for imported alias intrinsic fixture");
+
+        let generated = backend_generate_module(result, "demo.alias_main", opts, cfg);
+        assert(contains_s(generated,
+            "typedef struct { dea_bool has_value; struct __deaM4demo9alias_depS6Public value; } dea_opt_s___deaM4demo9alias_depS6Public;"),
+            "intrinsic-only imported alias should retain its optional wrapper typedef");
+        assert(contains_s(generated, "sizeof(dea_opt_s___deaM4demo9alias_depS6Public)"),
+            "sizeof should use the imported alias wrapper spelling");
+
+        analysis_result_free(result);
+    }
+}
+
+/** Tests imported opaque layouts remain illegal in aggregate and signature positions. */
+func test_backend_module_analysis_rejects_imported_opaque_signature_use() {
+    with (let filenames = sv_create(2) => sv_free(filenames),
+          let sources = sv_create(2) => sv_free(sources),
+          let provider_lines = sv_create(5) => sv_free(provider_lines),
+          let consumer_lines = sv_create(11) => sv_free(consumer_lines)) {
+        sv_push(filenames, "visibility/provider.l1");
+        sv_push(provider_lines, "module visibility.provider;");
+        sv_push(provider_lines, "export opaque { Handle };");
+        sv_push(provider_lines, "struct Handle {");
+        sv_push(provider_lines, "    value: int;");
+        sv_push(provider_lines, "}");
+        sv_push(sources, bt_source(provider_lines));
+
+        sv_push(filenames, "visibility/consumer.l1");
+        sv_push(consumer_lines, "module visibility.consumer;");
+        sv_push(consumer_lines,
+            "export main, exported_nullable_pointer_ok, exported_wrapper_pointer_bad;");
+        sv_push(consumer_lines, "import visibility.provider;");
+        sv_push(consumer_lines, "struct Hidden { handle: Handle; }");
+        sv_push(consumer_lines, "func helper(value: Handle) -> void {}");
+        sv_push(consumer_lines, "func pointer_ok(value: Handle*) -> void {}");
+        sv_push(consumer_lines, "func nullable_pointer_ok(value: Handle*?) -> void {}");
+        sv_push(consumer_lines, "func exported_nullable_pointer_ok(value: Handle*?) -> void {}");
+        sv_push(consumer_lines, "func wrapper_pointer_bad(value: Handle?*) -> void {}");
+        sv_push(consumer_lines, "func exported_wrapper_pointer_bad(value: Handle?*) -> void {}");
+        sv_push(consumer_lines, "func main() -> int { return 0; }");
+        sv_push(sources, bt_source(consumer_lines));
+
+        let result = bt_analyze_sources("visibility.consumer", filenames, sources);
+        let provider_env = nr_env_find(result.names as NameResolution*, "visibility.provider");
+        assert(provider_env != null && ss_has((provider_env as ModuleEnv*).opaque_exports, "Handle"),
+            "provider Handle should retain opaque export metadata");
+        let hidden = sig_lookup_struct_info(result.signatures as SignatureTables*, "visibility.consumer", "Hidden");
+        assert(hidden != null && vec_size((hidden as StructInfo*).fields) == 1,
+            "private consumer struct signature should resolve");
+        let hidden_field = ptr_vec_get((hidden as StructInfo*).fields, 0) as StructFieldInfo*;
+        assert(hidden_field.field_type.module_name == "visibility.provider" && hidden_field.field_type.name == "Handle",
+            "private consumer field should retain provider-owned nominal identity");
+        assert(analysis_has_errors(result), "opaque by-value layout uses should fail semantic analysis");
+        assert(bt_has_diag_code(result, "RES-0038"), "opaque layout use should retain RES-0038");
+        assert(bt_diag_code_count(result, "RES-0038") == 4,
+            "private layout, by-value signature, and private/exported wrapper pointers should be rejected");
+
+        analysis_result_free(result);
+    }
+}
+
+/** Tests imported opaque layouts remain illegal in function-body positions. */
+func test_backend_module_analysis_rejects_imported_opaque_body_use() {
+    with (let filenames = sv_create(2) => sv_free(filenames),
+          let sources = sv_create(2) => sv_free(sources),
+          let provider_lines = sv_create(6) => sv_free(provider_lines),
+          let consumer_lines = sv_create(12) => sv_free(consumer_lines)) {
+        sv_push(filenames, "visibility/provider.l1");
+        sv_push(provider_lines, "module visibility.provider;");
+        sv_push(provider_lines, "export opaque { Handle }, make;");
+        sv_push(provider_lines, "struct Handle {");
+        sv_push(provider_lines, "    value: int;");
+        sv_push(provider_lines, "}");
+        sv_push(provider_lines, "func make() -> Handle* { return new Handle(7); }");
+        sv_push(sources, bt_source(provider_lines));
+
+        sv_push(filenames, "visibility/body.l1");
+        sv_push(consumer_lines, "module visibility.body;");
+        sv_push(consumer_lines, "export main;");
+        sv_push(consumer_lines, "import visibility.provider;");
+        sv_push(consumer_lines, "func pointer_ok(value: Handle*) -> void {}");
+        sv_push(consumer_lines, "unsafe func index_bad(value: Handle*) { value[0]; }");
+        sv_push(consumer_lines, "func loop_bad(cond: bool) { let owned = new int(0); while cond { " +
+            "*visibility.provider::make(); drop owned; } }");
+        sv_push(consumer_lines, "func main() -> int {");
+        sv_push(consumer_lines, "    let local: Handle? = null;");
+        sv_push(consumer_lines, "    *visibility.provider::make();");
+        sv_push(consumer_lines, "    let inferred = *visibility.provider::make();");
+        sv_push(consumer_lines, "    return sizeof(Handle);");
+        sv_push(consumer_lines, "}");
+        sv_push(sources, bt_source(consumer_lines));
+
+        let result = bt_analyze_sources("visibility.body", filenames, sources);
+        assert(analysis_has_errors(result), "opaque by-value body uses should fail semantic analysis");
+        assert(bt_diag_code_count(result, "RES-0038") == 6,
+            "loop body, index, dereference, annotation, and sizeof should each be rejected once");
+
+        analysis_result_free(result);
+    }
+}
+
+/** Tests repeated loop-condition inference does not duplicate opaque-layout diagnostics. */
+func test_backend_module_analysis_deduplicates_opaque_loop_condition() {
+    with (let filenames = sv_create(2) => sv_free(filenames),
+          let sources = sv_create(2) => sv_free(sources),
+          let provider_lines = sv_create(6) => sv_free(provider_lines),
+          let consumer_lines = sv_create(7) => sv_free(consumer_lines)) {
+        sv_push(filenames, "visibility/provider.l1");
+        sv_push(provider_lines, "module visibility.provider;");
+        sv_push(provider_lines, "export opaque { Handle }, make;");
+        sv_push(provider_lines, "struct Handle {");
+        sv_push(provider_lines, "    value: int;");
+        sv_push(provider_lines, "}");
+        sv_push(provider_lines, "func make() -> Handle* { return new Handle(7); }");
+        sv_push(sources, bt_source(provider_lines));
+
+        sv_push(filenames, "visibility/loop.l1");
+        sv_push(consumer_lines, "module visibility.loop;");
+        sv_push(consumer_lines, "export main;");
+        sv_push(consumer_lines, "import visibility.provider;");
+        sv_push(consumer_lines, "func main() -> int {");
+        sv_push(consumer_lines, "    while (*visibility.provider::make()) { return 1; }");
+        sv_push(consumer_lines, "    return 0;");
+        sv_push(consumer_lines, "}");
+        sv_push(sources, bt_source(consumer_lines));
+
+        let result = bt_analyze_sources("visibility.loop", filenames, sources);
+        assert(analysis_has_errors(result), "opaque-valued loop condition should fail semantic analysis");
+        assert(bt_diag_code_count(result, "RES-0038") == 1,
+            "repeated loop-condition inference should report one opaque-layout error");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests module output declares only consumed interface-backed values.
+ */
+func test_backend_generate_module_declares_consumed_interface_values() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(5) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "import iface.dep;");
+        sv_push(lines, "let answer: int = iface.dep::fetch() + iface.dep::BASE + iface.dep::CURRENT;");
+        sv_push(lines, "func main() -> int { return answer; }");
+        sv_push(sources, bt_source(lines));
+
+        let interface_text = "module interface iface.dep;\n" +
+            "fingerprint \"sip13:0000000000000000\";\n" +
+            "func fetch() -> int;\n" +
+            "func spare() -> int;\n" +
+            "const BASE: int = 7;\n" +
+            "const UNUSED: int = 9;\n" +
+            "let CURRENT: int;\n" +
+            "let spare_value: int;\n";
+        let result = bt_analyze_sources_with_interface("demo.main", filenames, sources, interface_text);
+        assert(!analysis_has_errors(result), "analysis should succeed with an interface-only provider");
+        assert(driver_unit_count(result.driver_state) == 1, "provider must remain interface-only");
+        assert(driver_interface_count(result.driver_state) == 1, "provider interface should remain active");
+
+        let generated = backend_generate_module(result, "demo.main", opts, cfg);
+        assert(contains_s(generated, "\ndea_int __deaM5iface3depN5fetchF0i(void);\n"),
+            "consumed interface function declaration missing");
+        assert(!contains_s(generated, "static dea_int __deaM5iface3depN5fetchF0i(void);"),
+            "consumed interface function declaration must have external linkage");
+        assert(contains_s(generated, "\nextern const dea_int __deaM5iface3depN4BASE;\n"),
+            "consumed interface const declaration missing");
+        assert(!contains_s(generated, "__deaM5iface3depN4BASE ="),
+            "consumed interface const must remain declaration-only");
+        assert(contains_s(generated, "\nextern dea_int __deaM5iface3depN7CURRENT;\n"),
+            "consumed interface let declaration missing");
+        assert(!contains_s(generated, "__deaM5iface3depN7CURRENT ="),
+            "consumed interface let must remain declaration-only");
+        assert(!contains_s(generated, "__deaM5iface3depN5spareF0i"),
+            "unconsumed interface function must be absent");
+        assert(!contains_s(generated, "__deaM5iface3depN6UNUSED"),
+            "unconsumed interface const must be absent");
+        assert(!contains_s(generated, "__deaM5iface3depN11spare_value"),
+            "unconsumed interface let must be absent");
+        assert(!contains_s(generated, "__deaM5iface3depN5fetchF0i(void)\n{"),
+            "interface function must not be defined by the consumer");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests module entry bridges normalize int, bool, and other accepted result types without lifecycle orchestration.
+ */
+func test_backend_generate_module_entry_result_normalization() {
+    with (let filenames = sv_create(4) => sv_free(filenames),
+          let sources = sv_create(4) => sv_free(sources),
+          let int_lines = sv_create(3) => sv_free(int_lines),
+          let bool_lines = sv_create(3) => sv_free(bool_lines),
+          let byte_lines = sv_create(3) => sv_free(byte_lines),
+          let param_lines = sv_create(3) => sv_free(param_lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "entry/i.l1");
+        sv_push(int_lines, "module entry.i;");
+        sv_push(int_lines, "func main() -> int { return 7; }");
+        sv_push(sources, bt_source(int_lines));
+
+        sv_push(filenames, "entry/b.l1");
+        sv_push(bool_lines, "module entry.b;");
+        sv_push(bool_lines, "func main() -> bool { return true; }");
+        sv_push(sources, bt_source(bool_lines));
+
+        sv_push(filenames, "entry/h.l1");
+        sv_push(byte_lines, "module entry.h;");
+        sv_push(byte_lines, "func main() -> byte { return 1 as byte; }");
+        sv_push(sources, bt_source(byte_lines));
+
+        sv_push(filenames, "entry/p.l1");
+        sv_push(param_lines, "module entry.p;");
+        sv_push(param_lines, "func main(value: int) -> int { return value; }");
+        sv_push(sources, bt_source(param_lines));
+
+        let result = bt_analyze_sources("entry.i", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for module entry result fixtures");
+
+        let int_generated = backend_generate_module(result, "entry.i", opts, cfg);
+        assert(contains_s(int_generated,
+            "int __deaM5entry1iI5entry(void)\n{\n    int dea_exit_code = (int) __deaM5entry1iN4mainF0i();\n    return dea_exit_code;\n}\n"),
+            "int module entry bridge normalization mismatch");
+        assert(!contains_s(int_generated, "_rt_init_args("),
+            "int entry bridge must not initialize process arguments");
+        assert(!contains_s(int_generated, "I4init();") && !contains_s(int_generated, "I4fini();"),
+            "int entry bridge must not orchestrate module lifecycle");
+        assert(!contains_s(int_generated, "_dea_init_modules") && !contains_s(int_generated, "int main(int argc"),
+            "int module output must not emit a process wrapper");
+
+        let bool_generated = backend_generate_module(result, "entry.b", opts, cfg);
+        assert(contains_s(bool_generated,
+            "int __deaM5entry1bI5entry(void)\n{\n    dea_bool result = __deaM5entry1bN4mainF0z();\n    int dea_exit_code = result ? 0 : 1;\n    return dea_exit_code;\n}\n"),
+            "bool module entry bridge normalization mismatch");
+        assert(!contains_s(bool_generated, "_rt_init_args("),
+            "bool entry bridge must not initialize process arguments");
+        assert(!contains_s(bool_generated, "I4init();") && !contains_s(bool_generated, "I4fini();"),
+            "bool entry bridge must not orchestrate module lifecycle");
+        assert(!contains_s(bool_generated, "_dea_init_modules") && !contains_s(bool_generated, "int main(int argc"),
+            "bool module output must not emit a process wrapper");
+
+        let byte_generated = backend_generate_module(result, "entry.h", opts, cfg);
+        assert(contains_s(byte_generated,
+            "int __deaM5entry1hI5entry(void)\n{\n    __deaM5entry1hN4mainF0h();\n    int dea_exit_code = 0;\n    return dea_exit_code;\n}\n"),
+            "other-result module entry bridge normalization mismatch");
+        assert(!contains_s(byte_generated, "_rt_init_args("),
+            "other-result entry bridge must not initialize process arguments");
+        assert(!contains_s(byte_generated, "I4init();") && !contains_s(byte_generated, "I4fini();"),
+            "other-result entry bridge must not orchestrate module lifecycle");
+        assert(!contains_s(byte_generated, "_dea_init_modules") && !contains_s(byte_generated, "int main(int argc"),
+            "other-result module output must not emit a process wrapper");
+
+        let param_generated = backend_generate_module(result, "entry.p", opts, cfg);
+        assert(!contains_s(param_generated, "__deaM5entry1pI5entry"),
+            "parameterized source main must not receive a zero-argument entry bridge");
+        assert(!contains_s(int_generated, "I8metadata") && !contains_s(int_generated, "I7imports") &&
+            !contains_s(bool_generated, "I8metadata") && !contains_s(bool_generated, "I7imports") &&
+            !contains_s(byte_generated, "I8metadata") && !contains_s(byte_generated, "I7imports") &&
+            !contains_s(param_generated, "I8metadata") && !contains_s(param_generated, "I7imports"),
+            "entry variants must not emit retired native metadata records");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests test_backend_generate_basic_control_flow.
+ */
+func test_backend_generate_basic_control_flow() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func add(a: int, b: int) -> int {");
+        sv_push(lines, "    return a + b;");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let sum = 0;");
+        sv_push(lines, "    for (let i = 0; i < 3; i = i + 1) {");
+        sv_push(lines, "        if (i < 2) {");
+        sv_push(lines, "            sum = sum + add(i, 1);");
+        sv_push(lines, "        }");
+        sv_push(lines, "    }");
+        sv_push(lines, "    while (sum > 0) {");
+        sv_push(lines, "        return sum;");
+        sv_push(lines, "    }");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for control-flow fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "dea_int __deaM4demo4mainN3addF2iii(dea_int a, dea_int b);"),
+            "function declaration mismatch");
+        assert(contains_s(generated, "return (_rt_iadd(a, b));"), "checked integer add lowering mismatch");
+        assert(contains_s(generated, "// for loop"), "for-loop wrapper comment mismatch");
+        assert(contains_s(generated, "dea_int i = 0;\n        while (1)"),
+            "for-loop lowering mismatch");
+        assert(contains_s(generated, "if (i < 2)"), "if lowering mismatch");
+        assert(!contains_s(generated, "if ((i < 2))"), "if lowering should avoid redundant condition parens");
+        assert(contains_s(generated, "sum = (_rt_iadd(sum, __deaM4demo4mainN3addF2iii(i, 1)));"),
+            "assignment and call lowering mismatch");
+        assert(contains_s(generated, "while (1)"), "while lowering mismatch");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests test_backend_generate_loop_exit_case_lowering.
+ */
+func test_backend_generate_loop_exit_case_lowering() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    for (let i = 0; i < 3; i = i + 1) {");
+        sv_push(lines, "        case (i) {");
+        sv_push(lines, "            0 => {");
+        sv_push(lines, "                continue;");
+        sv_push(lines, "            }");
+        sv_push(lines, "            _ => {");
+        sv_push(lines, "                break;");
+        sv_push(lines, "            }");
+        sv_push(lines, "        }");
+        sv_push(lines, "    }");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for case/loop fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "switch (_scrutinee) {"), "case lowering should use switch for ints");
+        assert(contains_s(generated, "goto __lcont_"), "continue should lower to loop label goto");
+        assert(contains_s(generated, "goto __lbrk_"), "break should lower to loop label goto");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests that `case` statements on floats or narrower domains lower to if/else if.
+ */
+func test_backend_generate_case_if_else_lowering() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func check_float(f: float) -> int {");
+        sv_push(lines, "    case (f) {");
+        sv_push(lines, "        1.0f => { return 1; }");
+        sv_push(lines, "        -2.5f => { return 2; }");
+        sv_push(lines, "        _ => { return 3; }");
+        sv_push(lines, "    }");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for case/float fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(!contains_s(generated, "switch"), "float case lowering should not use switch");
+        assert(contains_s(generated, "if (_scrutinee == 1.0f)"), "expected float literal condition");
+        if (!contains_s(generated, "if (_scrutinee == -2.5f)")) {
+            printl_ss("Generated text:", generated);
+        }
+        assert(contains_s(generated, "if (_scrutinee == -2.5f)"), "expected negative float literal condition");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests test_backend_generate_match_and_with_cleanup_block.
+ */
+func test_backend_generate_match_and_with_cleanup_block() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(24) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "enum MaybeInt {");
+        sv_push(lines, "    None;");
+        sv_push(lines, "    Some(value: int);");
+        sv_push(lines, "}");
+        sv_push(lines, "func make() -> MaybeInt {");
+        sv_push(lines, "    return Some(7);");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let total = 0;");
+        sv_push(lines, "    with (let x = 1) {");
+        sv_push(lines, "        total = x;");
+        sv_push(lines, "    } cleanup {");
+        sv_push(lines, "        total = x;");
+        sv_push(lines, "    }");
+        sv_push(lines, "    match (make()) {");
+        sv_push(lines, "        Some(v) => {");
+        sv_push(lines, "            return v;");
+        sv_push(lines, "        }");
+        sv_push(lines, "        None => {");
+        sv_push(lines, "            return total;");
+        sv_push(lines, "        }");
+        sv_push(lines, "    }");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for match/with fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "struct __deaM4demo4mainE8MaybeInt _scrutinee = __deaM4demo4mainN4makeF0M4demo4mainE8MaybeInt();"),
+            "match scrutinee temp mismatch");
+        assert(contains_s(generated, "switch ((_scrutinee).tag) {"), "match lowering should switch on enum tag");
+        assert(contains_s(generated, "dea_int v = (_scrutinee).data.Some.value;"), "pattern binding mismatch");
+        assert(contains_s(generated, "total = x;\n        }\n        {\n            total = x;"),
+            "with cleanup block should run after body in header scope");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests lowering for single-statement loop bodies and match arms.
+ */
+func test_backend_generate_single_statement_loop_and_match_bodies() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(18) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "enum MaybeInt {");
+        sv_push(lines, "    None;");
+        sv_push(lines, "    Some(value: int);");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let total = 0;");
+        sv_push(lines, "    while (total < 2) total = total + 1;");
+        sv_push(lines, "    for (let i = 0; i < 2; i = i + 1) total = total + i;");
+        sv_push(lines, "    match (Some(total)) {");
+        sv_push(lines, "        Some(v) => total = v + 1;");
+        sv_push(lines, "        _ => total = 0;");
+        sv_push(lines, "    }");
+        sv_push(lines, "    return total;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for single-statement loop/match fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "while (1)"), "while lowering mismatch for single-statement body");
+        assert(contains_s(generated, "total = (_rt_iadd(total, 1));"),
+            "single-statement while body assignment lowering mismatch");
+        assert(contains_s(generated, "// for loop"), "for-loop lowering mismatch for single-statement body");
+        assert(contains_s(generated, "total = (_rt_iadd(total, i));"),
+            "single-statement for body assignment lowering mismatch");
+        assert(contains_s(generated, "switch ((_scrutinee).tag) {"), "match lowering mismatch for single-statement arm");
+        assert(contains_s(generated, "dea_int v = (_scrutinee).data.Some.value;"),
+            "pattern binding lowering mismatch for single-statement match arm");
+        assert(contains_s(generated, "total = (_rt_iadd(v, 1));"),
+            "single-statement match arm assignment lowering mismatch");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests test_backend_generate_with_cleanup_block_header_try_predeclares_nullable_lets.
+ */
+func test_backend_generate_with_cleanup_block_header_try_predeclares_nullable_lets() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(23) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "enum Expr {");
+        sv_push(lines, "    Num(value: int);");
+        sv_push(lines, "}");
+        sv_push(lines, "func parse(c: int) -> Expr*? {");
+        sv_push(lines, "    return null;");
+        sv_push(lines, "}");
+        sv_push(lines, "func free_expr(e: Expr*?) {");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> Expr*? {");
+        sv_push(lines, "    let result: Expr*? = null;");
+        sv_push(lines, "    with (let left: Expr*? = parse(0)?,");
+        sv_push(lines, "          let right: Expr*? = parse(1)?) {");
+        sv_push(lines, "        return result;");
+        sv_push(lines, "    } cleanup {");
+        sv_push(lines, "        if (result == null) { free_expr(left); free_expr(right); }");
+        sv_push(lines, "    }");
+        sv_push(lines, "    return result;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for with-header try fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "struct __deaM4demo4mainE4Expr* left = NULL;"),
+            "nullable cleanup-block header let should be predeclared to null");
+        assert(contains_s(generated, "struct __deaM4demo4mainE4Expr* right = NULL;"),
+            "second nullable cleanup-block header let should be predeclared to null");
+        assert(contains_s(generated, "left = dea_try_"), "predeclared left should be assigned after the try succeeds");
+        assert(contains_s(generated, "right = dea_try_"), "predeclared right should be assigned after the try succeeds");
+        assert(!contains_s(generated, "struct __deaM4demo4mainE4Expr* left = dea_try_"),
+            "left should not be redeclared after predeclaration");
+        assert(!contains_s(generated, "struct __deaM4demo4mainE4Expr* right = dea_try_"),
+            "right should not be redeclared after predeclaration");
+        assert(contains_s(generated, "__deaM4demo4mainN9free_exprF1QPM4demo4mainE4Exprv(left);"),
+            "cleanup block should still reference the predeclared left variable");
+        assert(contains_s(generated, "__deaM4demo4mainN9free_exprF1QPM4demo4mainE4Exprv(right);"),
+            "cleanup block should still reference the predeclared right variable");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests test_backend_generate_drop_statement.
+ */
+func test_backend_generate_drop_statement() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(8) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "extern func alloc() -> int*;");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let p = alloc();");
+        sv_push(lines, "    drop p;");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for drop fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "_rt_drop_begin_impl((void*)(p), (dea_int)(sizeof(dea_int)), (dea_int)(_RT_ALIGNOF(dea_int)), __FILE__, __LINE__)"),
+            "sized drop begin call mismatch");
+        assert(contains_s(generated, "_rt_drop_finish_impl((void*)("), "drop finish call mismatch");
+        assert(contains_s(generated, "p = NULL;"), "drop should null the pointer after release");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests generated drop begin validation ordering before heap array cleanup.
+ */
+func test_backend_generate_drop_begin_before_array_cleanup() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func zap(p: string[1]*) {");
+        sv_push(lines, "    drop p;");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let p: string[1]* = new string[1]([\"hello\"]);");
+        sv_push(lines, "    zap(p);");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for array drop begin fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        let begin_idx = find_s(generated, "_rt_drop_begin_impl((void*)(p), (dea_int)(sizeof(");
+        let cleanup_idx = find_s(generated, "for (dea_int");
+        let finish_idx = find_s(generated, "_rt_drop_finish_impl((void*)(");
+        assert(begin_idx >= 0, "drop begin missing");
+        assert(cleanup_idx >= 0, "array cleanup loop missing");
+        assert(finish_idx >= 0, "drop finish missing");
+        assert(begin_idx < cleanup_idx, "drop begin should precede array cleanup");
+        assert(cleanup_idx < finish_idx, "array cleanup should precede final drop");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests test_backend_generate_new_and_try_lowering.
+ */
+func test_backend_generate_new_and_try_lowering() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(24) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "struct Box {");
+        sv_push(lines, "    value: int;");
+        sv_push(lines, "}");
+        sv_push(lines, "enum Result {");
+        sv_push(lines, "    Ok(value: int);");
+        sv_push(lines, "}");
+        sv_push(lines, "func maybe(flag: bool) -> int? {");
+        sv_push(lines, "    if (flag) { return 7; }");
+        sv_push(lines, "    return null;");
+        sv_push(lines, "}");
+        sv_push(lines, "func maybe_box(flag: bool) -> Box*? {");
+        sv_push(lines, "    if (flag) { return new Box(11); }");
+        sv_push(lines, "    return null;");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int? {");
+        sv_push(lines, "    let z = new Box();");
+        sv_push(lines, "    let p = new Box(7);");
+        sv_push(lines, "    let r = new Ok(9);");
+        sv_push(lines, "    let q = maybe_box(true)?;");
+        sv_push(lines, "    let x = maybe(true)?;");
+        sv_push(lines, "    drop q;");
+        sv_push(lines, "    drop z;");
+        sv_push(lines, "    drop p;");
+        sv_push(lines, "    drop r;");
+        sv_push(lines, "    return x;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for new/try fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "_rt_alloc_obj((dea_int)sizeof(struct __deaM4demo4mainS3Box));"),
+            "new expression should allocate heap storage");
+        assert(contains_s(generated, "(struct __deaM4demo4mainS3Box){ 0 }"),
+            "zero-arg struct new should lower to zero initialization");
+        assert(contains_s(generated, "static _rt_ptr_site dea_site_"),
+            "checked pointer access should declare a call-site cache");
+        assert(contains_s(generated, "_rt_check_ptr_site(&dea_site_") && contains_s(generated, ", (void*)(dea_new_"),
+            "new expression should initialize through a checked pointer");
+        assert(contains_s(generated, "_RT_ALIGNOF(struct __deaM4demo4mainS3Box)"),
+            "new expression pointer check should include target alignment");
+        assert(contains_s(generated, "_RT_ACCESS_WRITE"),
+            "new expression should initialize through a write-checked pointer");
+        assert(contains_s(generated, "__deaM4demo4mainE6Result_Ok"),
+            "enum variant new should initialize the variant tag");
+        assert(contains_s(generated, "dea_opt_int dea_try_"), "try expression should materialize a temp");
+        assert(contains_s(generated, "if (!((dea_try_"), "try expression should check has_value");
+        assert(contains_s(generated, "if (dea_try_"), "niche-nullable try should keep a direct null check");
+        assert(!contains_s(generated, "if ((dea_try_"), "niche-nullable try should avoid redundant condition parens");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests test_backend_generate_intrinsics_use_analyzed_target_types.
+ */
+func test_backend_generate_intrinsics_use_analyzed_target_types() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(24) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "enum Flag {");
+        sv_push(lines, "    Off;");
+        sv_push(lines, "    On;");
+        sv_push(lines, "}");
+        sv_push(lines, "enum Color {");
+        sv_push(lines, "    Red;");
+        sv_push(lines, "    RGB(r: int, g: int, b: int);");
+        sv_push(lines, "}");
+        sv_push(lines, "struct Pair {");
+        sv_push(lines, "    left: int;");
+        sv_push(lines, "    right: int;");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let p = Pair(1, sizeof(Pair));");
+        sv_push(lines, "    let f = On;");
+        sv_push(lines, "    let c = RGB(1, 2, 3);");
+        sv_push(lines, "    if (is(c, RGB)) {");
+        sv_push(lines, "        return p.right + ord(f);");
+        sv_push(lines, "    }");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for sizeof/ord/is fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "((dea_int)sizeof(struct __deaM4demo4mainS4Pair))"),
+            "sizeof should lower through the analyzed target type");
+        assert(contains_s(generated, "((dea_int)((f).tag))"), "ord should lower to the enum tag");
+        assert(contains_s(generated, "(((c).tag) == __deaM4demo4mainE5Color_RGB)"),
+            "is should lower to a direct enum-tag comparison");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests out-of-order named argument lowering through source-order temporaries.
+ */
+func test_backend_generate_named_args_use_source_order_temporaries() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(32) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "struct Pair {");
+        sv_push(lines, "    first: int;");
+        sv_push(lines, "    second: int;");
+        sv_push(lines, "}");
+        sv_push(lines, "enum Choice {");
+        sv_push(lines, "    Pick(left: int, right: int);");
+        sv_push(lines, "}");
+        sv_push(lines, "func value(v: int) -> int { return v; }");
+        sv_push(lines, "func combine(a: int, b: int) -> int { return a - b; }");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let call = combine(b: value(3), a: value(10));");
+        sv_push(lines, "    let pair = Pair(second: value(20), first: value(10));");
+        sv_push(lines, "    let choice = Pick(right: value(2), left: value(1));");
+        sv_push(lines, "    return call + pair.first + ord(choice);");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for named-argument lowering fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "dea_int dea_arg_"),
+            "out-of-order named arguments should materialize source-order temporaries");
+        assert(contains_s(generated, "__deaM4demo4mainN7combineF2iii(dea_arg_") &&
+               contains_s(generated, ", dea_arg_"),
+            "out-of-order named function call should use reordered temporaries");
+        assert(contains_s(generated, ".first = dea_arg_") && contains_s(generated, ".second = dea_arg_"),
+            "out-of-order named struct constructor should use reordered temporaries");
+        assert(contains_s(generated, ".left = dea_arg_") && contains_s(generated, ".right = dea_arg_"),
+            "out-of-order named enum constructor should use reordered temporaries");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests that user functions named like intrinsics are not lowered as `dea` intrinsics.
+ */
+func test_backend_generate_dea_intrinsics_respect_symbol_origin() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(32) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "enum Flag {");
+        sv_push(lines, "    Off;");
+        sv_push(lines, "    On;");
+        sv_push(lines, "}");
+        sv_push(lines, "func sizeof(x: int) -> int {");
+        sv_push(lines, "    return x + 7;");
+        sv_push(lines, "}");
+        sv_push(lines, "func ord(x: int) -> int {");
+        sv_push(lines, "    return x + 9;");
+        sv_push(lines, "}");
+        sv_push(lines, "func is(x: int, y: int) -> int {");
+        sv_push(lines, "    return x + y + 11;");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let a = sizeof(4);");
+        sv_push(lines, "    let b = ord(5);");
+        sv_push(lines, "    let c = is(6, 7);");
+        sv_push(lines, "    let d = dea::sizeof(Flag);");
+        sv_push(lines, "    let e = dea::ord(On);");
+        sv_push(lines, "    if (dea::is(On, On)) {");
+        sv_push(lines, "        return a + b + c + d + e;");
+        sv_push(lines, "    }");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for dea shadowing fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "__deaM4demo4mainN6sizeofF1ii(4)"),
+            "local sizeof should lower as a normal function call");
+        assert(contains_s(generated, "__deaM4demo4mainN3ordF1ii(5)"),
+            "local ord should lower as a normal function call");
+        assert(contains_s(generated, "__deaM4demo4mainN2isF2iii(6, 7)"),
+            "local is should lower as a normal function call");
+        assert(contains_s(generated, "((dea_int)sizeof(struct __deaM4demo4mainE4Flag))"),
+            "dea::sizeof should lower through intrinsic emission");
+        assert(contains_s(generated, "((dea_int)(((struct __deaM4demo4mainE4Flag){ .tag = __deaM4demo4mainE4Flag_On }).tag))"),
+            "dea::ord should lower through intrinsic emission");
+        assert(contains_s(generated, "((((struct __deaM4demo4mainE4Flag){ .tag = __deaM4demo4mainE4Flag_On }).tag) == __deaM4demo4mainE4Flag_On)"),
+            "dea::is should lower through intrinsic emission");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests `is` lowering for an imported enum-returning call and qualified variant name.
+ */
+func test_backend_generate_is_with_call_expr_and_qualified_variant() {
+    with (let filenames = sv_create(2) => sv_free(filenames),
+          let sources = sv_create(2) => sv_free(sources),
+          let dep_lines = sv_create(16) => sv_free(dep_lines),
+          let main_lines = sv_create(16) => sv_free(main_lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+
+        sv_push(filenames, "config/types.l1");
+        sv_push(dep_lines, "module config.types;");
+        sv_push(dep_lines, "enum Key {");
+        sv_push(dep_lines, "    String;");
+        sv_push(dep_lines, "    Number;");
+        sv_push(dep_lines, "}");
+        sv_push(dep_lines, "func get_key() -> Key {");
+        sv_push(dep_lines, "    return String;");
+        sv_push(dep_lines, "}");
+        sv_push(sources, bt_source(dep_lines));
+
+        sv_push(filenames, "demo/main.l1");
+        sv_push(main_lines, "module demo.main;");
+        sv_push(main_lines, "import config.types;");
+        sv_push(main_lines, "func main() -> int {");
+        sv_push(main_lines, "    if (is(config.types::get_key(), config.types::String)) {");
+        sv_push(main_lines, "        return 1;");
+        sv_push(main_lines, "    }");
+        sv_push(main_lines, "    return 0;");
+        sv_push(main_lines, "}");
+        sv_push(sources, bt_source(main_lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for qualified `is` fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "(((__deaM6config5typesN7get_keyF0M6config5typesE3Key()).tag) == __deaM6config5typesE3Key_String)"),
+            "qualified `is` should lower call result and qualified variant to a direct tag comparison");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests test_backend_generate_string_copy_retains.
+ */
+func test_backend_generate_string_copy_retains() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(8) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let s = \"hi\";");
+        sv_push(lines, "    let t = s;");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for ARC copy fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "rt_string_retain(dea_copy_"), "copying an owned string should retain");
+        assert(contains_s(generated, "rt_string_release(t);"), "owned local cleanup should release copied string");
+        assert(contains_s(generated, "rt_string_release(s);"), "owned local cleanup should release original string");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests casted-place string copies still retain before entering a new owner.
+ */
+func test_backend_generate_identity_cast_string_copy_retains() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(8) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func sink(x: string) {}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let first = \"hi\";");
+        sv_push(lines, "    sink(first as string);");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for identity-cast ARC copy fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "__deaM4demo4mainN4sinkF1cv(first);"),
+            "identity cast should pass the borrowed place directly to the callee");
+        assert(!contains_s(generated, "dea_string dea_arc_"),
+            "identity cast should not materialize a scope-owned ARC temp");
+        assert(!contains_s(generated, "rt_string_release(dea_arc_"),
+            "identity cast should not release a temporary ARC alias after the call");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests parenthesized cast-from-place expressions preserve ARC ownership classification.
+ */
+func test_backend_generate_parenthesized_unwrap_from_place_stays_borrowed() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(32) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "struct Box {");
+        sv_push(lines, "    value: string?;");
+        sv_push(lines, "}");
+        sv_push(lines, "func accepts(value: string) -> bool {");
+        sv_push(lines, "    return value != \"\";");
+        sv_push(lines, "}");
+        sv_push(lines, "func local_matches(value: string?, expected: string) -> bool {");
+        sv_push(lines, "    return value != null && (value as string) == expected;");
+        sv_push(lines, "}");
+        sv_push(lines, "func repeated_call(value: string?) -> bool {");
+        sv_push(lines, "    return value != null && accepts((((value as string))));");
+        sv_push(lines, "}");
+        sv_push(lines, "func field_matches(box: Box*, expected: string) -> bool {");
+        sv_push(lines, "    return box.value != null && (((box.value as string))) == expected;");
+        sv_push(lines, "}");
+        sv_push(lines, "func owner_copy(value: string?) -> string {");
+        sv_push(lines, "    return ((value as string));");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for parenthesized unwrap fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(!contains_s(generated, "dea_string dea_arc_"),
+            "parenthesized cast from a place should not materialize an ARC alias temp");
+        assert(!contains_s(generated, "rt_string_release(dea_arc_"),
+            "parenthesized cast from a place should not schedule ARC alias cleanup");
+        assert(contains_s(generated, "rt_string_retain(dea_copy_"),
+            "returning a parenthesized unwrap should retain the new owner");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests parenthesized nullable wraps own one retained payload in every context.
+ */
+func test_backend_generate_parenthesized_wrap_from_place_ownership_boundaries() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func accepts_optional(value: string?) -> bool {");
+        sv_push(lines, "    return value != null;");
+        sv_push(lines, "}");
+        sv_push(lines, "func borrowed_wrap(value: string) -> bool {");
+        sv_push(lines, "    return accepts_optional(((value as string?)));");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for borrowed parenthesized wrap fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        let borrowed_retain = find_s(generated, "rt_string_retain(");
+        let borrowed_second_retain = find_from_s(generated, "rt_string_retain(", borrowed_retain + 1);
+        let borrowed_release = find_s(generated, "rt_string_release(");
+        let borrowed_second_release = find_from_s(generated, "rt_string_release(", borrowed_release + 1);
+        assert(borrowed_retain >= 0 && borrowed_second_retain < 0,
+            "passing a parenthesized wrap to a borrowed parameter should retain exactly once");
+        assert(borrowed_release >= 0 && borrowed_second_release < 0,
+            "the borrowed wrapped-value temp should release exactly once after the call");
+        assert(contains_s(generated, "dea_opt_string dea_arc_") &&
+               contains_s(generated, "rt_string_release((dea_arc_"),
+            "a borrowed wrapped value should materialize and release its owned ARC temp");
+
+        analysis_result_free(result);
+    }
+
+    with (let filenames2 = sv_create(1) => sv_free(filenames2),
+          let sources2 = sv_create(1) => sv_free(sources2),
+          let lines2 = sv_create(12) => sv_free(lines2),
+          let cfg2 = log_config_create(LL_ERROR, false) => drop cfg2,
+          let opts2 = cg_options_create() => cg_options_free(opts2)) {
+        opts2.emit_line_directives = false;
+        sv_push(filenames2, "demo/main.l1");
+        sv_push(lines2, "module demo.main;");
+        sv_push(lines2, "func owner_wrap(value: string) -> string? {");
+        sv_push(lines2, "    return ((value as string?));");
+        sv_push(lines2, "}");
+        sv_push(lines2, "func main() -> int {");
+        sv_push(lines2, "    return 0;");
+        sv_push(lines2, "}");
+        sv_push(sources2, bt_source(lines2));
+
+        let result2 = bt_analyze_sources("demo.main", filenames2, sources2);
+        assert(!analysis_has_errors(result2), "analysis should succeed for owned parenthesized wrap fixture");
+
+        let generated2 = bt_generate_entry(result2, opts2, cfg2);
+        let owner_retain = find_s(generated2, "rt_string_retain(");
+        let owner_second_retain = find_from_s(generated2, "rt_string_retain(", owner_retain + 1);
+        assert(owner_retain >= 0 && owner_second_retain < 0,
+            "returning a parenthesized wrap should transfer exactly one retained owner");
+        assert(!contains_s(generated2, "dea_arc_"),
+            "returning a parenthesized wrap should transfer ownership without a local ARC temp");
+
+        analysis_result_free(result2);
+    }
+}
+
+/**
+ * Tests a parenthesized cast from an ARC rvalue still receives temporary cleanup.
+ */
+func test_backend_generate_parenthesized_cast_rvalue_materializes_arc_temp() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func accepts(value: string) -> bool {");
+        sv_push(lines, "    return value != \"\";");
+        sv_push(lines, "}");
+        sv_push(lines, "func rvalue_call(module_name: string, type_name: string) -> bool {");
+        sv_push(lines, "    return accepts((((module_name + \"::\" + type_name) as string)));");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for parenthesized cast rvalue fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "dea_string dea_arc_"),
+            "parenthesized cast from an ARC rvalue should materialize a cleanup temp");
+        assert(contains_s(generated, "rt_string_release(dea_arc_"),
+            "parenthesized cast from an ARC rvalue should schedule temp cleanup");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests raw-pointer indexing lowering for reads, writes, and single evaluation of side-effectful operands.
+ */
+func test_backend_generate_pointer_indexing_contract() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(20) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "extern func next_index() -> int;");
+        sv_push(lines, "extern func make_ptr() -> int*;");
+        sv_push(lines, "unsafe func read(p: int*, i: int) -> int {");
+        sv_push(lines, "    return p[i];");
+        sv_push(lines, "}");
+        sv_push(lines, "unsafe func write(p: int*, i: int, value: int) {");
+        sv_push(lines, "    p[i] = value;");
+        sv_push(lines, "}");
+        sv_push(lines, "unsafe func write_effectful(value: int) {");
+        sv_push(lines, "    make_ptr()[next_index()] = value;");
+        sv_push(lines, "}");
+        sv_push(lines, "unsafe func read_effectful() -> int {");
+        sv_push(lines, "    return make_ptr()[next_index()];");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int { return 0; }");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for pointer-indexing fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "_rt_check_index_ptr_site(&dea_site_") &&
+                contains_s(generated, ", (void*)(p), (dea_int)(i), (dea_int)(sizeof(dea_int)), (dea_int)(_RT_ALIGNOF(dea_int))"),
+            "pointer-index read/write should lower through checked indexed pointer access");
+        assert(!contains_s(generated, "((dea_int*)(p) + (i))"),
+            "pointer-index read/write must not form the indexed C pointer before validation");
+        assert(contains_s(generated, "_RT_ACCESS_READ") && contains_s(generated, "_RT_ACCESS_WRITE"),
+            "pointer-index read/write should pass distinct runtime access modes");
+        assert(contains_s(generated, " = value;"),
+            "pointer-index write should still emit an assignment");
+        assert(contains_s(generated, "dea_int* dea_base_"),
+            "effectful write base should be captured once");
+        assert(contains_s(generated, "dea_int dea_idx_"),
+            "effectful write index should be captured once");
+        assert(contains_s(generated, " = value;"),
+            "effectful write should still emit one indexed assignment after temp capture");
+        assert(contains_s(generated, "dea_int* dea_base_"),
+            "effectful read base should be captured once");
+        assert(contains_s(generated, ", (void*)(dea_base_"),
+            "effectful read should check the indexed temporary base before pointer arithmetic");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests write-mode pointer checks for field stores through dereferences.
+ */
+func test_backend_generate_deref_field_write_uses_write_mode() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "struct Inner {");
+        sv_push(lines, "    value: int;");
+        sv_push(lines, "}");
+        sv_push(lines, "struct Outer {");
+        sv_push(lines, "    inner: Inner;");
+        sv_push(lines, "}");
+        sv_push(lines, "unsafe func poke(q: Outer*, r: Inner*) {");
+        sv_push(lines, "    (*r).value = 1;");
+        sv_push(lines, "    q.inner.value = 2;");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int { return 0; }");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for deref field write fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "_RT_ACCESS_WRITE"),
+            "field stores through dereferences should use write-mode pointer checks");
+        assert(!contains_s(generated, "_RT_ACCESS_READ"),
+            "field stores through dereferences should not fall back to read-mode pointer checks");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests fixed-size array wrappers, literals, constructors, and checked indexing.
+ */
+func test_backend_generate_fixed_arrays() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(24) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func get_index() -> int { return 1; }");
+        sv_push(lines, "unsafe func read_row(p: int[3]*, i: int, j: int) -> int { return p[i][j]; }");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let a: int[3] = [1, 2];");
+        sv_push(lines, "    let p: int[3] = ((([9, 8, 7])));");
+        sv_push(lines, "    let z: int[3] = [];");
+        sv_push(lines, "    let b = int[3](7);");
+        sv_push(lines, "    let m: int[2][3] = [[1, 2, 3], [4, 5, 6]];");
+        sv_push(lines, "    let pm: int[2][3] = ((([([9, 8, 7]), (([6, 5, 4]))])));");
+        sv_push(lines, "    let filled = int[2][3]([8, 9]);");
+        sv_push(lines, "    let filled_paren = int[2][3]((([6, 7])));");
+        sv_push(lines, "    let heap = new int[2][3]([4, 5]);");
+        sv_push(lines, "    let heap_paren = new int[2][3]((([2, 3])));");
+        sv_push(lines, "    let opt_arr: int[3]? = a;");
+        sv_push(lines, "    return a[get_index()] + p[0] + z[0] + b[2] + m[get_index()][get_index()] + pm[0][0] + filled[1][0] + filled_paren[1][0] + (*heap)[1][1] + (*heap_paren)[1][1] + sizeof(int[3]) + sizeof(a[0]);");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "fixed array fixture should analyze without errors");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "typedef struct __deaA3_i { dea_int data[3]; } __deaA3_i;"),
+            "expected int[3] wrapper typedef");
+        assert(contains_s(generated, "typedef struct __deaA2_A3_i { dea_int data[2][3]; } __deaA2_A3_i;"),
+            "expected flattened int[2][3] wrapper typedef");
+        assert(contains_s(generated, "typedef struct { dea_bool has_value; __deaA3_i value; } dea_opt_a3_int;"),
+            "expected nullable int[3] wrapper typedef");
+        assert(find_s(generated, "} dea_opt_a3_int;") > find_s(generated, "} __deaA3_i;"),
+            "expected int[3] wrapper before nullable int[3] wrapper");
+        assert(contains_s(generated, "__deaA3_i a = ((__deaA3_i){.data = {1, 2}});"),
+            "expected contextual array literal initializer");
+        assert(contains_s(generated, "__deaA3_i p = ((__deaA3_i){.data = {9, 8, 7}});"),
+            "expected parenthesized contextual array literal initializer");
+        assert(contains_s(generated, "__deaA3_i z = ((__deaA3_i){.data = {0}});"),
+            "expected C99-compatible empty array literal initializer");
+        assert(contains_s(generated, "__deaA2_A3_i filled = dea_arr_"),
+            "expected multidimensional literal-as-fill constructor");
+        assert(contains_s(generated, ", (void*)(dea_new_") && contains_s(generated, "dea_arr_"),
+            "expected heap multidimensional literal-as-fill constructor");
+        assert(contains_s(generated, "_rt_panic_oob("), "expected array bounds checks");
+        assert(bt_count_substring(generated, "_rt_panic_oob(") >= 2,
+            "expected nested indexing to emit checks at both dimensions");
+        assert(contains_s(generated, "((dea_int)sizeof(__deaA3_i))"), "expected sizeof array wrapper");
+        assert(contains_s(generated, "((dea_int)sizeof(dea_int))"), "expected sizeof indexed value type");
+        assert(!contains_s(generated, "__deaA3_i dea_base_"),
+            "nested row indexing should not materialize a flattened row as a wrapper");
+        assert(contains_s(generated, "_rt_check_index_ptr_site(&dea_site_") &&
+            contains_s(generated, ", (void*)(p), (dea_int)(i), (dea_int)(sizeof(__deaA3_i)), (dea_int)(_RT_ALIGNOF(__deaA3_i))") &&
+            contains_s(generated, ".data[j]"),
+            "pointer-to-array indexing should check the row pointer and keep wrapper boundary before row access");
+        assert(!contains_s(generated, "((__deaA3_i*)(p) + (i))"),
+            "pointer-to-array indexing must not form the row pointer before validation");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests slice descriptor lowering, array-to-slice conversion, and checked slice access.
+ */
+func test_backend_generate_slices() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(20) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func get_index() -> int { return 1; }");
+        sv_push(lines, "func sum(s: int[]) -> int { return s[get_index()]; }");
+        sv_push(lines, "func combine(prefix: int, s: int[]) -> int { return prefix + s[0]; }");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let a: int[3] = [1, 2, 3];");
+        sv_push(lines, "    let whole: int[] = a;");
+        sv_push(lines, "    let part = slice(a, 1, 2);");
+        sv_push(lines, "    let n = len(whole);");
+        sv_push(lines, "    let text = \"he\" + \"llo\";");
+        sv_push(lines, "    let text_n = len(text);");
+        sv_push(lines, "    let temp_text_n = len(\"x\" + \"yz\");");
+        sv_push(lines, "    whole[0] = 9;");
+        sv_push(lines, "    return sum(a) + combine(s: a, prefix: 10) + whole[get_index()] + part[0] + n + text_n + temp_text_n;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "slice fixture should analyze without errors");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "typedef struct __deaWi { dea_int len; dea_int *data; } __deaWi;"),
+            "expected int[] slice descriptor typedef");
+        assert(contains_s(generated, "((__deaWi){ .len = ((dea_int)3), .data = (a).data })"),
+            "expected array-to-slice conversion using the array length and storage");
+        assert(bt_count_substring(generated, "(__deaWi){ .len = ") >= 2,
+            "expected slice descriptors for both the conversion and the slice() call");
+        assert(contains_s(generated, "__deaWi dea_arg_"),
+            "expected out-of-order array-to-slice call argument to materialize as a slice");
+        assert(!contains_s(generated, "__deaA3_i dea_arg_"),
+            "array-to-slice call argument must not materialize as the source array type");
+        assert(contains_s(generated, "_rt_panic_oob("), "expected slice range/index bounds checks");
+        assert(contains_s(generated, ") > ((((dea_int)3)) - (dea_slice_start_"),
+            "expected three-argument slice check to compare count with remaining length");
+        assert(!contains_s(generated, ") + (dea_slice_count_"),
+            "three-argument slice range checks must not add start and count");
+        assert(contains_s(generated, "_rt_check_index_ptr_site(&dea_site_"),
+            "expected slice element access through checked indexed pointer validation");
+        assert(contains_s(generated, ", (void*)((s).data),"),
+            "expected slice function parameter access to validate the descriptor data pointer");
+        assert(contains_s(generated, "(whole).len"), "expected len(slice) to read the descriptor length");
+        assert(contains_s(generated, "rt_strlen(text)"), "expected len(string) to call rt_strlen");
+        assert(contains_s(generated, "rt_strlen(dea_arc_"), "expected len(string rvalue) to use a cleanup temp");
+        assert(contains_s(generated, "(s).len"), "expected slice index check against the descriptor length");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests fixed-size arrays with nested ARC structs and mixed pointer suffix wrappers.
+ */
+func test_backend_generate_fixed_array_arc_shapes() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(32) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "struct NestedStruct {");
+        sv_push(lines, "    t1: string;");
+        sv_push(lines, "    t2: string;");
+        sv_push(lines, "}");
+        sv_push(lines, "struct MyStruct1 {");
+        sv_push(lines, "    s: string;");
+        sv_push(lines, "    n: NestedStruct;");
+        sv_push(lines, "}");
+        sv_push(lines, "struct NestedStruct2 {");
+        sv_push(lines, "    v1: string;");
+        sv_push(lines, "    v2: NestedStruct[10][20];");
+        sv_push(lines, "}");
+        sv_push(lines, "func use_complex(p: string[10]*[20]*[30]) -> int { return sizeof(string[10]*[20]*[30]); }");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let n = NestedStruct(\"a\", \"b\");");
+        sv_push(lines, "    let one = MyStruct1(\"c\", n);");
+        sv_push(lines, "    let arr: MyStruct1[2] = [one];");
+        sv_push(lines, "    let seed = NestedStruct(\"d\", \"e\");");
+        sv_push(lines, "    let row = NestedStruct[20](seed);");
+        sv_push(lines, "    let nested = NestedStruct2(\"f\", NestedStruct[10][20](row));");
+        sv_push(lines, "    let arr2: NestedStruct2[1] = [nested];");
+        sv_push(lines, "    return sizeof(MyStruct1[2]) + sizeof(NestedStruct2[1]) + sizeof(string[10]*[20]*[30]);");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "fixed array ARC shape fixture should analyze without errors");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "typedef struct __deaA2_M4demo4mainS9MyStruct1"),
+            "expected MyStruct1[2] wrapper typedef");
+        assert(contains_s(generated, "typedef struct __deaA10_A20_M4demo4mainS12NestedStruct"),
+            "expected flattened NestedStruct[10][20] wrapper typedef");
+        assert(contains_s(generated, "typedef struct __deaA1_M4demo4mainS13NestedStruct2"),
+            "expected NestedStruct2[1] wrapper typedef");
+        assert(contains_s(generated, "typedef struct __deaA10_c { dea_string data[10]; } __deaA10_c;"),
+            "expected string[10] wrapper typedef");
+        assert(contains_s(generated, "typedef struct __deaA20_PA10_c { __deaA10_c* data[20]; } __deaA20_PA10_c;"),
+            "expected string[10]*[20] wrapper typedef");
+        assert(contains_s(generated, "typedef struct __deaA30_PA20_PA10_c { __deaA20_PA10_c* data[30]; } __deaA30_PA20_PA10_c;"),
+            "expected string[10]*[20]*[30] wrapper typedef");
+        assert(contains_s(generated, "rt_string_release"), "expected managed string cleanup calls");
+        assert(contains_s(generated, "for (dea_int dea_arr_i_"), "expected recursive array cleanup loops");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests string equality and inequality lowering through the runtime helper.
+ */
+func test_backend_generate_string_equality_ops() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(12) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let lhs = \"dea\";");
+        sv_push(lines, "    let same = \"dea\";");
+        sv_push(lines, "    let different = \"dea!\";");
+        sv_push(lines, "    if (lhs == same && lhs != different) {");
+        sv_push(lines, "        return 23;");
+        sv_push(lines, "    }");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for string equality fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "rt_string_equals(lhs, same)"), "string equality should lower through runtime helper");
+        assert(contains_s(generated, "(!rt_string_equals(lhs, different))"),
+            "string inequality should lower through negated runtime helper");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests string relational lowering through the runtime helper.
+ */
+func test_backend_generate_string_relational_ops() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(14) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let lhs = \"dea\";");
+        sv_push(lines, "    let same = \"dea\";");
+        sv_push(lines, "    let longer = \"dea!\";");
+        sv_push(lines, "    let higher = \"deb\";");
+        sv_push(lines, "    if (lhs < longer && lhs <= same && higher > lhs && higher >= same) {");
+        sv_push(lines, "        return 23;");
+        sv_push(lines, "    }");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for string relational fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "(rt_string_compare(lhs, longer) < 0)"),
+            "string less-than should lower through runtime helper");
+        assert(contains_s(generated, "(rt_string_compare(lhs, same) <= 0)"),
+            "string less-equal should lower through runtime helper");
+        assert(contains_s(generated, "(rt_string_compare(higher, lhs) > 0)"),
+            "string greater-than should lower through runtime helper");
+        assert(contains_s(generated, "(rt_string_compare(higher, same) >= 0)"),
+            "string greater-equal should lower through runtime helper");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests string concatenation lowering through the runtime helper.
+ */
+func test_backend_generate_string_concat_ops() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(12) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func main() -> string {");
+        sv_push(lines, "    let a = \"hel\";");
+        sv_push(lines, "    let b = \"lo\";");
+        sv_push(lines, "    return a + b;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for string concat fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "rt_string_concat(a, b)"), "string concat should lower through runtime helper");
+
+        analysis_result_free(result);
+    }
+}
+
+/** Tests generated literals and line-directive filenames are trigraph-safe. */
+func test_backend_generate_trigraph_safe_c_strings() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(6) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        sv_push(filenames, "demo/??=/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func main() -> string {");
+        sv_push(lines, "    return \"??=??/??'??(??)??!??<??>??-\";");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "trigraph string fixture should analyze");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "\"demo/?\\?=/main.l1\""),
+            "generated line directive should escape trigraph spelling");
+        assert(contains_s(generated,
+            "DEA_STRING_CONST(\"?\\?=?\\?/?\\?'?\\?(?\\?)?\\?!?\\?<?\\?>?\\?-\", 27)"),
+            "generated string literal should escape all trigraph spellings");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests generation for implemented small integer builtin types and checked casts.
+ */
+func test_backend_generate_small_integer_builtins() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(14) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func main(x: int, b: byte, u: ushort) -> int {");
+        sv_push(lines, "    let a: tiny = 1;");
+        sv_push(lines, "    let c: byte = 65;");
+        sv_push(lines, "    let s: short = c;");
+        sv_push(lines, "    let us: ushort = c;");
+        sv_push(lines, "    let n: tiny = x as tiny;");
+        sv_push(lines, "    let m: tiny = b as tiny;");
+        sv_push(lines, "    let q: short = u as short;");
+        sv_push(lines, "    return a + c + s + us + n + m + q;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for small integer fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "dea_tiny a = 1;"), "tiny let lowering mismatch");
+        assert(contains_s(generated, "dea_byte c = 65;"), "byte contextual literal lowering mismatch");
+        assert(contains_s(generated, "dea_short s = ((dea_short)(c));"), "byte-to-short widening lowering mismatch");
+        assert(contains_s(generated, "dea_ushort us = ((dea_ushort)(c));"), "byte-to-ushort widening lowering mismatch");
+        assert(contains_s(generated, "dea_tiny n = (_rt_narrow_dea_tiny(x));"), "int-to-tiny narrowing mismatch");
+        assert(contains_s(generated, "dea_tiny m = (_rt_narrow_dea_tiny(b));"), "byte-to-tiny range check mismatch");
+        assert(contains_s(generated, "dea_short q = (_rt_narrow_dea_short(u));"), "ushort-to-short range check mismatch");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests generation for large integer builtin types, bigint literals, and checked casts.
+ */
+func test_backend_generate_large_integer_builtins() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(20) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "let max_uint: uint = 0xffffffff;");
+        sv_push(lines, "let min_long_hex: long = -0x8000000000000000;");
+        sv_push(lines, "let min_long_dec: long = -9223372036854775808;");
+        sv_push(lines, "let max_ulong: ulong = 0xffffffffffffffff;");
+        sv_push(lines, "let bin_ulong: ulong = 0b1111111111111111111111111111111111111111111111111111111111111111;");
+        sv_push(lines, "func zero_ulong_opt_cast_nullable() -> ulong? { return 0 as ulong?; }");
+        sv_push(lines, "func zero_ulong_opt_cast_inner() -> ulong? { return 0 as ulong; }");
+        sv_push(lines, "func big_long_opt_cast_nullable() -> long? { return 9999999999 as long?; }");
+        sv_push(lines, "func direct_long_opt_return() -> long? { return 42; }");
+        sv_push(lines, "func direct_ulong_opt_return() -> ulong? { return 42; }");
+        sv_push(lines, "func direct_big_long_opt_return() -> long? { return 9999999999; }");
+        sv_push(lines, "func main(x: int, u: uint, l: long, ul: ulong, b: byte, us: ushort) -> long {");
+        sv_push(lines, "    let a: uint = b;");
+        sv_push(lines, "    let c: uint = us;");
+        sv_push(lines, "    let d: long = x;");
+        sv_push(lines, "    let e: long = u;");
+        sv_push(lines, "    let f: ulong = u;");
+        sv_push(lines, "    let g: uint = x as uint;");
+        sv_push(lines, "    let h: short = ul as short;");
+        sv_push(lines, "    let i: long = 2147483648;");
+        sv_push(lines, "    let k: long? = 0 as long?;");
+        sv_push(lines, "    let j: long = l + e;");
+        sv_push(lines, "    if (u == c) { return j + i; }");
+        sv_push(lines, "    return j;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for large integer fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "dea_uint __deaM4demo4mainN8max_uint = 0xffffffffU;"),
+            "uint top-level hex bigint literal mismatch");
+        assert(contains_s(generated, "dea_long __deaM4demo4mainN12min_long_hex = INT64_MIN;"),
+            "long top-level negative hex bigint literal mismatch");
+        assert(contains_s(generated, "dea_long __deaM4demo4mainN12min_long_dec = INT64_MIN;"),
+            "long top-level negative decimal bigint literal mismatch");
+        assert(contains_s(generated, "dea_ulong __deaM4demo4mainN9max_ulong = 0xffffffffffffffffULL;"),
+            "ulong top-level hex bigint literal mismatch");
+        assert(contains_s(generated, "dea_ulong __deaM4demo4mainN9bin_ulong = 0xffffffffffffffffULL;"),
+            "binary ulong bigint literal mismatch");
+        assert(contains_s(generated, "dea_uint a = ((dea_uint)(b));"), "byte-to-uint widening mismatch");
+        assert(contains_s(generated, "dea_uint c = ((dea_uint)(us));"), "ushort-to-uint widening mismatch");
+        assert(contains_s(generated, "dea_long d = ((dea_long)(x));"), "int-to-long widening mismatch");
+        assert(contains_s(generated, "dea_long e = ((dea_long)(u));"), "uint-to-long widening mismatch");
+        assert(contains_s(generated, "dea_ulong f = ((dea_ulong)(u));"), "uint-to-ulong widening mismatch");
+        assert(contains_s(generated, "dea_uint g = (_rt_narrow_dea_uint(x));"), "int-to-uint checked cast mismatch");
+        assert(contains_s(generated, "dea_short h = (_rt_cast_dea_short_from_unsigned((dea_ulong)(ul)));"),
+            "ulong-to-short checked cast mismatch");
+        assert(contains_s(generated, "dea_long i = 2147483648LL;"), "long local bigint literal mismatch");
+        assert(contains_s(generated, "dea_opt_long k = ((dea_opt_long){.has_value = 1, .value = ((dea_long)(0))});"),
+            "int-to-nullable-long cast lowering mismatch");
+        assert(contains_s(generated,
+            "dea_opt_ulong __deaM4demo4mainN28zero_ulong_opt_cast_nullableF0Qm(void)\n{\n    return ((dea_opt_ulong){.has_value = 1, .value = (_rt_narrow_dea_ulong(0))});"),
+            "int-to-nullable-ulong cast return lowering mismatch");
+        assert(contains_s(generated,
+            "dea_opt_ulong __deaM4demo4mainN25zero_ulong_opt_cast_innerF0Qm(void)\n{\n    return ((dea_opt_ulong){.has_value = 1, .value = (_rt_narrow_dea_ulong(0))});"),
+            "inner-ulong-to-nullable-ulong return lowering mismatch");
+        assert(contains_s(generated,
+            "dea_opt_long __deaM4demo4mainN26big_long_opt_cast_nullableF0Ql(void)\n{\n    return ((dea_opt_long){.has_value = 1, .value = 9999999999LL});"),
+            "bigint-to-nullable-long cast return lowering mismatch");
+        assert(contains_s(generated,
+            "dea_opt_long __deaM4demo4mainN22direct_long_opt_returnF0Ql(void)\n{\n    return ((dea_opt_long){.has_value = 1, .value = ((dea_long)(42))});"),
+            "direct int-literal-to-nullable-long return lowering mismatch");
+        assert(contains_s(generated,
+            "dea_opt_ulong __deaM4demo4mainN23direct_ulong_opt_returnF0Qm(void)\n{\n    return ((dea_opt_ulong){.has_value = 1, .value = ((dea_ulong)(42))});"),
+            "direct int-literal-to-nullable-ulong return lowering mismatch");
+        assert(contains_s(generated,
+            "dea_opt_long __deaM4demo4mainN26direct_big_long_opt_returnF0Ql(void)\n{\n    return ((dea_opt_long){.has_value = 1, .value = 9999999999LL});"),
+            "direct bigint-to-nullable-long return lowering mismatch");
+        assert(contains_s(generated, "dea_long j = (_rt_ladd(l, e));"), "long addition helper mismatch");
+        assert(contains_s(generated, "return (_rt_ladd(j, i));"), "long return addition helper mismatch");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests generation for builtin `float` and `double` lowering.
+ */
+func test_backend_generate_float_double_builtins() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(12) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func widen(x: float) -> double {");
+        sv_push(lines, "    return x;");
+        sv_push(lines, "}");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let seed: float = 1.0f;");
+        sv_push(lines, "    let total: double = widen(seed) + 1.5 + 1.5;");
+        sv_push(lines, "    if (total == 4.0 && total >= 4.0) { return 17; }");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for float/double fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "#include <float.h>"), "float fixture should emit float contract guards");
+        assert(contains_s(generated, "#if FLT_RADIX != 2"), "float fixture should emit radix guard");
+        assert(contains_s(generated, "__FAST_MATH__"), "float fixture should emit fast-math guard");
+        assert(contains_s(generated, "double __deaM4demo4mainN5widenF1fd(float x);"), "float/double function declaration mismatch");
+        assert(contains_s(generated, "float seed = 1.0f;"), "float literal local lowering mismatch");
+        assert(contains_s(generated, "double total = ((__deaM4demo4mainN5widenF1fd(seed) + 1.5) + 1.5);"),
+            "double arithmetic lowering mismatch");
+        assert(contains_s(generated, "if (total == 4.0)"), "double equality comparison lowering mismatch");
+        assert(!contains_s(generated, "if ((total == 4.0))"), "double equality condition should avoid redundant parens");
+        assert(contains_s(generated, "if (total >= 4.0)"), "double ordering comparison lowering mismatch");
+        assert(!contains_s(generated, "if ((total >= 4.0))"), "double ordering condition should avoid redundant parens");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests condition headers omit only redundant outer parentheses.
+ */
+func test_backend_generate_condition_header_parens() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func main(x: int, y: int, flags: int, mask: int) -> int {");
+        sv_push(lines, "    if (x == y) {");
+        sv_push(lines, "        return 1;");
+        sv_push(lines, "    }");
+        sv_push(lines, "    while (x < y) {");
+        sv_push(lines, "        x = x + 1;");
+        sv_push(lines, "    }");
+        sv_push(lines, "    if ((flags & mask) != 0) {");
+        sv_push(lines, "        return 2;");
+        sv_push(lines, "    }");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for condition-header fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "if (x == y)"), "equality condition lowering mismatch");
+        assert(!contains_s(generated, "if ((x == y))"), "equality condition should avoid redundant parens");
+        assert(contains_s(generated, "while (x < y)"), "while condition lowering mismatch");
+        assert(!contains_s(generated, "while ((x < y))"), "while condition should avoid redundant parens");
+        assert(contains_s(generated, "if ((flags & mask) != 0)"),
+            "nested precedence parentheses should be preserved");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests direct C lowering for floating-point arithmetic and explicit numeric casts.
+ */
+func test_backend_generate_float_double_ops() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let lhs: float = 8.0f;");
+        sv_push(lines, "    let rhs: float = 2.0f;");
+        sv_push(lines, "    let diff: float = lhs - rhs;");
+        sv_push(lines, "    let prod: float = rhs * 4.0f;");
+        sv_push(lines, "    let quot: double = 9.0 / 2.0;");
+        sv_push(lines, "    let narrowed: float = quot as float;");
+        sv_push(lines, "    let widened: double = lhs as double;");
+        sv_push(lines, "    if (diff == 6.0f && prod == 8.0f && quot > 4.0 && narrowed > 4.0f && widened == 8.0) { return 21; }");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for floating operator fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "float diff = (lhs - rhs);"), "float subtraction should lower to direct C subtraction");
+        assert(contains_s(generated, "float prod = (rhs * 4.0f);"), "float multiplication should lower to direct C multiplication");
+        assert(contains_s(generated, "double quot = (9.0 / 2.0);"), "double division should lower to direct C division");
+        assert(contains_s(generated, "float narrowed = ((float)(quot));"), "double-to-float cast lowering mismatch");
+        assert(contains_s(generated, "double widened = ((double)(lhs));"), "float-to-double cast lowering mismatch");
+        assert(!contains_s(generated, "_rt_isub("), "float subtraction should not use checked integer subtraction");
+        assert(!contains_s(generated, "_rt_imul("), "float multiplication should not use checked integer multiplication");
+        assert(!contains_s(generated, "_rt_idiv("), "double division should not use checked integer division");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests that floating zero-division stays on the plain C operator path.
+ */
+func test_backend_generate_float_zero_division_plain_c() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(12) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let dz: double = 1.0 / 0.0;");
+        sv_push(lines, "    let fz: float = 1.0f / 0.0f;");
+        sv_push(lines, "    if (dz > 0.0 && fz > 0.0f) { return 22; }");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for floating zero-division fixture");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "double dz = (1.0 / 0.0);"), "double zero-division should lower to direct C division");
+        assert(contains_s(generated, "float fz = (1.0f / 0.0f);"), "float zero-division should lower to direct C division");
+        assert(!contains_s(generated, "_rt_idiv("), "floating zero-division should not use checked integer division");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests pointer identity backend lowering.
+ */
+func test_backend_pointer_identity() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "struct T { val: int; }");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let p1: T* = new T(1);");
+        sv_push(lines, "    let p2: T* = new T(2);");
+        sv_push(lines, "    let alias: T* = p1;");
+        sv_push(lines, "    if (p1 == p1) { }");
+        sv_push(lines, "    if (p1 != p2) { }");
+        sv_push(lines, "    if (p1 == p2) { }");
+        sv_push(lines, "    if (alias == p1) { }");
+        sv_push(lines, "    if (alias != p1) { }");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "pointer identity test should analyze without errors");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "(p1 == p1)"), "pointer self-identity equality lowering mismatch");
+        assert(contains_s(generated, "(p1 != p2)"), "pointer non-identity inequality lowering mismatch");
+        assert(contains_s(generated, "(p1 == p2)"), "pointer non-identity equality lowering mismatch");
+        assert(contains_s(generated, "(alias == p1)"), "pointer alias equality lowering mismatch");
+        assert(contains_s(generated, "(alias != p1)"), "pointer alias inequality lowering mismatch");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests nullable identity backend lowering.
+ */
+func test_backend_nullable_identity() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(32) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+
+        sv_push(filenames, "demo/main.l1");
+        sv_push(lines, "module demo.main;");
+        sv_push(lines, "struct T { val: int; }");
+        sv_push(lines, "func main() -> int {");
+        sv_push(lines, "    let a: int? = 5;");
+        sv_push(lines, "    let b: int? = null;");
+        sv_push(lines, "    if (a == a) { }");
+        sv_push(lines, "    if (a != b) { }");
+        sv_push(lines, "    let s1: string? = \"hi\";");
+        sv_push(lines, "    let s2: string? = null;");
+        sv_push(lines, "    if (s1 == s1) { }");
+        sv_push(lines, "    if (s1 != s2) { }");
+        sv_push(lines, "    let p1: T*? = new T(1);");
+        sv_push(lines, "    let p2: T*? = null;");
+        sv_push(lines, "    if (p1 == p1) { }");
+        sv_push(lines, "    if (p1 != p2) { }");
+        sv_push(lines, "    return 0;");
+        sv_push(lines, "}");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "nullable identity test should analyze without errors");
+
+        let generated = bt_generate_entry(result, opts, cfg);
+
+        /* Scalar optionals compare snapshots instead of repeatedly reading their sources. */
+        assert(bt_count_substring(generated, "dea_opt_int dea_cmp_") == 4,
+            "int? equality should capture each operand once");
+        assert(!contains_s(generated, "a.has_value") && !contains_s(generated, "b.has_value"),
+            "int? comparisons should read captured presence flags");
+        assert(contains_s(generated, ".value == dea_cmp_") && contains_s(generated, ".value != dea_cmp_"),
+            "int? equality and inequality should compare captured payloads");
+
+        /* Borrowed string optionals need retained snapshots for the runtime comparison. */
+        assert(bt_count_substring(generated, "dea_opt_string dea_copy_") == 4,
+            "string? equality should copy each borrowed operand once");
+        assert(bt_count_substring(generated, "rt_string_retain((dea_copy_") == 4,
+            "string? snapshots should retain each borrowed payload");
+        assert(contains_s(generated, "rt_string_equals(dea_arc_") &&
+            contains_s(generated, "(!rt_string_equals(dea_arc_"),
+            "string? equality and inequality should compare scope-owned payloads");
+
+        // T*? lowering (niche, raw C)
+        assert(contains_s(generated, "(p1 == p1)"), "T*? equality lowering mismatch");
+        assert(contains_s(generated, "(p1 != p2)"), "T*? inequality lowering mismatch");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    test_codegen_options_defaults();
+    test_codegen_options_from_cli();
+    test_scope_context_tracks_declared_and_owned_variables();
+    test_scope_context_inline_cleanup_tracking();
+    test_backend_scope_helpers_manage_cleanup_state();
+    test_analysis_expr_lookup_helpers();
+    test_analysis_has_arc_data_for_struct_and_nullable_pointer();
+    test_backend_generate_types_and_top_level_lets();
+    test_backend_generate_top_level_consts();
+    test_backend_generate_module_isolates_definitions_and_lifecycle();
+    test_backend_generate_module_noop_lifecycle_without_entry();
+    test_backend_generate_module_hides_imported_opaque_layouts();
+    test_backend_generate_module_collects_imported_alias_intrinsic_wrappers();
+    test_backend_module_analysis_rejects_imported_opaque_signature_use();
+    test_backend_module_analysis_rejects_imported_opaque_body_use();
+    test_backend_module_analysis_deduplicates_opaque_loop_condition();
+    test_backend_generate_module_declares_consumed_interface_values();
+    test_backend_generate_module_entry_result_normalization();
+    test_backend_generate_basic_control_flow();
+    test_backend_generate_loop_exit_case_lowering();
+    test_backend_generate_case_if_else_lowering();
+    test_backend_generate_match_and_with_cleanup_block();
+    test_backend_generate_single_statement_loop_and_match_bodies();
+    test_backend_generate_with_cleanup_block_header_try_predeclares_nullable_lets();
+    test_backend_generate_drop_statement();
+    test_backend_generate_drop_begin_before_array_cleanup();
+    test_backend_generate_new_and_try_lowering();
+    test_backend_generate_intrinsics_use_analyzed_target_types();
+    test_backend_generate_named_args_use_source_order_temporaries();
+    test_backend_generate_dea_intrinsics_respect_symbol_origin();
+    test_backend_generate_is_with_call_expr_and_qualified_variant();
+    test_backend_generate_string_copy_retains();
+    test_backend_generate_identity_cast_string_copy_retains();
+    test_backend_generate_parenthesized_unwrap_from_place_stays_borrowed();
+    test_backend_generate_parenthesized_wrap_from_place_ownership_boundaries();
+    test_backend_generate_parenthesized_cast_rvalue_materializes_arc_temp();
+    test_backend_generate_pointer_indexing_contract();
+    test_backend_generate_deref_field_write_uses_write_mode();
+    test_backend_generate_fixed_arrays();
+    test_backend_generate_slices();
+    test_backend_generate_fixed_array_arc_shapes();
+    test_backend_generate_string_equality_ops();
+    test_backend_generate_string_concat_ops();
+    test_backend_generate_trigraph_safe_c_strings();
+    test_backend_generate_small_integer_builtins();
+    test_backend_generate_large_integer_builtins();
+    test_backend_generate_float_double_builtins();
+    test_backend_generate_float_double_ops();
+    test_backend_generate_float_zero_division_plain_c();
+    test_backend_pointer_identity();
+    test_backend_nullable_identity();
+    printl_s("backend_test: all tests passed");
+}

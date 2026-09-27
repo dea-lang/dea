@@ -1,0 +1,39 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module pointer_identity_main;
+
+struct T {
+    val: int;
+}
+
+func main() -> int {
+    let p1: T* = new T(1);
+    let p2: T* = new T(2);
+    let alias: T* = p1;
+
+    // self identity
+    if (!(p1 == p1)) {
+        return 1;
+    }
+
+    // non-identity
+    if (!(p1 != p2)) {
+        return 2;
+    }
+    if (p1 == p2) {
+        return 3;
+    }
+
+    // explicit alias
+    if (!(alias == p1)) {
+        return 4;
+    }
+    if (alias != p1) {
+        return 5;
+    }
+
+    return 0;
+}

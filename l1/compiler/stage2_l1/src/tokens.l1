@@ -1,0 +1,566 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+module tokens;
+
+import std.io;
+import std.string;
+import std.unit;
+import sys.rt;
+import std.text;
+import std.vector;
+import std.linear_map;
+
+import builtin_types;
+import util.numbers;
+
+/**
+ * Non-recursive logical token payload used by lexer-error wrappers.
+ */
+enum TokenRecovery {
+    TR_NONE;
+    TR_INT(text: string, value: int);
+    TR_BIGINT(text: string, base: int);
+    TR_REALNUM(sig: string, exp_text: string, is_float: bool);
+    TR_BYTE(text: string, value: byte);
+    TR_STRING(text: string, value: string);
+}
+
+/**
+ * Defines the TokenType enumeration.
+ */
+enum TokenType {
+    TT_EOF;
+
+    TT_IDENT(text: string);                 // identifier, e.g. i, name, etc.
+    TT_UNDERSCORE;                          // "_"
+    TT_INT(text: string, value: int);       // a signed 32-bit `int` literal, e.g. 42, 0xFF, -0b1010, etc.
+    TT_BIGINT(text: string, base: int);     // any integer literal that doesn't fit in `int`, e.g. -0x1234567890, etc.
+    TT_REALNUM(sig: string, exp_text: string, is_float: bool); // real number literal, e.g. 3.14, 2e-10, etc.
+    TT_BYTE(text: string, value: byte);     // octet/byte literal, e.g. 'a', '\n', etc.
+    TT_STRING(text: string, value: string); // string literal, e.g. "hello world", etc.
+
+    // Keywords
+    TT_MODULE;
+    TT_EXPORT;
+    TT_IMPORT;
+    TT_FUNC;
+    TT_STRUCT;
+    TT_ENUM;
+    TT_TYPE;
+    TT_EXTERN;
+    TT_UNSAFE;
+    TT_OPAQUE;
+    TT_LET;
+    TT_CONST;
+    TT_RETURN;
+    TT_MATCH;
+    TT_CASE;
+    TT_IF;
+    TT_ELSE;
+    TT_WHILE;
+    TT_FOR;
+    TT_BREAK;
+    TT_CONTINUE;
+    TT_TRUE;
+    TT_FALSE;
+    TT_NULL;
+    TT_AS;
+    TT_FROM;
+
+    TT_NEW;
+    TT_DROP;
+    TT_WITH;
+    TT_CLEANUP;
+
+    // Punctuation / operators
+    TT_LBRACE;          // {
+    TT_RBRACE;          // }
+    TT_LPAREN;          // (
+    TT_RPAREN;          // )
+    TT_LBRACKET;        // [
+    TT_RBRACKET;        // ]
+    TT_COMMA;           // ,
+    TT_SEMI;            // ;
+    TT_COLON;           // :
+    TT_DOUBLE_COLON;    // ::
+    TT_ARROW_FUNC;      // ->
+    TT_ARROW_MATCH;     // =>
+    TT_EQ;              // =
+    TT_PLUS;            // +
+    TT_MINUS;           // -
+    TT_STAR;            // *
+    TT_SLASH;           // /
+    TT_MODULO;          // %
+    TT_LT;              // <
+    TT_GT;              // >
+    TT_LE;              // <
+    TT_GE;              // <=
+    TT_EQEQ;            // ==
+    TT_NE;              // !=
+    TT_ANDAND;          // &&
+    TT_OROR;            // ||
+    TT_BANG;            // !
+    TT_QUESTION;        // ?
+    TT_ELLIPSIS;        // ...
+    TT_DOT;             // .
+
+    // Reserved operators
+    TT_AMP;             // &
+    TT_PIPE;            // |
+    TT_CARET;           // ^
+    TT_TILDE;           // ~
+    TT_LSHIFT;          // <<
+    TT_RSHIFT;          // >>
+
+    TT_FUTURE_EXTENSION;  // placeholder for future tokens
+
+    // Lexer diagnostic wrapper. The run start position lives in the Token
+    // fields; the payload carries the diagnostic end span and optional logical
+    // recovery token.
+    TT_LEXER_ERROR(code: string, message: string, line_end: int, column_end: int, recovery: TokenRecovery);
+}
+
+/**
+ * Represents the Token structure.
+ */
+struct Token {
+    token_type: TokenType;
+    index: int;     // offset in source, 0-based
+    line: int;      // 1-based
+    column: int;    // 1-based
+}
+
+/**
+ * Render a token as human-readable text.
+ *
+ * @param token Token to format.
+ * @return Readable token spelling for diagnostics and debugging output.
+ */
+func token_to_string(token: Token) -> string {
+    match (token.token_type) {
+        TT_EOF => { return "end-of-file"; }
+        TT_IDENT(t) => { return "ident(" + t + ")"; }
+        TT_UNDERSCORE => { return "_"; }
+        TT_INT(t, v) => { return "int(" + t + ")"; }
+        TT_BIGINT(t, b) => { return "bigint(" + bigint_to_string(t, b) + ")"; }
+        TT_REALNUM(s, e, ff) => { return "real(" + realnum_to_string(s, e, ff) + ")"; }
+        TT_BYTE(t, v) => { return "byte(" + t + ")"; }
+        TT_STRING(t, v) => { return "string(" + t + ")"; }
+
+        // Keywords
+        TT_MODULE => { return "module"; }
+        TT_EXPORT => { return "export"; }
+        TT_IMPORT => { return "import"; }
+        TT_FUNC => { return "func"; }
+        TT_STRUCT => { return "struct"; }
+        TT_ENUM => { return "enum"; }
+        TT_TYPE => { return "type"; }
+        TT_EXTERN => { return "extern"; }
+        TT_UNSAFE => { return "unsafe"; }
+        TT_OPAQUE => { return "opaque"; }
+        TT_LET => { return "let"; }
+        TT_CONST => { return "const"; }
+        TT_RETURN => { return "return"; }
+        TT_MATCH => { return "match"; }
+        TT_CASE => { return "case"; }
+        TT_IF => { return "if"; }
+        TT_ELSE => { return "else"; }
+        TT_WHILE => { return "while"; }
+        TT_FOR => { return "for"; }
+        TT_BREAK => { return "break"; }
+        TT_CONTINUE => { return "continue"; }
+        TT_TRUE => { return "true"; }
+        TT_FALSE => { return "false"; }
+        TT_NULL => { return "null"; }
+        TT_AS => { return "as"; }
+        TT_FROM => { return "from"; }
+        TT_NEW => { return "new"; }
+        TT_DROP => { return "drop"; }
+        TT_WITH => { return "with"; }
+        TT_CLEANUP => { return "cleanup"; }
+
+        // Punctuation / operators
+        TT_LBRACE => { return "{"; }
+        TT_RBRACE => { return "}"; }
+        TT_LPAREN => { return "("; }
+        TT_RPAREN => { return ")"; }
+        TT_LBRACKET => { return "["; }
+        TT_RBRACKET => { return "]"; }
+        TT_COMMA => { return ","; }
+        TT_SEMI => { return ";"; }
+        TT_COLON => { return ":"; }
+        TT_DOUBLE_COLON => { return "::"; }
+        TT_ARROW_FUNC => { return "->"; }
+        TT_ARROW_MATCH => { return "=>"; }
+        TT_EQ => { return "="; }
+        TT_PLUS => { return "+"; }
+        TT_MINUS => { return "-"; }
+        TT_STAR => { return "*"; }
+        TT_SLASH => { return "/"; }
+        TT_MODULO => { return "%"; }
+        TT_LT => { return "<"; }
+        TT_GT => { return ">"; }
+        TT_LE => { return "<="; }
+        TT_GE => { return ">="; }
+        TT_EQEQ => { return "=="; }
+        TT_NE => { return "!="; }
+        TT_ANDAND => { return "&&"; }
+        TT_OROR => { return "||"; }
+        TT_BANG => { return "!"; }
+        TT_QUESTION => { return "?"; }
+        TT_ELLIPSIS => { return "..."; }
+        TT_DOT => { return "."; }
+
+        TT_AMP => { return "&"; }
+        TT_PIPE => { return "|"; }
+        TT_CARET => { return "^"; }
+        TT_TILDE => { return "~"; }
+        TT_LSHIFT => { return "<<"; }
+        TT_RSHIFT => { return ">>"; }
+
+        TT_FUTURE_EXTENSION => { return "<future-extension>"; }
+
+        TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+            return "lex-error(" + code + ", recovery=" + token_recovery_to_string(recovery) + ")";
+        }
+    }
+}
+
+/**
+ * Render a logical recovery payload.
+ *
+ * @param recovery Recovery payload to format.
+ * @return Human-readable recovery token spelling.
+ */
+func token_recovery_to_string(recovery: TokenRecovery) -> string {
+    match (recovery) {
+        TR_NONE => { return "none"; }
+        TR_INT(t, v) => { return "int(" + t + ")"; }
+        TR_BIGINT(t, b) => { return "bigint(" + bigint_to_string(t, b) + ")"; }
+        TR_REALNUM(s, e, ff) => { return "real(" + realnum_to_string(s, e, ff) + ")"; }
+        TR_BYTE(t, v) => { return "byte(" + t + ")"; }
+        TR_STRING(t, v) => { return "string(" + t + ")"; }
+    }
+}
+
+/**
+ * Return whether a lexer-error wrapper has a parser-visible recovery token.
+ *
+ * @param recovery Recovery payload to inspect.
+ * @return `true` if the payload represents a logical token.
+ */
+func token_recovery_is_some(recovery: TokenRecovery) -> bool {
+    match (recovery) {
+        TR_NONE => { return false; }
+        _ => { return true; }
+    }
+}
+
+/**
+ * Build the logical token represented by a lexer-error recovery payload.
+ *
+ * @param wrapper Physical lexer-error token.
+ * @return Logical recovered token, or the wrapper when there is no recovery.
+ */
+func token_recovered(wrapper: Token) -> Token {
+    match (wrapper.token_type) {
+        TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+            match (recovery) {
+                TR_INT(t, v) => { return Token(TT_INT(t, v), wrapper.index, wrapper.line, wrapper.column); }
+                TR_BIGINT(t, b) => { return Token(TT_BIGINT(t, b), wrapper.index, wrapper.line, wrapper.column); }
+                TR_REALNUM(s, e, ff) => { return Token(TT_REALNUM(s, e, ff), wrapper.index, wrapper.line, wrapper.column); }
+                TR_BYTE(t, v) => { return Token(TT_BYTE(t, v), wrapper.index, wrapper.line, wrapper.column); }
+                TR_STRING(t, v) => { return Token(TT_STRING(t, v), wrapper.index, wrapper.line, wrapper.column); }
+                TR_NONE => { return wrapper; }
+            }
+        }
+        _ => { return wrapper; }
+    }
+}
+
+/**
+ * Return whether the parser-visible predecessor ends an expression.
+ * Lexer-error wrappers with recovery contribute the recovered token context;
+ * wrappers without recovery preserve the preceding logical context.
+ *
+ * @param token Newly scanned physical token.
+ * @param previous Whether the previous parser-visible token ended an expression.
+ * @return Expression-ending context for signed-literal lexing.
+ */
+func token_logical_predecessor_ends_expression(token: Token, previous: bool) -> bool {
+    match (token.token_type) {
+        TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+            match (recovery) {
+                TR_NONE => { return previous; }
+                TR_INT(text, value) => { return true; }
+                TR_BIGINT(text, base) => { return true; }
+                TR_REALNUM(sig, exp_text, is_float) => { return true; }
+                TR_BYTE(text, value) => { return true; }
+                TR_STRING(text, value) => { return true; }
+            }
+        }
+        _ => { return is_expr_ending_token_type(token.token_type); }
+    }
+}
+
+/**
+ * Check whether identifier text is reserved as a builtin type name.
+ *
+ * @param word Identifier text to inspect.
+ * @return `true` if `word` is reserved and cannot be used as a plain identifier.
+ */
+func is_reserved_ident_word(word: string) -> bool {
+    return builtin_type_name_is_known(word);
+}
+
+/**
+ * Check whether a token is reserved as a keyword or future extension.
+ *
+ * @param token Token to inspect.
+ * @return `true` if the token cannot be used as a variable name.
+ */
+func is_reserved_keyword(token: Token) -> bool {
+    match (token.token_type) {
+        TT_MODULE => { return true; }
+        TT_EXPORT => { return true; }
+        TT_IMPORT => { return true; }
+        TT_FUNC => { return true; }
+        TT_STRUCT => { return true; }
+        TT_ENUM => { return true; }
+        TT_TYPE => { return true; }
+        TT_EXTERN => { return true; }
+        TT_UNSAFE => { return true; }
+        TT_OPAQUE => { return true; }
+        TT_LET => { return true; }
+        TT_CONST => { return true; }
+        TT_RETURN => { return true; }
+        TT_MATCH => { return true; }
+        TT_CASE => { return true; }
+        TT_IF => { return true; }
+        TT_ELSE => { return true; }
+        TT_WHILE => { return true; }
+        TT_FOR => { return true; }
+        TT_BREAK => { return true; }
+        TT_CONTINUE => { return true; }
+        TT_TRUE => { return true; }
+        TT_FALSE => { return true; }
+        TT_NULL => { return true; }
+        TT_AS => { return true; }
+        TT_FROM => { return true; }
+        TT_NEW => { return true; }
+        TT_DROP => { return true; }
+        TT_WITH => { return true; }
+        TT_CLEANUP => { return true; }
+        TT_IDENT(t) => { return is_reserved_ident_word(t); }
+        TT_FUTURE_EXTENSION => { return true; }
+        _ => { return false; }
+    }
+}
+
+/**
+ * Convert identifier text into the appropriate token at a source location.
+ *
+ * @param ident Identifier text as it appeared in source.
+ * @param index Zero-based byte offset in the source.
+ * @param line One-based source line.
+ * @param col One-based source column.
+ * @return Keyword, underscore, future-extension, or identifier token for `ident`.
+ */
+func ident_to_token(ident: string, index: int, line: int, col: int) -> Token {
+    case (ident) {
+         "module" => return Token(TT_MODULE, index, line, col);
+         "export" => return Token(TT_EXPORT, index, line, col);
+         "import" => return Token(TT_IMPORT, index, line, col);
+         "func" => return Token(TT_FUNC, index, line, col);
+         "struct" => return Token(TT_STRUCT, index, line, col);
+         "enum" => return Token(TT_ENUM, index, line, col);
+         "type" => return Token(TT_TYPE, index, line, col);
+         "extern" => return Token(TT_EXTERN, index, line, col);
+         "unsafe" => return Token(TT_UNSAFE, index, line, col);
+         "opaque" => return Token(TT_OPAQUE, index, line, col);
+         "let" => return Token(TT_LET, index, line, col);
+         "const" => return Token(TT_CONST, index, line, col);
+         "return" => return Token(TT_RETURN, index, line, col);
+         "match" => return Token(TT_MATCH, index, line, col);
+         "case" => return Token(TT_CASE, index, line, col);
+         "if" => return Token(TT_IF, index, line, col);
+         "else" => return Token(TT_ELSE, index, line, col);
+         "while" => return Token(TT_WHILE, index, line, col);
+         "for" => return Token(TT_FOR, index, line, col);
+         "break" => return Token(TT_BREAK, index, line, col);
+         "continue" => return Token(TT_CONTINUE, index, line, col);
+         "true" => return Token(TT_TRUE, index, line, col);
+         "false" => return Token(TT_FALSE, index, line, col);
+         "null" => return Token(TT_NULL, index, line, col);
+         "as" => return Token(TT_AS, index, line, col);
+         "from" => return Token(TT_FROM, index, line, col);
+         "new" => return Token(TT_NEW, index, line, col);
+         "drop" => return Token(TT_DROP, index, line, col);
+         "with" => return Token(TT_WITH, index, line, col);
+         "cleanup" => return Token(TT_CLEANUP, index, line, col);
+         "_" => return Token(TT_UNDERSCORE, index, line, col);
+    }
+    if (ident == "__dea__future__keyword__" || ident == "in") {
+        return Token(TT_FUTURE_EXTENSION, index, line, col);
+    }
+    return Token(TT_IDENT(ident), index, line, col);
+}
+
+/**
+ * Check whether a token type can legally terminate an expression.
+ *
+ * @param token_type Token type to inspect.
+ * @return `true` if the token type can appear at the end of an expression.
+ */
+func is_expr_ending_token_type(token_type: TokenType) -> bool {
+    match (token_type) {
+        TT_IDENT(t) => { return true; }
+        TT_INT(t, v) => { return true; }
+        TT_BIGINT(t, b) => { return true; }
+        TT_REALNUM(sig, exp_text, is_float) => { return true; }
+        TT_BYTE(t, v) => { return true; }
+        TT_STRING(t, v) => { return true; }
+        TT_TRUE => { return true; }
+        TT_FALSE => { return true; }
+        TT_NULL => { return true; }
+        TT_RPAREN => { return true; }
+        TT_RBRACKET => { return true; }
+        _ => { return false; }
+    }
+}
+
+// ------------------------------------
+// Token Vector utilities
+// ------------------------------------
+
+/**
+ * Represents the TokenVector structure.
+ */
+struct TokenVector {
+    vec: VectorBase*;
+}
+
+/**
+ * Create an empty token vector.
+ *
+ * @return Token vector with an initial capacity.
+ */
+func tv_create() -> TokenVector {
+    let vec = vec_create(sizeof(Token), 16);
+    return TokenVector(vec);
+}
+
+/**
+ * Append a token to a token vector.
+ *
+ * @param self Token vector to extend.
+ * @param token Token value to append.
+ */
+func tv_push(self: TokenVector, token: Token) {
+    vec_grow(self.vec);
+    let data = vec_get(self.vec, self.vec.length - 1) as Token*;
+    *data = token;
+}
+
+/**
+ * Return a token from a token vector.
+ *
+ * @param self Token vector to inspect.
+ * @param index Zero-based token index.
+ * @return Token at `index`.
+ */
+func tv_get(self: TokenVector, index: int) -> Token {
+    let data = vec_get(self.vec, index) as Token*;
+    return *data;
+}
+
+/**
+ * Return the number of tokens in a token vector.
+ *
+ * @param self Token vector to inspect.
+ * @return Token count.
+ */
+func tv_len(self: TokenVector) -> int {
+    return self.vec.length;
+}
+
+/**
+ * Release ARC-managed payload strings held by a token.
+ *
+ * @param token Token whose payload should be released.
+ */
+func token_release_payload(token: Token) {
+    match (token.token_type) {
+        TT_IDENT(text) => {
+            rt_string_release(text);
+        }
+        TT_INT(text, value) => {
+            rt_string_release(text);
+        }
+        TT_BIGINT(text, base) => {
+            rt_string_release(text);
+        }
+        TT_REALNUM(sig, exp_text, is_float) => {
+            rt_string_release(sig);
+            rt_string_release(exp_text);
+        }
+        TT_BYTE(text, value) => {
+            rt_string_release(text);
+        }
+        TT_STRING(text, value) => {
+            rt_string_release(text);
+            rt_string_release(value);
+        }
+        TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+            rt_string_release(code);
+            rt_string_release(message);
+            token_recovery_release_payload(recovery);
+        }
+        _ => {
+        }
+    }
+}
+
+/**
+ * Release ARC-managed payload strings held by a token recovery payload.
+ *
+ * @param recovery Recovery payload whose strings should be released.
+ */
+func token_recovery_release_payload(recovery: TokenRecovery) {
+    match (recovery) {
+        TR_INT(text, value) => {
+            rt_string_release(text);
+        }
+        TR_BIGINT(text, base) => {
+            rt_string_release(text);
+        }
+        TR_REALNUM(sig, exp_text, is_float) => {
+            rt_string_release(sig);
+            rt_string_release(exp_text);
+        }
+        TR_BYTE(text, value) => {
+            rt_string_release(text);
+        }
+        TR_STRING(text, value) => {
+            rt_string_release(text);
+            rt_string_release(value);
+        }
+        _ => {
+        }
+    }
+}
+
+/**
+ * Free a token vector and release any token payload strings.
+ *
+ * @param self Token vector to free.
+ */
+func tv_free(self: TokenVector) {
+    for (let i = 0; i < self.vec.length; i = i + 1) {
+        token_release_payload(*(vec_get(self.vec, i) as Token*));
+    }
+    vec_free(self.vec);
+}

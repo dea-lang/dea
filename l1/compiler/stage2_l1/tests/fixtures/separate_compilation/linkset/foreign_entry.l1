@@ -1,0 +1,12 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module linkset.foreign_entry;
+
+extern func foreign_answer() -> int;
+
+func main() -> int {
+    return foreign_answer();
+}

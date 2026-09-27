@@ -1,0 +1,30 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_small_int_literal_overflow;
+
+func bad_tiny_high() -> tiny {
+    return 128; // TYP-0700
+}
+
+func bad_tiny_low() -> tiny {
+    return -129; // TYP-0700
+}
+
+func bad_byte_negative() -> byte {
+    return -1; // TYP-0700
+}
+
+func bad_short_high() -> short {
+    return 32768; // TYP-0700
+}
+
+func bad_ushort_high() -> ushort {
+    return 65536; // TYP-0700
+}
+
+func bad_let_byte_high() {
+    let b: byte = 300; // TYP-0700
+}

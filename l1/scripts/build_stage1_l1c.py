@@ -357,7 +357,6 @@ def build_stage1_artifact(layout: L1BuildLayout, bootstrap_command: list[str], k
     wrapper_bin = write_stage1_wrapper(layout)
     write_env_script(layout)
     native_bin.chmod(native_bin.stat().st_mode | 0o111)
-    write_relative_alias(layout.bin_dir / "l1c", "l1c-stage1")
     build_semantic_interfaces(layout, native_bin)
     return wrapper_bin, native_bin, c_output
 
@@ -383,7 +382,6 @@ def main() -> int:
 
     print(f"build-stage1-l1c: wrote {wrapper_bin}")
     print(f"build-stage1-l1c: wrote {native_bin}")
-    print(f"build-stage1-l1c: wrote {layout.bin_dir / 'l1c'}")
     print(f"build-stage1-l1c: wrote {layout.bin_dir / 'l1-env.sh'}")
     if keep_c:
         print(f"build-stage1-l1c: wrote {c_output}")

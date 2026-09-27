@@ -1,0 +1,1919 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module expr_types_test;
+
+import std.io;
+import std.string;
+import std.assert;
+import std.hashmap;
+import std.text;
+import std.vector;
+
+import analysis;
+import ast;
+import locals;
+import sem_context;
+import signatures.tables;
+import source_paths;
+import types;
+import util.log;
+
+/**
+ * Returns the root directory for test fixtures.
+ *
+ * @return The typing fixture directory used by these tests.
+ */
+func fixture_root() -> string {
+    return "compiler/stage2_l1/tests/fixtures/typing";
+}
+
+/**
+ * Creates and configures source search paths for testing.
+ *
+ * @return Source search paths rooted at the typing fixtures directory.
+ */
+func make_paths() -> SourceSearchPaths* {
+    let sp = sp_create();
+    sp_add_project_root(sp, fixture_root());
+    return sp;
+}
+
+/**
+ * Checks if a specific diagnostic code is present in the results.
+ *
+ * @param result The analysis result to inspect.
+ * @param code The diagnostic code to look for.
+ * @return `true` if the diagnostic code is present, otherwise `false`.
+ */
+func has_diag_code(result: AnalysisResult*, code: string) -> bool {
+    for (let i = 0; i < analysis_diag_count(result); i = i + 1) {
+        let d = analysis_diag_get(result, i);
+        if (d.code == code) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Checks if a specific diagnostic code has an exact message.
+ *
+ * @param result The analysis result to inspect.
+ * @param code The diagnostic code to look for.
+ * @param message The exact diagnostic message expected.
+ * @return `true` if the diagnostic with matching code and message is present.
+ */
+func has_diag_message(result: AnalysisResult*, code: string, message: string) -> bool {
+    for (let i = 0; i < analysis_diag_count(result); i = i + 1) {
+        let d = analysis_diag_get(result, i);
+        if (d.code == code && d.message == message) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Counts diagnostics with one specific code.
+ *
+ * @param result The analysis result to inspect.
+ * @param code The diagnostic code to count.
+ * @return Number of diagnostics using `code`.
+ */
+func count_diag_code(result: AnalysisResult*, code: string) -> int {
+    let count = 0;
+    for (let i = 0; i < analysis_diag_count(result); i = i + 1) {
+        let d = analysis_diag_get(result, i);
+        if (d.code == code) {
+            count = count + 1;
+        }
+    }
+    return count;
+}
+
+/** Assert the stored type for one exact pattern binder. */
+func assert_pattern_binding_type(result: AnalysisResult*, func_name: string, arm_index: int,
+                                 expected_type: string) {
+    let all_locals = result.locals_result as LocalsResult*;
+    let env_opt = locals_env_find(all_locals, "typing_binding_identity_ok", func_name);
+    assert(env_opt != null, "expected function locals for pattern-binding assertion");
+    let env = env_opt as FunctionEnv*;
+    let body = stmt_arena_get(env.stmt_arena, env.func_decl.body);
+    let match_stmt = stmt_arena_get(env.stmt_arena, id_vec_get(body.ids as VectorBase*, 0));
+    let arm = ptr_vec_get(match_stmt.match_arms as VectorBase*, arm_index) as MatchArm*;
+    let key = env.key + "::pattern::" + int_to_string(arm.pattern) + "::0";
+    let stored = spm_get(result.expr_types, key);
+    assert(stored != null, "expected exact pattern-binding type-map entry");
+    assert(type_is_builtin(stored as Type*, expected_type), "unexpected exact pattern-binding type");
+}
+
+/** Return whether one diagnostic starts at the expected source location. */
+func has_diag_start(result: AnalysisResult*, code: string, line: int, column: int) -> bool {
+    for (let i = 0; i < analysis_diag_count(result); i = i + 1) {
+        let d = analysis_diag_get(result, i);
+        if (d.code == code && d.line == line && d.column == column) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Tests that for-loop variables are scoped to their loop.
+ *
+ * Sibling and deeper-but-disjoint reuse of `i` must not be reported as
+ * shadowing; only the genuinely nested inner `i` warns, so exactly one
+ * `TYP-0021` is expected.
+ */
+func test_typing_for_loop_scope() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_for_loop_scope", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_for_loop_scope");
+        assert(count_diag_code(result, "TYP-0021") == 1, "expected exactly one TYP-0021 (genuine nested shadow only)");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/** Tests declaration-order visibility and exact pattern and cleanup binding identity. */
+func test_typing_binding_identity() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let ok_result = analysis_analyze_entry(sp, "typing_binding_identity_ok", cfg);
+        assert(!analysis_has_errors(ok_result), "expected binding-identity regressions to type-check");
+        assert(count_diag_code(ok_result, "TYP-0021") == 4,
+            "expected only the four intentional shadowing warnings");
+        assert(!has_diag_code(ok_result, "TYP-0156"),
+            "cleanup-local shadow must not inherit the header guard");
+        assert_pattern_binding_type(ok_result, "cross_arm_identity", 0, "int");
+        assert_pattern_binding_type(ok_result, "cross_arm_identity", 1, "string");
+        assert_pattern_binding_type(ok_result, "number_identity", 0, "int");
+        assert_pattern_binding_type(ok_result, "text_identity", 0, "string");
+        analysis_result_free(ok_result);
+
+        let err_result = analysis_analyze_entry(sp, "typing_binding_identity_err", cfg);
+        assert(analysis_has_errors(err_result), "expected the exact guarded header reference to fail");
+        assert(count_diag_code(err_result, "TYP-0156") == 1,
+            "expected only the exact header binding to be guarded");
+        analysis_result_free(err_result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests test_typing_ok.
+ */
+func test_typing_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests test_typing_err.
+ */
+func test_typing_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_err");
+        
+        assert(has_diag_code(result, "TYP-0170"), "expected binary int operand mismatch error");
+        assert(count_diag_code(result, "TYP-0310") == 1, "expected initializer mismatch error");
+        assert(has_diag_code(result, "TYP-0311"), "expected assignment-statement mismatch error");
+        assert(has_diag_code(result, "TYP-0159"), "expected unknown identifier error");
+        assert(has_diag_code(result, "TYP-0221"), "expected missing struct field error");
+        assert(!has_diag_code(result, "TYP-0340"), "did not expect legacy struct field code");
+        assert(has_diag_code(result, "TYP-0191"), "expected struct constructor arity error");
+        assert(!has_diag_code(result, "TYP-0330"), "did not expect legacy struct constructor arity code");
+        assert(has_diag_code(result, "TYP-0315"), "expected return type mismatch error");
+        assert(has_diag_code(result, "TYP-0070"), "expected if condition error");
+        
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests alias-to-struct constructor parity cases.
+ */
+func test_typing_alias_struct_constructor_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_alias_struct_constructor_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_alias_struct_constructor_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests that bare alias values stay invalid outside constructor syntax.
+ */
+func test_typing_alias_value_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_alias_value_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_alias_value_err");
+        assert(has_diag_code(result, "TYP-0151"), "expected type-name-as-value diagnostic for bare alias");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests function pointer values, calls, and nullable annotations.
+ */
+func test_typing_function_pointer_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_func_ptr_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_func_ptr_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests function pointer signature mismatch diagnostics.
+ */
+func test_typing_function_pointer_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_func_ptr_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_func_ptr_err");
+        assert(has_diag_code(result, "TYP-0310"), "expected function pointer initializer mismatch");
+        assert(has_diag_code(result, "TYP-0312"), "expected indirect call argument mismatch");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests unsafe function pointer values and non-gated calls.
+ */
+func test_typing_unsafe_function_pointer_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_unsafe_func_ptr_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_unsafe_func_ptr_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests unsafe/plain function pointer mismatch diagnostics.
+ */
+func test_typing_unsafe_function_pointer_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_unsafe_func_ptr_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_unsafe_func_ptr_err");
+        assert(count_diag_code(result, "TYP-0780") == 4, "expected four unsafe/plain function type mismatch diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests `let` declaration diagnostic parity cases.
+ */
+func test_typing_let_diag_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_let_diag_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_let_diag_err");
+        assert(has_diag_code(result, "TYP-0020"), "expected duplicate local declaration error");
+        assert(has_diag_code(result, "TYP-0050"), "expected void local annotation error");
+        assert(has_diag_code(result, "TYP-0052"), "expected null-inference let error");
+        assert(has_diag_code(result, "TYP-0053"), "expected void-initializer let error");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests follow-on `let` diagnostic parity cases.
+ */
+func test_typing_let_diag_tail_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_let_diag_tail_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_let_diag_tail_err");
+        assert(has_diag_code(result, "TYP-0040"), "expected unresolved let-annotation error");
+        assert(has_diag_code(result, "TYP-0051"), "expected failed inferred-let initializer error");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests successful typing for top-level `const` bindings.
+ */
+func test_typing_const_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_const_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests compile-time-constant initializer enforcement for `const`.
+ */
+func test_typing_const_initializer_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_initializer_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_const_initializer_err");
+        assert(has_diag_code(result, "SIG-0200"), "expected dedicated const-initializer diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests supported compile-time scalar casts in const initializers.
+ */
+func test_typing_const_casts_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_casts_ok", cfg);
+        assert(!analysis_has_errors(result), "expected compile-time scalar casts to type-check");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests invalid and excluded const casts report precise non-cascading diagnostics.
+ */
+func test_typing_const_casts_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_casts_err", cfg);
+        assert(analysis_has_errors(result), "expected invalid const-cast diagnostics");
+        assert(count_diag_code(result, "TYP-0700") == 4, "expected four static integer range diagnostics");
+        assert(count_diag_code(result, "SIG-0200") == 2,
+            "expected non-constant and excluded cast initializers to remain unsupported");
+        assert(!has_diag_code(result, "TYP-0815"), "invalid cast should suppress non-constant array-bound cascade");
+        assert(!has_diag_code(result, "TYP-0816"), "invalid cast should suppress wrong-type array-bound cascade");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests assignment rejection for top-level `const` bindings.
+ */
+func test_typing_const_assign_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_assign_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_const_assign_err");
+        assert(count_diag_code(result, "TYP-0360") == 2, "expected two const-assignment diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests loop-condition diagnostic code parity cases.
+ */
+func test_typing_loop_cond_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_loop_cond_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_loop_cond_err");
+        assert(count_diag_code(result, "TYP-0080") == 1, "expected one while condition error");
+        assert(count_diag_code(result, "TYP-0090") == 1, "expected one for condition error");
+        assert(count_diag_code(result, "TYP-0240") == 1, "expected one invalid sizeof operand error");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests `match` scrutinee and arm diagnostic parity cases.
+ */
+func test_typing_match_diag_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_match_diag_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_match_diag_err");
+        assert(has_diag_code(result, "TYP-0100"), "expected non-enum match scrutinee error");
+        assert(has_diag_code(result, "TYP-0101"), "expected match pattern arity error");
+        assert(has_diag_code(result, "TYP-0102"), "expected unknown match variant error");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests module-qualified `match` pattern parity cases.
+ */
+func test_typing_match_qualified_pattern_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_match_qualified_pattern_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_match_qualified_pattern_err");
+        assert(has_diag_code(result, "TYP-0102"), "expected qualified-pattern unknown-variant error");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests that only canonical, successfully validated variants contribute to match coverage.
+ */
+func test_typing_match_validation_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_match_validation_err", cfg);
+        assert(analysis_has_errors(result), "expected match validation errors");
+        assert(count_diag_code(result, "TYP-0158") == 1, "expected one nested-pattern path error");
+        assert(count_diag_code(result, "TYP-0102") == 4,
+            "expected unknown, wildcard-adjacent, wrong-module, and wrong-enum errors");
+        assert(count_diag_code(result, "TYP-0101") == 1, "expected one invalid pattern arity error");
+        assert(count_diag_code(result, "TYP-0104") == 5,
+            "expected every invalid explicit-pattern match to stay non-exhaustive");
+        assert(count_diag_code(result, "TYP-0159") == 1,
+            "invalid pattern payload variables must remain unbound");
+        assert(count_diag_code(result, "TYP-0105") == 0,
+            "invalid, wildcard-first, and wildcard-free matches must not report an unreachable wildcard");
+        assert(has_diag_message(result, "TYP-0158",
+            "nested symbol path 'typing_match_validation_dep::RemoteColor::Red': paths must have the form 'module::symbol' (did you mean 'typing_match_validation_dep::Red'?)"),
+            "expected shared nested-pattern diagnostic wording");
+        assert(has_diag_start(result, "TYP-0158", 13, 9),
+            "expected nested-pattern diagnostic on the pattern span");
+        assert(has_diag_start(result, "TYP-0104", 12, 5),
+            "expected non-exhaustive diagnostic on the match span");
+        assert(has_diag_start(result, "TYP-0102", 21, 9),
+            "expected unknown-variant diagnostic on the pattern span");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/** Tests that duplicate match variant names remain a parser error. */
+func test_typing_match_duplicate_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_match_duplicate_err", cfg);
+        assert(count_diag_code(result, "PAR-0176") == 1, "expected duplicate match variant error");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests `case` diagnostic parity cases.
+ */
+func test_typing_case_diag_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_case_diag_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_case_diag_err");
+        assert(has_diag_code(result, "TYP-0106"), "expected invalid case scrutinee error");
+        assert(has_diag_code(result, "TYP-0107"), "expected case literal type mismatch error");
+        assert(has_diag_code(result, "TYP-0108"), "expected duplicate case literal error");
+        assert(has_diag_code(result, "TYP-0111"), "expected always-false literal warning");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests cleanup-block header-failure guard diagnostics.
+ */
+func test_typing_with_cleanup_guard() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let err_result = analysis_analyze_entry(sp, "typing_with_cleanup_guard_err", cfg);
+        assert(analysis_has_errors(err_result), "expected typing errors for typing_with_cleanup_guard_err");
+        assert(count_diag_code(err_result, "TYP-0156") == 2, "expected guarded cleanup diagnostics for both header vars");
+        analysis_result_free(err_result);
+
+        let ok_result = analysis_analyze_entry(sp, "typing_with_cleanup_guard_ok", cfg);
+        assert(!analysis_has_errors(ok_result), "expected no typing errors for typing_with_cleanup_guard_ok");
+        assert(!has_diag_code(ok_result, "TYP-0156"), "did not expect guarded cleanup diagnostics for nullable subset");
+        analysis_result_free(ok_result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests field-access diagnostic parity cases.
+ */
+func test_typing_field_diag_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_field_diag_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_field_diag_err");
+        assert(has_diag_code(result, "TYP-0220"), "expected nullable struct field-access error");
+        assert(has_diag_code(result, "TYP-0221"), "expected missing struct field error");
+        assert(has_diag_code(result, "TYP-0222"), "expected non-struct field-access error");
+        assert(!has_diag_code(result, "TYP-0340"), "did not expect legacy shared field-access code");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests accepted pointer indexing forms inside `unsafe func`.
+ */
+func test_typing_index_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_index_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_index_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests index diagnostic parity cases.
+ */
+func test_typing_index_diag_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_index_diag_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_index_diag_err");
+        assert(has_diag_code(result, "TYP-0210"), "expected non-int index expression error");
+        assert(has_diag_code(result, "TYP-0211"), "expected nullable index base error");
+        assert(has_diag_code(result, "TYP-0213"), "expected invalid index base error");
+        assert(count_diag_code(result, "TYP-0214") == 2,
+            "expected pointer indexing outside unsafe func for safe and top-level cases");
+        assert(has_diag_code(result, "TYP-0215"), "expected unsupported unsized pointer index error");
+        assert(has_diag_message(result, "TYP-0211",
+            "cannot index into a nullable pointer; unwrap it before indexing"),
+            "expected nullable index message wording");
+        assert(has_diag_message(result, "TYP-0213",
+            "cannot index into non-pointer type int"),
+            "expected invalid index-base message wording");
+        assert(!has_diag_code(result, "TYP-0350"), "did not expect legacy index-base diagnostic code");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests bare `return;` in a non-void function.
+ */
+func test_return_void_in_non_void() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_return_void_in_non_void", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_return_void_in_non_void");
+        assert(has_diag_code(result, "TYP-0315"), "expected return type mismatch error for bare return");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests that an invalid return expression does not add a secondary mismatch.
+ */
+func test_return_invalid_expr() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_return_invalid_expr", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_return_invalid_expr");
+        assert(has_diag_code(result, "TYP-0159"), "expected missing identifier error");
+        assert(!has_diag_code(result, "TYP-0315"), "did not expect return type mismatch on invalid return expr");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests successful typing for postfix try expressions.
+ */
+func test_typing_try_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_try_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_try_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests postfix try diagnostics.
+ */
+func test_typing_try_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let non_nullable = analysis_analyze_entry(sp, "typing_try_non_nullable", cfg);
+        assert(analysis_has_errors(non_nullable), "expected typing errors for typing_try_non_nullable");
+        assert(has_diag_code(non_nullable, "TYP-0250"), "expected non-nullable try error");
+        analysis_result_free(non_nullable);
+
+        let bad_return = analysis_analyze_entry(sp, "typing_try_bad_return", cfg);
+        assert(analysis_has_errors(bad_return), "expected typing errors for typing_try_bad_return");
+        assert(has_diag_code(bad_return, "TYP-0251"), "expected nullable return type error");
+        analysis_result_free(bad_return);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests unsupported equality diagnostics for non-string types.
+ */
+func test_typing_equality_unsupported() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_equality_unsupported", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_equality_unsupported");
+        assert(count_diag_code(result, "TYP-0173") == 2, "expected both struct equality operators to report TYP-0173");
+        assert(count_diag_code(result, "TYP-0172") == 1, "expected mixed string equality to report TYP-0172");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests supported string equality typing behavior.
+ */
+func test_typing_string_equality_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_string_equality_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_string_equality_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+func test_typing_pointer_identity_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_pointer_identity_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_pointer_identity_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+func test_typing_pointer_identity_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_pointer_identity_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_pointer_identity_err");
+        assert(count_diag_code(result, "TYP-0172") == 4, "expected mismatched pointer equality to report TYP-0172");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests supported string relational typing behavior.
+ */
+func test_typing_string_relational_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_string_relational_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_string_relational_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests mixed string relational mismatch diagnostics.
+ */
+func test_typing_string_relational_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_string_relational_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_string_relational_err");
+        assert(count_diag_code(result, "TYP-0170") == 2, "expected two invalid string relational diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests successful typing for explicit cast parity cases.
+ */
+func test_typing_cast_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_cast_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_cast_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests invalid explicit cast diagnostics.
+ */
+func test_typing_cast_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_cast_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_cast_err");
+        assert(count_diag_code(result, "TYP-0230") == 4, "expected four invalid explicit-cast errors");
+        assert(!has_diag_code(result, "TYP-0315"), "did not expect secondary return type mismatch on cast errors");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests explicit casts to one-level nullable integer targets.
+ */
+func test_typing_cast_optional_int_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_cast_optional_int_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_cast_optional_int_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests invalid explicit casts to non-integer nullable targets.
+ */
+func test_typing_cast_optional_int_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_cast_optional_int_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_cast_optional_int_err");
+        assert(count_diag_code(result, "TYP-0230") == 2, "expected two invalid nullable cast diagnostics");
+        assert(count_diag_code(result, "TYP-0703") == 2, "expected two invalid bigint context diagnostics");
+        assert(!has_diag_code(result, "TYP-0315"), "did not expect secondary return type mismatch on cast errors");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests nullable integer contexts reject nonliteral checked-conversion candidates.
+ */
+func test_typing_optional_int_context_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_optional_int_context_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_optional_int_context_err");
+        assert(count_diag_code(result, "TYP-0315") == 1, "expected one nullable return mismatch");
+        assert(count_diag_code(result, "TYP-0311") == 1, "expected one nullable assignment mismatch");
+        assert(count_diag_code(result, "TYP-0312") == 1, "expected one nullable call argument mismatch");
+        assert(count_diag_code(result, "TYP-0313") == 1, "expected one nullable struct field mismatch");
+        assert(count_diag_code(result, "TYP-0700") == 1, "expected one nullable integer literal range diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests explicit int-to-byte overflow diagnostics.
+ */
+func test_typing_cast_int_to_byte_overflow() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_cast_int_to_byte_overflow", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_cast_int_to_byte_overflow");
+        assert(count_diag_code(result, "TYP-0700") == 2, "expected both overflowing int-to-byte casts to report TYP-0700");
+        assert(!has_diag_code(result, "TYP-0315"), "did not expect secondary return type mismatch on overflow casts");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests implemented bitwise-operator typing behavior.
+ */
+func test_typing_bitwise_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_bitwise_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_bitwise_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests rejected bitwise-operator operand kinds.
+ */
+func test_typing_bitwise_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_bitwise_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_bitwise_err");
+        assert(count_diag_code(result, "TYP-0170") == 4, "expected four invalid bitwise operator diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests implemented small integer builtin typing behavior.
+ */
+func test_typing_small_int_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_small_int_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_small_int_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests rejected nonliteral implicit narrowing for small integer builtins.
+ */
+func test_typing_small_int_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_small_int_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_small_int_err");
+        assert(count_diag_code(result, "TYP-0315") == 1, "expected one return mismatch");
+        assert(count_diag_code(result, "TYP-0311") == 1, "expected one assignment mismatch");
+        assert(count_diag_code(result, "TYP-0312") == 1, "expected one call argument mismatch");
+        assert(count_diag_code(result, "TYP-0313") == 1, "expected one struct field mismatch");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests compile-time integer literal range diagnostics for small integer targets.
+ */
+func test_typing_small_int_literal_overflow() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_small_int_literal_overflow", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_small_int_literal_overflow");
+        assert(count_diag_code(result, "TYP-0700") == 6, "expected six small-int literal range diagnostics");
+        assert(!has_diag_code(result, "TYP-0315"), "did not expect secondary return mismatch on overflow literals");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests implemented large integer builtin typing behavior.
+ */
+func test_typing_large_int_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_large_int_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_large_int_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests floating-point builtin typing behavior.
+ */
+func test_typing_float_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_float_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_float_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests rejected nonliteral implicit conversions and contextual bigint diagnostics for large integers.
+ */
+func test_typing_large_int_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_large_int_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_large_int_err");
+        assert(count_diag_code(result, "TYP-0315") == 1, "expected one return mismatch");
+        assert(count_diag_code(result, "TYP-0311") == 1, "expected one assignment mismatch");
+        assert(count_diag_code(result, "TYP-0312") == 1, "expected one call argument mismatch");
+        assert(count_diag_code(result, "TYP-0313") == 1, "expected one struct field mismatch");
+        assert(count_diag_code(result, "TYP-0702") == 2, "expected two missing-context bigint diagnostics");
+        assert(count_diag_code(result, "TYP-0703") == 2, "expected two invalid-context bigint diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests compile-time integer literal range diagnostics for large integer targets.
+ */
+func test_typing_large_int_literal_overflow() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_large_int_literal_overflow", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_large_int_literal_overflow");
+        assert(count_diag_code(result, "TYP-0700") == 8, "expected eight large-int literal range diagnostics");
+        assert(!has_diag_code(result, "TYP-0315"), "did not expect secondary return mismatch on overflow literals");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests contextual fixed-array literals in assignment-like typed contexts.
+ */
+func test_typing_contextual_array_literals_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_contextual_array_literals_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_contextual_array_literals_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests rejected non-contextual and invalid contextual array literals.
+ */
+func test_typing_contextual_array_literals_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_contextual_array_literals_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_contextual_array_literals_err");
+        assert(count_diag_code(result, "TYP-0801") == 3, "expected standalone and slice-call literals to report TYP-0801");
+        assert(has_diag_code(result, "TYP-0802"), "expected overlong function argument to report TYP-0802");
+        assert(has_diag_code(result, "TYP-0803"), "expected element mismatch function argument to report TYP-0803");
+        assert(!has_diag_code(result, "TYP-0312"), "did not expect secondary function-call mismatch diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests rejected implicit narrowing and invalid casts for floating-point builtins.
+ */
+func test_typing_float_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_float_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_float_err");
+        assert(count_diag_code(result, "TYP-0315") == 1, "expected one float return mismatch");
+        assert(count_diag_code(result, "TYP-0311") == 1, "expected one float assignment mismatch");
+        assert(count_diag_code(result, "TYP-0312") == 1, "expected one float call argument mismatch");
+        assert(count_diag_code(result, "TYP-0313") == 1, "expected one float struct field mismatch");
+        assert(count_diag_code(result, "TYP-0170") == 4, "expected four invalid floating operator diagnostics");
+        assert(count_diag_code(result, "TYP-0230") == 1, "expected one invalid numeric cast diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests that prefixed integer literals keep ordinary `int` typing behavior.
+ */
+func test_typing_prefixed_int_literals_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_prefixed_int_literals", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_prefixed_int_literals");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests explicit null unwrap diagnostics for nullable pointers.
+ */
+func test_typing_cast_null_unwrap_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_cast_null_unwrap_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_cast_null_unwrap_err");
+        assert(has_diag_code(result, "TYP-0701"), "expected compile-time-null unwrap error");
+        assert(!has_diag_code(result, "TYP-0315"), "did not expect secondary return type mismatch on null unwrap");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests assignment-vs-cast nullability behavior.
+ */
+func test_typing_nullable_assignment() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_nullable_assignment", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_nullable_assignment");
+        assert(count_diag_code(result, "TYP-0310") == 1, "expected nullable-to-non-nullable initializer mismatch");
+        assert(!has_diag_code(result, "TYP-0315"), "did not expect secondary return type mismatch on nullable assignment");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests function-call mismatch diagnostics.
+ */
+func test_typing_call_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_call_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_call_err");
+        assert(count_diag_code(result, "TYP-0183") == 2, "expected both arity mismatches to report TYP-0183");
+        assert(count_diag_code(result, "TYP-0312") == 1, "expected one argument type mismatch to report TYP-0312");
+        assert(!has_diag_code(result, "TYP-0320"), "did not expect legacy function-call arity code");
+        assert(!has_diag_code(result, "TYP-0321"), "did not expect legacy function-call argument type code");
+        assert(!has_diag_code(result, "TYP-0315"), "did not expect secondary return type mismatch on call errors");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests valid named argument bindings.
+ */
+func test_typing_named_args_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_named_args_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_named_args_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests named argument diagnostics (unknown, duplicate, missing).
+ */
+func test_typing_named_args_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_named_args_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_named_args_err");
+        assert(count_diag_code(result, "TYP-0762") == 2, "expected 2 unknown argument errors (TYP-0762)");
+        assert(count_diag_code(result, "TYP-0763") == 2, "expected 2 duplicate argument errors (TYP-0763)");
+        assert(count_diag_code(result, "TYP-0764") == 6, "expected 6 missing argument errors (TYP-0764)");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests variadic direct, indirect, and spread call typing.
+ */
+func test_typing_variadic_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_variadic_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_variadic_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests dedicated variadic diagnostics.
+ */
+func test_typing_variadic_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_variadic_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_variadic_err");
+        assert(has_diag_code(result, "TYP-0740"), "expected missing fixed-prefix diagnostic");
+        assert(has_diag_code(result, "TYP-0741"), "expected variadic element mismatch");
+        assert(has_diag_code(result, "TYP-0742"), "expected non-variadic spread diagnostic");
+        assert(has_diag_code(result, "TYP-0743"), "expected mixed spread-tail diagnostic");
+        assert(has_diag_code(result, "TYP-0744"), "expected named variadic call diagnostic");
+        analysis_result_free(result);
+
+        let extern_result = analysis_analyze_entry(sp, "typing_variadic_extern_err", cfg);
+        assert(analysis_has_errors(extern_result), "expected typing errors for typing_variadic_extern_err");
+        assert(has_diag_code(extern_result, "SIG-0220"), "expected variadic extern rejection");
+        analysis_result_free(extern_result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests variadic/fixed-slice identity mismatches are not classified as unsafety mismatches.
+ */
+func test_typing_variadic_identity_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_variadic_identity_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_variadic_identity_err");
+        assert(count_diag_code(result, "TYP-0780") == 0,
+            "variadic identity mismatch must not report unsafe/plain mismatch");
+        assert(count_diag_code(result, "TYP-0310") == 2,
+            "expected two ordinary initializer type mismatches");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests `match` exhaustiveness and missing-return flow diagnostics.
+ */
+func test_typing_match_flow_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_match_flow_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_match_flow_err");
+        assert(has_diag_code(result, "TYP-0104"), "expected non-exhaustive match error");
+        assert(count_diag_code(result, "TYP-0010") == 2, "expected missing-return errors for match and if fallthrough");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests warning-only enum `match` parity diagnostics.
+ */
+func test_typing_match_warn_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_match_warn_ok", cfg);
+        assert(!analysis_has_errors(result), "did not expect typing errors for typing_match_warn_ok");
+        assert(count_diag_code(result, "TYP-0105") == 1, "expected unreachable wildcard warning");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests loop-control diagnostics outside loops.
+ */
+func test_typing_loop_control_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_loop_control_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_loop_control_err");
+        assert(count_diag_code(result, "TYP-0110") == 2, "expected top-level and inline-cleanup break-outside-loop errors");
+        assert(count_diag_code(result, "TYP-0120") == 2, "expected top-level and inline-cleanup continue-outside-loop errors");
+        assert(!has_diag_code(result, "TYP-0030"), "did not expect unreachable-code warning after invalid loop control");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests warning-only unreachable-code parity diagnostics.
+ */
+func test_typing_unreachable_warn_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_unreachable_warn_ok", cfg);
+        assert(!analysis_has_errors(result), "did not expect typing errors for typing_unreachable_warn_ok");
+        assert(count_diag_code(result, "TYP-0030") == 2, "expected generic unreachable-code warnings after break and continue");
+        assert(count_diag_code(result, "TYP-0031") == 1, "expected one unreachable-after-return warning");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests successful typing for `new` parity cases.
+ */
+func test_typing_new_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_new_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_new_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests `new` diagnostics for invalid construction cases.
+ */
+func test_typing_new_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_new_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_new_err");
+        assert(has_diag_code(result, "TYP-0281"), "expected enum-allocation-without-variant error");
+        assert(has_diag_code(result, "TYP-0283"), "expected struct new arity error");
+        assert(has_diag_code(result, "TYP-0314"), "expected enum variant payload type mismatch error");
+        assert(!has_diag_code(result, "TYP-0333"), "did not expect legacy enum variant payload mismatch code");
+        assert(!has_diag_code(result, "SIG-0010"), "new variant should not be treated as a type name");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests `drop` diagnostics for invalid local uses.
+ */
+func test_typing_drop_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_drop_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_drop_err");
+        assert(has_diag_code(result, "TYP-0060"), "expected unknown-variable drop error");
+        assert(has_diag_code(result, "TYP-0061"), "expected non-pointer drop error");
+        assert(has_diag_code(result, "TYP-0063"), "expected module-let drop error");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests `drop` flow diagnostics for second drop and later use.
+ */
+func test_typing_drop_flow_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_drop_flow_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_drop_flow_err");
+        assert(has_diag_code(result, "TYP-0062"), "expected second-drop diagnostic");
+        assert(has_diag_code(result, "TYP-0150"), "expected use-after-drop diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/** Tests loop liveness merging and delayed assignment revival. */
+func test_typing_loop_liveness_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_loop_liveness_err", cfg);
+        assert(analysis_has_errors(result), "expected loop liveness errors");
+        assert(count_diag_code(result, "TYP-0150") == 6, "expected six use-after-drop diagnostics");
+        assert(count_diag_code(result, "TYP-0010") == 3, "expected conservative loop return diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/** Tests loop liveness paths that should remain usable after the loop. */
+func test_typing_loop_liveness_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_loop_liveness_ok", cfg);
+        assert(!analysis_has_errors(result), "expected loop liveness ok fixture to pass");
+        assert(!has_diag_code(result, "TYP-0150"), "did not expect use-after-drop diagnostics");
+        assert(!has_diag_code(result, "TYP-0062"), "did not expect dropped-variable diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/** Tests sibling alternatives are isolated and their fallthrough liveness is met. */
+func test_typing_branch_liveness_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_branch_liveness_err", cfg);
+        assert(analysis_has_errors(result), "expected branch liveness errors");
+        assert(count_diag_code(result, "TYP-0150") == 5, "expected five branch use-after-drop diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/** Tests returning alternatives are excluded and complete revival remains usable. */
+func test_typing_branch_liveness_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_branch_liveness_ok", cfg);
+        assert(!analysis_has_errors(result), "expected branch liveness fixture to pass");
+        assert(!has_diag_code(result, "TYP-0150"), "did not expect branch use-after-drop diagnostics");
+        assert(!has_diag_code(result, "TYP-0062"), "did not expect branch second-drop diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/** Tests definite-return flow through with statements and for initialization. */
+func test_typing_with_return_flow_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_with_return_flow_ok", cfg);
+        assert(!analysis_has_errors(result), "expected with/header returns to satisfy function flow");
+        assert(!has_diag_code(result, "TYP-0010"), "did not expect missing-return diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/** Tests inline cleanup loop control overriding a header return. */
+func test_typing_with_return_flow_override() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_with_return_flow_override", cfg);
+        assert(!analysis_has_errors(result), "did not expect errors for cleanup loop-control override");
+        assert(count_diag_code(result, "TYP-0030") == 2, "expected unreachable warnings after cleanup loop control");
+        assert(!has_diag_code(result, "TYP-0031"), "did not expect return-unreachable warnings");
+        assert(!has_diag_code(result, "TYP-0010"), "did not expect missing-return diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests successful typing when local functions shadow `dea` intrinsics.
+ */
+func test_typing_dea_local_shadow_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_dea_local_shadow", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_dea_local_shadow");
+        assert(count_diag_code(result, "RES-0021") == 3, "expected local shadow warnings for sizeof, ord, and is");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests successful typing when an explicit import shadows one `dea` intrinsic.
+ */
+func test_typing_dea_import_shadow_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_dea_import_shadow_main", cfg);
+        let saw_import_shadow = false;
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_dea_import_shadow_main");
+        assert(count_diag_code(result, "RES-0021") == 2,
+            "expected RES-0021 warnings for helper-local and main imported shadowing");
+        for (let i = 0; i < analysis_diag_count(result); i = i + 1) {
+            let d = analysis_diag_get(result, i);
+            if (d.code == "RES-0021" && contains_s(d.message, "typing_dea_import_shadow_helper::sizeof")) {
+                saw_import_shadow = true;
+            }
+        }
+        assert(saw_import_shadow, "expected imported-shadow warning mentioning typing_dea_import_shadow_helper::sizeof");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests that `dea` intrinsics cannot be used as plain values.
+ */
+func test_typing_dea_intrinsic_ref_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_dea_intrinsic_ref_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_dea_intrinsic_ref_err");
+        assert(count_diag_code(result, "TYP-0244") == 3, "expected all intrinsic references to report TYP-0244");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests that alias-only imports do not also enable canonical qualification in `sizeof`.
+ */
+func test_typing_sizeof_alias_canonical_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_sizeof_alias_canonical_err", cfg);
+        assert(analysis_has_errors(result), "expected canonical qualification after alias-only import to fail");
+        assert(count_diag_code(result, "TYP-0301") == 1,
+            "expected one not-imported namespace diagnostic for alias-only import");
+        assert(!has_diag_code(result, "TYP-0154"), "did not expect a secondary module-path diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests that selective imports do not also enable canonical qualification in `sizeof`.
+ */
+func test_typing_sizeof_selective_canonical_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_sizeof_selective_canonical_err", cfg);
+        assert(analysis_has_errors(result), "expected canonical qualification after selective import to fail");
+        assert(count_diag_code(result, "TYP-0301") == 1,
+            "expected one not-imported namespace diagnostic for selective import");
+        assert(!has_diag_code(result, "TYP-0154"), "did not expect a secondary module-path diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests that qualified `sizeof` cannot expose a provider's private type.
+ */
+func test_typing_sizeof_private_qualified_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_sizeof_private_qualified_err", cfg);
+        assert(analysis_has_errors(result), "expected alias-qualified private type lookup to fail");
+        assert(count_diag_code(result, "TYP-0159") == 1,
+            "expected one unknown-identifier diagnostic for the private type");
+        assert(!has_diag_code(result, "TYP-0154"), "did not expect a secondary module-path diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests successful typing for the `is` enum-tag intrinsic.
+ */
+func test_typing_is_intrinsic_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_is_intrinsic_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_is_intrinsic_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests successful typing for `is` with an enum-returning call and qualified variant name.
+ */
+func test_typing_is_intrinsic_qualified_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_is_intrinsic_qualified_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_is_intrinsic_qualified_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests successful `is` variant lookup through an alias-only import.
+ */
+func test_typing_is_alias_qualified_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_is_alias_qualified_ok", cfg);
+        assert(!analysis_has_errors(result), "expected alias-qualified `is` lookup to succeed");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests that an alias-only import does not enable canonical `is` qualification.
+ */
+func test_typing_is_alias_canonical_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_is_alias_canonical_err", cfg);
+        assert(analysis_has_errors(result), "expected canonical `is` lookup after alias-only import to fail");
+        assert(count_diag_code(result, "TYP-0247") == 1,
+            "expected one enum-variant-reference diagnostic for alias-only import");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests that a selective import does not enable canonical `is` qualification.
+ */
+func test_typing_is_selective_canonical_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_is_selective_canonical_err", cfg);
+        assert(analysis_has_errors(result), "expected canonical `is` lookup after selective import to fail");
+        assert(count_diag_code(result, "TYP-0247") == 1,
+            "expected one enum-variant-reference diagnostic for selective import");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests that qualified `is` lookup cannot expose a private enum's variant.
+ */
+func test_typing_is_private_qualified_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_is_private_qualified_err", cfg);
+        assert(analysis_has_errors(result), "expected private qualified `is` variant lookup to fail");
+        assert(count_diag_code(result, "TYP-0247") == 1,
+            "expected one enum-variant-reference diagnostic for the private variant");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests diagnostic reporting for invalid `is` intrinsic usage.
+ */
+func test_typing_is_intrinsic_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_is_intrinsic_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_is_intrinsic_err");
+        assert(count_diag_code(result, "TYP-0245") == 1, "expected one `is` arity diagnostic");
+        assert(count_diag_code(result, "TYP-0246") == 1, "expected one `is` first-argument diagnostic");
+        assert(count_diag_code(result, "TYP-0247") == 2, "expected two `is` variant-reference diagnostics");
+        assert(count_diag_code(result, "TYP-0248") == 1, "expected one `is` enum-mismatch diagnostic");
+        assert(count_diag_code(result, "TYP-0760") == 3, "expected three intrinsic named-argument diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests successful typing for nullable identity equality.
+ */
+func test_typing_nullable_identity_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_nullable_identity_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_nullable_identity_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests diagnostic reporting for invalid nullable equality.
+ */
+func test_typing_nullable_identity_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_nullable_identity_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_nullable_identity_err");
+        assert(count_diag_code(result, "TYP-0172") == 4, "expected four TYP-0172 diagnostics for mismatched nullable types");
+        assert(count_diag_code(result, "TYP-0173") == 1, "expected one TYP-0173 diagnostic for unsupported nullable struct equality");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Main entry point for the module.
+ */
+
+/**
+ * Tests successful typing for string concatenation.
+ */
+func test_typing_string_concat_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_string_concat_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_string_concat_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests diagnostic reporting for invalid string concatenation.
+ */
+func test_typing_string_concat_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_string_concat_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_string_concat_err");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests fixed-size array semantic diagnostics.
+ */
+func test_typing_fixed_array_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_fixed_array_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_fixed_array_err");
+        assert(has_diag_code(result, "TYP-0817"), "expected invalid array length diagnostic");
+        assert(has_diag_code(result, "TYP-0801"), "expected bare array literal diagnostic");
+        assert(has_diag_code(result, "TYP-0802"), "expected overlong array literal diagnostic");
+        assert(has_diag_code(result, "TYP-0803"), "expected array literal element mismatch diagnostic");
+        assert(has_diag_code(result, "TYP-0804"), "expected non-array constructor target diagnostic");
+        assert(has_diag_code(result, "TYP-0805"), "expected array constructor/allocation arity diagnostic");
+        assert(has_diag_code(result, "TYP-0806"), "expected array fill mismatch diagnostic");
+        assert(has_diag_code(result, "TYP-0807"), "expected unknown array constructor target diagnostic");
+        assert(has_diag_code(result, "TYP-0151"), "expected type-name-as-value diagnostic");
+        assert(!has_diag_code(result, "TYP-0159"), "builtin type-as-value should not report unknown identifier");
+        assert(!has_diag_code(result, "TYP-0279"), "invalid array length should not add unknown-type cascade");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests named compile-time constants in array bounds and `case` arms.
+ */
+func test_typing_const_value_contexts_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_value_contexts_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_const_value_contexts_ok");
+
+        let fn_ty = sig_lookup_func_type(result.signatures as SignatureTables*,
+            "typing_const_value_contexts_ok", "use_param");
+        assert(fn_ty != null, "use_param signature should resolve");
+        let params = (fn_ty as Type*).params as VectorBase*;
+        let param_ty = *(vec_get(params, 0) as Type**);
+        assert(ord(param_ty.kind) == ord(TY_ARRAY), "use_param parameter should be an array");
+        assert(param_ty.array_len == 3, "named const array bound should resolve to concrete length 3");
+
+        let wide_fn_ty = sig_lookup_func_type(result.signatures as SignatureTables*,
+            "typing_const_value_contexts_ok", "use_wide_param");
+        assert(wide_fn_ty != null, "use_wide_param signature should resolve");
+        let wide_params = (wide_fn_ty as Type*).params as VectorBase*;
+        let wide_param_ty = *(vec_get(wide_params, 0) as Type**);
+        assert(ord(wide_param_ty.kind) == ord(TY_ARRAY), "use_wide_param parameter should be an array");
+        assert(wide_param_ty.array_len == 4, "folded const array bound should resolve to concrete length 4");
+
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests scalar compile-time expressions in const declarations reject unsupported cases.
+ */
+func test_typing_const_expr_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_expr_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_const_expr_err");
+        assert(count_diag_code(result, "SIG-0200") == 11,
+            "expected eleven non-constant const initializer diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests semantic diagnostics for invalid const-valued array bounds.
+ */
+func test_typing_const_array_bounds_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_array_bounds_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_const_array_bounds_err");
+        assert(has_diag_code(result, "TYP-0815"), "expected non-const array bound diagnostic");
+        assert(has_diag_code(result, "TYP-0816"), "expected wrong-type array bound diagnostic");
+        assert(has_diag_code(result, "TYP-0817"), "expected non-positive array bound diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests const array bounds use the declaration type, not only the raw initializer literal.
+ */
+func test_typing_const_array_bound_decl_type_regression() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_array_bound_decl_type_regression", cfg);
+        assert(analysis_has_errors(result), "expected declaration-typed array-bound errors");
+        assert(!has_diag_code(result, "TYP-0815"), "typed constants should not be reported as non-constant");
+        assert(count_diag_code(result, "TYP-0816") == 2,
+            "expected wrong-type diagnostics for unsigned and aggregate constants");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests semantic diagnostics for invalid const-valued `case` arms.
+ */
+func test_typing_const_case_values_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_case_values_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_const_case_values_err");
+        assert(has_diag_code(result, "TYP-0112"), "expected non-const case arm diagnostic");
+        assert(has_diag_code(result, "TYP-0113"), "expected aggregate case arm diagnostic");
+        assert(has_diag_code(result, "TYP-0108"), "expected duplicate const case value diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests compile-time boolean flow removes impossible liveness paths.
+ */
+func test_typing_const_bool_flow_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_bool_flow_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_const_bool_flow_ok");
+        assert(!has_diag_code(result, "TYP-0150"), "did not expect use-after-drop diagnostics");
+        assert(!has_diag_code(result, "TYP-0062"), "did not expect dropped-variable diagnostics");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests shadowed const names stay dynamic and dead branches keep type errors.
+ */
+func test_typing_const_bool_flow_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_const_bool_flow_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_const_bool_flow_err");
+        assert(count_diag_code(result, "TYP-0150") == 1,
+            "expected one use-after-drop diagnostic for local const-name shadowing");
+        assert(count_diag_code(result, "TYP-0310") == 1,
+            "expected one type mismatch diagnostic in the dead const branch");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests slice typing, intrinsics, and contextual conversion accept valid programs.
+ */
+func test_typing_slice_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_slice_ok", cfg);
+        assert(!analysis_has_errors(result), "expected no typing errors for typing_slice_ok");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests slice intrinsic operand, arity, conversion, and index diagnostics.
+ */
+func test_typing_slice_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_slice_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_slice_err");
+        assert(has_diag_code(result, "TYP-0808"), "expected non-array/slice operand diagnostic");
+        assert(has_diag_code(result, "TYP-0809"), "expected slice/len arity diagnostic");
+        assert(has_diag_code(result, "TYP-0814"), "expected nullable/pointer-after-slice diagnostic");
+        assert(has_diag_code(result, "TYP-0210"), "expected non-int slice index diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests top-level initializer expression typing and diagnostics.
+ */
+func test_typing_toplet_initializer_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_toplet_initializer_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_toplet_initializer_err");
+        assert(count_diag_code(result, "TYP-0050") == 1, "expected one top-level void annotation diagnostic");
+        assert(count_diag_code(result, "TYP-0310") == 1,
+            "expected one top-level initializer mismatch diagnostic");
+        assert(has_diag_code(result, "TYP-0808"), "expected top-level len operand diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests resolved top-level initializers remain checked after signature errors.
+ */
+func test_typing_toplet_diagnostic_recovery_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_toplet_diagnostic_recovery_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_toplet_diagnostic_recovery_err");
+        assert(count_diag_code(result, "TYP-0310") == 1,
+            "expected one recovered top-level initializer mismatch diagnostic");
+        assert(count_diag_code(result, "TYP-0816") == 1,
+            "expected one wrong-type array-bound diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests slice escape diagnostics in long-lived positions.
+ */
+func test_typing_slice_escape_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_slice_escape_err", cfg);
+        assert(analysis_has_errors(result), "expected typing errors for typing_slice_escape_err");
+        assert(has_diag_code(result, "TYP-0810"), "expected slice-return-type diagnostic");
+        assert(has_diag_code(result, "TYP-0811"), "expected slice-struct-field diagnostic");
+        assert(has_diag_code(result, "TYP-0812"), "expected slice-top-level-let diagnostic");
+        assert(has_diag_code(result, "TYP-0813"), "expected slice-enum-payload diagnostic");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+func main() {
+    test_typing_ok();
+    test_typing_binding_identity();
+    test_typing_err();
+    test_typing_alias_struct_constructor_ok();
+    test_typing_alias_value_err();
+    test_typing_function_pointer_ok();
+    test_typing_function_pointer_err();
+    test_typing_unsafe_function_pointer_ok();
+    test_typing_unsafe_function_pointer_err();
+    test_typing_let_diag_err();
+    test_typing_let_diag_tail_err();
+    test_typing_const_ok();
+    test_typing_const_initializer_err();
+    test_typing_const_assign_err();
+    test_typing_loop_cond_err();
+    test_typing_match_diag_err();
+    test_typing_match_qualified_pattern_err();
+    test_typing_match_validation_err();
+    test_typing_match_duplicate_err();
+    test_typing_case_diag_err();
+    test_typing_with_cleanup_guard();
+    test_typing_field_diag_err();
+    test_typing_index_ok();
+    test_typing_index_diag_err();
+    test_return_void_in_non_void();
+    test_return_invalid_expr();
+    test_typing_try_ok();
+    test_typing_try_err();
+    test_typing_equality_unsupported();
+    test_typing_string_equality_ok();
+    test_typing_pointer_identity_ok();
+    test_typing_pointer_identity_err();
+    test_typing_nullable_identity_ok();
+    test_typing_nullable_identity_err();
+    test_typing_cast_ok();
+    test_typing_cast_err();
+    test_typing_cast_optional_int_ok();
+    test_typing_cast_optional_int_err();
+    test_typing_optional_int_context_err();
+    test_typing_cast_int_to_byte_overflow();
+    test_typing_bitwise_ok();
+    test_typing_bitwise_err();
+    test_typing_call_err();
+    test_typing_named_args_ok();
+    test_typing_named_args_err();
+    test_typing_variadic_ok();
+    test_typing_variadic_err();
+    test_typing_variadic_identity_err();
+    test_typing_small_int_ok();
+    test_typing_small_int_err();
+    test_typing_small_int_literal_overflow();
+    test_typing_large_int_ok();
+    test_typing_large_int_err();
+    test_typing_large_int_literal_overflow();
+    test_typing_contextual_array_literals_ok();
+    test_typing_contextual_array_literals_err();
+    test_typing_float_ok();
+    test_typing_float_err();
+    test_typing_string_concat_ok();
+    test_typing_string_concat_err();
+    test_typing_prefixed_int_literals_ok();
+    test_typing_cast_null_unwrap_err();
+    test_typing_nullable_assignment();
+    test_typing_call_err();
+    test_typing_match_flow_err();
+    test_typing_match_warn_ok();
+    test_typing_loop_control_err();
+    test_typing_unreachable_warn_ok();
+    test_typing_new_ok();
+    test_typing_new_err();
+    test_typing_drop_err();
+    test_typing_drop_flow_err();
+    test_typing_loop_liveness_err();
+    test_typing_loop_liveness_ok();
+    test_typing_branch_liveness_err();
+    test_typing_branch_liveness_ok();
+    test_typing_with_return_flow_ok();
+    test_typing_with_return_flow_override();
+    test_typing_dea_local_shadow_ok();
+    test_typing_dea_import_shadow_ok();
+    test_typing_dea_intrinsic_ref_err();
+    test_typing_sizeof_alias_canonical_err();
+    test_typing_sizeof_selective_canonical_err();
+    test_typing_sizeof_private_qualified_err();
+    test_typing_is_intrinsic_ok();
+    test_typing_is_intrinsic_qualified_ok();
+    test_typing_is_alias_qualified_ok();
+    test_typing_is_alias_canonical_err();
+    test_typing_is_selective_canonical_err();
+    test_typing_is_private_qualified_err();
+    test_typing_is_intrinsic_err();
+    test_typing_fixed_array_err();
+    test_typing_const_value_contexts_ok();
+    test_typing_const_expr_err();
+    test_typing_const_array_bounds_err();
+    test_typing_const_array_bound_decl_type_regression();
+    test_typing_const_casts_ok();
+    test_typing_const_casts_err();
+    test_typing_const_case_values_err();
+    test_typing_const_bool_flow_ok();
+    test_typing_const_bool_flow_err();
+    test_typing_slice_ok();
+    test_typing_slice_err();
+    test_typing_toplet_initializer_err();
+    test_typing_toplet_diagnostic_recovery_err();
+    test_typing_slice_escape_err();
+    printl_s("expr_types_test: all tests passed");
+}

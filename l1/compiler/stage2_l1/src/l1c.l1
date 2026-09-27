@@ -1,0 +1,27 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module l1c;
+
+import std.system;
+import std.vector;
+
+import l1c_lib;
+
+/**
+ * Run the Stage 1 `l1c` entry point with process arguments.
+ */
+func main() {
+    with (let argv_vec = sv_create(argc()) => sv_free(argv_vec)) {
+        for (let i = 1; i < argc(); i = i + 1) {
+            sv_push(argv_vec, argv(i));
+        }
+
+        let rc = run_with_argv(argv_vec);
+        if (rc != 0) {
+            exit(rc);
+        }
+    }
+}

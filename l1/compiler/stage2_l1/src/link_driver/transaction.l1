@@ -1,0 +1,261 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module link_driver.transaction;
+
+import std.path;
+import std.string;
+import std.system;
+import std.text;
+import std.time;
+import std.vector;
+import util.diag;
+import compiler_filesystem;
+import link_driver.model;
+
+/** Fixed paths owned by one standalone-link transaction. */
+struct LinkTransaction {
+    root: string;
+    wrapper_c: string;
+    wrapper_object: string;
+    compile_stdout: string;
+    compile_stderr: string;
+    link_stdout: string;
+    link_stderr: string;
+}
+
+/** Construct the fixed paths inside one standalone-link transaction. */
+func ld_transaction_create(root: string) -> LinkTransaction* {
+    return new LinkTransaction(
+        root,
+        join(root, "wrapper.c"),
+        join(root, "wrapper.o"),
+        join(root, "compile.stdout"),
+        join(root, "compile.stderr"),
+        join(root, "link.stdout"),
+        join(root, "link.stderr")
+    );
+}
+
+/** Free a transaction-path bundle without removing filesystem state. */
+func ld_transaction_free(txn: LinkTransaction*) {
+    drop txn;
+}
+
+/** Exclusively create one output-local transaction for a fixed identity. */
+func ld_create_transaction_for_identity(
+    output_parent: string,
+    pid: int,
+    sec: int,
+    nsec: int,
+    diags: DiagCollector*
+) -> LinkTransaction*? {
+    for (let attempt = 0; attempt < 100; attempt = attempt + 1) {
+        let root = join(
+            output_parent,
+            ".l1c-link-" + int_to_string(pid) + "-" +
+                int_to_string(sec) + "-" + int_to_string(nsec) + "-" +
+                int_to_string(attempt)
+        );
+        /* POSIX 0700; MinGW inherits access control from the trusted parent. */
+        let created = cfs_mkdir(root, 448);
+        if (created == 1) {
+            return ld_transaction_create(root);
+        }
+        if (created < 0) {
+            ld_error(
+                diags,
+                "L1C-2107",
+                "cannot create standalone-link transaction directory: " + root,
+                root
+            );
+            return null;
+        }
+    }
+
+    ld_error(
+        diags,
+        "L1C-2107",
+        "cannot create a unique standalone-link transaction directory under: " +
+            output_parent,
+        output_parent
+    );
+    return null;
+}
+
+/** Exclusively create one output-local transaction beside the executable. */
+func ld_create_transaction(
+    output_parent: string,
+    diags: DiagCollector*
+) -> LinkTransaction*? {
+    let pid = get_pid();
+    let sec = 0;
+    let nsec = 0;
+    let now_opt = wall_now();
+    if (now_opt != null) {
+        let now = now_opt as WallTime;
+        sec = now.sec;
+        nsec = now.nsec;
+    }
+    return ld_create_transaction_for_identity(
+        output_parent, pid, sec, nsec, diags);
+}
+
+/**
+ * Delete one regular transaction child without following substitutions.
+ */
+func ld_delete_if_present(path: string) -> bool {
+    return cfs_remove_regular_file(path) >= 0;
+}
+
+/**
+ * Remove known regular children and then the verified empty transaction.
+ *
+ * No recursive removal is performed. Unexpected or substituted contents make
+ * cleanup fail and retain the transaction for inspection.
+ */
+func ld_cleanup_transaction(txn: LinkTransaction*) -> bool {
+    let ok = true;
+    if (!ld_delete_if_present(txn.wrapper_c)) ok = false;
+    if (!ld_delete_if_present(txn.wrapper_object)) ok = false;
+    if (!ld_delete_if_present(txn.compile_stdout)) ok = false;
+    if (!ld_delete_if_present(txn.compile_stderr)) ok = false;
+    if (!ld_delete_if_present(txn.link_stdout)) ok = false;
+    if (!ld_delete_if_present(txn.link_stderr)) ok = false;
+    if (cfs_remove_empty_dir(txn.root) != 1) ok = false;
+    return ok;
+}
+
+/** Validate the caller-selected executable destination without creating it. */
+func ld_validate_output(output_path: string, diags: DiagCollector*) -> bool {
+    if (is_empty_s(output_path)) {
+        ld_error(
+            diags,
+            "L1C-2105",
+            "standalone-link output path must not be empty",
+            output_path
+        );
+        return false;
+    }
+
+    let output_parent = parent(output_path);
+    let parent_kind = cfs_path_kind_follow(output_parent);
+    if (parent_kind != CFS_PATH_DIRECTORY) {
+        if (parent_kind < 0) {
+            ld_error(
+                diags,
+                "L1C-2105",
+                "cannot inspect standalone-link output parent: " + output_parent,
+                output_parent
+            );
+        } else {
+            ld_error(
+                diags,
+                "L1C-2105",
+                "standalone-link output parent does not exist or is not a directory: " +
+                    output_parent,
+                output_parent
+            );
+        }
+        return false;
+    }
+
+    let output_kind = cfs_path_kind(output_path);
+    if (output_kind == CFS_PATH_ABSENT ||
+        output_kind == CFS_PATH_REGULAR) {
+        return true;
+    }
+    if (output_kind < 0) {
+        ld_error(
+            diags,
+            "L1C-2105",
+            "cannot inspect standalone-link output: " + output_path,
+            output_path
+        );
+    } else {
+        ld_error(
+            diags,
+            "L1C-2105",
+            "standalone-link output must be absent or a regular file: " +
+                output_path,
+            output_path
+        );
+    }
+    return false;
+}
+
+/** Reject an existing output alias of one validated compiler input. */
+func ld_validate_output_alias(
+    output_path: string,
+    input_path: string,
+    input_kind: string,
+    diags: DiagCollector*
+) -> bool {
+    let same = cfs_same_file(output_path, input_path);
+    if (same < 0) {
+        ld_error(
+            diags,
+            "L1C-2105",
+            "cannot compare standalone-link output identity with " +
+                input_kind + ": " + input_path,
+            output_path
+        );
+        return false;
+    }
+    if (same == 1) {
+        ld_error(
+            diags,
+            "L1C-2105",
+            "standalone-link output aliases " + input_kind + ": " +
+                input_path,
+            output_path
+        );
+        return false;
+    }
+    return true;
+}
+
+/** Reject output aliases of native, interface, runtime, or header inputs. */
+func ld_validate_output_aliases(
+    output_path: string,
+    plan: LinkPlan*,
+    runtime_inputs: StringVector*,
+    runtime_header: string,
+    diags: DiagCollector*
+) -> bool {
+    if (cfs_path_kind(output_path) != CFS_PATH_REGULAR) {
+        return true;
+    }
+
+    for (let i = 0; i < vec_size(plan.inputs); i = i + 1) {
+        let input = ld_plan_input_get(plan, i);
+        if (!ld_input_is_native(input)) {
+            continue;
+        }
+        if (!ld_validate_output_alias(
+                output_path, input.value, "caller native input", diags)) {
+            return false;
+        }
+        if (input.interface_path != null &&
+            !ld_validate_output_alias(
+                output_path,
+                input.interface_path as string,
+                "consumed sibling interface",
+                diags)) {
+            return false;
+        }
+    }
+
+    for (let runtime_i = 0; runtime_i < sv_size(runtime_inputs);
+        runtime_i = runtime_i + 1) {
+        let runtime_path = sv_get(runtime_inputs, runtime_i);
+        if (!ld_validate_output_alias(
+                output_path, runtime_path, "runtime native input", diags)) {
+            return false;
+        }
+    }
+    return ld_validate_output_alias(
+        output_path, runtime_header, "resolved runtime header", diags);
+}

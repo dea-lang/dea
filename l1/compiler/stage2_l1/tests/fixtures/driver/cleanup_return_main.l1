@@ -1,0 +1,24 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module cleanup_return_main;
+
+/**
+ * Returns from the cleanup block, overriding the body return.
+ */
+func helper() -> int {
+    with (null) {
+        return 12;
+    } cleanup {
+        return 11;
+    }
+}
+
+/**
+ * Main entry point for cleanup-return precedence tests.
+ */
+func main() -> int {
+    return helper();
+}

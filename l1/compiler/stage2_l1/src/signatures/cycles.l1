@@ -1,0 +1,144 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module signatures.cycles;
+
+import std.hashmap;
+import std.hashset;
+import std.vector;
+import util.diag;
+import ast;
+import types;
+import signatures.tables;
+
+/**
+ * Collect value-type dependencies referenced by a type.
+ *
+ * @param ty Type to inspect.
+ * @param out Set that receives fully qualified dependency keys.
+ */
+func sig_extract_dependencies(ty: Type*, out: StringSet*) {
+    if (ord(ty.kind) == ord(TY_POINTER)) {
+        return;
+    }
+    if (ord(ty.kind) == ord(TY_SLICE)) {
+        return;
+    }
+    if (ord(ty.kind) == ord(TY_NULLABLE)) {
+        let inner = ty.inner as Type*;
+        if (ord(inner.kind) == ord(TY_POINTER)) {
+            return;
+        }
+        sig_extract_dependencies(inner, out);
+        return;
+    }
+    if (ord(ty.kind) == ord(TY_STRUCT) || ord(ty.kind) == ord(TY_ENUM)) {
+        ss_add(out, sig_key(ty.module_name, ty.name));
+    }
+}
+
+/**
+ * Visit one value-type node in the cycle-detection graph.
+ *
+ * @param tables Signature tables containing resolved struct and enum metadata.
+ * @param key Fully qualified type key to visit.
+ * @param visiting DFS stack set for cycle detection.
+ * @param visited Set of nodes already proven acyclic.
+ * @param diags Diagnostic collector for emitted cycle errors.
+ * @return `true` if this visit reaches a value-type cycle.
+ */
+func sig_cycle_visit(tables: SignatureTables*, key: string, visiting: StringSet*, visited: StringSet*,
+                     diags: DiagCollector*) -> bool {
+    if (ss_has(visited, key)) {
+        return false;
+    }
+    if (ss_has(visiting, key)) {
+        return true;
+    }
+
+    ss_add(visiting, key);
+
+    let struct_info = spm_get(tables.struct_infos, key);
+    if (struct_info != null) {
+        let info = struct_info as StructInfo*;
+        with (let deps = ss_create() => ss_free(deps)) {
+            for (let i = 0; i < vec_size(info.fields); i = i + 1) {
+                let field = ptr_vec_get(info.fields, i) as StructFieldInfo*;
+                sig_extract_dependencies(field.field_type, deps);
+            }
+            for (let dep_i = 0; dep_i < ss_capacity(deps); dep_i = dep_i + 1) {
+                if (!ss_slot_occupied(deps, dep_i)) {
+                    continue;
+                }
+                if (sig_cycle_visit(tables, ss_slot_key(deps, dep_i), visiting, visited, diags)) {
+                    sig_diag_error(
+                        diags,
+                        "SIG-0040",
+                        "Value-type cycle detected involving " + key + ". Consider using pointers to break the cycle.",
+                        info.filename,
+                        info.span
+                    );
+                    return true;
+                }
+            }
+        }
+    }
+
+    let enum_info = spm_get(tables.enum_infos, key);
+    if (enum_info != null) {
+        let info2 = enum_info as EnumInfo*;
+        with (let deps2 = ss_create() => ss_free(deps2)) {
+            for (let i = 0; i < vec_size(info2.variants); i = i + 1) {
+                let variant = ptr_vec_get(info2.variants, i) as EnumVariantInfo*;
+                for (let j = 0; j < vec_size(variant.field_types); j = j + 1) {
+                    sig_extract_dependencies(ptr_vec_get(variant.field_types, j) as Type*, deps2);
+                }
+            }
+            for (let dep2_i = 0; dep2_i < ss_capacity(deps2); dep2_i = dep2_i + 1) {
+                if (!ss_slot_occupied(deps2, dep2_i)) {
+                    continue;
+                }
+                if (sig_cycle_visit(tables, ss_slot_key(deps2, dep2_i), visiting, visited, diags)) {
+                    sig_diag_error(
+                        diags,
+                        "SIG-0040",
+                        "Value-type cycle detected involving " + key + ". Consider using pointers to break the cycle.",
+                        info2.filename,
+                        info2.span
+                    );
+                    return true;
+                }
+            }
+        }
+    }
+
+    ss_remove(visiting, key);
+    ss_add(visited, key);
+    return false;
+}
+
+/**
+ * Detect value-type cycles across resolved structs and enums.
+ *
+ * @param tables Signature tables to inspect.
+ * @param diags Diagnostic collector.
+ */
+func sig_detect_value_type_cycles(tables: SignatureTables*, diags: DiagCollector*) {
+    with (let visiting = ss_create() => ss_free(visiting),
+          let visited = ss_create() => ss_free(visited),
+          let keys = spm_keys(tables.struct_infos) => sv_free(keys),
+          let enum_keys = spm_keys(tables.enum_infos) => sv_free(enum_keys)) {
+        for (let i = 0; i < sv_size(keys); i = i + 1) {
+            if (sig_cycle_visit(tables, sv_get(keys, i), visiting, visited, diags)) {
+                return;
+            }
+        }
+        for (let enum_key_i = 0; enum_key_i < sv_size(enum_keys); enum_key_i = enum_key_i + 1) {
+            if (sig_cycle_visit(tables, sv_get(enum_keys, enum_key_i), visiting, visited, diags)) {
+                return;
+            }
+        }
+    }
+}

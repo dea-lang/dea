@@ -1,0 +1,327 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module build_driver_test;
+
+import std.assert;
+import std.io;
+import std.path;
+import std.vector;
+
+import build_driver;
+import cli_args.model;
+
+/**
+ * Tests test_shell_quote_posix_handles_spaces_and_quotes.
+ */
+func test_shell_quote_posix_handles_spaces_and_quotes() {
+    assert(bd_shell_quote_posix("two words") == "'two words'", "space quoting mismatch");
+    assert(bd_shell_quote_posix("rock'n'roll") == "'rock'\\''n'\\''roll'", "single-quote escaping mismatch");
+    assert(bd_shell_quote_posix("") == "''", "empty string should still be quoted");
+}
+
+/**
+ * Tests test_shell_quote_windows_handles_spaces_and_quotes.
+ */
+func test_shell_quote_windows_handles_spaces_and_quotes() {
+    assert(bd_shell_quote_windows("two words") == "\"two words\"", "space quoting mismatch");
+    assert(bd_shell_quote_windows("say \"hi\"") == "\"say \\\"hi\\\"\"", "double-quote escaping mismatch");
+    assert(bd_shell_quote_windows("C:\\") == "\"C:\\\\\"",
+        "trailing backslash must be doubled before the closing quote");
+    assert(bd_shell_quote_windows("C:\\path\\\"quoted\"") ==
+        "\"C:\\path\\\\\\\"quoted\\\"\"",
+        "backslashes before embedded quotes must follow CRT argv rules");
+    assert(bd_shell_quote_windows("") == "\"\"", "empty string should still be quoted");
+}
+
+/**
+ * Tests test_join_shell_words_quotes_every_token.
+ */
+func test_join_shell_words_quotes_every_token() {
+    with (let words = sv_create(3) => sv_free(words)) {
+        sv_push(words, "alpha");
+        sv_push(words, "two words");
+        sv_push(words, "rock'n'roll");
+
+        let joined = bd_join_shell_words(words);
+        if (bd_is_windows()) {
+            assert(joined == "alpha \"two words\" \"rock'n'roll\"", "joined shell command mismatch");
+        } else {
+            assert(joined == "'alpha' 'two words' 'rock'\\''n'\\''roll'", "joined shell command mismatch");
+        }
+    }
+}
+
+/**
+ * Tests test_windows_exec_token_rewrites_relative_slashes.
+ */
+func test_windows_exec_token_rewrites_relative_slashes() {
+    assert(bd_windows_exec_token("./temp.exe") == ".\\temp.exe", "dot-relative executable path mismatch");
+    assert(bd_windows_exec_token("../bin/temp.exe") == "..\\bin\\temp.exe", "parent-relative executable path mismatch");
+    assert(bd_windows_exec_token("clang") == "clang", "plain command should remain unchanged");
+}
+
+/**
+ * Tests test_join_display_words_matches_stage1_logging.
+ */
+func test_join_display_words_matches_stage1_logging() {
+    with (let words = sv_create(3) => sv_free(words)) {
+        sv_push(words, "clang");
+        sv_push(words, "file.c");
+        sv_push(words, "-O1");
+
+        let joined = bd_join_display_words(words);
+        assert(joined == "clang file.c -O1", "display command mismatch");
+    }
+}
+
+/**
+ * Tests test_format_word_list_matches_stage1_logging.
+ */
+func test_format_word_list_matches_stage1_logging() {
+    with (let words = sv_create(2) => sv_free(words)) {
+        assert(bd_format_word_list(words) == "[]", "empty option list mismatch");
+        sv_push(words, "-g");
+        sv_push(words, "-O0");
+        assert(bd_format_word_list(words) == "['-g', '-O0']", "formatted option list mismatch");
+    }
+}
+
+/**
+ * Tests test_compiler_flag_family_detection.
+ */
+func test_compiler_flag_family_detection() {
+    assert(bd_compiler_flag_family("gcc") == "gcc", "gcc family mismatch");
+    assert(bd_compiler_flag_family("/usr/bin/clang-18") == "gcc", "clang family mismatch");
+    assert(bd_compiler_flag_family(
+            "/opt/cross/bin/x86_64-linux-gnu-gcc-12.2.0") == "gcc",
+        "target-prefixed GCC flag family mismatch");
+    assert(bd_compiler_flag_family(
+            "C:\\toolchain\\AARCH64-LINUX-GNU-CLANG-18.EXE") == "gcc",
+        "target-prefixed Clang flag family mismatch");
+    assert(bd_compiler_flag_family(
+            "/opt/cross/bin/x86_64-linux-tcc") == "tcc",
+        "target-prefixed TinyCC flag family mismatch");
+    assert(bd_compiler_flag_family(
+            "C:\\toolchain\\I386-WIN32-TCC.EXE") == "tcc",
+        "case-insensitive target-prefixed TinyCC flag family mismatch");
+    assert(bd_compiler_flag_family("tcc-0.9.28rc") == "tcc",
+        "TinyCC nonnumeric version suffix family mismatch");
+    assert(bd_compiler_flag_family("cc") == "cc", "cc family mismatch");
+    assert(bd_compiler_flag_family("cl.exe") == "msvc", "msvc family mismatch");
+    assert(bd_compiler_flag_family("C:\\Toolchain\\CL.EXE") == "msvc",
+        "MSVC family detection must be case-insensitive");
+    assert(bd_compiler_flag_family("custom-cc") == "unknown", "unknown family mismatch");
+
+    assert(bd_compiler_debug_family("x86_64-linux-gnu-gcc-12") == "gcc",
+        "target-prefixed GCC debug family mismatch");
+    assert(bd_compiler_debug_family("aarch64-linux-gnu-clang-18.exe") == "clang",
+        "target-prefixed Clang debug family mismatch");
+    assert(bd_compiler_debug_family(
+            "x86_64-w64-mingw32-gcc-posix.exe") == "gcc",
+        "MinGW POSIX GCC debug family mismatch");
+    assert(bd_compiler_debug_family(
+            "x86_64-w64-mingw32-gcc-15-win32.exe") == "gcc",
+        "versioned MinGW GCC debug family mismatch");
+    assert(bd_compiler_debug_family("gcc-ar") == "unknown",
+        "GCC binutil must not classify as the GCC driver");
+    assert(bd_compiler_debug_family(
+            "x86_64-w64-mingw32-gcc-ar-posix.exe") == "unknown",
+        "MinGW GCC binutil must not classify as the GCC driver");
+    assert(bd_compiler_debug_family("x86_64-linux-gnu-gcc-nm") == "unknown",
+        "target GCC binutil must not classify as the GCC driver");
+    assert(bd_compiler_debug_family("clang-cl") == "unknown",
+        "clang-cl must not classify as the Clang driver");
+    assert(bd_compiler_debug_family("clang-format") == "unknown",
+        "clang-format must not classify as the Clang driver");
+    assert(bd_compiler_debug_family("gccgo") == "unknown",
+        "gccgo must not classify as the GCC driver");
+    assert(bd_compiler_debug_family("mygcc-12") == "unknown",
+        "embedded GCC text must not classify as the GCC driver");
+}
+
+/**
+ * Tests test_get_optimize_flag_defaults_and_overrides.
+ */
+func test_get_optimize_flag_defaults_and_overrides() {
+    with (let empty = sv_create(1) => sv_free(empty)) {
+        let gcc_opt = bd_get_optimize_flag("gcc", empty);
+        let expected = "-O1";
+        if (bd_is_windows()) {
+            expected = "-O0";
+        }
+        assert(gcc_opt != null && gcc_opt as string == expected, "gcc default optimize flag mismatch");
+    }
+
+    with (let debug_words = sv_create(1) => sv_free(debug_words)) {
+        sv_push(debug_words, "-g");
+        let gcc_debug = bd_get_optimize_flag("gcc", debug_words);
+        assert(gcc_debug != null && gcc_debug as string == "-Og", "gcc debug optimize flag mismatch");
+    }
+
+    with (let debug_variant_words = sv_create(2) => sv_free(debug_variant_words)) {
+        sv_push(debug_variant_words, "-g3");
+        sv_push(debug_variant_words, "-ggdb");
+        let gcc_debug_variant = bd_get_optimize_flag("gcc", debug_variant_words);
+        assert(gcc_debug_variant != null && gcc_debug_variant as string == "-Og",
+            "GCC debug variants should select the debug optimization default");
+    }
+
+    with (let msvc_debug_words = sv_create(1) => sv_free(msvc_debug_words)) {
+        sv_push(msvc_debug_words, "/Zi");
+        let msvc_debug = bd_get_optimize_flag("msvc", msvc_debug_words);
+        assert(msvc_debug != null && msvc_debug as string == "/Od", "msvc debug optimize flag mismatch");
+    }
+
+    with (let explicit_opt = sv_create(1) => sv_free(explicit_opt)) {
+        sv_push(explicit_opt, "-O2");
+        assert(bd_get_optimize_flag("gcc", explicit_opt) == null, "explicit optimize flag should suppress defaults");
+    }
+}
+
+/**
+ * Tests test_output_flag_selection_matches_compiler_family.
+ */
+func test_output_flag_selection_matches_compiler_family() {
+    with (let gcc_words = sv_create(4) => sv_free(gcc_words)) {
+        bd_push_output_flags(gcc_words, "gcc", "out.exe");
+        assert(sv_size(gcc_words) == 2, "gcc output flags should use two argv words");
+        assert(sv_get(gcc_words, 0) == "-o", "gcc output flag mismatch");
+        assert(sv_get(gcc_words, 1) == "out.exe", "gcc output path mismatch");
+    }
+
+    with (let msvc_words = sv_create(2) => sv_free(msvc_words)) {
+        bd_push_output_flags(msvc_words, "msvc", "out.exe");
+        assert(sv_size(msvc_words) == 1, "msvc output flags should use one argv word");
+        assert(sv_get(msvc_words, 0) == "/Fe:out.exe", "msvc output flag mismatch");
+    }
+}
+
+/**
+ * Tests test_exe_name_helpers_are_consistent.
+ */
+func test_exe_name_helpers_are_consistent() {
+    if (bd_is_windows()) {
+        assert(bd_default_exe_name() == "a.exe", "windows build name mismatch");
+        assert(bd_exe_suffix() == ".exe", "windows suffix mismatch");
+        assert(bd_null_device() == "NUL", "windows null device mismatch");
+    } else {
+        assert(bd_default_exe_name() == "a.out", "posix build name mismatch");
+        assert(bd_exe_suffix() == ".out", "posix suffix mismatch");
+        assert(bd_null_device() == "/dev/null", "posix null device mismatch");
+    }
+}
+
+/**
+ * Tests traced runtime archive filename selection.
+ */
+func test_runtime_archive_filename_selects_traced_when_either_trace_flag_set() {
+    with (let opts = cli_options_create() => cli_options_free(opts)) {
+        opts.trace_arc = false;
+        opts.trace_memory = false;
+        assert(bd_runtime_archive_filename(opts) == "libdea_rt.a", "untraced archive filename mismatch");
+
+        opts.trace_arc = true;
+        opts.trace_memory = false;
+        assert(bd_runtime_archive_filename(opts) == "libdea_rt_traced.a", "trace-arc archive filename mismatch");
+
+        opts.trace_arc = false;
+        opts.trace_memory = true;
+        assert(bd_runtime_archive_filename(opts) == "libdea_rt_traced.a", "trace-memory archive filename mismatch");
+
+        opts.trace_arc = true;
+        opts.trace_memory = true;
+        assert(bd_runtime_archive_filename(opts) == "libdea_rt_traced.a", "combined trace archive filename mismatch");
+    }
+}
+
+/**
+ * Tests unchecked runtime archive filename selection.
+ */
+func test_runtime_archive_filename_selects_unchecked_when_unchecked_set() {
+    with (let opts = cli_options_create() => cli_options_free(opts)) {
+        opts.unchecked = true;
+        assert(bd_runtime_archive_filename(opts) == "libdea_rt_unchecked.a", "unchecked archive filename mismatch");
+
+        let unchecked_paths = bd_runtime_object_paths_for_build_dir(opts, "build-root") as StringVector*;
+        let unchecked_dir = join(join(join("build-root", "runtime"), "tcc"), "unchecked");
+        assert(sv_get(unchecked_paths, 0) == join(unchecked_dir, "dea_rt_panic.o"), "unchecked tcc object dir mismatch");
+        sv_free(unchecked_paths);
+    }
+}
+
+/**
+ * Tests check-basic runtime archive filename selection.
+ */
+func test_runtime_archive_filename_selects_check_basic_when_check_basic_set() {
+    with (let opts = cli_options_create() => cli_options_free(opts)) {
+        opts.check_basic = true;
+        assert(bd_runtime_archive_filename(opts) == "libdea_rt_check_basic.a", "check-basic archive filename mismatch");
+
+        let check_basic_paths = bd_runtime_object_paths_for_build_dir(opts, "build-root") as StringVector*;
+        let check_basic_dir = join(join(join("build-root", "runtime"), "tcc"), "check_basic");
+        assert(sv_get(check_basic_paths, 0) == join(check_basic_dir, "dea_rt_panic.o"), "check-basic tcc object dir mismatch");
+        sv_free(check_basic_paths);
+    }
+}
+
+/**
+ * Tests runtime object paths require an L1 build directory.
+ */
+func test_runtime_object_paths_return_null_without_l1_build_dir() {
+    with (let opts = cli_options_create() => cli_options_free(opts)) {
+        let paths = bd_runtime_object_paths_for_build_dir(opts, null);
+        assert(paths == null, "runtime object paths should be null without a build dir");
+    }
+}
+
+/**
+ * Tests runtime object path variant and subsystem ordering.
+ */
+func test_runtime_object_paths_return_default_or_traced_dirs() {
+    with (let opts = cli_options_create() => cli_options_free(opts)) {
+        let default_paths = bd_runtime_object_paths_for_build_dir(opts, "build-root") as StringVector*;
+        let default_dir = join(join(join("build-root", "runtime"), "tcc"), "default");
+        assert(sv_size(default_paths) == 9, "default runtime object count mismatch");
+        assert(sv_get(default_paths, 0) == join(default_dir, "dea_rt_panic.o"), "default panic object path mismatch");
+        assert(sv_get(default_paths, 1) == join(default_dir, "dea_rt_sys.o"), "default sys object path mismatch");
+        assert(sv_get(default_paths, 3) == join(default_dir, "dea_rt_rand.o"), "default rand object path mismatch");
+        assert(sv_get(default_paths, 8) == join(default_dir, "dea_rt_time.o"), "default time object path mismatch");
+        sv_free(default_paths);
+
+        opts.trace_memory = true;
+        let traced_paths = bd_runtime_object_paths_for_build_dir(opts, "build-root") as StringVector*;
+        let traced_dir = join(join(join("build-root", "runtime"), "tcc"), "traced");
+        assert(sv_size(traced_paths) == 10, "traced runtime object count mismatch");
+        assert(sv_get(traced_paths, 0) == join(traced_dir, "dea_rt_trace.o"), "traced policy object path mismatch");
+        assert(sv_get(traced_paths, 1) == join(traced_dir, "dea_rt_panic.o"), "traced panic object path mismatch");
+        assert(sv_get(traced_paths, 2) == join(traced_dir, "dea_rt_sys.o"), "traced sys object path mismatch");
+        assert(sv_get(traced_paths, 4) == join(traced_dir, "dea_rt_rand.o"), "traced rand object path mismatch");
+        assert(sv_get(traced_paths, 9) == join(traced_dir, "dea_rt_time.o"), "traced time object path mismatch");
+        sv_free(traced_paths);
+    }
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    test_shell_quote_posix_handles_spaces_and_quotes();
+    test_shell_quote_windows_handles_spaces_and_quotes();
+    test_join_shell_words_quotes_every_token();
+    test_windows_exec_token_rewrites_relative_slashes();
+    test_join_display_words_matches_stage1_logging();
+    test_format_word_list_matches_stage1_logging();
+    test_compiler_flag_family_detection();
+    test_get_optimize_flag_defaults_and_overrides();
+    test_output_flag_selection_matches_compiler_family();
+    test_exe_name_helpers_are_consistent();
+    test_runtime_archive_filename_selects_traced_when_either_trace_flag_set();
+    test_runtime_archive_filename_selects_unchecked_when_unchecked_set();
+    test_runtime_archive_filename_selects_check_basic_when_check_basic_set();
+    test_runtime_object_paths_return_null_without_l1_build_dir();
+    test_runtime_object_paths_return_default_or_traced_dirs();
+    printl_s("build_driver_test: all tests passed");
+}

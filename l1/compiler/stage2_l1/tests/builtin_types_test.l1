@@ -1,0 +1,53 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module builtin_types_test;
+
+import std.assert;
+
+import builtin_types;
+import tokens;
+import types;
+
+/** Assert every compiler layer recognizes one builtin type name. */
+func assert_builtin_type_name(name: string) {
+    assert(builtin_type_name_is_known(name), "shared builtin inventory rejected a builtin");
+    assert(type_is_builtin_name(name), "semantic builtin predicate drifted from the shared inventory");
+    assert(is_reserved_ident_word(name), "token reservation drifted from the shared inventory");
+    let ty = type_builtin_from_name(name);
+    assert(ty != null, "semantic builtin factory drifted from the shared inventory");
+    assert(type_is_builtin(ty as Type*, name), "semantic builtin factory returned the wrong type");
+    type_free(ty as Type*);
+}
+
+/** Assert every compiler layer rejects one ordinary identifier as a builtin. */
+func assert_non_builtin_type_name(name: string) {
+    assert(!builtin_type_name_is_known(name), "shared builtin inventory accepted an ordinary identifier");
+    assert(!type_is_builtin_name(name), "semantic builtin predicate accepted an ordinary identifier");
+    assert(!is_reserved_ident_word(name), "token reservation accepted an ordinary identifier");
+    assert(type_builtin_from_name(name) == null, "semantic builtin factory accepted an ordinary identifier");
+}
+
+/** Exercise the complete L1 builtin inventory and nearby non-builtin names. */
+func main() {
+    assert_builtin_type_name("bool");
+    assert_builtin_type_name("tiny");
+    assert_builtin_type_name("byte");
+    assert_builtin_type_name("short");
+    assert_builtin_type_name("ushort");
+    assert_builtin_type_name("int");
+    assert_builtin_type_name("uint");
+    assert_builtin_type_name("long");
+    assert_builtin_type_name("ulong");
+    assert_builtin_type_name("float");
+    assert_builtin_type_name("double");
+    assert_builtin_type_name("string");
+    assert_builtin_type_name("void");
+
+    assert_non_builtin_type_name("");
+    assert_non_builtin_type_name("integer");
+    assert_non_builtin_type_name("Bool");
+    assert_non_builtin_type_name("decimal");
+}

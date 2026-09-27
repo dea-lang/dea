@@ -1,0 +1,12 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module slice_oob_main;
+
+func main() -> int {
+    let a: int[2] = [10, 20];
+    let s: int[] = a;
+    return s[2];
+}

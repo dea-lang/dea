@@ -68,6 +68,10 @@ the matrix with `BENCH_PROVENANCE_SHAPES`, `BENCH_PROVENANCE_SIZES`, `BENCH_PROV
 For a non-default upstream bootstrap compiler, set `L1_BOOTSTRAP_L0C=/path/to/l0c-stage2` when running
 `make build-stage1`.
 
+Stage 1 remains the semantic and diagnostic oracle for the mechanical L1 port in
+[l1/compiler/stage2_l1/README.md][stage2]. Build commands preserve the selected `l1c` alias; use `make use-dev-stage1`
+to select this compiler and `make use-dev-stage2` to select the self-hosted compiler.
+
 [architecture]: ../../docs/reference/architecture.md
 [driver-test-inputs]: tests/support/driver_inputs.l0
 [l1-root]: ../../README.md
@@ -75,4 +79,5 @@ For a non-default upstream bootstrap compiler, set `L1_BOOTSTRAP_L0C=/path/to/l0
 [preparation]: ../../docs/reference/stdlib-preparation.md
 [project-status]: ../../docs/project-status.md
 [python-driver-inputs]: tests/support/driver_inputs.py
+[stage2]: ../stage2_l1/README.md
 [test-runner]: scripts/test_runner_common.py

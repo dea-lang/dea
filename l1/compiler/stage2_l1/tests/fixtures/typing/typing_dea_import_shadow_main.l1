@@ -1,0 +1,18 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_dea_import_shadow_main;
+
+import dea;
+import typing_dea_import_shadow_helper;
+
+enum Flag {
+    Off;
+    On;
+}
+
+func main() -> int {
+    return sizeof(4) + dea::sizeof(Flag) + dea::ord(On);
+}

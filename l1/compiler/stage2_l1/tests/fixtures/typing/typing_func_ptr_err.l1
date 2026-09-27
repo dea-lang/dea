@@ -1,0 +1,25 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_func_ptr_err;
+
+type UnaryInt = func(int) -> int;
+
+func takes_bool(x: bool) -> int {
+    if (x) {
+        return 1;
+    }
+    return 0;
+}
+
+func inc(x: int) -> int {
+    return x + 1;
+}
+
+func main() -> int {
+    let bad: UnaryInt = takes_bool;
+    let good: UnaryInt = inc;
+    return good(true);
+}

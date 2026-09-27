@@ -1,0 +1,630 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+module lexer_test;
+
+import std.io;
+import std.string;
+import std.assert;
+import std.text;
+import std.vector;
+
+import lexer;
+import tokens;
+import util.diag;
+
+/**
+ * Tests that token storage keeps reserved capacity distinct from logical length.
+ */
+func test_token_vector_reserved_capacity() {
+    let tv = tv_create();
+    assert(tv_len(tv) == 0, "new token vector must be logically empty");
+    assert(vec_capacity(tv.vec) > tv_len(tv), "new token vector must keep reserved storage outside its length");
+    vec_reserve(tv.vec, 64);
+    assert(tv_len(tv) == 0, "token reserve must not change logical length");
+    assert(vec_capacity(tv.vec) == 64, "token reserve must grow physical capacity");
+    tv_free(tv);
+}
+
+/**
+ * Lexes source and asserts that the first token is one integer literal.
+ *
+ * @param source Source text to lex.
+ * @param expected_text Expected literal spelling preserved in the token.
+ * @param expected_value Expected parsed integer value.
+ */
+func expect_single_int(source: string, expected_text: string, expected_value: int) {
+    let ls = ls_create(source, "<test>");
+    let toks = tokenize(ls);
+    assert(toks != null, "Expected lexing to succeed");
+    assert(!ls_has_errors(ls), "Expected no lexer diagnostics");
+
+    let tv = toks as TokenVector;
+    assert(tv_len(tv) == 2, "Expected one token plus EOF");
+
+    let tok = tv_get(tv, 0);
+    match (tok.token_type) {
+        TT_INT(text, value) => {
+            assert(text == expected_text, "Unexpected integer literal text");
+            assert(value == expected_value, "Unexpected integer literal value");
+        }
+        _ => {
+            printl_ss("actual token:", token_to_string(tok));
+            assert(false, "Expected integer literal token");
+        }
+    }
+
+    tv_free(tv);
+    ls_free(ls);
+}
+
+/**
+ * Lexes source and asserts that the first token is one bigint literal.
+ *
+ * @param source Source text to lex.
+ * @param expected_text Expected literal spelling preserved in the token.
+ * @param expected_base Expected numeric base.
+ */
+func expect_single_bigint(source: string, expected_text: string, expected_base: int) {
+    let ls = ls_create(source, "<test>");
+    let toks = tokenize(ls);
+    assert(toks != null, "Expected lexing to succeed");
+    assert(!ls_has_errors(ls), "Expected no lexer diagnostics");
+
+    let tv = toks as TokenVector;
+    assert(tv_len(tv) == 2, "Expected one token plus EOF");
+
+    let tok = tv_get(tv, 0);
+    match (tok.token_type) {
+        TT_BIGINT(text, base) => {
+            assert(text == expected_text, "Unexpected bigint literal text");
+            assert(base == expected_base, "Unexpected bigint base");
+        }
+        _ => {
+            printl_ss("actual token:", token_to_string(tok));
+            assert(false, "Expected bigint literal token");
+        }
+    }
+
+    tv_free(tv);
+    ls_free(ls);
+}
+
+/**
+ * Lexes source and asserts that the first token is one real literal.
+ *
+ * @param source Source text to lex.
+ * @param expected_sig Expected significand spelling preserved in the token.
+ * @param expected_exp_text Expected exponent text without the marker and including any explicit sign.
+ * @param expected_is_float Whether the token should report the float suffix.
+ */
+func expect_single_real(source: string, expected_sig: string, expected_exp_text: string, expected_is_float: bool) {
+    let ls = ls_create(source, "<test>");
+    let toks = tokenize(ls);
+    assert(toks != null, "Expected lexing to succeed");
+    assert(!ls_has_errors(ls), "Expected no lexer diagnostics");
+
+    let tv = toks as TokenVector;
+    assert(tv_len(tv) == 2, "Expected one token plus EOF");
+
+    let tok = tv_get(tv, 0);
+    match (tok.token_type) {
+        TT_REALNUM(sig, exp_text, is_float) => {
+            assert(sig == expected_sig, "Unexpected real literal significand");
+            assert(exp_text == expected_exp_text, "Unexpected real literal exponent text");
+            assert(is_float == expected_is_float, "Unexpected real literal float suffix flag");
+        }
+        _ => {
+            printl_ss("actual token:", token_to_string(tok));
+            assert(false, "Expected real literal token");
+        }
+    }
+
+    tv_free(tv);
+    ls_free(ls);
+}
+
+/**
+ * Lex one string literal and compare both its source spelling and decoded bytes.
+ *
+ * @param source Complete quoted source literal.
+ * @param expected_text Expected literal body as written in the source.
+ * @param expected_value Expected decoded byte string.
+ */
+func expect_single_string(source: string, expected_text: string, expected_value: string) {
+    let ls = ls_create(source, "<test>");
+    let toks = tokenize(ls);
+    assert(toks != null, "Expected string lexing to succeed");
+    assert(!ls_has_errors(ls), "Expected no string-literal diagnostics");
+
+    let tv = toks as TokenVector;
+    assert(tv_len(tv) == 2, "Expected one string token plus EOF");
+    let tok = tv_get(tv, 0);
+    match (tok.token_type) {
+        TT_STRING(text, value) => {
+            assert(text == expected_text, "Unexpected string source spelling");
+            assert(value == expected_value, "Unexpected decoded string bytes");
+        }
+        _ => {
+            printl_ss("actual token:", token_to_string(tok));
+            assert(false, "Expected string literal token");
+        }
+    }
+
+    tv_free(tv);
+    ls_free(ls);
+}
+
+/**
+ * Lexes source and asserts the first diagnostic code.
+ *
+ * @param source Source text to lex.
+ * @param expected Expected first diagnostic code.
+ */
+func expect_lex_error(source: string, expected: string) {
+    let ls = ls_create(source, "<test>");
+    let toks = tokenize(ls);
+    if (toks != null) {
+        let tv = toks as TokenVector;
+        assert(tv_len(tv) >= 1, "Expected at least one token");
+        let tok = tv_get(tv, 0);
+        match (tok.token_type) {
+            TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+                if (code != expected) {
+                    printl_ss("actual error code:", code);
+                    printl_ss("actual error message:", message);
+                    assert(false, "Unexpected lexer diagnostic code");
+                }
+            }
+            _ => {
+                printl_ss("actual token:", token_to_string(tok));
+                assert(false, "Expected lexer-error wrapper token");
+            }
+        }
+        tv_free(tv);
+    } else {
+        assert(ls_has_errors(ls), "Expected lexer diagnostics");
+        assert(diag_count(ls.diags) > 0, "Expected at least one diagnostic");
+
+        let diag = diag_get(ls.diags, 0);
+        if (diag.code != expected) {
+            printl_ss("actual error code:", diag.code);
+            printl_ss("actual error message:", diag.message);
+            assert(false, "Unexpected lexer diagnostic code");
+        }
+    }
+
+    ls_free(ls);
+}
+
+/**
+ * Lexes source and asserts the first two tokens are lexer-error wrappers.
+ *
+ * @param source Source text to lex.
+ * @param expected_first Expected diagnostic code for token 0.
+ * @param expected_second Expected diagnostic code for token 1.
+ */
+func expect_two_lex_error_tokens(source: string, expected_first: string, expected_second: string) {
+    let ls = ls_create(source, "<test>");
+    let toks = tokenize(ls);
+    assert(toks != null, "Expected recoverable lexing to succeed");
+
+    let tv = toks as TokenVector;
+    assert(tv_len(tv) == 3, "Expected two lexer-error tokens plus EOF");
+
+    let tok0 = tv_get(tv, 0);
+    let tok1 = tv_get(tv, 1);
+    let tok2 = tv_get(tv, 2);
+
+    match (tok0.token_type) {
+        TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+            assert(code == expected_first, "Unexpected first lexer diagnostic code");
+        }
+        _ => {
+            printl_ss("actual token 0:", token_to_string(tok0));
+            assert(false, "Expected first token to be a lexer-error wrapper");
+        }
+    }
+
+    match (tok1.token_type) {
+        TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+            assert(code == expected_second, "Unexpected second lexer diagnostic code");
+        }
+        _ => {
+            printl_ss("actual token 1:", token_to_string(tok1));
+            assert(false, "Expected second token to be a lexer-error wrapper");
+        }
+    }
+
+    match (tok2.token_type) {
+        TT_EOF => {}
+        _ => {
+            printl_ss("actual token 2:", token_to_string(tok2));
+            assert(false, "Expected EOF after queued lexer-error wrappers");
+        }
+    }
+
+    tv_free(tv);
+    ls_free(ls);
+}
+
+/**
+ * Assert that one or more recovery wrappers leave the following minus binary.
+ *
+ * @param source Source ending in ` -5` after the recovered literal.
+ * @param wrapper_count Number of leading physical lexer-error wrappers.
+ */
+func expect_recovery_then_binary_minus(source: string, wrapper_count: int) {
+    let ls = ls_create(source, "<test>");
+    let toks = tokenize(ls);
+    assert(toks != null, "Expected recoverable lexing to succeed");
+
+    let tv = toks as TokenVector;
+    if (tv_len(tv) != wrapper_count + 3) {
+        printl_ss("unexpected recovery source:", source);
+        for (let i = 0; i < tv_len(tv); i = i + 1) {
+            printl_ss("unexpected recovery token:", token_to_string(tv_get(tv, i)));
+        }
+        assert(false, "Expected wrappers, binary minus, integer, and EOF");
+    }
+    for (let i = 0; i < wrapper_count; i = i + 1) {
+        let tok = tv_get(tv, i);
+        match (tok.token_type) {
+            TT_LEXER_ERROR(code, message, line_end, column_end, recovery) => {
+                if (i + 1 == wrapper_count) {
+                    assert(token_recovery_is_some(recovery), "Expected final wrapper recovery token");
+                    assert(token_logical_predecessor_ends_expression(tok, false),
+                           "Expected recovery token to end an expression");
+                } else {
+                    assert(!token_recovery_is_some(recovery), "Expected queued wrapper without recovery");
+                }
+            }
+            _ => { assert(false, "Expected lexer-error wrapper"); }
+        }
+    }
+
+    let minus_token = tv_get(tv, wrapper_count);
+    match (minus_token.token_type) {
+        TT_MINUS => {}
+        _ => { assert(false, "Expected binary minus after recovered expression"); }
+    }
+    let int_token = tv_get(tv, wrapper_count + 1);
+    match (int_token.token_type) {
+        TT_INT(text, value) => { assert(text == "5", "Expected positive integer after binary minus"); }
+        _ => { assert(false, "Expected positive integer token"); }
+    }
+    let eof_token = tv_get(tv, wrapper_count + 2);
+    match (eof_token.token_type) {
+        TT_EOF => {}
+        _ => { assert(false, "Expected EOF"); }
+    }
+
+    tv_free(tv);
+    ls_free(ls);
+}
+
+/**
+ * Test parser-visible recovery tokens drive signed-literal context.
+ */
+func test_recovery_token_minus_context() {
+    expect_recovery_then_binary_minus("0x -5", 1);
+    expect_recovery_then_binary_minus("1e -5", 1);
+    expect_recovery_then_binary_minus("\"\\q\" -5", 1);
+    expect_recovery_then_binary_minus("'a -5", 1);
+    expect_recovery_then_binary_minus("\"\\q\n -5", 2);
+
+    let suffix_ls = ls_create("123f", "<test>");
+    let suffix_toks = tokenize(suffix_ls);
+    assert(suffix_toks != null, "Expected malformed numeric suffix recovery");
+    let suffix_tv = suffix_toks as TokenVector;
+    let suffix_token = tv_get(suffix_tv, 0);
+    assert(token_logical_predecessor_ends_expression(suffix_token, false),
+           "Expected malformed numeric suffix recovery to end an expression");
+    tv_free(suffix_tv);
+    ls_free(suffix_ls);
+}
+
+/**
+ * Test no-recovery wrappers retain rather than replace logical context.
+ */
+func test_no_recovery_wrapper_minus_context() {
+    let operand_ls = ls_create("1 @ -5", "<test>");
+    let operand_toks = tokenize(operand_ls);
+    assert(operand_toks != null, "Expected invalid-character recovery");
+    let operand_tv = operand_toks as TokenVector;
+    assert(tv_len(operand_tv) == 5, "Unexpected operand recovery token count");
+    let operand_minus = tv_get(operand_tv, 2);
+    match (operand_minus.token_type) {
+        TT_MINUS => {}
+        _ => { assert(false, "Expected binary minus after skipped wrapper"); }
+    }
+    let operand_int = tv_get(operand_tv, 3);
+    match (operand_int.token_type) {
+        TT_INT(text, value) => { assert(text == "5", "Expected positive right operand"); }
+        _ => { assert(false, "Expected integer right operand"); }
+    }
+    tv_free(operand_tv);
+    ls_free(operand_ls);
+
+    let operator_ls = ls_create("+ @ -5", "<test>");
+    let operator_toks = tokenize(operator_ls);
+    assert(operator_toks != null, "Expected invalid-character recovery");
+    let operator_tv = operator_toks as TokenVector;
+    assert(tv_len(operator_tv) == 4, "Unexpected operator recovery token count");
+    let operator_int = tv_get(operator_tv, 2);
+    match (operator_int.token_type) {
+        TT_INT(text, value) => { assert(text == "-5", "Expected unary signed literal after skipped wrapper"); }
+        _ => { assert(false, "Expected signed integer token"); }
+    }
+    tv_free(operator_tv);
+    ls_free(operator_ls);
+}
+
+/**
+ * Lexes source and asserts the first two tokens by rendered spelling.
+ *
+ * @param source Source text to lex.
+ * @param expected_first Expected rendering for token 0.
+ * @param expected_second Expected rendering for token 1.
+ */
+func expect_two_tokens(source: string, expected_first: string, expected_second: string) {
+    let ls = ls_create(source, "<test>");
+    let toks = tokenize(ls);
+    assert(toks != null, "Expected lexing to succeed");
+    assert(!ls_has_errors(ls), "Expected no lexer diagnostics");
+
+    let tv = toks as TokenVector;
+    assert(tv_len(tv) == 3, "Expected two tokens plus EOF");
+
+    let tok0 = tv_get(tv, 0);
+    let tok1 = tv_get(tv, 1);
+    let actual0 = token_to_string(tok0);
+    let actual1 = token_to_string(tok1);
+    if (actual0 != expected_first) {
+        printl_ss("actual token 0:", actual0);
+        assert(false, "Unexpected first token");
+    }
+    if (actual1 != expected_second) {
+        printl_ss("actual token 1:", actual1);
+        assert(false, "Unexpected second token");
+    }
+
+    tv_free(tv);
+    ls_free(ls);
+}
+
+/**
+ * Tests accepted prefixed integer literals.
+ */
+func test_prefixed_int_literals_ok() {
+    expect_single_int("0x2a", "0x2a", 42);
+    expect_single_int("0b101010", "0b101010", 42);
+    expect_single_int("0o52", "0o52", 42);
+    expect_single_int("-0x2a", "-0x2a", -42);
+    expect_single_int("-0b101010", "-0b101010", -42);
+    expect_single_int("-0o52", "-0o52", -42);
+}
+
+/**
+ * Tests malformed prefixed integer literals.
+ */
+func test_prefixed_int_literals_err() {
+    expect_lex_error("0x", "LEX-0062");
+    expect_lex_error("0b", "LEX-0063");
+    expect_lex_error("0o", "LEX-0064");
+    expect_lex_error("0xg", "LEX-0062");
+    expect_lex_error("0b2", "LEX-0063");
+    expect_lex_error("0o8", "LEX-0064");
+    expect_lex_error("0X2A", "LEX-0061");
+    expect_lex_error("0B101010", "LEX-0061");
+    expect_lex_error("0O52", "LEX-0061");
+    expect_lex_error("0x1g", "LEX-0061");
+    expect_lex_error("0b12", "LEX-0061");
+    expect_lex_error("0o78", "LEX-0061");
+    expect_lex_error("0xff_name", "LEX-0061");
+}
+
+/**
+ * Tests that signed 32-bit integer boundaries parse in every supported base.
+ */
+func test_int_literal_limits_all_bases() {
+    expect_single_int("2147483647", "2147483647", 2147483647);
+    expect_single_int("-2147483648", "-2147483648", -2147483648);
+    expect_single_int("0x7fffffff", "0x7fffffff", 2147483647);
+    expect_single_int("-0x80000000", "-0x80000000", -2147483648);
+    expect_single_int("0b1111111111111111111111111111111",
+        "0b1111111111111111111111111111111", 2147483647);
+    expect_single_int("-0b10000000000000000000000000000000",
+        "-0b10000000000000000000000000000000", -2147483648);
+    expect_single_int("0o17777777777", "0o17777777777", 2147483647);
+    expect_single_int("-0o20000000000", "-0o20000000000", -2147483648);
+}
+
+/**
+ * Tests that integer literals exceeding 32-bit signed range produce bigint tokens.
+ */
+func test_prefixed_int_literals_overflow() {
+    expect_single_bigint("2147483648", "2147483648", 10);
+    expect_single_bigint("-2147483649", "-2147483649", 10);
+    expect_single_bigint("0x80000000", "80000000", 16);
+    expect_single_bigint("-0x80000001", "-80000001", 16);
+    expect_single_bigint("0b10000000000000000000000000000000",
+        "10000000000000000000000000000000", 2);
+    expect_single_bigint("-0b10000000000000000000000000000001",
+        "-10000000000000000000000000000001", 2);
+    expect_single_bigint("0o20000000000", "20000000000", 8);
+    expect_single_bigint("-0o20000000001", "-20000000001", 8);
+}
+
+/**
+ * Tests accepted real literals.
+ */
+func test_real_literals_ok() {
+    expect_single_real("1.0", "1.0", "", false);
+    expect_single_real("0.0", "0.0", "", false);
+    expect_single_real("123.456", "123.456", "", false);
+    expect_single_real("1.0f", "1.0", "", true);
+    expect_single_real("1.0F", "1.0", "", true);
+    expect_single_real("-1.0", "-1.0", "", false);
+    expect_single_real("-1.0f", "-1.0", "", true);
+
+    expect_single_real("1e3", "1", "3", false);
+    expect_single_real("1E3", "1", "3", false);
+    expect_single_real("1e+3", "1", "+3", false);
+    expect_single_real("1e-3", "1", "-3", false);
+    expect_single_real("1e3f", "1", "3", true);
+    expect_single_real("1E-3F", "1", "-3", true);
+    expect_single_real("-1e3", "-1", "3", false);
+    expect_single_real("-1e-3f", "-1", "-3", true);
+}
+
+/**
+ * Tests malformed real literals.
+ */
+func test_real_literals_err() {
+    expect_lex_error("1e", "LEX-0065");
+    expect_lex_error("1e+", "LEX-0065");
+    expect_lex_error("1e-", "LEX-0065");
+    expect_lex_error("1.0e", "LEX-0065");
+    expect_lex_error("1.0e+", "LEX-0065");
+
+    expect_lex_error("1.0x", "LEX-0066");
+    expect_lex_error("1e3x", "LEX-0066");
+    expect_lex_error("1.0ff", "LEX-0066");
+    expect_lex_error("1e3foo", "LEX-0066");
+
+    expect_lex_error("1.0d", "LEX-0067");
+    expect_lex_error("1.0D", "LEX-0067");
+    expect_lex_error("1e3d", "LEX-0067");
+
+    expect_lex_error("123f", "LEX-0068");
+    expect_lex_error("123F", "LEX-0068");
+    expect_lex_error("-123f", "LEX-0068");
+}
+
+/**
+ * Tests malformed literals that recover as lexer-error wrapper tokens.
+ */
+func test_literal_recovery_errors() {
+    expect_lex_error("\"unterminated", "LEX-0010");
+    expect_lex_error("\"\\xGG\"", "LEX-0050");
+    expect_lex_error("\"\\xD800\"", "LEX-0054");
+    expect_lex_error("\"\\x110000\"", "LEX-0054");
+    expect_lex_error("\"\\uD800\"", "LEX-0054");
+    expect_lex_error("\"\\U00110000\"", "LEX-0054");
+    expect_lex_error("\"\\q\"", "LEX-0059");
+    expect_lex_error("'a", "LEX-0021");
+    expect_lex_error("'\\u0100'", "LEX-0030");
+}
+
+/**
+ * Tests Unicode scalar escapes decode to UTF-8 while octal escapes remain bytes.
+ */
+func test_string_escape_decoding() {
+    with (let e_acute_buf = cb_create() => cb_free(e_acute_buf),
+          let emoji_buf = cb_create() => cb_free(emoji_buf),
+          let octal_buf = cb_create() => cb_free(octal_buf)) {
+        cb_append(e_acute_buf, 195 as byte);
+        cb_append(e_acute_buf, 169 as byte);
+        let e_acute = cb_to_string(e_acute_buf);
+
+        cb_append(emoji_buf, 240 as byte);
+        cb_append(emoji_buf, 159 as byte);
+        cb_append(emoji_buf, 152 as byte);
+        cb_append(emoji_buf, 128 as byte);
+        let emoji = cb_to_string(emoji_buf);
+
+        cb_append(octal_buf, 233 as byte);
+        let octal_byte = cb_to_string(octal_buf);
+
+        expect_single_string("\"é\"", "é", e_acute);
+        expect_single_string("\"\\xE9\"", "\\xE9", e_acute);
+        expect_single_string("\"\\u00E9\"", "\\u00E9", e_acute);
+        expect_single_string("\"\\U000000E9\"", "\\U000000E9", e_acute);
+        expect_single_string("\"\\x1F600\"", "\\x1F600", emoji);
+        expect_single_string("\"\\U0001F600\"", "\\U0001F600", emoji);
+        expect_single_string("\"\\351\"", "\\351", octal_byte);
+    }
+}
+
+/**
+ * Tests one malformed literal can emit multiple lexer-error wrapper tokens.
+ */
+func test_recoverable_lexer_errors_can_queue_multiple_wrappers() {
+    expect_two_lex_error_tokens("\"\\q\n", "LEX-0059", "LEX-0010");
+}
+
+/**
+ * Tests keyword tokenization for `const`.
+ */
+func test_const_keyword_tokenization() {
+    expect_two_tokens("const answer", "const", "ident(answer)");
+}
+
+/**
+ * Tests boundary forms that are not currently recognized as real literals.
+ */
+func test_real_literal_boundaries() {
+    expect_two_tokens("1.", "int(1)", ".");
+    expect_two_tokens(".5", ".", "int(5)");
+}
+
+/**
+ * Tests implemented and still-reserved integer builtin names.
+ */
+func test_small_integer_builtin_words() {
+    expect_two_tokens("tiny short", "ident(tiny)", "ident(short)");
+    expect_two_tokens("ushort long", "ident(ushort)", "ident(long)");
+    expect_two_tokens("uint ulong", "ident(uint)", "ident(ulong)");
+}
+
+/**
+ * Tests the logical-source column contract: a horizontal tab counts as exactly
+ * one column, matching the convention used by diagnostic snippet rendering.
+ */
+func test_tab_advances_one_column() {
+    // Source: "\tx\ty" — tab at col 1, 'x' at col 2, tab at col 3, 'y' at col 4.
+    let ls = ls_create("\tx\ty", "<test>");
+    let toks = tokenize(ls);
+    assert(toks != null, "Expected lexing to succeed");
+    assert(!ls_has_errors(ls), "Expected no lexer diagnostics");
+
+    let tv = toks as TokenVector;
+    assert(tv_len(tv) == 3, "Expected two identifier tokens plus EOF");
+
+    let x_tok = tv_get(tv, 0);
+    assert(x_tok.line == 1, "'x' token should be on line 1");
+    assert(x_tok.column == 2, "'x' token should be at column 2 (tab = 1 column)");
+
+    let y_tok = tv_get(tv, 1);
+    assert(y_tok.line == 1, "'y' token should be on line 1");
+    assert(y_tok.column == 4, "'y' token should be at column 4 (tab = 1 column)");
+
+    tv_free(tv);
+    ls_free(ls);
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    test_token_vector_reserved_capacity();
+    test_prefixed_int_literals_ok();
+    test_prefixed_int_literals_err();
+    test_int_literal_limits_all_bases();
+    test_prefixed_int_literals_overflow();
+    test_real_literals_ok();
+    test_real_literals_err();
+    test_literal_recovery_errors();
+    test_string_escape_decoding();
+    test_recoverable_lexer_errors_can_queue_multiple_wrappers();
+    test_recovery_token_minus_context();
+    test_no_recovery_wrapper_minus_context();
+    test_const_keyword_tokenization();
+    test_real_literal_boundaries();
+    test_small_integer_builtin_words();
+    test_tab_advances_one_column();
+    printl_s("lexer_test: all tests passed");
+}

@@ -1,0 +1,1103 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module c_emitter_test;
+
+import std.assert;
+import std.hashmap;
+import std.hashset;
+import std.io;
+import std.string;
+import std.text;
+import std.vector;
+
+import ast;
+import c_emitter.abi;
+import c_emitter.lifetime;
+import c_emitter.declarations;
+import c_emitter.expr;
+import c_emitter.state;
+import c_emitter.stmt;
+import c_emitter.type_names;
+import c_emitter.types;
+import c_emitter.wrappers;
+import codegen_options;
+import driver.state;
+import parser;
+import sem_context;
+import signatures.tables;
+import string_escape;
+import types;
+import util.diag;
+
+/**
+ * Create an empty analysis result for emitter tests.
+ *
+ * @return New empty analysis result.
+ */
+func cet_empty_analysis_result() -> AnalysisResult* {
+    return new AnalysisResult(
+        dr_state_create("", null),
+        diag_create(),
+        null,
+        null,
+        null,
+        spm_create(),
+        sim_create(),
+        spm_create()
+    );
+}
+
+/**
+ * Create a simple builtin type reference.
+ *
+ * @param name Builtin name.
+ * @return New type-ref node.
+ */
+func cet_builtin_type_ref(name: string) -> TypeRef* {
+    return new TypeRef(name, 0, false, false, null, null, null, null, null, span_here(1, 1));
+}
+
+/**
+ * Wrap one top-level declaration payload.
+ *
+ * @param kind Decl kind.
+ * @param data Owned decl payload.
+ * @return New wrapped top-level declaration.
+ */
+func cet_wrap_decl(kind: TopLevelDeclKind, data: void*) -> TopLevelDecl* {
+    return new TopLevelDecl(kind, data);
+}
+
+/**
+ * Create a parsed module with no imports.
+ *
+ * @param name Module name.
+ * @param filename Source filename.
+ * @param decls Owned declaration vector.
+ * @return New module node.
+ */
+func cet_module(name: string, filename: string, decls: VectorBase*) -> Module* {
+    return new Module(name, null, ptr_vec_create(0), decls, span_here(1, 1), filename);
+}
+
+/**
+ * Add one module to an analysis driver's loaded units.
+ *
+ * @param result Analysis result to update.
+ * @param mod Parsed module to move into a parse result.
+ */
+func cet_push_module(result: AnalysisResult*, mod: Module*) {
+    let module_name = mod.name;
+    let pr = new ParseResult(mod, expr_arena_create(0), stmt_arena_create(0), pattern_arena_create(0), diag_create());
+    dr_register_unit(result.driver_state, new DriverUnit(module_name, mod.filename, pr));
+}
+
+/**
+ * Create a struct declaration with no fields.
+ *
+ * @param name Struct name.
+ * @return New struct declaration.
+ */
+func cet_empty_struct_decl(name: string) -> StructDecl* {
+    return new StructDecl(name, ptr_vec_create(0), span_here(1, 1));
+}
+
+/**
+ * Create an enum declaration with no variants.
+ *
+ * @param name Enum name.
+ * @return New enum declaration.
+ */
+func cet_empty_enum_decl(name: string) -> EnumDecl* {
+    return new EnumDecl(name, ptr_vec_create(0), span_here(1, 1));
+}
+
+/**
+ * Tests test_string_escape_encodes_control_and_quote_bytes.
+ */
+func test_string_escape_encodes_control_and_quote_bytes() {
+    let escaped = se_encode_c_string_bytes("A\n\"\\B");
+    assert(escaped == "A\\n\\\"\\\\B", "escaped string mismatch");
+
+    let trigraphs = se_encode_c_string_bytes("??=??/??'??(??)??!??<??>??-");
+    assert(trigraphs == "?\\?=?\\?/?\\?'?\\?(?\\?)?\\?!?\\?<?\\?>?\\?-",
+        "trigraph escaping mismatch");
+    assert(se_encode_c_string_bytes("? ?? ??? ????= ?!?=") == "? ?? ??? ???\\?= ?!?=",
+        "question-mark run escaping mismatch");
+}
+
+/**
+ * Tests test_code_builder_tracks_indentation.
+ */
+func test_code_builder_tracks_indentation() {
+    let out = ccb_create();
+    ccb_emit(out, "if (true) {");
+    ccb_indent(out);
+    ccb_emit(out, "return 0;");
+    ccb_dedent(out);
+    ccb_emit(out, "}");
+
+    let text = ccb_to_string(out);
+    assert(text == "if (true) {\n    return 0;\n}\n", "builder output mismatch");
+    ccb_free(out);
+}
+
+/**
+ * Tests test_emitter_name_mangling.
+ */
+func test_emitter_name_mangling() {
+    let emitter = cem_create();
+    let void_ty = type_builtin_void();
+    let int_ty = type_builtin_int();
+    let string_ty = type_builtin_string();
+    let func_v_v = type_new_func(ptr_vec_create(0), type_clone(void_ty), false);
+    let func_i_i = type_new_func(ptr_vec_create(0), type_clone(int_ty), false);
+    ptr_vec_push(func_i_i.params as VectorBase*, type_clone(int_ty) as void*);
+    let func_s_v = type_new_func(ptr_vec_create(0), type_clone(void_ty), false);
+    ptr_vec_push(func_s_v.params as VectorBase*, type_clone(string_ty) as void*);
+    let variadic_params = ptr_vec_create(2);
+    ptr_vec_push(variadic_params, type_clone(int_ty) as void*);
+    ptr_vec_push(variadic_params, type_new_slice(type_clone(string_ty)) as void*);
+    let func_variadic = type_new_variadic_func(variadic_params, type_clone(void_ty), false);
+    let fixed_slice_params = ptr_vec_create(2);
+    ptr_vec_push(fixed_slice_params, type_clone(int_ty) as void*);
+    ptr_vec_push(fixed_slice_params, type_new_slice(type_clone(string_ty)) as void*);
+    let func_fixed_slice = type_new_func(fixed_slice_params, type_clone(void_ty), false);
+
+    assert(cem_mangle_struct_name("demo.main", "Point") == "__deaM4demo4mainS5Point", "struct name mismatch");
+    assert(cem_mangle_function_name("demo.main", "main", func_v_v) == "__deaM4demo4mainN4mainF0v", "function name mismatch");
+    assert(cem_mangle_function_name("main", "collect", func_variadic) == "__deaM4mainN7collectF2iVcv",
+        "variadic function name mismatch");
+    assert(type_format(func_variadic) == "func(int, string...) -> void", "variadic type format mismatch");
+    assert(!type_equals(func_variadic, func_fixed_slice), "variadic and fixed-slice function types must differ");
+    assert(cem_func_ptr_name_for_type(func_variadic) == cem_func_ptr_name_for_type(func_fixed_slice),
+        "variadic and fixed-slice functions should share the C ABI typedef");
+    assert(cem_mangle_let_name("demo.main", "static") == "__deaM4demo4mainN6static",
+        "C-keyword let name should be safe under LBI prefix");
+    assert(cem_mangle_struct_name("demo.main", "return") == "__deaM4demo4mainS6return",
+        "C-keyword struct name should be safe under LBI prefix");
+    assert(cem_mangle_function_name("demo.main", "for", func_v_v) == "__deaM4demo4mainN3forF0v",
+        "C-keyword function name should be safe under LBI prefix");
+    assert(cem_mangle_enum_name("demo.main", "switch") == "__deaM4demo4mainE6switch",
+        "C-keyword enum name should be safe under LBI prefix");
+    assert(cem_mangle_struct_name("demo.main", "l0_conflict") == "__deaM4demo4mainS11l0_conflict",
+        "legacy public prefix should not be mangled");
+    assert(cem_mangle_function_name("demo.main", "rt_helper", func_v_v) == "__deaM4demo4mainN9rt_helperF0v",
+        "runtime prefix should not be mangled");
+    assert(cem_mangle_enum_name("demo.main", "dea_Value") == "__deaM4demo4mainE9dea_Value",
+        "new public prefix should not be mangled");
+
+    let push_params = ptr_vec_create(0);
+    ptr_vec_push(push_params, type_clone(void_ty) as void*); // dummy param for test
+    let func_push = type_new_func(push_params, type_clone(void_ty), false);
+    assert(cem_mangle_function_name("std.collections.list", "push", func_push) == "__deaM3std11collections4listN4pushF1vv",
+        "multi-segment module path should length-prefix every segment");
+
+    assert(cem_mangle_let_name("main", "answer") == "__deaM4mainN6answer",
+        "single-segment module path should encode as one M component");
+    assert(cem_mangle_module_init_name("a.b") == "__deaM1a1bI4init",
+        "module init name mismatch");
+    assert(cem_mangle_module_fini_name("a.b") == "__deaM1a1bI4fini",
+        "module fini name mismatch");
+    assert(cem_mangle_module_entry_name("a.b") == "__deaM1a1bI5entry",
+        "module entry name mismatch");
+    assert(cem_mangle_identifier("return") == "return__v", "identifier keyword mangling mismatch");
+    assert(cem_mangle_identifier("l0_tmp") == "l0_tmp__v", "legacy local prefix should be mangled");
+    assert(cem_mangle_identifier("_l0_hidden") == "_l0_hidden__v", "legacy private prefix should be mangled");
+    assert(cem_mangle_identifier("rt_print") == "rt_print__v", "runtime local prefix should be mangled");
+    assert(cem_mangle_identifier("_rt_state") == "_rt_state__v", "private runtime prefix should be mangled");
+    assert(cem_mangle_identifier("dea_name") == "dea_name__v", "dea local prefix should be mangled");
+    assert(cem_mangle_identifier("_dea_name") == "_dea_name__v", "private dea local prefix should be mangled");
+    assert(cem_mangle_identifier("DEA_MACRO") == "DEA_MACRO__v", "DEA local prefix should be mangled");
+    assert(cem_mangle_identifier("_DEA_MACRO") == "_DEA_MACRO__v", "private DEA local prefix should be mangled");
+    assert(cem_mangle_identifier("tmp__v") == "tmp__v__v", "identifier suffix mangling mismatch");
+    assert(cem_fresh_tmp(emitter, "tmp") == "dea_tmp_1", "fresh temp name mismatch");
+
+    type_free(void_ty);
+    type_free(int_ty);
+    type_free(string_ty);
+    type_free(func_v_v);
+    type_free(func_i_i);
+    type_free(func_s_v);
+    type_free(func_variadic);
+    type_free(func_fixed_slice);
+    type_free(func_push);
+    cem_free(emitter);
+}
+
+/**
+ * Tests test_emitter_type_lowering_and_null_forms.
+ */
+func test_emitter_type_lowering_and_null_forms() {
+    let builtin_int_ty = type_builtin_int();
+    let tiny_ty = type_builtin_tiny();
+    let short_ty = type_builtin_short();
+    let ushort_ty = type_builtin_ushort();
+    let uint_ty = type_builtin_uint();
+    let long_ty = type_builtin_long();
+    let ulong_ty = type_builtin_ulong();
+    let float_ty = type_builtin_float();
+    let double_ty = type_builtin_double();
+    let point_ty = type_new_struct("demo.main", "Point");
+    let point_ptr_ty = type_new_pointer(type_clone(point_ty));
+    let point_opt_ty = type_new_nullable(type_clone(point_ty));
+    let uint_opt_ty = type_new_nullable(type_builtin_uint());
+    let long_opt_ty = type_new_nullable(type_builtin_long());
+    let ulong_opt_ty = type_new_nullable(type_builtin_ulong());
+
+    assert(cem_emit_type(builtin_int_ty) == "dea_int", "builtin int type mismatch");
+    assert(cem_emit_type(tiny_ty) == "dea_tiny", "builtin tiny type mismatch");
+    assert(cem_emit_type(short_ty) == "dea_short", "builtin short type mismatch");
+    assert(cem_emit_type(ushort_ty) == "dea_ushort", "builtin ushort type mismatch");
+    assert(cem_emit_type(uint_ty) == "dea_uint", "builtin uint type mismatch");
+    assert(cem_emit_type(long_ty) == "dea_long", "builtin long type mismatch");
+    assert(cem_emit_type(ulong_ty) == "dea_ulong", "builtin ulong type mismatch");
+    assert(cem_emit_type(float_ty) == "float", "builtin float type mismatch");
+    assert(cem_emit_type(double_ty) == "double", "builtin double type mismatch");
+    assert(cem_emit_type(point_ty) == "struct __deaM4demo4mainS5Point", "struct type mismatch");
+    assert(cem_emit_type(point_ptr_ty) == "struct __deaM4demo4mainS5Point*", "pointer type mismatch");
+    assert(cem_emit_type(point_opt_ty) == "dea_opt_s___deaM4demo4mainS5Point", "nullable struct type mismatch");
+    assert(cem_emit_type(uint_opt_ty) == "dea_opt_uint", "nullable uint type mismatch");
+    assert(cem_emit_type(long_opt_ty) == "dea_opt_long", "nullable long type mismatch");
+    assert(cem_emit_type(ulong_opt_ty) == "dea_opt_ulong", "nullable ulong type mismatch");
+    assert(cem_emit_none_value_for_nullable(point_opt_ty) == "((dea_opt_s___deaM4demo4mainS5Point){.has_value = 0})",
+        "nullable none mismatch");
+    assert(cem_emit_null_literal(point_opt_ty, false) == "((dea_opt_s___deaM4demo4mainS5Point){.has_value = 0})",
+        "nullable expression null mismatch");
+    assert(cem_emit_null_literal(point_opt_ty, true) == "{0}", "nullable initializer null mismatch");
+    assert(cem_emit_null_literal(point_ptr_ty, false) == "NULL", "pointer null mismatch");
+
+    type_free(builtin_int_ty);
+    type_free(tiny_ty);
+    type_free(short_ty);
+    type_free(ushort_ty);
+    type_free(uint_ty);
+    type_free(long_ty);
+    type_free(ulong_ty);
+    type_free(float_ty);
+    type_free(double_ty);
+    type_free(point_ty);
+    type_free(point_ptr_ty);
+    type_free(point_opt_ty);
+    type_free(uint_opt_ty);
+    type_free(long_opt_ty);
+    type_free(ulong_opt_ty);
+}
+
+/**
+ * Tests test_emitter_large_integer_helpers.
+ */
+func test_emitter_large_integer_helpers() {
+    let uint_ty = type_builtin_uint();
+    let long_ty = type_builtin_long();
+    let ulong_ty = type_builtin_ulong();
+
+    assert(cem_emit_typed_bigint_literal("4294967295", 10, uint_ty) == "4294967295U",
+        "typed uint bigint literal mismatch");
+    assert(cem_emit_typed_bigint_literal("-8000000000000000", 16, long_ty) == "INT64_MIN",
+        "typed long bigint literal mismatch");
+    assert(cem_emit_typed_bigint_literal("ffffffffffffffff", 16, ulong_ty) == "0xffffffffffffffffULL",
+        "typed ulong bigint literal mismatch");
+    assert(cem_emit_typed_bigint_literal("11111111", 2, uint_ty) == "0xffU",
+        "binary bigint literal should lower through a C99-safe spelling");
+    assert(cem_emit_widen_int("x", uint_ty, ulong_ty) == "((dea_ulong)(x))",
+        "uint-to-ulong widening mismatch");
+    assert(cem_emit_checked_int_add_for_type(long_ty, "a", "b") == "(_rt_ladd(a, b))",
+        "long addition helper mismatch");
+    assert(cem_emit_checked_int_div_for_type(ulong_ty, "a", "b") == "(_rt_uldiv(a, b))",
+        "ulong division helper mismatch");
+    assert(cem_emit_checked_signed_cast("dea_short", "value") == "(_rt_cast_dea_short_from_signed((dea_long)(value)))",
+        "signed checked cast mismatch");
+    assert(cem_emit_checked_unsigned_cast("dea_long", "value") == "(_rt_cast_dea_long_from_unsigned((dea_ulong)(value)))",
+        "unsigned checked cast mismatch");
+
+    type_free(uint_ty);
+    type_free(long_ty);
+    type_free(ulong_ty);
+}
+
+/**
+ * Tests test_emitter_header_uses_public_runtime_header.
+ */
+func test_emitter_header_uses_public_runtime_header() {
+    let emitter = cem_create();
+    let opts = cg_options_create();
+    opts.trace_arc = true;
+    opts.trace_memory = true;
+
+    cem_emit_header(emitter, opts);
+    let text = cem_get_output(emitter);
+
+    assert(!contains_s(text, "#define DEA_TRACE_ARC 1"), "trace arc define should not be emitted");
+    assert(!contains_s(text, "#define DEA_TRACE_MEMORY 1"), "trace memory define should not be emitted");
+    assert(!contains_s(text, "#include \"dea_siphash.h\""), "generated C should not embed SipHash implementation");
+    assert(contains_s(text, "#include \"dea_rt.h\""), "runtime include missing");
+    assert(!contains_s(text, "#include <float.h>"), "non-FP header should not emit float contract guards");
+
+    cg_options_free(opts);
+    cem_free(emitter);
+}
+
+/**
+ * Tests test_emitter_header_honors_unchecked_flag.
+ */
+func test_emitter_header_honors_unchecked_flag() {
+    let emitter = cem_create();
+    let opts = cg_options_create();
+    opts.rt_unchecked = true;
+
+    cem_emit_header(emitter, opts);
+    let text = cem_get_output(emitter);
+
+    assert(contains_s(text, "#define DEA_RT_UNCHECKED 1"), "unchecked define missing");
+    assert(contains_s(text, "#include \"dea_rt.h\""), "runtime include missing");
+
+    cg_options_free(opts);
+    cem_free(emitter);
+}
+
+/**
+ * Tests test_emitter_header_honors_check_basic_flag.
+ */
+func test_emitter_header_honors_check_basic_flag() {
+    let emitter = cem_create();
+    let opts = cg_options_create();
+    opts.rt_check_basic = true;
+
+    cem_emit_header(emitter, opts);
+    let text = cem_get_output(emitter);
+
+    assert(contains_s(text, "#define DEA_RT_CHECK_BASIC 1"), "check-basic define missing");
+    assert(contains_s(text, "#include \"dea_rt.h\""), "runtime include missing");
+
+    cg_options_free(opts);
+    cem_free(emitter);
+}
+
+/**
+ * Tests that floating-point programs emit backend contract guards in the generated header.
+ */
+func test_emitter_header_emits_float_contract_guards() {
+    let result = cet_empty_analysis_result();
+    let emitter = cem_create();
+    let opts = cg_options_create();
+    spm_put(result.expr_types, "demo.main::1", type_builtin_double() as void*);
+    cem_set_analysis(emitter, result);
+
+    cem_emit_header(emitter, opts);
+    let text = cem_get_output(emitter);
+
+    assert(contains_s(text, "#include <float.h>"), "float header should be included for FP programs");
+    assert(contains_s(text, "#include <math.h>"), "math header should be included for FP programs");
+    assert(contains_s(text, "#if FLT_RADIX != 2"), "float radix guard missing");
+    assert(contains_s(text, "__FAST_MATH__"), "fast-math guard missing");
+    assert(contains_s(text, "__FINITE_MATH_ONLY__"), "finite-math guard missing");
+    assert(!contains_s(text, "#define DEA_USE_SYS_REAL 1"), "float-only programs should not enable sys.real helpers");
+
+    cg_options_free(opts);
+    cem_free(emitter);
+    analysis_result_free(result);
+}
+
+/**
+ * Tests that `sys.real` users emit the runtime guard needed by `l1_real.h`.
+ */
+func test_emitter_header_emits_sys_real_guard() {
+    let result = cet_empty_analysis_result();
+    let decls_main = ptr_vec_create(0);
+    let decls_sys_real = ptr_vec_create(0);
+    cet_push_module(result, cet_module("demo.main", "demo/main.l1", decls_main));
+    cet_push_module(result, cet_module("sys.real", "std/sys/real.l1", decls_sys_real));
+
+    let emitter = cem_create();
+    let opts = cg_options_create();
+    cem_set_analysis(emitter, result);
+
+    cem_emit_header(emitter, opts);
+    let text = cem_get_output(emitter);
+
+    assert(contains_s(text, "#define DEA_USE_SYS_REAL 1"), "sys.real programs should enable runtime helpers");
+    assert(contains_s(text, "#include \"dea_rt.h\""), "runtime include missing");
+
+    cg_options_free(opts);
+    cem_free(emitter);
+    analysis_result_free(result);
+}
+
+/**
+ * Tests test_emitter_line_directives_normalize_windows_paths.
+ */
+func test_emitter_line_directives_normalize_windows_paths() {
+    let result = cet_empty_analysis_result();
+    let decls = ptr_vec_create(0);
+    cet_push_module(result, cet_module("demo.main", "D:\\tmp\\project\\demo.l1", decls));
+
+    let emitter = cem_create();
+    let opts = cg_options_create();
+    cem_set_analysis(emitter, result);
+
+    cem_emit_line_directive(emitter, 7, "demo.main", opts);
+    let text = cem_get_output(emitter);
+    assert(text == "#line 7 \"D:/tmp/project/demo.l1\"\n", "line directive path normalization mismatch");
+
+    cg_options_free(opts);
+    cem_free(emitter);
+    analysis_result_free(result);
+}
+
+/** Tests line-directive filenames cannot form C trigraphs. */
+func test_emitter_line_directives_escape_trigraphs() {
+    let result = cet_empty_analysis_result();
+    let decls = ptr_vec_create(0);
+    cet_push_module(result, cet_module("demo.main", "D:\\tmp\\??=\\demo.l1", decls));
+
+    let emitter = cem_create();
+    let opts = cg_options_create();
+    cem_set_analysis(emitter, result);
+
+    cem_emit_line_directive(emitter, 7, "demo.main", opts);
+    assert(cem_get_output(emitter) == "#line 7 \"D:/tmp/?\\?=/demo.l1\"\n",
+        "line directive should escape trigraph spelling");
+
+    cg_options_free(opts);
+    cem_free(emitter);
+    analysis_result_free(result);
+}
+
+/**
+ * Tests test_emitter_string_literals_use_dea_string_const.
+ */
+func test_emitter_string_literals_use_dea_string_const() {
+    let expr_literal = cem_emit_string_literal("A\nB");
+    let const_literal = cem_emit_const_string_literal("A\nB");
+
+    assert(expr_literal == "((dea_string)DEA_STRING_CONST(\"A\\nB\", 3))", "expression literal mismatch");
+    assert(const_literal == "DEA_STRING_CONST(\"A\\nB\", 3)", "const literal mismatch");
+    assert(cem_emit_string_literal("??!") == "((dea_string)DEA_STRING_CONST(\"?\\?!\", 3))",
+        "expression literal should escape trigraph spelling");
+    assert(cem_emit_const_string_literal("??=") == "DEA_STRING_CONST(\"?\\?=\", 3)",
+        "const literal should escape trigraph spelling");
+}
+
+/**
+ * Tests test_emitter_expression_and_statement_helpers.
+ */
+func test_emitter_expression_and_statement_helpers() {
+    let emitter = cem_create();
+    let point_ty = type_new_struct("demo.main", "Point");
+    let maybe_point_ty = type_new_enum("demo.main", "MaybePoint");
+
+    with (let field_inits = sv_create(4) => sv_free(field_inits),
+          let payload_inits = sv_create(2) => sv_free(payload_inits)) {
+        sv_push(field_inits, "x");
+        sv_push(field_inits, "1");
+        sv_push(field_inits, "y");
+        sv_push(field_inits, "2");
+        sv_push(payload_inits, "value");
+        sv_push(payload_inits, "pt");
+
+        assert(cem_emit_bool_literal(true) == "1", "expression bool literal mismatch");
+        assert(cem_emit_const_bool_literal(false) == "false", "const bool literal mismatch");
+        assert(cem_emit_binary_op("+", "a", "b") == "(a + b)", "binary-op helper mismatch");
+        assert(cem_emit_binary_op("==", "p1", "p2") == "(p1 == p2)", "pointer equality binary-op mismatch");
+        assert(cem_emit_binary_op("!=", "p1", "p2") == "(p1 != p2)", "pointer inequality binary-op mismatch");
+        assert(cem_emit_checked_int_add("a", "b") == "(_rt_iadd(a, b))", "checked add helper mismatch");
+        assert(cem_emit_function_call("func", "x, y") == "func(x, y)", "function call helper mismatch");
+        assert(cem_emit_field_access("obj", "x", false) == "(obj).x", "field access helper mismatch");
+        assert(cem_emit_index_lvalue("base", "idx") == "base[idx]", "index helper mismatch");
+        assert(cem_emit_cast("dea_int", "b") == "((dea_int)(b))", "cast helper mismatch");
+        assert(cem_emit_checked_narrow_cast("dea_tiny", "x") == "(_rt_narrow_dea_tiny(x))",
+            "tiny narrow helper mismatch");
+        assert(cem_emit_optional_has_value("opt") == "(opt).has_value", "optional has-value helper mismatch");
+        assert(cem_emit_optional_value("opt") == "(opt).value", "optional value helper mismatch");
+        assert(cem_emit_enum_tag_access("value") == "(value).tag", "enum tag helper mismatch");
+        assert(cem_emit_enum_payload_field_access("value", "Some", "inner") == "(value).data.Some.inner", "enum payload helper mismatch");
+        assert(cem_emit_string_equals_call("lhs", "rhs") == "rt_string_equals(lhs, rhs)",
+            "string-equals helper mismatch");
+        assert(cem_emit_string_concat_call("lhs", "rhs") == "rt_string_concat(lhs, rhs)",
+            "string-concat helper mismatch");
+        assert(cem_emit_string_compare_call("<=", "lhs", "rhs") == "(rt_string_compare(lhs, rhs) <= 0)",
+            "string-compare helper mismatch");
+        assert(cem_emit_unary_op("!", cem_emit_string_equals_call("lhs", "rhs")) == "(!rt_string_equals(lhs, rhs))",
+            "string-not-equals helper mismatch");
+
+        let int_ty = type_builtin_int();
+        let string_ty = type_builtin_string();
+        assert(cem_emit_opt_equals_call("==", "a", "b", int_ty) == "((!a.has_value && !b.has_value) || (a.has_value && b.has_value && (a.value == b.value)))", "int? == int? mismatch");
+        assert(cem_emit_opt_equals_call("!=", "a", "b", int_ty) == "((a.has_value != b.has_value) || (a.has_value && b.has_value && (a.value != b.value)))", "int? != int? mismatch");
+        assert(cem_emit_opt_equals_call("==", "a", "b", string_ty) == "((!a.has_value && !b.has_value) || (a.has_value && b.has_value && rt_string_equals(a.value, b.value)))", "string? == string? mismatch");
+        assert(cem_emit_opt_equals_call("!=", "a", "b", string_ty) == "((a.has_value != b.has_value) || (a.has_value && b.has_value && (!rt_string_equals(a.value, b.value))))", "string? != string? mismatch");
+        type_free(int_ty);
+        type_free(string_ty);
+
+        assert(cem_emit_discard_expr("tmp") == "(void)(tmp)", "discard helper mismatch");
+        assert(cem_emit_struct_constructor_for_type(point_ty, field_inits) == "(struct __deaM4demo4mainS5Point){ .x = 1, .y = 2 }", "struct constructor helper mismatch");
+        assert(cem_emit_variant_constructor_for_type(maybe_point_ty, "Some", payload_inits) == "(struct __deaM4demo4mainE10MaybePoint){ .tag = __deaM4demo4mainE10MaybePoint_Some, .data = { .Some = { .value = pt } } }",
+            "variant constructor helper mismatch");
+    }
+
+    cem_emit_let_decl(emitter, "dea_int", "tmp", "1");
+    cem_emit_assignment(emitter, "tmp", "2");
+    cem_emit_if_header(emitter, "cond");
+    cem_emit_block_start(emitter);
+    cem_emit_return_stmt(emitter, "tmp");
+    cem_emit_block_end(emitter);
+
+    let text = cem_get_output(emitter);
+    assert(text == "dea_int tmp = 1;\ntmp = 2;\nif (cond)\n{\n    return tmp;\n}\n", "statement helper output mismatch");
+
+    type_free(point_ty);
+    type_free(maybe_point_ty);
+    cem_free(emitter);
+}
+
+/**
+ * Tests traced runtime calls preserve user call-site locations.
+ */
+func test_emitter_trace_runtime_calls_use_impl_entrypoints() {
+    let emitter = cem_create();
+    let opts = cg_options_create();
+    opts.trace_arc = true;
+    opts.trace_memory = true;
+    cem_emit_header(emitter, opts);
+    cem_emit_string_retain(emitter, "s");
+    cem_emit_string_release(emitter, "s");
+    let drop_expr = cem_emit_drop_begin_expr(
+        "p", "struct __deaM4demoS5Point*", "sizeof(struct __deaM4demoS5Point)",
+        "_RT_ALIGNOF(struct __deaM4demoS5Point)");
+    cem_emit_alloc_obj(emitter, "struct __deaM4demoS5Point*", "struct __deaM4demoS5Point", "tmp");
+
+    let text = cem_get_output(emitter);
+    assert(contains_s(text, "_rt_string_retain_impl(s, __FILE__, __LINE__);"), "trace retain call mismatch");
+    assert(contains_s(text, "_rt_string_release_impl(s, __FILE__, __LINE__);"), "trace release call mismatch");
+    assert(contains_s(drop_expr,
+        "_rt_drop_begin_impl((void*)(p), (dea_int)(sizeof(struct __deaM4demoS5Point)), (dea_int)(_RT_ALIGNOF(struct __deaM4demoS5Point)), __FILE__, __LINE__)"),
+        "sized drop begin expression mismatch");
+    assert(contains_s(text,
+        "struct __deaM4demoS5Point* tmp = (struct __deaM4demoS5Point*)_rt_alloc_obj_impl((dea_int)sizeof(struct __deaM4demoS5Point), __FILE__, __LINE__);"),
+        "trace allocation call mismatch");
+
+    cg_options_free(opts);
+    cem_free(emitter);
+}
+
+/** Tests exact runtime ABI arguments emitted by pointer and ownership helpers. */
+func test_emitter_runtime_call_contracts() {
+    let emitter = cem_create();
+    let direct = cem_emit_checked_ptr_access(
+        emitter, "ptr", "dea_int*", "sizeof(dea_int)", "_RT_ALIGNOF(dea_int)",
+        "_RT_ACCESS_READ");
+    let indexed = cem_emit_checked_ptr_index_access(
+        emitter, "base", "index", "dea_byte*", "sizeof(dea_byte)",
+        "_RT_ALIGNOF(dea_byte)", "_RT_ACCESS_WRITE", true);
+    let drop_begin = cem_emit_drop_begin_expr(
+        "owned", "struct __deaM4demoS3Box*", "sizeof(struct __deaM4demoS3Box)",
+        "_RT_ALIGNOF(struct __deaM4demoS3Box)");
+    cem_emit_drop_finish_call(emitter, "checked_owned");
+    cem_emit_alloc_obj(emitter, "struct __deaM4demoS3Box*", "struct __deaM4demoS3Box", "allocated");
+
+    assert(direct ==
+        "((dea_int*)_rt_check_ptr_site(&dea_site_1, (void*)(ptr), (dea_int)(sizeof(dea_int)), (dea_int)(_RT_ALIGNOF(dea_int)), _RT_ACCESS_READ, __FILE__, __LINE__))",
+        "direct pointer runtime-call contract mismatch");
+    assert(indexed ==
+        "((dea_byte*)_rt_check_index_ptr_site(&dea_site_2, (void*)(base), (dea_int)(index), (dea_int)(sizeof(dea_byte)), (dea_int)(_RT_ALIGNOF(dea_byte)), (_RT_ACCESS_WRITE | _RT_ACCESS_UNTRACKED_OK), __FILE__, __LINE__))",
+        "indexed pointer runtime-call contract mismatch");
+    assert(drop_begin ==
+        "((struct __deaM4demoS3Box*)_rt_drop_begin_impl((void*)(owned), (dea_int)(sizeof(struct __deaM4demoS3Box)), (dea_int)(_RT_ALIGNOF(struct __deaM4demoS3Box)), __FILE__, __LINE__))",
+        "drop begin runtime-call contract mismatch");
+
+    let text = cem_get_output(emitter);
+    assert(contains_s(text,
+        "_rt_drop_finish_impl((void*)(checked_owned), __FILE__, __LINE__);"),
+        "drop finish runtime-call contract mismatch");
+    assert(contains_s(text,
+        "struct __deaM4demoS3Box* allocated = (struct __deaM4demoS3Box*)_rt_alloc_obj((dea_int)sizeof(struct __deaM4demoS3Box));"),
+        "new allocation runtime-call contract mismatch");
+    cem_free(emitter);
+}
+
+/**
+ * Tests test_emitter_cleanup_and_switch_helpers.
+ */
+func test_emitter_cleanup_and_switch_helpers() {
+    let result = cet_empty_analysis_result();
+    result.signatures = sig_make_tables();
+
+    let point_fields = ptr_vec_create(1);
+    ptr_vec_push(point_fields, new StructFieldInfo("name", type_builtin_string()) as void*);
+    spm_put((result.signatures as SignatureTables*).struct_infos, "demo.main::Point",
+        new StructInfo("demo.main::Point", "demo.main", "Point", "demo/main.l1", span_here(1, 1),
+            type_new_struct("demo.main", "Point"), point_fields, false) as void*);
+
+    let maybe_fields = ptr_vec_create(1);
+    ptr_vec_push(maybe_fields, type_builtin_string() as void*);
+    let maybe_field_names = sv_create(1);
+    sv_push(maybe_field_names, "value");
+    let maybe_variants = ptr_vec_create(1);
+    ptr_vec_push(maybe_variants, new EnumVariantInfo("Some", maybe_fields, maybe_field_names) as void*);
+    spm_put((result.signatures as SignatureTables*).enum_infos, "demo.main::Maybe",
+        new EnumInfo("demo.main::Maybe", "demo.main", "Maybe", "demo/main.l1", span_here(1, 1),
+            type_new_enum("demo.main", "Maybe"), maybe_variants, false) as void*);
+
+    let decls = ptr_vec_create(2);
+    let payload_fields = ptr_vec_create(1);
+    ptr_vec_push(payload_fields, new FieldDecl("value", cet_builtin_type_ref("string")) as void*);
+    ptr_vec_push(decls, cet_wrap_decl(TD_ENUM, new EnumDecl("Maybe",
+        ptr_vec_create(1), span_here(1, 1)) as void*) as void*);
+    let enum_decl = (ptr_vec_get(decls, 0) as TopLevelDecl*).data as EnumDecl*;
+    ptr_vec_push(enum_decl.variants, new EnumVariant("Some", payload_fields) as void*);
+    cet_push_module(result, cet_module("demo.main", "demo/main.l1", decls));
+
+    let emitter = cem_create();
+    cem_set_analysis(emitter, result);
+    cem_emit_comment(emitter, "phase2");
+    cem_emit_string_retain(emitter, "name");
+    cem_emit_string_release(emitter, "name");
+    cem_emit_match_scrutinee_decl(emitter, "struct __deaM4demo4mainE5Maybe", "value");
+    cem_emit_match_switch_start(emitter, "_scrutinee");
+    cem_emit_case_label(emitter, "__deaM4demo4mainE5Maybe_Some");
+    cem_emit_block_start(emitter);
+    cem_emit_exit_switch(emitter);
+    cem_emit_block_end(emitter);
+    cem_emit_default_label(emitter);
+    cem_emit_exit_switch(emitter);
+    cem_emit_switch_end(emitter);
+    let cleanup_point_ty = type_new_struct("demo.main", "Point");
+    let cleanup_maybe_ty = type_new_enum("demo.main", "Maybe");
+    cem_emit_value_cleanup(emitter, "pt", cleanup_point_ty);
+    cem_emit_enum_cleanup(emitter, "mp", cleanup_maybe_ty);
+    cem_emit_null_assignment(emitter, "ptr");
+
+    let text = cem_get_output(emitter);
+    assert(contains_s(text, "/* phase2 */"), "comment helper mismatch");
+    assert(contains_s(text, "rt_string_retain(name);"), "string retain helper mismatch");
+    assert(contains_s(text, "rt_string_release(name);"), "string release helper mismatch");
+    assert(contains_s(text, "struct __deaM4demo4mainE5Maybe _scrutinee = value;"), "scrutinee decl mismatch");
+    assert(contains_s(text, "switch ((_scrutinee).tag) {"), "match switch helper mismatch");
+    assert(contains_s(text, "case __deaM4demo4mainE5Maybe_Some:"), "case-label helper mismatch");
+    assert(contains_s(text, "default:\nbreak;\n}"), "default/exit-switch helper mismatch");
+    assert(contains_s(text, "rt_string_release((pt).name);"), "struct cleanup helper mismatch");
+    assert(contains_s(text, "if (mp != NULL)"), "enum cleanup null guard mismatch");
+    assert(contains_s(text, "rt_string_release(mp->data.Some.value);"), "enum cleanup field mismatch");
+    assert(contains_s(text, "ptr = NULL;"), "null assignment helper mismatch");
+
+    type_free(cleanup_point_ty);
+    type_free(cleanup_maybe_ty);
+    cem_free(emitter);
+    analysis_result_free(result);
+}
+
+/**
+ * Tests test_emitter_forward_decls_follow_loaded_module_order.
+ */
+func test_emitter_forward_decls_follow_loaded_module_order() {
+    let result = cet_empty_analysis_result();
+    let decls_a = ptr_vec_create(2);
+    let decls_b = ptr_vec_create(1);
+    ptr_vec_push(decls_a, cet_wrap_decl(TD_STRUCT, cet_empty_struct_decl("Point") as void*) as void*);
+    ptr_vec_push(decls_a, cet_wrap_decl(TD_ENUM, cet_empty_enum_decl("Color") as void*) as void*);
+    ptr_vec_push(decls_b, cet_wrap_decl(TD_STRUCT, cet_empty_struct_decl("Box") as void*) as void*);
+
+    cet_push_module(result, cet_module("demo.main", "demo/main.l1", decls_a));
+    cet_push_module(result, cet_module("demo.math", "demo/math.l1", decls_b));
+
+    let emitter = cem_create();
+    cem_set_analysis(emitter, result);
+    cem_emit_forward_decls(emitter);
+
+    with (let expected = sb_create() => sb_free(expected)) {
+        sb_append(expected, "/* Forward declarations */\n");
+        sb_append(expected, "struct __deaM4demo4mainS5Point;\n");
+        sb_append(expected, "struct __deaM4demo4mainE5Color;\n");
+        sb_append(expected, "struct __deaM4demo4mathS3Box;\n");
+        sb_append(expected, "\n");
+        assert(cem_get_output(emitter) == sb_to_string(expected), "forward declarations output mismatch");
+    }
+
+    cem_free(emitter);
+
+    analysis_result_free(result);
+}
+
+/**
+ * Tests test_emitter_optional_wrappers_emit_early_then_late.
+ */
+func test_emitter_optional_wrappers_emit_early_then_late() {
+    let result = cet_empty_analysis_result();
+    result.signatures = sig_make_tables();
+    let params = ptr_vec_create(3);
+    ptr_vec_push(params, type_new_nullable(type_builtin_short()) as void*);
+    ptr_vec_push(params, type_new_nullable(type_builtin_int()) as void*);
+    ptr_vec_push(params, type_new_nullable(type_new_enum("demo.main", "Color")) as void*);
+    let func_ty = type_new_func(params, type_new_nullable(type_new_struct("demo.main", "Point")), false);
+    spm_put((result.signatures as SignatureTables*).func_types, "demo.main::make", func_ty as void*);
+
+    let emitter = cem_create();
+    cem_set_analysis(emitter, result);
+    cem_prepare_optional_wrappers(emitter);
+    cem_emit_optional_wrappers(emitter, true);
+    cem_emit_optional_wrappers(emitter, false);
+
+    with (let expected = sb_create() => sb_free(expected)) {
+        sb_append(expected, "#ifndef DEA_OPT_INT_DEFINED\n");
+        sb_append(expected, "#define DEA_OPT_INT_DEFINED\n");
+        sb_append(expected, "typedef struct { dea_bool has_value; dea_int value; } dea_opt_int;\n");
+        sb_append(expected, "#endif /* DEA_OPT_INT_DEFINED */\n");
+        sb_append(expected, "\n");
+        sb_append(expected, "#ifndef DEA_OPT_SHORT_DEFINED\n");
+        sb_append(expected, "#define DEA_OPT_SHORT_DEFINED\n");
+        sb_append(expected, "typedef struct { dea_bool has_value; dea_short value; } dea_opt_short;\n");
+        sb_append(expected, "#endif /* DEA_OPT_SHORT_DEFINED */\n");
+        sb_append(expected, "\n");
+        sb_append(expected, "#ifndef DEA_OPT_E___DEAM4DEMO4MAINE5COLOR_DEFINED\n");
+        sb_append(expected, "#define DEA_OPT_E___DEAM4DEMO4MAINE5COLOR_DEFINED\n");
+        sb_append(expected,
+            "typedef struct { dea_bool has_value; struct __deaM4demo4mainE5Color value; } dea_opt_e___deaM4demo4mainE5Color;\n");
+        sb_append(expected, "#endif /* DEA_OPT_E___DEAM4DEMO4MAINE5COLOR_DEFINED */\n");
+        sb_append(expected, "\n");
+        sb_append(expected, "#ifndef DEA_OPT_S___DEAM4DEMO4MAINS5POINT_DEFINED\n");
+        sb_append(expected, "#define DEA_OPT_S___DEAM4DEMO4MAINS5POINT_DEFINED\n");
+        sb_append(expected,
+            "typedef struct { dea_bool has_value; struct __deaM4demo4mainS5Point value; } dea_opt_s___deaM4demo4mainS5Point;\n");
+        sb_append(expected, "#endif /* DEA_OPT_S___DEAM4DEMO4MAINS5POINT_DEFINED */\n");
+        sb_append(expected, "\n");
+        assert(cem_get_output(emitter) == sb_to_string(expected), "optional wrapper emission mismatch");
+    }
+
+    cem_free(emitter);
+    analysis_result_free(result);
+}
+
+/**
+ * Tests nested nullable pointer forms keep distinct C representations.
+ */
+func test_emitter_nested_nullable_pointer_representations() {
+    let int_ptr_opt = type_new_nullable(type_new_pointer(type_builtin_int()));
+    let int_ptr_opt_opt = type_new_nullable(type_clone(int_ptr_opt));
+    let int_opt_ptr_opt = type_new_nullable(type_new_pointer(type_new_nullable(type_builtin_int())));
+    let int_opt_array_opt = type_new_nullable(type_new_array(type_new_nullable(type_builtin_int()), 3));
+
+    assert(cem_is_niche_nullable(int_ptr_opt), "int*? should use pointer niche");
+    assert(!cem_is_niche_nullable(int_ptr_opt_opt), "int*?? needs an outer wrapper");
+    assert(cem_is_niche_nullable(int_opt_ptr_opt), "int?*? should use pointer niche for the outer optional");
+    assert(cem_emit_type(int_ptr_opt) == "dea_int*", "int*? C type mismatch");
+    assert(cem_emit_type(int_ptr_opt_opt) == "dea_opt_n_p_int", "int*?? C type mismatch");
+    assert(cem_emit_type(int_opt_ptr_opt) == "dea_opt_int*", "int?*? C type mismatch");
+    assert(cem_emit_type(int_opt_array_opt) == "dea_opt_a3_n_int", "int?[3]? C type mismatch");
+
+    let result = cet_empty_analysis_result();
+    result.signatures = sig_make_tables();
+    let params = ptr_vec_create(4);
+    ptr_vec_push(params, type_clone(int_ptr_opt_opt) as void*);
+    ptr_vec_push(params, type_clone(int_opt_ptr_opt) as void*);
+    ptr_vec_push(params, type_new_nullable(type_new_nullable(type_builtin_int())) as void*);
+    ptr_vec_push(params, type_clone(int_opt_array_opt) as void*);
+    let func_ty = type_new_func(params, type_builtin_void(), false);
+    spm_put((result.signatures as SignatureTables*).func_types, "demo.main::nested", func_ty as void*);
+
+    let emitter = cem_create();
+    cem_set_analysis(emitter, result);
+    cem_prepare_optional_wrappers(emitter);
+    cem_emit_optional_wrappers(emitter, true);
+    cem_emit_optional_wrappers(emitter, false);
+
+    let output = cem_get_output(emitter);
+    assert(contains_s(output, "typedef struct { dea_bool has_value; dea_int value; } dea_opt_int;"),
+        "expected int? wrapper");
+    assert(contains_s(output, "typedef struct { dea_bool has_value; dea_opt_int value; } dea_opt_n_int;"),
+        "expected int?? wrapper");
+    assert(contains_s(output, "typedef struct { dea_bool has_value; dea_int* value; } dea_opt_n_p_int;"),
+        "expected int*?? wrapper");
+    assert(contains_s(output, "typedef struct __deaA3_Qi { dea_opt_int data[3]; } __deaA3_Qi;"),
+        "expected int?[3] wrapper");
+    assert(contains_s(output, "typedef struct { dea_bool has_value; __deaA3_Qi value; } dea_opt_a3_n_int;"),
+        "expected int?[3]? wrapper");
+    assert(find_s(output, "dea_opt_int value") > find_s(output, "} dea_opt_int;"),
+        "expected int? wrapper before int?? payload use");
+    assert(find_s(output, "} __deaA3_Qi;") > find_s(output, "} dea_opt_int;"),
+        "expected int? wrapper before int?[3] payload use");
+    assert(find_s(output, "} dea_opt_a3_n_int;") > find_s(output, "} __deaA3_Qi;"),
+        "expected int?[3] wrapper before int?[3]? payload use");
+
+    cem_free(emitter);
+    analysis_result_free(result);
+    type_free(int_ptr_opt);
+    type_free(int_ptr_opt_opt);
+    type_free(int_opt_ptr_opt);
+    type_free(int_opt_array_opt);
+}
+
+/**
+ * Tests fixed-size array ABI wrapper names from the spec examples.
+ */
+func test_emitter_array_wrapper_spec_names() {
+    let byte_buf = type_new_array(type_builtin_byte(), 1024);
+    let point_vec = type_new_array(type_new_struct("demo.main", "Point"), 4);
+
+    assert(cem_array_wrapper_name_for_type(byte_buf) == "__deaA1024_h",
+        "byte[1024] wrapper ABI name mismatch");
+    assert(cem_array_wrapper_name_for_type(point_vec) == "__deaA4_M4demo4mainS5Point",
+        "demo.main::Point[4] wrapper ABI name mismatch");
+
+    type_free(byte_buf);
+    type_free(point_vec);
+}
+
+/**
+ * Tests slice descriptor ABI wrapper names and C type spellings.
+ */
+func test_emitter_slice_wrapper_spec_names() {
+    let int_slice = type_new_slice(type_builtin_int());
+    let ptr_slice = type_new_slice(type_new_pointer(type_builtin_int()));
+    let opt_slice = type_new_slice(type_new_nullable(type_builtin_int()));
+
+    assert(cem_slice_wrapper_name_for_type(int_slice) == "__deaWi", "int[] slice wrapper ABI name mismatch");
+    assert(cem_emit_type(int_slice) == "__deaWi", "int[] slice C type mismatch");
+    assert(cem_slice_wrapper_name_for_type(ptr_slice) == "__deaWPi", "int*[] slice wrapper ABI name mismatch");
+    assert(cem_slice_wrapper_name_for_type(opt_slice) == "__deaWQi", "int?[] slice wrapper ABI name mismatch");
+
+    type_free(int_slice);
+    type_free(ptr_slice);
+    type_free(opt_slice);
+}
+
+/**
+ * Tests slice descriptor typedef emission.
+ */
+func test_emitter_slice_descriptor_emission() {
+    let emitter = cem_create();
+    let int_slice = type_new_slice(type_builtin_int());
+    cem_note_slice_wrapper(emitter, int_slice);
+    cem_emit_slice_wrappers(emitter);
+    let output = cem_get_output(emitter);
+    assert(contains_s(output, "typedef struct __deaWi { dea_int len; dea_int *data; } __deaWi;"),
+        "expected int[] slice descriptor typedef");
+    type_free(int_slice);
+    cem_free(emitter);
+}
+
+/**
+ * Tests test_emitter_top_level_forms_match_stage1_shape.
+ */
+func test_emitter_top_level_forms_match_stage1_shape() {
+    let emitter = cem_create();
+    let point_fields = ptr_vec_create(2);
+    let variant_infos = ptr_vec_create(2);
+    let variant_none_fields = ptr_vec_create(0);
+    let variant_rgb_fields = ptr_vec_create(3);
+    let func_params = ptr_vec_create(2);
+    let func_param_types = ptr_vec_create(2);
+    let extern_params = ptr_vec_create(0);
+    let extern_param_types = ptr_vec_create(0);
+
+    ptr_vec_push(point_fields, new StructFieldInfo("x", type_builtin_int()) as void*);
+    ptr_vec_push(point_fields, new StructFieldInfo("y", type_builtin_int()) as void*);
+    let point_info = new StructInfo(
+        "demo.main::Point",
+        "demo.main",
+        "Point",
+        "demo/main.l1",
+        span_here(1, 1),
+        type_new_struct("demo.main", "Point"),
+        point_fields,
+        false
+    );
+
+    ptr_vec_push(variant_infos, new EnumVariantInfo("None", variant_none_fields, sv_create(0)) as void*);
+    ptr_vec_push(variant_rgb_fields, type_builtin_byte() as void*);
+    ptr_vec_push(variant_rgb_fields, type_builtin_byte() as void*);
+    ptr_vec_push(variant_rgb_fields, type_builtin_byte() as void*);
+    let variant_rgb_names = sv_create(3);
+    sv_push(variant_rgb_names, "r");
+    sv_push(variant_rgb_names, "g");
+    sv_push(variant_rgb_names, "b");
+    ptr_vec_push(variant_infos, new EnumVariantInfo("Rgb", variant_rgb_fields, variant_rgb_names) as void*);
+    let color_info = new EnumInfo(
+        "demo.main::Color",
+        "demo.main",
+        "Color",
+        "demo/main.l1",
+        span_here(1, 1),
+        type_new_enum("demo.main", "Color"),
+        variant_infos,
+        false
+    );
+
+    ptr_vec_push(func_params, new Param("a", cet_builtin_type_ref("int")) as void*);
+    ptr_vec_push(func_params, new Param("b", cet_builtin_type_ref("int")) as void*);
+    ptr_vec_push(func_param_types, type_builtin_int() as void*);
+    ptr_vec_push(func_param_types, type_builtin_int() as void*);
+    let sum_decl = new FuncDecl("sum", func_params, cet_builtin_type_ref("int"), invalid_stmt_id(), false, false, span_here(1, 1));
+    let sum_type = type_new_func(func_param_types, type_builtin_int(), false);
+
+    let extern_decl = new FuncDecl("puts", extern_params, cet_builtin_type_ref("void"), invalid_stmt_id(), true, false, span_here(1,
+        1));
+    let extern_type = type_new_func(extern_param_types, type_builtin_void(), false);
+    let let_decl = new LetDecl("answer", cet_builtin_type_ref("int"), invalid_expr_id(), false, span_here(1, 1));
+    let const_decl = new LetDecl("limit", cet_builtin_type_ref("int"), invalid_expr_id(), true, span_here(1, 1));
+    let let_type = type_builtin_int();
+    let result = cet_empty_analysis_result();
+    result.signatures = sig_make_tables();
+    cem_set_analysis(emitter, result);
+
+    cem_emit_struct_info(emitter, point_info);
+    cem_emit_enum_info(emitter, color_info);
+    cem_emit_zero_initialized_let_declaration(emitter, "demo.main", let_decl, let_type, false);
+    cem_emit_let_declaration(emitter, "demo.main", const_decl, let_type, "7", false);
+    cem_emit_function_declaration(emitter, "demo.main", sum_decl, sum_type, false);
+    cem_emit_function_declaration(emitter, "demo.main", extern_decl, extern_type, false);
+    cem_emit_function_definition_header(emitter, "demo.main", sum_decl, sum_type, false);
+    ccb_emit(emitter.out, "return a + b;");
+    cem_emit_function_definition_footer(emitter);
+
+    let text = cem_get_output(emitter);
+    assert(contains_s(text, "#ifndef DEA_DEFINED___deaM4demo4mainS5Point"), "struct guard missing");
+    assert(contains_s(text, "struct __deaM4demo4mainS5Point {\n    dea_int x;\n    dea_int y;\n};\n#endif\n"),
+        "struct definition mismatch");
+    assert(contains_s(text, "enum __deaM4demo4mainE5Color_tag {\n    __deaM4demo4mainE5Color_None,\n    __deaM4demo4mainE5Color_Rgb,\n};\n"),
+        "enum tag definition mismatch");
+    assert(contains_s(text,
+        "struct { char __dummy__; } None;\n        struct { dea_byte r; dea_byte g; dea_byte b; } Rgb;\n    } data;\n};\n#endif\n"),
+        "enum payload layout mismatch");
+    assert(contains_s(text, "static dea_int __deaM4demo4mainN6answer = 0;"), "top-level let mismatch");
+    assert(contains_s(text, "static const dea_int __deaM4demo4mainN5limit = 7;"), "top-level const mismatch");
+    assert(contains_s(text, "static dea_int __deaM4demo4mainN3sumF2iii(dea_int a, dea_int b);"),
+        "function declaration mismatch");
+    assert(contains_s(text, "void (puts)(void);"), "extern declaration mismatch");
+    assert(contains_s(text, "static dea_int __deaM4demo4mainN3sumF2iii(dea_int a, dea_int b)\n{\n    return a + b;\n}\n"),
+        "function definition mismatch");
+    analysis_result_free(result);
+    type_free(let_type);
+    type_free(sum_type);
+    type_free(extern_type);
+    type_free(point_info.struct_type);
+    for (let i = 0; i < vec_size(point_info.fields); i = i + 1) {
+        let field = ptr_vec_get(point_info.fields, i) as StructFieldInfo*;
+        type_free(field.field_type);
+        drop field;
+    }
+    vec_free(point_info.fields);
+    drop point_info;
+
+    type_free(color_info.enum_type);
+    for (let variant_i = 0; variant_i < vec_size(color_info.variants); variant_i = variant_i + 1) {
+        let variant = ptr_vec_get(color_info.variants, variant_i) as EnumVariantInfo*;
+        for (let j = 0; j < vec_size(variant.field_types); j = j + 1) {
+            type_free(ptr_vec_get(variant.field_types, j) as Type*);
+        }
+        vec_free(variant.field_types);
+        sv_free(variant.field_names);
+        drop variant;
+    }
+    vec_free(color_info.variants);
+    drop color_info;
+
+    let_decl_free(let_decl);
+    let_decl_free(const_decl);
+    func_decl_free(sum_decl);
+    func_decl_free(extern_decl);
+
+    cem_free(emitter);
+}
+
+/**
+ * Tests that safe and unsafe function types share the same C lowering.
+ */
+func test_emitter_unsafe_function_types_share_c_abi() {
+    let safe_params = ptr_vec_create(1);
+    let unsafe_params = ptr_vec_create(1);
+    ptr_vec_push(safe_params, type_builtin_int() as void*);
+    ptr_vec_push(unsafe_params, type_builtin_int() as void*);
+
+    let safe_ty = type_new_func(safe_params, type_builtin_int(), false);
+    let unsafe_ty = type_new_func(unsafe_params, type_builtin_int(), true);
+
+    assert(cem_emit_type(safe_ty) == cem_emit_type(unsafe_ty), "safe/unsafe function types should share C typedef spelling");
+
+    type_free(safe_ty);
+    type_free(unsafe_ty);
+}
+
+/** Tests module lifecycle output contains no retired metadata anchors. */
+func test_emitter_module_lifecycle_has_no_metadata_anchors() {
+    let emitter = cem_create();
+    cem_emit_external_void_function_header(emitter, cem_mangle_module_init_name("a.b"));
+    cem_emit_function_definition_footer(emitter);
+
+    let generated = cem_get_output(emitter);
+    assert(contains_s(generated,
+        "void __deaM1a1bI4init(void)\n" +
+        "{\n" +
+        "}\n"),
+        "module init should retain external lifecycle spelling");
+    assert(!contains_s(generated, "I8metadata") && !contains_s(generated, "I7imports") &&
+        !contains_s(generated, "volatile const uint8_t"),
+        "module lifecycle output must not contain retired metadata arrays or anchors");
+
+    cem_free(emitter);
+}
+
+/** Tests module filtering safely composes and checks heap-backed keys. */
+func test_emitter_module_filters_handle_composed_keys() {
+    let emitter = cem_create();
+    let type_keys = ss_create();
+    let module_name = slice_s("xdemo.main", 1, 10);
+    ss_add(type_keys, "demo.main::Point");
+    cem_set_module_target(emitter, module_name);
+    cem_set_module_type_keys(emitter, type_keys);
+
+    assert(cem_module_target_includes_value_key(emitter, "demo.main::answer"),
+        "selected module value should be included");
+    assert(cem_module_target_includes_analysis_key(emitter, "demo.main::expr:1"),
+        "selected module analysis key should be included");
+    assert(!cem_module_target_includes_analysis_key(emitter, "demo.dep::expr:1"),
+        "other module analysis key should be excluded");
+    assert(cem_module_target_matches(emitter, "demo.main"),
+        "selected module should match its output boundary");
+    assert(!cem_module_target_matches(emitter, "demo.dep"),
+        "other module should not match the output boundary");
+    assert(cem_module_target_includes_type(emitter, "demo.main", "Point"),
+        "selected nominal type should be included");
+    assert(!cem_module_target_includes_type(emitter, "demo.main", "Other"),
+        "unselected nominal type should be excluded");
+
+    cem_free(emitter);
+    ss_free(type_keys);
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    test_string_escape_encodes_control_and_quote_bytes();
+    test_code_builder_tracks_indentation();
+    test_emitter_name_mangling();
+    test_emitter_type_lowering_and_null_forms();
+    test_emitter_large_integer_helpers();
+    test_emitter_header_uses_public_runtime_header();
+    test_emitter_header_honors_unchecked_flag();
+    test_emitter_header_honors_check_basic_flag();
+    test_emitter_header_emits_float_contract_guards();
+    test_emitter_header_emits_sys_real_guard();
+    test_emitter_line_directives_normalize_windows_paths();
+    test_emitter_line_directives_escape_trigraphs();
+    test_emitter_string_literals_use_dea_string_const();
+    test_emitter_expression_and_statement_helpers();
+    test_emitter_trace_runtime_calls_use_impl_entrypoints();
+    test_emitter_runtime_call_contracts();
+    test_emitter_cleanup_and_switch_helpers();
+    test_emitter_forward_decls_follow_loaded_module_order();
+    test_emitter_optional_wrappers_emit_early_then_late();
+    test_emitter_nested_nullable_pointer_representations();
+    test_emitter_array_wrapper_spec_names();
+    test_emitter_slice_wrapper_spec_names();
+    test_emitter_slice_descriptor_emission();
+    test_emitter_top_level_forms_match_stage1_shape();
+    test_emitter_unsafe_function_types_share_c_abi();
+    test_emitter_module_lifecycle_has_no_metadata_anchors();
+    test_emitter_module_filters_handle_composed_keys();
+    printl_s("c_emitter_test: all tests passed");
+}

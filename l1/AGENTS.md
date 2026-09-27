@@ -9,10 +9,10 @@ Run commands from the `l1/` directory.
 
 ## Project Overview
 
-Dea/L1 is in bootstrap-scaffold status.
+Dea/L1 is in self-hosted development status.
 
 - `compiler/stage1_l0/` is the initial L1 compiler seed implemented in Dea/L0.
-- `compiler/stage2_l1/` is a placeholder for the future self-hosted L1 compiler.
+- `compiler/stage2_l1/` is the mechanical L1 port, built by Stage 1 and capable of self-building.
 - `compiler/shared/runtime/` is the copied shared runtime tree.
 - `compiler/shared/l1/stdlib/` is the copied L1 stdlib seed.
 
@@ -45,12 +45,15 @@ Dea/L1 is in bootstrap-scaffold status.
 
 ```bash
 make venv
-make use-dev-stage1
+make use-dev-stage2
 source build/dea/bin/l1-env.sh
 l1c --help
 l1c --version
 make check-examples
 make test-stage1
+make test-stage2
+make test-stage2-trace
+make triple-test
 make test
 make test-stage1-trace
 make test-stage1-trace-smoke
@@ -60,9 +63,10 @@ make test-all
 make test-ci
 ```
 
-`make test` combines the normal Stage 1, environment-stackability, and example validation without the dedicated broad
-ARC/memory trace sweep. Use it for confidently trace-independent work. `make test-all` adds the default dedicated trace
-sweep and both declared child trace fixtures, and remains the full local/Docker backstop.
+`make test` combines the normal Stage 1 and Stage 2, parity, environment-stackability, and example validation without
+the dedicated broad ARC/memory trace sweep. Use it for confidently trace-independent work. `make test-all` adds both
+default dedicated trace sweeps and both declared child trace fixtures for each stage, and remains the full local/Docker
+backstop.
 
 `make test-stage1-trace` is the default ARC/memory trace suite and skips intentionally slow trace cases such as
 `math_runtime_compile_test`. Use `make test-stage1-trace-all` to include those slow trace checks, or pass a slow test
@@ -73,12 +77,16 @@ executables and analyzes each child's stderr separately; `TESTS="wide_math_main"
 always runs both declared children, independently of parent `TESTS` selectors.
 
 `make test-stage1-trace-smoke` retains the focused ARC/memory trace subset for quick developer diagnostics. The
-`make test-ci` target delegates to `make test-all` on every supported host, so hosted Windows, Linux, and macOS
-validation all run the full normal suite, default dedicated trace sweep, and child trace fixtures.
+`make test-ci` target runs `make test-all` and `make triple-test` on every supported host, so hosted Windows, Linux, and
+macOS validation all run the full normal suite, default dedicated trace sweep, and child trace fixtures.
+
+`use-dev-stage1` and `use-dev-stage2` explicitly select the `l1c` alias. Build and test commands preserve its selection.
+Stage 2 exposes the same trace target suffixes as Stage 1. `triple-test` runs the final self-built compiler through its
+normal suite and examples; it is intentionally excluded from local `test-all`.
 
 ## Current Scope
 
-- This subtree is bootstrap-only for now.
+- This subtree supports local self-hosted development; delivery workflows remain separate.
 - There is no L1 install/dist/release/docs-publish workflow yet.
 - Keep root `README.md` and existing L0 user-facing docs unchanged unless the task explicitly requires a minimal
   consistency fix.

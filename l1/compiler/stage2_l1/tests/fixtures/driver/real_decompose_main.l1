@@ -1,0 +1,24 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module real_decompose_main;
+
+import std.real;
+
+func main() -> int {
+    if (std.real::fmod_f(5.0f, 2.0f) != 1.0f) { return 1; }
+
+    let f_parts = std.real::modf_f(1.5f);
+    if (f_parts.int_part != 1.0f) { return 2; }
+    if (f_parts.frac_part != 0.5f) { return 3; }
+
+    let d_parts = std.real::frexp_d(4.0);
+    if (d_parts.significand != 0.5) { return 4; }
+    if (d_parts.exp != 3) { return 5; }
+
+    if (std.real::ldexp_f(0.5f, 3) != 4.0f) { return 6; }
+
+    return 0;
+}

@@ -1,0 +1,125 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module string_escape;
+
+import std.string;
+import std.text;
+
+/**
+ * Append one octal digit in the range `0..7`.
+ *
+ * @param cb Character buffer to extend.
+ * @param digit Octal digit value.
+ */
+func se_append_octal_digit(cb: CharBuffer*, digit: int) {
+    if (digit == 0) { cb_append(cb, '0'); return; }
+    if (digit == 1) { cb_append(cb, '1'); return; }
+    if (digit == 2) { cb_append(cb, '2'); return; }
+    if (digit == 3) { cb_append(cb, '3'); return; }
+    if (digit == 4) { cb_append(cb, '4'); return; }
+    if (digit == 5) { cb_append(cb, '5'); return; }
+    if (digit == 6) { cb_append(cb, '6'); return; }
+    cb_append(cb, '7');
+}
+
+/**
+ * Append a byte using a fixed-width C octal escape.
+ *
+ * @param cb Character buffer to extend.
+ * @param b Byte value to encode.
+ */
+func se_append_octal_escape(cb: CharBuffer*, b: byte) {
+    let value = b as int;
+    cb_append(cb, '\\');
+    se_append_octal_digit(cb, value / 64);
+    se_append_octal_digit(cb, (value / 8) % 8);
+    se_append_octal_digit(cb, value % 8);
+}
+
+/**
+ * Return whether a byte is printable ASCII that can be emitted directly in a C string.
+ *
+ * @param b Byte to inspect.
+ * @return `true` for safe direct emission.
+ */
+func se_is_direct_c_byte(b: byte) -> bool {
+    return b >= ' ' && b <= '~' && b != '\\' && b != '"';
+}
+
+/**
+ * Return whether a byte can complete a historical C trigraph spelling.
+ *
+ * @param b Byte to inspect.
+ * @return `true` for the nine trigraph suffix bytes.
+ */
+func se_is_trigraph_suffix(b: byte) -> bool {
+    return b == '=' || b == '/' || b == '\'' || b == '(' || b == ')' ||
+        b == '!' || b == '<' || b == '>' || b == '-';
+}
+
+/**
+ * Encode decoded string bytes for inclusion in a C string literal body.
+ *
+ * @param data Decoded byte string.
+ * @return Escaped bytes suitable for inclusion between double quotes in C.
+ */
+func se_encode_c_string_bytes(data: string) -> string {
+    with (let cb = cb_create() => cb_free(cb)) {
+        for (let i = 0; i < len_s(data); i = i + 1) {
+            let b = char_at_s(data, i);
+            if (b == '?' && i > 0 && i + 1 < len_s(data) && char_at_s(data, i - 1) == '?' &&
+                se_is_trigraph_suffix(char_at_s(data, i + 1))) {
+                cb_append_s(cb, "\\?");
+                continue;
+            }
+            if (se_is_direct_c_byte(b)) {
+                cb_append(cb, b);
+                continue;
+            }
+
+            if (b == '\\') {
+                cb_append_s(cb, "\\\\");
+                continue;
+            }
+            if (b == '"') {
+                cb_append_s(cb, "\\\"");
+                continue;
+            }
+            if (b == '\n') {
+                cb_append_s(cb, "\\n");
+                continue;
+            }
+            if (b == '\r') {
+                cb_append_s(cb, "\\r");
+                continue;
+            }
+            if (b == '\t') {
+                cb_append_s(cb, "\\t");
+                continue;
+            }
+            if (b == '\a') {
+                cb_append_s(cb, "\\a");
+                continue;
+            }
+            if (b == '\b') {
+                cb_append_s(cb, "\\b");
+                continue;
+            }
+            if (b == '\f') {
+                cb_append_s(cb, "\\f");
+                continue;
+            }
+            if (b == '\v') {
+                cb_append_s(cb, "\\v");
+                continue;
+            }
+
+            se_append_octal_escape(cb, b);
+        }
+
+        return cb_to_string(cb);
+    }
+}

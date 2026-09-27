@@ -1,0 +1,12 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module replay_projection_consumer;
+
+import replay_projection_provider;
+
+func main() -> int {
+    return ping(value: identity(value: 1));
+}

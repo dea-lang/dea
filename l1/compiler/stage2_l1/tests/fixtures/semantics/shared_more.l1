@@ -1,0 +1,17 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module shared_more;
+
+/**
+ * Provides a helper integer value.
+ *
+ * @return A small integer used by semantics fixtures.
+ */
+func helper_value() -> int {
+    return 5;
+}
+
+let shared_flag: bool = true;

@@ -1,0 +1,793 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module cli_args;
+
+import std.string;
+import std.vector;
+import util.diag;
+import source_paths;
+import cli_args.link;
+import cli_args.model;
+import cli_args.parse;
+
+/**
+ * Parse command-line arguments into structured options.
+ *
+ * @param argv Argument vector excluding the executable name.
+ * @return Parsed options together with any diagnostics produced during parsing.
+ */
+func cli_parse(argv: StringVector*) -> CliParseResult* {
+    with (
+        let opts: CliOptions*? = cli_options_create() => cli_options_free_opt(opts),
+        let diags: DiagCollector*? = diag_create() => cli_diag_free_opt(diags)
+    ) {
+        let split_idx = cli_split_index(argv);
+        let cli_end = sv_size(argv);
+        if (split_idx >= 0) {
+            cli_end = split_idx;
+            for (let i = split_idx + 1; i < sv_size(argv); i = i + 1) {
+                sv_push((opts as CliOptions*).program_args, sv_get(argv, i));
+            }
+        }
+
+        if (cli_has_help_flag(argv, cli_end)) {
+            let parsed_verbosity = (opts as CliOptions*).verbosity;
+            let parsed_log = (opts as CliOptions*).log;
+            cli_options_free(opts as CliOptions*);
+            opts = null;
+
+            let help_result = new CliParseResult(
+                null,
+                diags as DiagCollector*,
+                true,
+                false,
+                parsed_verbosity,
+                parsed_log
+            );
+            diags = null;
+            return help_result;
+        }
+
+        if (cli_has_version_flag(argv, cli_end)) {
+            let parsed_verbosity2 = (opts as CliOptions*).verbosity;
+            let parsed_log2 = (opts as CliOptions*).log;
+            cli_options_free(opts as CliOptions*);
+            opts = null;
+
+            let version_result = new CliParseResult(
+                null,
+                diags as DiagCollector*,
+                false,
+                true,
+                parsed_verbosity2,
+                parsed_log2
+            );
+            diags = null;
+            return version_result;
+        }
+
+        let i = 0;
+        let entry_option_count = 0;
+        let output_option_count = 0;
+        while (i < cli_end) {
+            let token = sv_get(argv, i);
+
+            if (token == "--no-managed-stdlib") {
+                (opts as CliOptions*).no_managed_stdlib = true;
+                i = i + 1;
+                continue;
+            }
+            if (token == "--no-auto-prepare") {
+                (opts as CliOptions*).no_auto_prepare = true;
+                i = i + 1;
+                continue;
+            }
+            if (token == "--prepare-stdlib") {
+                cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_PREPARE_STDLIB);
+                i = i + 1;
+                continue;
+            }
+            if (token == "--force") {
+                (opts as CliOptions*).force = true;
+                i = i + 1;
+                continue;
+            }
+            if (token == "--stdlib-cache") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                if (value != null) { (opts as CliOptions*).stdlib_cache = value; i = i + 1; }
+                i = i + 1;
+                continue;
+            }
+            if (starts_with_s(token, "--stdlib-cache=")) {
+                (opts as CliOptions*).stdlib_cache = slice_s(token, len_s("--stdlib-cache="), len_s(token));
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "--run" || token == "-r") {
+                cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_RUN);
+                i = i + 1;
+                continue;
+            }
+            if (token == "--build") {
+                cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_BUILD);
+                i = i + 1;
+                continue;
+            }
+            if (token == "-c" || token == "--compile") {
+                cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_COMPILE);
+                i = i + 1;
+                continue;
+            }
+            if (token == "-k" || token == "--link") {
+                cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_LINK);
+                i = i + 1;
+                continue;
+            }
+            if (token == "-Gi" || token == "--emit-interface") {
+                cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_EMIT_INTERFACE);
+                i = i + 1;
+                continue;
+            }
+            if (token == "--gen" || token == "--codegen" || token == "-Gc") {
+                cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_GEN);
+                i = i + 1;
+                continue;
+            }
+            if (token == "--check" || token == "--analyze") {
+                cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_CHECK);
+                i = i + 1;
+                continue;
+            }
+            if (token == "--tok" || token == "--tokens") {
+                cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_TOK);
+                i = i + 1;
+                continue;
+            }
+            if (token == "--ast") {
+                cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_AST);
+                i = i + 1;
+                continue;
+            }
+            if (token == "--sym" || token == "--symbols") {
+                cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_SYM);
+                i = i + 1;
+                continue;
+            }
+            if (token == "--type" || token == "--types") {
+                cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_TYPE);
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "--verbose") {
+                (opts as CliOptions*).verbosity = (opts as CliOptions*).verbosity + 1;
+                i = i + 1;
+                continue;
+            }
+
+            let vcount = cli_verbose_cluster_count(token);
+            if (vcount > 0) {
+                (opts as CliOptions*).verbosity = (opts as CliOptions*).verbosity + vcount;
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Vl" || token == "--log") {
+                (opts as CliOptions*).log = true;
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-NLD" || token == "--no-line-directives") {
+                (opts as CliOptions*).no_line_directives = true;
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Su" || token == "--unchecked") {
+                (opts as CliOptions*).unchecked = true;
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Sb" || token == "--check-basic") {
+                (opts as CliOptions*).check_basic = true;
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Va" || token == "--trace-arc") {
+                (opts as CliOptions*).trace_arc = true;
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Vm" || token == "--trace-memory") {
+                (opts as CliOptions*).trace_memory = true;
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Gk" || token == "--keep-c") {
+                (opts as CliOptions*).keep_c = true;
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-a" || token == "--all-modules") {
+                (opts as CliOptions*).all_modules = true;
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "--include-eof") {
+                (opts as CliOptions*).include_eof = true;
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Cf" || token == "--foreign-object") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                if (value == null) {
+                    i = i + 1;
+                } else {
+                    cli_link_operands_push(
+                        (opts as CliOptions*).link_operands,
+                        LOK_FOREIGN_OBJECT,
+                        value as string
+                    );
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "--foreign-object=")) {
+                let value = slice_s(token, len_s("--foreign-object="), len_s(token));
+                if (is_empty_s(value)) {
+                    cli_emit_error(
+                        diags as DiagCollector*,
+                        "L1C-2003",
+                        "missing value for option '--foreign-object'"
+                    );
+                } else {
+                    cli_link_operands_push(
+                        (opts as CliOptions*).link_operands,
+                        LOK_FOREIGN_OBJECT,
+                        value
+                    );
+                }
+                i = i + 1;
+                continue;
+            }
+
+            if (starts_with_s(token, "-Cf=")) {
+                let value = slice_s(token, len_s("-Cf="), len_s(token));
+                if (is_empty_s(value)) {
+                    cli_emit_error(
+                        diags as DiagCollector*,
+                        "L1C-2003",
+                        "missing value for option '-Cf'"
+                    );
+                } else {
+                    cli_link_operands_push(
+                        (opts as CliOptions*).link_operands,
+                        LOK_FOREIGN_OBJECT,
+                        value
+                    );
+                }
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-e" || token == "--entry") {
+                entry_option_count = entry_option_count + 1;
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                if (entry_option_count > 1) {
+                    cli_emit_error(
+                        diags as DiagCollector*,
+                        "L1C-2093",
+                        "option '--entry' may be provided at most once"
+                    );
+                } else if (value != null) {
+                    (opts as CliOptions*).entry_module = value;
+                }
+                if (value == null) {
+                    i = i + 1;
+                } else {
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "--entry=")) {
+                entry_option_count = entry_option_count + 1;
+                let value = slice_s(token, len_s("--entry="), len_s(token));
+                if (entry_option_count > 1) {
+                    cli_emit_error(
+                        diags as DiagCollector*,
+                        "L1C-2093",
+                        "option '--entry' may be provided at most once"
+                    );
+                } else if (is_empty_s(value)) {
+                    cli_emit_error(
+                        diags as DiagCollector*,
+                        "L1C-2003",
+                        "missing value for option '--entry'"
+                    );
+                } else {
+                    (opts as CliOptions*).entry_module = value;
+                }
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Rp" || token == "--project-root") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                if (value == null) {
+                    i = i + 1;
+                } else {
+                    sv_push((opts as CliOptions*).project_roots, value as string);
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "--project-root=")) {
+                let value = slice_s(token, len_s("--project-root="), len_s(token));
+                sv_push((opts as CliOptions*).project_roots, value);
+                i = i + 1;
+                continue;
+            }
+
+            if (starts_with_s(token, "-Rp=")) {
+                let value = slice_s(token, len_s("-Rp="), len_s(token));
+                sv_push((opts as CliOptions*).project_roots, value);
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Rs" || token == "--sys-root") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                if (value == null) {
+                    i = i + 1;
+                } else {
+                    sv_push((opts as CliOptions*).sys_roots, value as string);
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "--sys-root=")) {
+                let value = slice_s(token, len_s("--sys-root="), len_s(token));
+                sv_push((opts as CliOptions*).sys_roots, value);
+                i = i + 1;
+                continue;
+            }
+
+            if (starts_with_s(token, "-Rs=")) {
+                let value = slice_s(token, len_s("-Rs="), len_s(token));
+                sv_push((opts as CliOptions*).sys_roots, value);
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-o" || token == "--output") {
+                output_option_count = output_option_count + 1;
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                if (value == null) {
+                    i = i + 1;
+                } else {
+                    (opts as CliOptions*).output = value;
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "--output=")) {
+                output_option_count = output_option_count + 1;
+                let value = slice_s(token, len_s("--output="), len_s(token));
+                if (is_empty_s(value)) {
+                    cli_emit_error(
+                        diags as DiagCollector*,
+                        "L1C-2003",
+                        "missing value for option '--output'"
+                    );
+                } else {
+                    (opts as CliOptions*).output = value;
+                }
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Cc" || token == "--c-compiler") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                if (value == null) {
+                    i = i + 1;
+                } else {
+                    (opts as CliOptions*).c_compiler = value;
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "--c-compiler=")) {
+                (opts as CliOptions*).c_compiler = slice_s(token, len_s("--c-compiler="), len_s(token));
+                i = i + 1;
+                continue;
+            }
+
+            if (starts_with_s(token, "-Cc=")) {
+                (opts as CliOptions*).c_compiler = slice_s(token, len_s("-Cc="), len_s(token));
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Co" || token == "--c-options") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                if (value == null) {
+                    i = i + 1;
+                } else {
+                    (opts as CliOptions*).c_options = value;
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "--c-options=")) {
+                (opts as CliOptions*).c_options = slice_s(token, len_s("--c-options="), len_s(token));
+                i = i + 1;
+                continue;
+            }
+
+            if (starts_with_s(token, "-Co=")) {
+                (opts as CliOptions*).c_options = slice_s(token, len_s("-Co="), len_s(token));
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-I" || token == "--interface-path") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                if (value == null) {
+                    i = i + 1;
+                } else {
+                    sv_push((opts as CliOptions*).interface_paths, value as string);
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "--interface-path=")) {
+                let value = slice_s(token, len_s("--interface-path="), len_s(token));
+                sv_push((opts as CliOptions*).interface_paths, value);
+                i = i + 1;
+                continue;
+            }
+
+            if (starts_with_s(token, "-I") && len_s(token) > len_s("-I") &&
+                char_at_s(token, len_s("-I")) != '=') {
+                let value = slice_s(token, len_s("-I"), len_s(token));
+                sv_push((opts as CliOptions*).interface_paths, value);
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Ri" || token == "--runtime-include") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                if (value == null) {
+                    i = i + 1;
+                } else {
+                    (opts as CliOptions*).runtime_include = value;
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "--runtime-include=")) {
+                (opts as CliOptions*).runtime_include = slice_s(token, len_s("--runtime-include="), len_s(token));
+                i = i + 1;
+                continue;
+            }
+
+            if (starts_with_s(token, "-Ri=")) {
+                (opts as CliOptions*).runtime_include = slice_s(token, len_s("-Ri="), len_s(token));
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Rl" || token == "--runtime-lib") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                if (value == null) {
+                    i = i + 1;
+                } else {
+                    (opts as CliOptions*).runtime_lib = value;
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "--runtime-lib=")) {
+                (opts as CliOptions*).runtime_lib = slice_s(token, len_s("--runtime-lib="), len_s(token));
+                i = i + 1;
+                continue;
+            }
+
+            if (starts_with_s(token, "-Rl=")) {
+                (opts as CliOptions*).runtime_lib = slice_s(token, len_s("-Rl="), len_s(token));
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Rr" || token == "--rpath") {
+                let value = cli_require_next_value(
+                    argv, i, token, diags as DiagCollector*);
+                if (value == null) {
+                    i = i + 1;
+                } else {
+                    cli_record_link_operand(
+                        opts as CliOptions*,
+                        diags as DiagCollector*,
+                        LOK_RPATH,
+                        token,
+                        value as string
+                    );
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "--rpath=")) {
+                cli_record_link_operand(
+                    opts as CliOptions*,
+                    diags as DiagCollector*,
+                    LOK_RPATH,
+                    "--rpath",
+                    slice_s(token, len_s("--rpath="), len_s(token))
+                );
+                i = i + 1;
+                continue;
+            }
+
+            if (starts_with_s(token, "-Rr=")) {
+                cli_record_link_operand(
+                    opts as CliOptions*,
+                    diags as DiagCollector*,
+                    LOK_RPATH,
+                    "-Rr",
+                    slice_s(token, len_s("-Rr="), len_s(token))
+                );
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-Cl" || token == "--link-arg") {
+                let value = cli_require_next_value(
+                    argv, i, token, diags as DiagCollector*);
+                if (value == null) {
+                    i = i + 1;
+                } else {
+                    cli_record_link_operand(
+                        opts as CliOptions*,
+                        diags as DiagCollector*,
+                        LOK_LINK_ARG,
+                        token,
+                        value as string
+                    );
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "--link-arg=")) {
+                cli_record_link_operand(
+                    opts as CliOptions*,
+                    diags as DiagCollector*,
+                    LOK_LINK_ARG,
+                    "--link-arg",
+                    slice_s(token, len_s("--link-arg="), len_s(token))
+                );
+                i = i + 1;
+                continue;
+            }
+
+            if (starts_with_s(token, "-Cl=")) {
+                cli_record_link_operand(
+                    opts as CliOptions*,
+                    diags as DiagCollector*,
+                    LOK_LINK_ARG,
+                    "-Cl",
+                    slice_s(token, len_s("-Cl="), len_s(token))
+                );
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-g") {
+                cli_emit_reserved_option_error(diags as DiagCollector*, "-g", "debug information");
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-S") {
+                cli_emit_reserved_option_error(diags as DiagCollector*, "-S", "assembly output");
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-L") {
+                let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                if (value == null) {
+                    i = i + 1;
+                } else {
+                    cli_record_link_operand(
+                        opts as CliOptions*,
+                        diags as DiagCollector*,
+                        LOK_LIBRARY_SEARCH,
+                        token,
+                        value as string
+                    );
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "-L") && len_s(token) > len_s("-L") &&
+                char_at_s(token, len_s("-L")) != '=') {
+                cli_link_operands_push(
+                    (opts as CliOptions*).link_operands,
+                    LOK_LIBRARY_SEARCH,
+                    slice_s(token, len_s("-L"), len_s(token))
+                );
+                i = i + 1;
+                continue;
+            }
+
+            if (token == "-l") {
+                let value2 = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                if (value2 == null) {
+                    i = i + 1;
+                } else {
+                    cli_record_link_operand(
+                        opts as CliOptions*,
+                        diags as DiagCollector*,
+                        LOK_LIBRARY,
+                        token,
+                        value2 as string
+                    );
+                    i = i + 2;
+                }
+                continue;
+            }
+
+            if (starts_with_s(token, "-l") && len_s(token) > len_s("-l") &&
+                char_at_s(token, len_s("-l")) != '=') {
+                cli_record_link_operand(
+                    opts as CliOptions*,
+                    diags as DiagCollector*,
+                    LOK_LIBRARY,
+                    "-l",
+                    slice_s(token, len_s("-l"), len_s(token))
+                );
+                i = i + 1;
+                continue;
+            }
+
+            if (starts_with_s(token, "-")) {
+                cli_emit_error(diags as DiagCollector*, "L1C-2001", "unknown option '" + token + "'");
+                i = i + 1;
+                continue;
+            }
+
+            cli_assign_target(opts as CliOptions*, token);
+            i = i + 1;
+        }
+
+        if (cli_has_diagnostic_code(diags as DiagCollector*, "L1C-2003")) {
+            let missing_value_verbosity = (opts as CliOptions*).verbosity;
+            let missing_value_log = (opts as CliOptions*).log;
+            cli_options_free(opts as CliOptions*);
+            opts = null;
+
+            let missing_value_result = new CliParseResult(
+                null,
+                diags as DiagCollector*,
+                false,
+                false,
+                missing_value_verbosity,
+                missing_value_log
+            );
+            diags = null;
+            return missing_value_result;
+        }
+
+        let parsed_opts = opts as CliOptions*;
+        if (ord(parsed_opts.mode) == ord(CM_LINK)) {
+            if (cli_count_link_operands(parsed_opts, LOK_DEA_OBJECT) == 0) {
+                cli_emit_error(
+                    diags as DiagCollector*,
+                    "L1C-2095",
+                    "mode '--link' requires at least one positional Dea object"
+                );
+            }
+            if (output_option_count != 1 || parsed_opts.output == null) {
+                cli_emit_error(
+                    diags as DiagCollector*,
+                    "L1C-2096",
+                    "mode '--link' requires exactly one output path through '-o' or '--output'"
+                );
+            }
+            if (parsed_opts.entry_module != null) {
+                let entry_module = parsed_opts.entry_module as string;
+                if (!sp_is_valid_module_name(entry_module)) {
+                    cli_emit_error(
+                        diags as DiagCollector*,
+                        "L1C-2094",
+                        "invalid entry module name '" + entry_module +
+                        "': expected a canonical dotted module name"
+                    );
+                }
+            }
+        } else if (ord(parsed_opts.mode) == ord(CM_PREPARE_STDLIB)) {
+            if (parsed_opts.entry_target != null) {
+                cli_emit_error(diags as DiagCollector*, "L1C-2157", "mode '" + cli_mode_flag(parsed_opts.mode) + "' accepts no target");
+            }
+        } else if (parsed_opts.entry_target == null) {
+            cli_emit_error(diags as DiagCollector*, "L1C-2021", "missing required target module/file name");
+        }
+
+        if (ord(parsed_opts.mode) == ord(CM_RUN)) {
+            if ((opts as CliOptions*).extra_target_count > 0) {
+                cli_emit_error(
+                    diags as DiagCollector*,
+                    "L1C-2022",
+                    "mode '--run' accepts exactly one target; use '--' before runtime program arguments"
+                );
+            }
+        } else if (ord(parsed_opts.mode) != ord(CM_LINK)) {
+            if (split_idx >= 0) {
+                cli_emit_error(
+                    diags as DiagCollector*,
+                    "L1C-2023",
+                    "arguments after '--' are valid only with '--run'"
+                );
+            }
+            if ((opts as CliOptions*).extra_target_count > 0) {
+                cli_emit_error(
+                    diags as DiagCollector*,
+                    "L1C-2024",
+                    "multiple targets are not supported yet; pass exactly one target"
+                );
+            }
+        } else if (split_idx >= 0) {
+            cli_emit_error(
+                diags as DiagCollector*,
+                "L1C-2023",
+                "arguments after '--' are valid only with '--run'"
+            );
+        }
+
+        cli_validate_mode_scoped_flags(opts as CliOptions*, diags as DiagCollector*);
+
+        let parsed_verbosity3 = (opts as CliOptions*).verbosity;
+        let parsed_log3 = (opts as CliOptions*).log;
+        if (diag_has_errors(diags as DiagCollector*)) {
+            cli_options_free(opts as CliOptions*);
+            opts = null;
+        }
+
+        let result = new CliParseResult(
+            opts,
+            diags as DiagCollector*,
+            false,
+            false,
+            parsed_verbosity3,
+            parsed_log3
+        );
+        diags = null;
+        opts = null;
+        return result;
+    }
+}

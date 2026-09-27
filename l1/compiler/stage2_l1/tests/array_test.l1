@@ -1,0 +1,225 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+module array_test;
+
+import std.io;
+import std.string;
+import std.array;
+
+/**
+ * Tests test_arr_create.
+ */
+func test_arr_create() {
+    printl_s("=== Test arr_create ===");
+
+    // Test creating array with int elements
+    printl_s("Creating array for int elements (size 4, capacity 10)...");
+    let arr_int = arr_create(sizeof(int), 10);
+    printl_si("  capacity:", arr_int.capacity);
+    printl_si("  element_size:", arr_int.element_size);
+    arr_free(arr_int);
+    printl_s("  Freed int array.");
+
+    // Test creating array with byte elements
+    printl_s("Creating array for byte elements (size 1, capacity 16)...");
+    let arr_byte = arr_create(sizeof(byte), 16);
+    printl_si("  capacity:", arr_byte.capacity);
+    printl_si("  element_size:", arr_byte.element_size);
+    arr_free(arr_byte);
+    printl_s("  Freed byte array.");
+
+    // Test creating array with pointer elements
+    printl_s("Creating array for pointer elements (capacity 8)...");
+    let arr_ptr = arr_create(sizeof(void*), 8);
+    printl_si("  capacity:", arr_ptr.capacity);
+    printl_si("  element_size:", arr_ptr.element_size);
+    arr_free(arr_ptr);
+    printl_s("  Freed pointer array.");
+
+    printl_s("arr_create tests passed!\n");
+}
+
+/**
+ * Tests test_arr_get_and_set.
+ */
+func test_arr_get_and_set() {
+    printl_s("=== Test arr_get (read/write) ===");
+
+    // Create an array of integers
+    printl_s("Creating int array with capacity 5...");
+    let arr = arr_create(sizeof(int), 5);
+
+    // Write values using arr_get to get pointer, then dereference
+    printl_s("Writing values: [10, 20, 30, 40, 50]...");
+    let p0 = arr_get(arr, 0) as int*;
+    *p0 = 10;
+    let p1 = arr_get(arr, 1) as int*;
+    *p1 = 20;
+    let p2 = arr_get(arr, 2) as int*;
+    *p2 = 30;
+    let p3 = arr_get(arr, 3) as int*;
+    *p3 = 40;
+    let p4 = arr_get(arr, 4) as int*;
+    *p4 = 50;
+
+    // Read back values
+    printl_s("Reading values back...");
+    let r0 = arr_get(arr, 0) as int*;
+    printl_si("  arr[0]:", *r0);
+    let r1 = arr_get(arr, 1) as int*;
+    printl_si("  arr[1]:", *r1);
+    let r2 = arr_get(arr, 2) as int*;
+    printl_si("  arr[2]:", *r2);
+    let r3 = arr_get(arr, 3) as int*;
+    printl_si("  arr[3]:", *r3);
+    let r4 = arr_get(arr, 4) as int*;
+    printl_si("  arr[4]:", *r4);
+
+    arr_free(arr);
+    printl_s("arr_get tests passed!\n");
+}
+
+/**
+ * Tests test_arr_resize.
+ */
+func test_arr_resize() {
+    printl_s("=== Test arr_resize ===");
+
+    // Create small array
+    printl_s("Creating int array with capacity 2...");
+    let arr = arr_create(sizeof(int), 2);
+    printl_si("  initial capacity:", arr.capacity);
+
+    // Write initial values
+    let p0 = arr_get(arr, 0) as int*;
+    *p0 = 100;
+    let p1 = arr_get(arr, 1) as int*;
+    *p1 = 200;
+    printl_s("  Wrote values [100, 200]");
+
+    // Resize to larger capacity
+    printl_s("Resizing to capacity 8...");
+    arr_resize(arr, 8);
+    printl_si("  new capacity:", arr.capacity);
+
+    // Verify old values preserved
+    printl_s("Verifying old values preserved...");
+    let r0 = arr_get(arr, 0) as int*;
+    printl_si("  arr[0]:", *r0);
+    let r1 = arr_get(arr, 1) as int*;
+    printl_si("  arr[1]:", *r1);
+
+    // Write to new indices
+    printl_s("Writing to new indices [5]=500, [7]=700...");
+    let p5 = arr_get(arr, 5) as int*;
+    *p5 = 500;
+    let p7 = arr_get(arr, 7) as int*;
+    *p7 = 700;
+    let r5 = arr_get(arr, 5) as int*;
+    printl_si("  arr[5]:", *r5);
+    let r7 = arr_get(arr, 7) as int*;
+    printl_si("  arr[7]:", *r7);
+
+    arr_free(arr);
+    printl_s("arr_resize tests passed!\n");
+}
+
+/**
+ * Tests test_arr_with_bytes.
+ */
+func test_arr_with_bytes() {
+    printl_s("=== Test array with byte elements ===");
+
+    printl_s("Creating byte array with capacity 4...");
+    let arr = arr_create(sizeof(byte), 4);
+
+    // Write byte values
+    printl_s("Writing bytes: ['H', 'i', '!', 0]...");
+    let b0 = arr_get(arr, 0) as byte*;
+    *b0 = 'H';
+    let b1 = arr_get(arr, 1) as byte*;
+    *b1 = 'i';
+    let b2 = arr_get(arr, 2) as byte*;
+    *b2 = '!';
+    let b3 = arr_get(arr, 3) as byte*;
+    *b3 = 0 as byte;
+
+    // Read back
+    printl_s("Reading bytes back...");
+    let r0 = arr_get(arr, 0) as byte*;
+    let r1 = arr_get(arr, 1) as byte*;
+    let r2 = arr_get(arr, 2) as byte*;
+    let r3 = arr_get(arr, 3) as byte*;
+    printl_si("  arr[0] (H=72):", *r0);
+    printl_si("  arr[1] (i=105):", *r1);
+    printl_si("  arr[2] (!=33):", *r2);
+    printl_si("  arr[3] (0):", *r3);
+
+    arr_free(arr);
+    printl_s("Byte array tests passed!\n");
+}
+
+/**
+ * Tests test_arr_with_pointers.
+ */
+func test_arr_with_pointers() {
+    printl_s("=== Test array with pointer elements ===");
+
+    // Create some integers to point to
+    let val1 = new int;
+    *val1 = 111;
+    let val2 = new int;
+    *val2 = 222;
+    let val3 = new int;
+    *val3 = 333;
+
+    // Create pointer array
+    printl_s("Creating pointer array with capacity 3...");
+    let arr = arr_create(sizeof(void*), 3);
+
+    // Store pointers
+    printl_s("Storing pointers to integers [111, 222, 333]...");
+    let p0 = arr_get(arr, 0) as int**;
+    *p0 = val1;
+    let p1 = arr_get(arr, 1) as int**;
+    *p1 = val2;
+    let p2 = arr_get(arr, 2) as int**;
+    *p2 = val3;
+
+    // Read back and dereference
+    printl_s("Reading pointers and dereferencing...");
+    let r0 = arr_get(arr, 0) as int**;
+    printl_si("  *arr[0]:", **r0);
+    let r1 = arr_get(arr, 1) as int**;
+    printl_si("  *arr[1]:", **r1);
+    let r2 = arr_get(arr, 2) as int**;
+    printl_si("  *arr[2]:", **r2);
+
+    arr_free(arr);
+    drop val1;
+    drop val2;
+    drop val3;
+    printl_s("Pointer array tests passed!\n");
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    printl_s("======================================");
+    printl_s("       ArrayBase Test Suite");
+    printl_s("======================================\n");
+
+    test_arr_create();
+    test_arr_get_and_set();
+    test_arr_resize();
+    test_arr_with_bytes();
+    test_arr_with_pointers();
+
+    printl_s("======================================");
+    printl_s("    All ArrayBase tests passed!");
+    printl_s("======================================");
+}

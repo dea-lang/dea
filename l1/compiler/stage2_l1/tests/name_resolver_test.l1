@@ -1,0 +1,459 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module name_resolver_test;
+
+import std.io;
+import std.string;
+import std.assert;
+
+import driver;
+import driver.state;
+import name_resolver;
+import name_resolver.query;
+import name_resolver.state;
+import source_paths;
+import util.diag;
+import util.log;
+import symbols;
+
+/**
+ * Returns the root directory for test fixtures.
+ *
+ * @return The semantics fixture directory used by these tests.
+ */
+func fixture_root() -> string {
+    return "compiler/stage2_l1/tests/fixtures/semantics";
+}
+
+/**
+ * Creates and configures source search paths for testing.
+ *
+ * @return Source search paths rooted at the semantics fixtures directory.
+ */
+func make_paths() -> SourceSearchPaths* {
+    let sp = sp_create();
+    sp_add_project_root(sp, fixture_root());
+    return sp;
+}
+
+/**
+ * Checks if a specific diagnostic code is present in the results.
+ *
+ * @param diags The diagnostic collector to inspect.
+ * @param code The diagnostic code to look for.
+ * @return `true` if the diagnostic code is present, otherwise `false`.
+ */
+func has_diag_code(diags: DiagCollector*, code: string) -> bool {
+    for (let i = 0; i < diag_count(diags); i = i + 1) {
+        let d = diag_get(diags, i);
+        if (d.code == code) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Counts diagnostics with one specific code.
+ *
+ * @param diags The diagnostic collector to inspect.
+ * @param code The diagnostic code to count.
+ * @return Number of diagnostics using `code`.
+ */
+func count_diag_code(diags: DiagCollector*, code: string) -> int {
+    let count = 0;
+    for (let i = 0; i < diag_count(diags); i = i + 1) {
+        let d = diag_get(diags, i);
+        if (d.code == code) {
+            count = count + 1;
+        }
+    }
+    return count;
+}
+
+/**
+ * Checks if a diagnostic code is present with a message substring.
+ *
+ * @param diags The diagnostic collector to inspect.
+ * @param code The diagnostic code to look for.
+ * @param text The expected message substring.
+ * @return `true` if a matching diagnostic is present.
+ */
+func has_diag_message(diags: DiagCollector*, code: string, text: string) -> bool {
+    for (let i = 0; i < diag_count(diags); i = i + 1) {
+        let d = diag_get(diags, i);
+        if (d.code == code && contains_s(d.message, text)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Tests test_name_resolution_ok.
+ */
+func test_name_resolution_ok() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+          let diags = diag_create() => diag_free(diags)) {
+        let state = driver_analyze_entry(sp, "ok_main", cfg);
+        let names = nr_resolve(state, diags);
+
+        assert(!driver_has_errors(state), "expected no driver errors");
+        assert(diag_count(diags) == 0, "expected no name-resolution diagnostics");
+        assert(nr_env_count(names) == 4, "expected 4 semantic module envs including dea");
+
+        let ok_env = nr_env_find(names, "ok_main");
+        assert(ok_env != null, "expected ok_main env");
+        let env = ok_env as ModuleEnv*;
+
+        assert(nr_module_env_imports_module(env, "dea"), "expected implicit dea import");
+        assert(nr_module_env_imports_module(env, "shared_types"), "expected shared_types import");
+        assert(nr_module_env_imports_module(env, "shared_more"), "expected shared_more import");
+        let sizeof_sym = nr_module_env_imported(env, "sizeof");
+        assert(sizeof_sym != null, "expected imported sizeof intrinsic");
+        assert((sizeof_sym as Symbol*).module_name == "dea", "sizeof should come from dea by default");
+        assert(nr_module_env_imported(env, "Point") != null, "expected imported struct symbol");
+        assert(nr_module_env_imported(env, "helper_value") != null, "expected imported helper function");
+        assert(nr_module_env_imported(env, "Some") != null, "expected imported enum variant");
+
+        let dea_env = nr_env_find(names, "dea");
+        assert(dea_env != null, "expected synthesized dea env");
+        assert(nr_module_env_local(dea_env as ModuleEnv*, "sizeof") != null, "dea should define sizeof");
+        assert(nr_module_env_local(dea_env as ModuleEnv*, "ord") != null, "dea should define ord");
+
+        let shared_env = nr_env_find(names, "shared_types");
+        assert(shared_env != null, "expected shared_types env");
+        let some_sym = nr_module_env_local(shared_env as ModuleEnv*, "Some");
+        assert(some_sym != null, "expected enum variant symbol");
+        let sym = some_sym as Symbol*;
+        assert(ord(sym.kind) == ord(SYM_ENUM_VARIANT), "expected enum variant symbol kind");
+        assert(sym.owner_name == "OptionInt", "expected parent enum owner name");
+
+        nr_free(names);
+        driver_state_free(state);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests imported shadowing over the implicit `dea` prelude.
+ */
+func test_import_shadow_warning_replaces_dea_binding() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+          let diags = diag_create() => diag_free(diags)) {
+        let state = driver_analyze_entry(sp, "prelude_shadow_main", cfg);
+        let names = nr_resolve(state, diags);
+        let saw_main_import_shadow = false;
+
+        assert(!driver_has_errors(state), "expected no driver errors");
+        assert(count_diag_code(diags, "RES-0021") == 2,
+            "expected RES-0021 warnings for helper-local and main imported shadowing");
+        for (let i = 0; i < diag_count(diags); i = i + 1) {
+            let d = diag_get(diags, i);
+            if (d.code == "RES-0021" && contains_s(d.message, "prelude_shadow_helper::sizeof")) {
+                saw_main_import_shadow = true;
+            }
+        }
+        assert(saw_main_import_shadow, "expected imported-shadow warning mentioning prelude_shadow_helper::sizeof");
+
+        let env = nr_env_find(names, "prelude_shadow_main");
+        assert(env != null, "expected prelude_shadow_main env");
+        assert(nr_module_env_imports_module(env as ModuleEnv*, "dea"), "expected dea import to remain visible");
+        assert(nr_module_env_imports_module(env as ModuleEnv*, "prelude_shadow_helper"),
+            "expected helper import to remain visible");
+
+        let sizeof_sym = nr_module_env_imported(env as ModuleEnv*, "sizeof");
+        assert(sizeof_sym != null, "expected imported sizeof symbol");
+        assert((sizeof_sym as Symbol*).module_name == "prelude_shadow_helper",
+            "unqualified sizeof should resolve to imported helper");
+
+        let dea_env = nr_env_find(names, "dea");
+        assert(dea_env != null, "expected synthesized dea env");
+        assert(nr_module_env_local(dea_env as ModuleEnv*, "sizeof") != null, "qualified dea::sizeof should remain available");
+
+        nr_free(names);
+        driver_state_free(state);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests test_ambiguous_import_reports_warning.
+ */
+func test_ambiguous_import_reports_warning() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+          let diags = diag_create() => diag_free(diags)) {
+        let state = driver_analyze_entry(sp, "amb_main", cfg);
+        let names = nr_resolve(state, diags);
+
+        assert(!driver_has_errors(state), "expected no driver errors");
+        assert(has_diag_code(diags, "RES-0022"), "expected RES-0022 ambiguous import warning");
+
+        let env = nr_env_find(names, "amb_main");
+        assert(env != null, "expected amb_main env");
+        assert(nr_module_env_is_ambiguous(env as ModuleEnv*, "clash"), "expected ambiguous clash symbol");
+        assert(nr_module_env_all(env as ModuleEnv*, "clash") == null, "ambiguous symbol must not be in all-map");
+
+        nr_free(names);
+        driver_state_free(state);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests test_duplicate_top_level_reports_error.
+ */
+func test_duplicate_top_level_reports_error() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+          let diags = diag_create() => diag_free(diags)) {
+        let state = driver_analyze_entry(sp, "dup_main", cfg);
+        let names = nr_resolve(state, diags);
+
+        assert(!driver_has_errors(state), "expected no driver errors");
+        assert(has_diag_code(diags, "RES-0010"), "expected RES-0010 duplicate top-level diagnostic");
+
+        nr_free(names);
+        driver_state_free(state);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests test_import_shadow_warning_keeps_qualified_variant_lookup_available.
+ */
+func test_import_shadow_warning_keeps_qualified_variant_lookup_available() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+          let diags = diag_create() => diag_free(diags)) {
+        let state = driver_analyze_entry(sp, "shadow_warn_main", cfg);
+        let names = nr_resolve(state, diags);
+
+        assert(!driver_has_errors(state), "expected no driver errors");
+        assert(count_diag_code(diags, "RES-0021") == 2, "expected two RES-0021 shadow warnings");
+
+        let saw_uno = false;
+        let saw_due = false;
+        for (let i = 0; i < diag_count(diags); i = i + 1) {
+            let d = diag_get(diags, i);
+            if (d.code != "RES-0021") {
+                continue;
+            }
+            if (contains_s(d.message, "shadow_warn_uno::Red")) {
+                saw_uno = true;
+            }
+            if (contains_s(d.message, "shadow_warn_due::Red")) {
+                saw_due = true;
+            }
+        }
+        assert(saw_uno, "expected shadow warning for shadow_warn_uno::Red");
+        assert(saw_due, "expected shadow warning for shadow_warn_due::Red");
+
+        let env = nr_env_find(names, "shadow_warn_main");
+        assert(env != null, "expected shadow_warn_main env");
+        assert(nr_module_env_imports_module(env as ModuleEnv*, "shadow_warn_uno"), "expected shadow_warn_uno import");
+        assert(nr_module_env_imports_module(env as ModuleEnv*, "shadow_warn_due"), "expected shadow_warn_due import");
+        assert(nr_module_env_local(env as ModuleEnv*, "Red") != null, "expected local Red symbol to win unqualified lookup");
+
+        nr_free(names);
+        driver_state_free(state);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests export surfaces and alias/selective import bindings.
+ */
+func test_export_surfaces_and_new_imports() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+          let diags = diag_create() => diag_free(diags)) {
+        let state = driver_analyze_entry(sp, "export_implicit_main", cfg);
+        let names = nr_resolve(state, diags);
+
+        assert(!driver_has_errors(state), "expected no driver errors");
+        assert(!diag_has_errors(diags), "expected no export diagnostics");
+        let main_env = nr_env_find(names, "export_implicit_main");
+        assert(main_env != null, "expected export_implicit_main env");
+        assert(nr_module_env_imported(main_env as ModuleEnv*, "public_value") != null, "expected public import");
+        assert(nr_module_env_imported(main_env as ModuleEnv*, "_hidden_value") == null, "expected hidden import to stay private");
+
+        let dep_env = nr_env_find(names, "export_implicit_dep");
+        assert(dep_env != null, "expected export_implicit_dep env");
+        assert(nr_map_symbol_get((dep_env as ModuleEnv*).exports, "public_value") != null, "expected public export");
+        assert(nr_map_symbol_get((dep_env as ModuleEnv*).exports, "_hidden_value") == null, "expected implicit private name");
+        assert(nr_map_symbol_get((dep_env as ModuleEnv*).exports, "Visible") != null,
+            "expected implicit public enum export");
+        assert(nr_map_symbol_get((dep_env as ModuleEnv*).exports, "VisibleCase") != null,
+            "expected variants derived from an implicitly exported enum");
+        assert(nr_map_symbol_get((dep_env as ModuleEnv*).exports, "_Private") == null,
+            "expected underscore-prefixed enum to stay private");
+        assert(nr_map_symbol_get((dep_env as ModuleEnv*).exports, "LeakedCase") == null,
+            "private enum variants must not leak through their own names");
+
+        nr_free(names);
+        driver_state_free(state);
+    }
+
+    with (let cfg2 = log_config_create(LL_SILENT, false) => drop cfg2,
+          let diags2 = diag_create() => diag_free(diags2)) {
+        let state2 = driver_analyze_entry(sp, "export_star_dep", cfg2);
+        let names2 = nr_resolve(state2, diags2);
+        let star_env = nr_env_find(names2, "export_star_dep");
+        assert(star_env != null, "expected export_star_dep env");
+        assert(nr_map_symbol_get((star_env as ModuleEnv*).exports, "_hidden_value") != null,
+            "expected star export to include underscore name");
+        assert(nr_map_symbol_get((star_env as ModuleEnv*).exports, "_Starred") != null,
+            "expected star export to include underscore enum");
+        assert(nr_map_symbol_get((star_env as ModuleEnv*).exports, "StarCase") != null,
+            "expected star-exported enum variants");
+        nr_free(names2);
+        driver_state_free(state2);
+    }
+
+    with (let cfg3 = log_config_create(LL_SILENT, false) => drop cfg3,
+          let diags3 = diag_create() => diag_free(diags3)) {
+        let state3 = driver_analyze_entry(sp, "export_selective_main", cfg3);
+        let names3 = nr_resolve(state3, diags3);
+        let sel_env = nr_env_find(names3, "export_selective_main");
+        assert(sel_env != null, "expected export_selective_main env");
+        assert(nr_module_env_imported(sel_env as ModuleEnv*, "chosen") != null, "expected selective import");
+        assert(nr_module_env_imported(sel_env as ModuleEnv*, "internal") == null, "expected allowlist to hide internal");
+        nr_free(names3);
+        driver_state_free(state3);
+    }
+
+    with (let cfg4 = log_config_create(LL_SILENT, false) => drop cfg4,
+          let diags4 = diag_create() => diag_free(diags4)) {
+        let state4 = driver_analyze_entry(sp, "export_alias_main", cfg4);
+        let names4 = nr_resolve(state4, diags4);
+        let alias_env = nr_env_find(names4, "export_alias_main");
+        assert(alias_env != null, "expected export_alias_main env");
+        assert(nr_module_env_alias_target(alias_env as ModuleEnv*, "dep") != null, "expected alias namespace");
+        assert(nr_module_env_imported(alias_env as ModuleEnv*, "chosen") == null, "alias import must not open symbols");
+        nr_free(names4);
+        driver_state_free(state4);
+    }
+
+    with (let cfg5 = log_config_create(LL_SILENT, false) => drop cfg5,
+          let diags5 = diag_create() => diag_free(diags5)) {
+        let state5 = driver_analyze_entry(sp, "export_duplicate_import_main", cfg5);
+        let names5 = nr_resolve(state5, diags5);
+        let dup_env = nr_env_find(names5, "export_duplicate_import_main");
+        assert(!driver_has_errors(state5), "expected no driver errors for duplicate same-symbol imports");
+        assert(!has_diag_code(diags5, "RES-0022"), "same-symbol repeated imports must not be ambiguous");
+        assert(has_diag_message(diags5, "RES-0035",
+            "redundant import: 'one', 'two', 'three' already imported from 'export_duplicate_import_dep'"),
+            "expected grouped redundant selective import warning");
+        assert(dup_env != null, "expected export_duplicate_import_main env");
+        assert(nr_module_env_imported(dup_env as ModuleEnv*, "one") != null, "expected one import");
+        assert(nr_module_env_imported(dup_env as ModuleEnv*, "two") != null, "expected two import");
+        assert(nr_module_env_imported(dup_env as ModuleEnv*, "three") != null, "expected three import");
+        assert(!nr_module_env_is_ambiguous(dup_env as ModuleEnv*, "one"), "one should remain unambiguous");
+        assert(!nr_module_env_is_ambiguous(dup_env as ModuleEnv*, "two"), "two should remain unambiguous");
+        assert(!nr_module_env_is_ambiguous(dup_env as ModuleEnv*, "three"), "three should remain unambiguous");
+        nr_free(names5);
+        driver_state_free(state5);
+    }
+
+    with (let cfg6 = log_config_create(LL_SILENT, false) => drop cfg6,
+          let diags6 = diag_create() => diag_free(diags6)) {
+        let state6 = driver_analyze_entry(sp, "export_duplicate_open_import_main", cfg6);
+        let names6 = nr_resolve(state6, diags6);
+        let dup_open_env = nr_env_find(names6, "export_duplicate_open_import_main");
+        assert(!driver_has_errors(state6), "expected no driver errors for duplicate open imports");
+        assert(!has_diag_code(diags6, "RES-0022"), "duplicate open import must not be ambiguous");
+        assert(has_diag_message(diags6, "RES-0036", "duplicated 'import export_duplicate_import_dep'"),
+            "expected duplicated open import warning");
+        assert(dup_open_env != null, "expected export_duplicate_open_import_main env");
+        assert(nr_module_env_imported(dup_open_env as ModuleEnv*, "one") != null, "expected one import");
+        assert(!nr_module_env_is_ambiguous(dup_open_env as ModuleEnv*, "one"), "one should remain unambiguous");
+        nr_free(names6);
+        driver_state_free(state6);
+    }
+
+    with (let cfg7 = log_config_create(LL_SILENT, false) => drop cfg7,
+          let diags7 = diag_create() => diag_free(diags7)) {
+        let state7 = driver_analyze_entry(sp, "opaque_import_dep", cfg7);
+        let names7 = nr_resolve(state7, diags7);
+        let opaque_env = nr_env_find(names7, "opaque_import_dep");
+        assert(opaque_env != null, "expected opaque_import_dep env");
+        assert(nr_map_symbol_get((opaque_env as ModuleEnv*).exports, "State") != null,
+            "expected opaque enum name export");
+        assert(nr_map_symbol_get((opaque_env as ModuleEnv*).exports, "Idle") == null,
+            "opaque enum variants must not be exported");
+        assert(nr_map_symbol_get((opaque_env as ModuleEnv*).exports, "Running") == null,
+            "opaque enum variants must not be exported");
+        nr_free(names7);
+        driver_state_free(state7);
+    }
+
+    sp_free(sp);
+}
+
+/**
+ * Tests export/import diagnostics.
+ */
+func test_export_import_diagnostics() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+          let diags = diag_create() => diag_free(diags)) {
+        let state = driver_analyze_entry(sp, "export_bad_manifest", cfg);
+        let names = nr_resolve(state, diags);
+        assert(has_diag_code(diags, "RES-0030"), "expected duplicate export diagnostic");
+        assert(has_diag_code(diags, "RES-0031"), "expected unknown export diagnostic");
+        assert(has_diag_message(diags, "RES-0031", "unknown top-level symbol 'Red'"),
+            "expected standalone enum variant export to be rejected");
+        nr_free(names);
+        driver_state_free(state);
+    }
+
+    with (let cfg2 = log_config_create(LL_SILENT, false) => drop cfg2,
+          let diags2 = diag_create() => diag_free(diags2)) {
+        let state2 = driver_analyze_entry(sp, "export_bad_selective_main", cfg2);
+        let names2 = nr_resolve(state2, diags2);
+        assert(has_diag_code(diags2, "RES-0032"), "expected unknown selected import diagnostic");
+        nr_free(names2);
+        driver_state_free(state2);
+    }
+
+    with (let cfg3 = log_config_create(LL_SILENT, false) => drop cfg3,
+          let diags3 = diag_create() => diag_free(diags3)) {
+        let state3 = driver_analyze_entry(sp, "export_alias_collision_local", cfg3);
+        let names3 = nr_resolve(state3, diags3);
+        assert(has_diag_code(diags3, "RES-0034"), "expected local alias collision diagnostic");
+        nr_free(names3);
+        driver_state_free(state3);
+    }
+
+    with (let cfg4 = log_config_create(LL_SILENT, false) => drop cfg4,
+          let diags4 = diag_create() => diag_free(diags4)) {
+        let state4 = driver_analyze_entry(sp, "export_alias_collision_imported", cfg4);
+        let names4 = nr_resolve(state4, diags4);
+        assert(has_diag_code(diags4, "RES-0034"), "expected imported alias collision diagnostic");
+        nr_free(names4);
+        driver_state_free(state4);
+    }
+
+    sp_free(sp);
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    test_name_resolution_ok();
+    test_ambiguous_import_reports_warning();
+    test_duplicate_top_level_reports_error();
+    test_import_shadow_warning_keeps_qualified_variant_lookup_available();
+    test_import_shadow_warning_replaces_dea_binding();
+    test_export_surfaces_and_new_imports();
+    test_export_import_diagnostics();
+    printl_s("name_resolver_test: all tests passed");
+}

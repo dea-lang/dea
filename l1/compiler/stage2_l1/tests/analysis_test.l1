@@ -1,0 +1,424 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module analysis_test;
+
+import std.io;
+import std.hashmap;
+import std.path;
+import std.string;
+import std.assert;
+import std.vector;
+
+import analysis;
+import interface_projection;
+import ast;
+import driver.state;
+import interface_fingerprint;
+import mi_utils;
+import module_interface;
+import module_graph;
+import parser.interface;
+import sem_context;
+import source_paths;
+import types;
+import util.log;
+
+/**
+ * Returns the root directory for test fixtures.
+ *
+ * @return The semantics fixture directory used by these tests.
+ */
+func fixture_root() -> string {
+    return "compiler/stage2_l1/tests/fixtures/semantics";
+}
+
+/**
+ * Return the root containing filesystem interface-resolution fixtures.
+ *
+ * @return Module-graph fixture directory.
+ */
+func interface_fixture_root() -> string {
+    return "compiler/stage2_l1/tests/fixtures/module_graph";
+}
+
+/**
+ * Creates and configures source search paths for testing.
+ *
+ * @return Source search paths rooted at the semantics fixtures directory.
+ */
+func make_paths() -> SourceSearchPaths* {
+    let sp = sp_create();
+    sp_add_project_root(sp, fixture_root());
+    return sp;
+}
+
+/**
+ * Checks if a specific diagnostic code is present in the results.
+ *
+ * @param result The analysis result to inspect.
+ * @param code The diagnostic code to look for.
+ * @return `true` if the diagnostic code is present, otherwise `false`.
+ */
+func has_diag_code(result: AnalysisResult*, code: string) -> bool {
+    for (let i = 0; i < analysis_diag_count(result); i = i + 1) {
+        let d = analysis_diag_get(result, i);
+        if (d.code == code) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Tests test_analysis_ok_main.
+ */
+func test_analysis_ok_main() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "ok_main", cfg);
+        assert(!analysis_has_errors(result), "expected no analysis errors for ok_main");
+        assert(analysis_name_resolution(result) != null, "expected name resolution data");
+        assert(analysis_signature_tables(result) != null, "expected signature tables");
+        assert(analysis_locals(result) != null, "expected locals data");
+        assert(sv_size(analysis_source_names(result)) == 3, "expected 3 cached sources");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests the resolution-aware analysis entry point runs the shared semantic
+ * pipeline and retains the driver's resolved module graph.
+ */
+func test_analysis_resolution_entrypoint() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+          let interface_roots = sv_create(0) => sv_free(interface_roots)) {
+        let result = analysis_analyze_entry_with_resolution(
+            sp,
+            "ok_main",
+            interface_roots,
+            MRP_ALLOW_SOURCE_FALLBACK,
+            null,
+            cfg
+        );
+        assert(!analysis_has_errors(result), "resolution-aware analysis should preserve source-fallback behavior");
+        assert(analysis_name_resolution(result) != null, "resolution-aware analysis should run semantic passes");
+        assert(mg_find_node(driver_graph(result.driver_state), "ok_main") != null,
+            "resolution-aware analysis should retain the entry graph node");
+        assert(mg_find_node(driver_graph(result.driver_state), "shared_types") != null,
+            "resolution-aware analysis should retain dependency graph nodes");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/** Source-backed projection assigns canonical provider values without hashing dependencies. */
+func test_analysis_emits_verified_source_provider_fingerprints() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "shadow_warn_main", cfg);
+        assert(!analysis_has_errors(result), "source consumer should analyze before interface emission");
+        let emitted = analysis_emit_interface(result, "shadow_warn_main");
+        assert(emitted != null, "source consumer should emit an interface");
+        assert(!contains_s(emitted as string, "} == \"") &&
+            !contains_s(emitted as string, "-> int == \""),
+            "emitted declarations must not contain hash suffixes");
+
+        let parsed = pi_parse_interface(emitted as string, "<shadow_warn_main.l1m>");
+        assert(!ipr_has_errors(parsed) && parsed.interface != null, "emitted interface should parse");
+        let mi = parsed.interface as ModuleInterface*;
+        assert(ifp_verify(mi, parsed.diags, "<shadow_warn_main.l1m>"), "emitted interface should verify");
+        assert(vec_size(mi.require_entries) > 0, "public imported uses should produce require entries");
+
+        let uno_surface = mi_project_surface(result, "shadow_warn_uno");
+        let due_surface = mi_project_surface(result, "shadow_warn_due");
+        assert(uno_surface != null && due_surface != null,
+            "source dependency providers should project independently");
+        assert(ifp_assign(uno_surface as ModuleInterface*, result.diags, "<provider:shadow_warn_uno>") &&
+            ifp_assign(due_surface as ModuleInterface*, result.diags, "<provider:shadow_warn_due>"),
+            "source dependency fingerprints should compute independently");
+        for (let i = 0; i < vec_size(mi.require_entries); i = i + 1) {
+            let dep = ptr_vec_get(mi.require_entries, i) as InterfaceDepEntry*;
+            assert(dep.provider_module == "shadow_warn_uno" &&
+                dep.provider_fingerprint == (uno_surface as ModuleInterface*).fingerprint,
+                "public imported type should carry its source provider fingerprint");
+        }
+        for (let k = 0; k < vec_size(mi.link_entries); k = k + 1) {
+            let dep2 = ptr_vec_get(mi.link_entries, k) as InterfaceDepEntry*;
+            assert((dep2.provider_module == "shadow_warn_uno" &&
+                    dep2.provider_fingerprint == (uno_surface as ModuleInterface*).fingerprint) ||
+                (dep2.provider_module == "shadow_warn_due" &&
+                    dep2.provider_fingerprint == (due_surface as ModuleInterface*).fingerprint),
+                "implementation dependency should carry its source provider fingerprint");
+        }
+        mi_free(due_surface as ModuleInterface*);
+        mi_free(uno_surface as ModuleInterface*);
+
+        ipr_free(parsed);
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests filesystem interfaces normalize qualified enum types against
+ * source-fallback providers before semantic interface replay.
+ */
+func test_analysis_interface_enum_from_source_fallback() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+          let interface_roots = sv_create(1) => sv_free(interface_roots)) {
+        sv_push(interface_roots, join(interface_fixture_root(), "interfaces_mixed"));
+        let result = analysis_analyze_entry_with_resolution(
+            sp,
+            "mixed_fallback_enum_entry",
+            interface_roots,
+            MRP_ALLOW_SOURCE_FALLBACK,
+            null,
+            cfg
+        );
+        assert(!analysis_has_errors(result),
+            "interface enum types should normalize against source-fallback providers");
+        assert(!has_diag_code(result, "TYP-0310"),
+            "source-backed enum must not be replayed as a struct");
+
+        let graph = driver_graph(result.driver_state);
+        let facade_opt = mg_find_node(graph, "mixed.facade");
+        let provider_opt = mg_find_node(graph, "mixed.source_enum");
+        assert(facade_opt != null, "expected interface-backed facade graph node");
+        assert(provider_opt != null, "expected source-backed enum provider graph node");
+        let facade = facade_opt as ModuleGraphNode*;
+        let provider = provider_opt as ModuleGraphNode*;
+        assert(ord(facade.origin.kind) == ord(MOK_INTERFACE),
+            "facade should remain interface-backed");
+        assert(ord(provider.origin.kind) == ord(MOK_SOURCE),
+            "enum provider should use source fallback");
+        let projected_provider = mi_project_surface(result, "mixed.source_enum");
+        assert(projected_provider != null, "source-backed enum provider should project");
+        assert(ifp_assign(projected_provider as ModuleInterface*, result.diags,
+            "<provider:mixed.source_enum>"), "source-backed enum provider fingerprint should compute");
+        assert((projected_provider as ModuleInterface*).fingerprint == "sip13:684b6416ef05b6a4",
+            "source-backed enum provider fixture fingerprint should remain canonical");
+        assert(mg_node_dependency_count(facade) == 1 &&
+            mg_node_dependency_get(facade, 0).expected_fingerprint ==
+                (projected_provider as ModuleInterface*).fingerprint,
+            "filesystem facade should retain the source provider's canonical surface fingerprint");
+        mi_free(projected_provider as ModuleInterface*);
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/** Tests shared entry detection and canonical lifecycle-import projection. */
+func test_analysis_entry_and_module_import_projection() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "ok_main", cfg);
+        assert(!analysis_has_errors(result), "entry/import projection fixture should analyze");
+        assert(analysis_module_entry_type(result, "ok_main") != null,
+            "private zero-parameter source main should own an entry bridge");
+        assert(analysis_module_entry_type(result, "shared_types") == null,
+            "module without source main should not own an entry bridge");
+
+        let projected = mi_project(result, "ok_main");
+        assert(projected != null, "entry module should project a complete interface");
+        let mi = projected as ModuleInterface*;
+        assert(mi.has_entry, "projected interface should share backend entry semantics");
+        assert(vec_size(mi.module_imports) == 2,
+            "source imports should project independently of symbol manifests");
+        let first = ptr_vec_get(mi.module_imports, 0) as InterfaceModuleImport*;
+        let second = ptr_vec_get(mi.module_imports, 1) as InterfaceModuleImport*;
+        assert(first.provider_module == "shared_types" && second.provider_module == "shared_more",
+            "projected imports should preserve first source occurrence order");
+        assert(second.provider_fingerprint != "",
+            "side-effect-only imports should retain populated provider expectations");
+        mi_free(mi);
+        analysis_result_free(result);
+
+        let duplicate = analysis_analyze_entry(sp, "export_duplicate_import_main", cfg);
+        assert(!analysis_has_errors(duplicate), "duplicate source-import fixture should analyze");
+        let graph_node = mg_find_node(
+            driver_graph(duplicate.driver_state), "export_duplicate_import_main") as ModuleGraphNode*;
+        assert(mg_node_direct_import_count(graph_node) == 2,
+            "source graph should preserve exact duplicate import declarations");
+        let duplicate_mi = mi_project(duplicate, "export_duplicate_import_main");
+        assert(duplicate_mi != null &&
+            vec_size((duplicate_mi as ModuleInterface*).module_imports) == 1,
+            "interface projection should stable-deduplicate duplicate providers");
+        mi_free(duplicate_mi as ModuleInterface*);
+        analysis_result_free(duplicate);
+
+        let virtual = analysis_analyze_entry(sp, "prelude_shadow_main", cfg);
+        assert(!analysis_has_errors(virtual), "explicit virtual-import fixture should analyze");
+        let virtual_mi = mi_project(virtual, "prelude_shadow_main");
+        assert(virtual_mi != null && vec_size((virtual_mi as ModuleInterface*).module_imports) == 1,
+            "interface projection should omit compiler-synthesized virtual providers");
+        assert((ptr_vec_get((virtual_mi as ModuleInterface*).module_imports, 0)
+            as InterfaceModuleImport*).provider_module == "prelude_shadow_helper",
+            "object-backed provider should remain after virtual filtering");
+        mi_free(virtual_mi as ModuleInterface*);
+        analysis_result_free(virtual);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests test_analysis_semantic_failure.
+ */
+func test_analysis_semantic_failure() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "infer_fail_main", cfg);
+        assert(analysis_has_errors(result), "expected semantic analysis errors");
+        assert(has_diag_code(result, "SIG-0030"), "expected SIG-0030 semantic diagnostic");
+        assert(analysis_name_resolution(result) != null, "expected names to still be produced");
+        assert(analysis_signature_tables(result) != null, "expected signature tables to still be produced");
+        assert(analysis_locals(result) != null, "expected locals pass to still run");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/** Owned analysis maps replace values without growing or leaking the old type. */
+func test_analysis_owned_type_map_replacement() {
+    let map = spm_create();
+    with (let first = type_builtin_int() => type_free(first),
+          let replacement = type_builtin_bool() => type_free(replacement)) {
+        analysis_owned_type_map_put(map, "target", first);
+        analysis_owned_type_map_put(map, "target", replacement);
+        assert(spm_size(map) == 1, "replacement should retain one owned map entry");
+        assert(type_is_builtin(spm_get(map, "target") as Type*, "bool"),
+            "replacement should retain the latest cloned type");
+    }
+    type_free(spm_get(map, "target") as Type*);
+    spm_free(map);
+}
+
+/**
+ * Tests alias-qualified imports and alias-only unqualified failure.
+ */
+func test_analysis_alias_imports() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "export_alias_main", cfg);
+        assert(!analysis_has_errors(result), "expected alias-qualified import to analyze");
+        analysis_result_free(result);
+    }
+
+    with (let cfg2 = log_config_create(LL_SILENT, false) => drop cfg2) {
+        let result2 = analysis_analyze_entry(sp, "export_alias_unqualified_err", cfg2);
+        assert(analysis_has_errors(result2), "expected alias-only unqualified reference to fail");
+        analysis_result_free(result2);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests opaque export-surface diagnostics and accepted pointer-only cases.
+ */
+func test_analysis_opaque_export_surfaces() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let pointer_result = analysis_analyze_entry(sp, "opaque_pointer_ok", cfg);
+        assert(!analysis_has_errors(pointer_result), "expected opaque pointer signatures to analyze");
+        analysis_result_free(pointer_result);
+    }
+
+    with (let cfg2 = log_config_create(LL_SILENT, false) => drop cfg2) {
+        let aggregate_result = analysis_analyze_entry(sp, "opaque_aggregate_pointer_ok", cfg2);
+        assert(!analysis_has_errors(aggregate_result), "expected transparent aggregate pointer frontier to analyze");
+        analysis_result_free(aggregate_result);
+    }
+
+    with (let cfg3 = log_config_create(LL_SILENT, false) => drop cfg3) {
+        let private_result = analysis_analyze_entry(sp, "opaque_private_sig_err", cfg3);
+        assert(analysis_has_errors(private_result), "expected private type leak to fail");
+        assert(has_diag_code(private_result, "RES-0037"), "expected RES-0037 for private type leak");
+        analysis_result_free(private_result);
+    }
+
+    with (let cfg4 = log_config_create(LL_SILENT, false) => drop cfg4) {
+        let value_result = analysis_analyze_entry(sp, "opaque_by_value_err", cfg4);
+        assert(analysis_has_errors(value_result), "expected opaque by-value signature to fail");
+        assert(has_diag_code(value_result, "RES-0038"), "expected RES-0038 for opaque by-value signature");
+        analysis_result_free(value_result);
+    }
+
+    with (let cfg5 = log_config_create(LL_SILENT, false) => drop cfg5) {
+        let aggregate_value_result = analysis_analyze_entry(sp, "opaque_aggregate_by_value_err", cfg5);
+        assert(analysis_has_errors(aggregate_value_result), "expected opaque by-value field to fail");
+        assert(has_diag_code(aggregate_value_result, "RES-0038"), "expected RES-0038 for opaque by-value field");
+        analysis_result_free(aggregate_value_result);
+    }
+
+    with (let cfg6 = log_config_create(LL_SILENT, false) => drop cfg6) {
+        let aggregate_private_result = analysis_analyze_entry(sp, "opaque_aggregate_private_err", cfg6);
+        assert(analysis_has_errors(aggregate_private_result), "expected private aggregate field to fail");
+        assert(has_diag_code(aggregate_private_result, "RES-0037"), "expected RES-0037 for private aggregate field");
+        analysis_result_free(aggregate_private_result);
+    }
+
+    with (let cfg7 = log_config_create(LL_SILENT, false) => drop cfg7) {
+        let non_type_result = analysis_analyze_entry(sp, "opaque_non_type_err", cfg7);
+        assert(analysis_has_errors(non_type_result), "expected opaque non-type export to fail");
+        assert(has_diag_code(non_type_result, "RES-0039"), "expected RES-0039 for opaque non-type export");
+        analysis_result_free(non_type_result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Tests that imported opaque types reject layout operations.
+ */
+func test_analysis_imported_opaque_layout_errors() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let field_result = analysis_analyze_entry(sp, "opaque_import_field_err", cfg);
+        assert(analysis_has_errors(field_result), "expected imported opaque field access to fail");
+        assert(has_diag_code(field_result, "RES-0038"), "expected RES-0038 for opaque field access");
+        analysis_result_free(field_result);
+    }
+
+    with (let cfg2 = log_config_create(LL_SILENT, false) => drop cfg2) {
+        let ctor_result = analysis_analyze_entry(sp, "opaque_import_constructor_err", cfg2);
+        assert(analysis_has_errors(ctor_result), "expected imported opaque constructor to fail");
+        assert(has_diag_code(ctor_result, "RES-0038"), "expected RES-0038 for opaque constructor");
+        analysis_result_free(ctor_result);
+    }
+
+    with (let cfg3 = log_config_create(LL_SILENT, false) => drop cfg3) {
+        let new_enum_result = analysis_analyze_entry(sp, "opaque_import_new_enum_err", cfg3);
+        assert(analysis_has_errors(new_enum_result), "expected imported opaque enum allocation to fail");
+        assert(has_diag_code(new_enum_result, "RES-0038"), "expected RES-0038 for opaque enum allocation");
+        analysis_result_free(new_enum_result);
+    }
+
+    with (let cfg4 = log_config_create(LL_SILENT, false) => drop cfg4) {
+        let drop_result = analysis_analyze_entry(sp, "opaque_import_drop_err", cfg4);
+        assert(analysis_has_errors(drop_result), "expected imported opaque pointer drop to fail");
+        assert(has_diag_code(drop_result, "RES-0038"), "expected RES-0038 for opaque pointer drop");
+        analysis_result_free(drop_result);
+    }
+    sp_free(sp);
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    test_analysis_ok_main();
+    test_analysis_resolution_entrypoint();
+    test_analysis_emits_verified_source_provider_fingerprints();
+    test_analysis_interface_enum_from_source_fallback();
+    test_analysis_entry_and_module_import_projection();
+    test_analysis_semantic_failure();
+    test_analysis_owned_type_map_replacement();
+    test_analysis_alias_imports();
+    test_analysis_opaque_export_surfaces();
+    test_analysis_imported_opaque_layout_errors();
+    printl_s("analysis_test: all tests passed");
+}

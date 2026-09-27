@@ -1,0 +1,451 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module name_resolver.imports;
+
+import std.hashmap;
+import std.hashset;
+import std.text;
+import std.vector;
+import util.diag;
+import ast;
+import dea_prelude;
+import symbols;
+import name_resolver.query;
+import name_resolver.state;
+
+/**
+ * Compare two parsed type references for signature compatibility.
+ *
+ * @param left First type reference.
+ * @param right Second type reference.
+ * @return `true` if the two type references describe the same type syntax.
+ */
+func nr_path_is_same_signature(left: TypeRef*?, right: TypeRef*?) -> bool {
+    if (left == null || right == null) {
+        return left == null && right == null;
+    }
+
+    let lt = left as TypeRef*;
+    let rt = right as TypeRef*;
+    if (lt.name != rt.name || lt.pointer_depth != rt.pointer_depth || lt.is_nullable != rt.is_nullable) {
+        return false;
+    }
+    if ((lt.suffixes == null) != (rt.suffixes == null)) {
+        return false;
+    }
+    if (lt.suffixes != null) {
+        let ls = lt.suffixes as VectorBase*;
+        let rs = rt.suffixes as VectorBase*;
+        if (vec_size(ls) != vec_size(rs)) {
+            return false;
+        }
+        for (let si = 0; si < vec_size(ls); si = si + 1) {
+            let a = ptr_vec_get(ls, si) as TypeSuffix*;
+            let b = ptr_vec_get(rs, si) as TypeSuffix*;
+            if (ord(a.kind) != ord(b.kind) || a.array_len != b.array_len) {
+                return false;
+            }
+        }
+    }
+
+    let left_modules = lt.module_path;
+    let right_modules = rt.module_path;
+    if ((left_modules == null) != (right_modules == null)) {
+        return false;
+    }
+    if (left_modules != null) {
+        let lv = left_modules as StringVector*;
+        let rv = right_modules as StringVector*;
+        if (sv_size(lv) != sv_size(rv)) {
+            return false;
+        }
+        for (let i = 0; i < sv_size(lv); i = i + 1) {
+            if (sv_get(lv, i) != sv_get(rv, i)) {
+                return false;
+            }
+        }
+    }
+
+    let left_names = lt.name_qualifier;
+    let right_names = rt.name_qualifier;
+    if ((left_names == null) != (right_names == null)) {
+        return false;
+    }
+    if (left_names != null) {
+        let lv2 = left_names as StringVector*;
+        let rv2 = right_names as StringVector*;
+        if (sv_size(lv2) != sv_size(rv2)) {
+            return false;
+        }
+        for (let i = 0; i < sv_size(lv2); i = i + 1) {
+            if (sv_get(lv2, i) != sv_get(rv2, i)) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Check whether two extern function symbols have compatible signatures.
+ *
+ * @param local_sym Local symbol.
+ * @param imported_sym Imported symbol.
+ * @return `true` if both are extern functions with matching signatures.
+ */
+func nr_extern_signatures_compatible(local_sym: Symbol*, imported_sym: Symbol*) -> bool {
+    if (ord(local_sym.kind) != ord(SYM_FUNC) || ord(imported_sym.kind) != ord(SYM_FUNC)) {
+        return false;
+    }
+    if (local_sym.decl_ptr == null || imported_sym.decl_ptr == null) {
+        return false;
+    }
+
+    let local_decl = local_sym.decl_ptr as FuncDecl*;
+    let imported_decl = imported_sym.decl_ptr as FuncDecl*;
+    if (!local_decl.is_extern || !imported_decl.is_extern) {
+        return false;
+    }
+    if (vec_size(local_decl.params) != vec_size(imported_decl.params)) {
+        return false;
+    }
+    if (!nr_path_is_same_signature(local_decl.return_type, imported_decl.return_type)) {
+        return false;
+    }
+
+    for (let i = 0; i < vec_size(local_decl.params); i = i + 1) {
+        let lp = ptr_vec_get(local_decl.params, i) as Param*;
+        let rp = ptr_vec_get(imported_decl.params, i) as Param*;
+        if (!nr_path_is_same_signature(lp.type_ref, rp.type_ref)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Record a local/imported extern shadow check that needs resolved signatures.
+ *
+ * @param env Importing module environment.
+ * @param imported_module Module that provided the imported symbol.
+ * @param name Shadowed symbol name.
+ * @param local Local symbol.
+ * @param imported Imported symbol.
+ */
+func nr_add_pending_extern_shadow(env: ModuleEnv*, imported_module: string, name: string, local: Symbol*,
+                                  imported: Symbol*) {
+    ptr_vec_push(env.pending_extern_shadows,
+        new PendingExternShadow(local, imported, imported_module, name) as void*);
+}
+
+/**
+ * Return whether two imported symbol handles identify the same top-level symbol.
+ *
+ * @param left First symbol.
+ * @param right Second symbol.
+ * @return `true` when both handles point at the same exported symbol identity.
+ */
+func nr_symbols_same_identity(left: Symbol*, right: Symbol*) -> bool {
+    return left.module_name == right.module_name &&
+        left.name == right.name &&
+        left.owner_name == right.owner_name &&
+        ord(left.kind) == ord(right.kind);
+}
+
+/**
+ * Return whether a string vector already contains a name.
+ *
+ * @param values Vector to inspect.
+ * @param name Name to look up.
+ * @return `true` if `name` is present.
+ */
+func nr_sv_has(values: StringVector*, name: string) -> bool {
+    for (let i = 0; i < sv_size(values); i = i + 1) {
+        if (sv_get(values, i) == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Format names as a comma-separated quoted list for diagnostics.
+ *
+ * @param names Names to format.
+ * @return String such as `'a', 'b', 'c'`.
+ */
+func nr_format_quoted_names(names: StringVector*) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 0; i < sv_size(names); i = i + 1) {
+            if (i > 0) {
+                sb_append(sb, ", ");
+            }
+            sb_append(sb, "'");
+            sb_append(sb, sv_get(names, i));
+            sb_append(sb, "'");
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/**
+ * Import one symbol into a module environment's unqualified import surface.
+ *
+ * @param env Importing module environment.
+ * @param imported_env Imported module environment.
+ * @param diags Diagnostic collector.
+ * @param name Imported symbol name.
+ * @param sym Imported symbol.
+ */
+func nr_import_symbol(env: ModuleEnv*, imported_env: ModuleEnv*, diags: DiagCollector*, name: string, sym: Symbol*) {
+    if (spm_has(env.alias_imports, name)) {
+        nr_span_diag_error(
+            diags,
+            "RES-0034",
+            "name '" + name + "' cannot be used both as an import alias and as a visible symbol in module '" + env.module_name + "'",
+            env.module_ptr.filename,
+            env.module_ptr.span
+        );
+        return;
+    }
+
+    let local_sym = nr_module_env_local(env, name);
+    if (local_sym != null) {
+        let local = local_sym as Symbol*;
+        if (nr_extern_signatures_compatible(local, sym)) {
+            nr_span_diag_warn(
+                diags,
+                "RES-0020",
+                "imported extern function '" + nr_build_top_key(imported_env.module_name, name) + "' will be shadowed by a compatible local extern declaration in module '" + env.module_name + "'",
+                env.module_ptr.filename,
+                local.span
+            );
+        } else if (ord(local.kind) == ord(SYM_FUNC) && ord(sym.kind) == ord(SYM_FUNC) &&
+                   local.is_extern && sym.is_extern && sym.decl_ptr == null) {
+            nr_add_pending_extern_shadow(env, imported_env.module_name, name, local, sym);
+        } else {
+            nr_span_diag_warn(
+                diags,
+                "RES-0021",
+                "imported symbol '" + nr_build_top_key(imported_env.module_name, name) + "' will be shadowed by a local definition in module '" + env.module_name + "'",
+                env.module_ptr.filename,
+                local.span
+            );
+        }
+        return;
+    }
+
+    if (spm_has(env.imported, name)) {
+        let existing_import = nr_module_env_imported(env, name) as Symbol*;
+        if (nr_symbols_same_identity(existing_import, sym)) {
+            return;
+        }
+
+        if (nr_module_env_has_prelude_name(env, name)) {
+            nr_span_diag_warn(
+                diags,
+                "RES-0021",
+                "imported symbol '" + nr_build_top_key(existing_import.module_name, name) +
+                    "' will be shadowed by imported symbol '" + nr_build_top_key(imported_env.module_name, name) +
+                    "' in module '" + env.module_name + "'",
+                env.module_ptr.filename,
+                env.module_ptr.span
+            );
+            spm_remove(env.imported, name);
+            spm_remove(env.all, name);
+            spm_put(env.imported, name, sym as void*);
+            if (!ss_has(env.ambiguous_imports, name)) {
+                spm_put(env.all, name, sym as void*);
+            }
+            ss_remove(env.prelude_imported, name);
+            return;
+        }
+        nr_span_diag_warn(
+            diags,
+            "RES-0022",
+            "symbol '" + name + "' imported from multiple modules into '" + env.module_name + "'",
+            env.module_ptr.filename,
+            env.module_ptr.span
+        );
+        ss_add(env.ambiguous_imports, name);
+        spm_remove(env.all, name);
+        return;
+    }
+
+    spm_put(env.imported, name, sym as void*);
+    if (!ss_has(env.ambiguous_imports, name)) {
+        spm_put(env.all, name, sym as void*);
+    }
+}
+
+/**
+ * Merge one imported module's exported symbols into a module environment.
+ *
+ * @param env Importing module environment.
+ * @param imported_env Imported module environment.
+ * @param diags Diagnostic collector.
+ * @param imp Import declaration being processed.
+ */
+func nr_open_imports_one(env: ModuleEnv*, imported_env: ModuleEnv*, diags: DiagCollector*, imp: Import*?) {
+    for (let i = 0; i < spm_capacity(imported_env.exports); i = i + 1) {
+        if (spm_slot_occupied(imported_env.exports, i)) {
+            nr_import_symbol(env, imported_env, diags, spm_slot_key(imported_env.exports, i),
+                spm_slot_value(imported_env.exports, i) as Symbol*);
+        }
+    }
+}
+
+/**
+ * Bind an import alias namespace.
+ *
+ * @param env Importing module environment.
+ * @param imported_env Imported module environment.
+ * @param diags Diagnostic collector.
+ * @param imp Alias import declaration.
+ */
+func nr_bind_import_alias(env: ModuleEnv*, imported_env: ModuleEnv*, diags: DiagCollector*, imp: Import*) {
+    if (spm_has(env.alias_imports, imp.alias)) {
+        nr_span_diag_error(
+            diags,
+            "RES-0033",
+            "duplicate import alias '" + imp.alias + "' in module '" + env.module_name + "'",
+            env.module_ptr.filename,
+            imp.span
+        );
+        return;
+    }
+
+    if (spm_has(env.locals, imp.alias) || spm_has(env.imported, imp.alias) || spm_has(env.all, imp.alias)) {
+        nr_span_diag_error(
+            diags,
+            "RES-0034",
+            "name '" + imp.alias + "' cannot be used both as an import alias and as a visible symbol in module '" + env.module_name + "'",
+            env.module_ptr.filename,
+            imp.span
+        );
+        return;
+    }
+
+    spm_put(env.alias_imports, imp.alias, imported_env as void*);
+}
+
+/**
+ * Bind selected exported symbols from one imported module.
+ *
+ * @param env Importing module environment.
+ * @param imported_env Imported module environment.
+ * @param diags Diagnostic collector.
+ * @param imp Selective import declaration.
+ */
+func nr_bind_selective_import(env: ModuleEnv*, imported_env: ModuleEnv*, diags: DiagCollector*, imp: Import*) {
+    let names = imp.names as StringVector*;
+    with (let redundant = sv_create(sv_size(names)) => sv_free(redundant)) {
+        for (let i = 0; i < sv_size(names); i = i + 1) {
+            let name = sv_get(names, i);
+            let value = spm_get(imported_env.exports, name);
+            if (value == null) {
+                nr_span_diag_error(
+                    diags,
+                    "RES-0032",
+                    "module '" + imported_env.module_name + "' does not export symbol '" + name,
+                    env.module_ptr.filename,
+                    imp.span
+                );
+                continue;
+            }
+
+            let existing_import = nr_module_env_imported(env, name);
+            if (existing_import != null &&
+                nr_symbols_same_identity(existing_import as Symbol*, value as Symbol*) &&
+                !nr_sv_has(redundant, name)) {
+                sv_push(redundant, name);
+            }
+            nr_import_symbol(env, imported_env, diags, name, value as Symbol*);
+        }
+
+        if (sv_size(redundant) > 0) {
+            nr_span_diag_warn(
+                diags,
+                "RES-0035",
+                "redundant import: " + nr_format_quoted_names(redundant) + " already imported from '" + imported_env.module_name + "'",
+                env.module_ptr.filename,
+                imp.span
+            );
+        }
+    }
+}
+
+/**
+ * Resolve and open every import for a module environment.
+ *
+ * @param nr Full name-resolution state.
+ * @param env Module environment being populated.
+ * @param diags Diagnostic collector.
+ */
+func nr_open_imports(nr: NameResolution*, env: ModuleEnv*, diags: DiagCollector*) {
+    if (!dea_is_virtual_module_name(env.module_name)) {
+        let dea_env = nr_env_find(nr, dea_module_name());
+        if (dea_env != null) {
+            ss_add(env.imported_modules, dea_module_name());
+            ss_add(env.qualified_modules, dea_module_name());
+            nr_open_imports_one(env, dea_env as ModuleEnv*, diags, null);
+            for (let i = 0; i < spm_capacity((dea_env as ModuleEnv*).locals); i = i + 1) {
+                if (!spm_slot_occupied((dea_env as ModuleEnv*).locals, i)) {
+                    continue;
+                }
+                let name = spm_slot_key((dea_env as ModuleEnv*).locals, i);
+                if (spm_has(env.imported, name) && !ss_has(env.ambiguous_imports, name) &&
+                    ((nr_module_env_imported(env, name) as Symbol*)).module_name == dea_module_name()) {
+                    ss_add(env.prelude_imported, name);
+                }
+            }
+        }
+    }
+
+    let mod = env.module_ptr;
+    for (let i = 0; i < vec_size(mod.imports); i = i + 1) {
+        let imp = ptr_vec_get(mod.imports, i) as Import*;
+        if (dea_is_virtual_module_name(imp.name)) {
+            continue;
+        }
+        ss_add(env.imported_modules, imp.name);
+        let imported_env = nr_env_find(nr, imp.name);
+        if (imported_env == null) {
+            nr_span_diag_error(
+                diags,
+                "RES-0029",
+                "unknown imported module '" + imp.name + "' in module '" + env.module_name + "'",
+                env.module_ptr.filename,
+                env.module_ptr.span
+            );
+            continue;
+        }
+        match (imp.kind) {
+            IMPORT_OPEN => {
+                if (ss_has(env.open_import_modules, imp.name)) {
+                    nr_span_diag_warn(
+                        diags,
+                        "RES-0036",
+                        "duplicated 'import " + imp.name + "'",
+                        env.module_ptr.filename,
+                        imp.span
+                    );
+                }
+                ss_add(env.open_import_modules, imp.name);
+                ss_add(env.qualified_modules, imp.name);
+                nr_open_imports_one(env, imported_env as ModuleEnv*, diags, imp);
+            }
+            IMPORT_ALIAS => {
+                nr_bind_import_alias(env, imported_env as ModuleEnv*, diags, imp);
+            }
+            IMPORT_SELECTIVE => {
+                nr_bind_selective_import(env, imported_env as ModuleEnv*, diags, imp);
+            }
+        }
+    }
+}

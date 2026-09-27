@@ -1,0 +1,56 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module try_chain_main;
+
+import std.assert;
+
+/**
+ * Produces the initial null that should short-circuit the entire chain.
+ */
+func l1() -> int? {
+    return null;
+}
+
+/**
+ * Must never run when the first postfix-try returns null.
+ *
+ * @param value Unused propagated value.
+ * @return The input value.
+ */
+func l2(value: int) -> int? {
+    assert(false, "l2 should not run after a null try");
+    return value;
+}
+
+/**
+ * Must never run when the first postfix-try returns null.
+ *
+ * @param value Unused propagated value.
+ * @return The input value.
+ */
+func l3(value: int) -> int? {
+    assert(false, "l3 should not run after a null try");
+    return value;
+}
+
+/**
+ * Executes the nested postfix-try chain.
+ *
+ * @return `null` when short-circuiting works.
+ */
+func helper() -> int? {
+    return l3(l2(l1()?)?)?;
+}
+
+/**
+ * Main entry point for nested try short-circuit tests.
+ */
+func main() -> int {
+    if (helper() == null) {
+        return 12;
+    }
+    return 13;
+}

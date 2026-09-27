@@ -1,0 +1,589 @@
+#!/usr/bin/env python3
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 gwz
+#
+
+"""Run L1 Stage 2 trace checks."""
+
+from __future__ import annotations
+
+import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+from pathlib import Path
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+from run_tests import select_cases
+from test_runner_common import (
+    CHILD_TRACE_FIXTURES,
+    REPO_ROOT,
+    SCRIPT_DIR,
+    TESTS_DIR,
+    TRACE_EXCLUDED_STAGE2_TESTS,
+    TRACE_SLOW_STAGE2_TESTS,
+    ChildTraceFixture,
+    discover_trace_l1_tests,
+    first_lines,
+    repo_stage2_command,
+    require_repo_stage2_test_env,
+    resolve_trace_job_count,
+    run_captured_binary_output,
+    stage2_test_support_args,
+)
+from dea_tooling.bootstrap import wrapper_command
+
+SHARED_TESTS_DIR = REPO_ROOT / "compiler/stage1_l0/tests"
+sys.path.insert(0, str(SHARED_TESTS_DIR))
+if str(TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(TESTS_DIR))
+from support.driver_inputs import native_driver_args
+from test_runner_common import subject_compiler
+
+
+TRACE_CHECKER = SCRIPT_DIR / "check_trace_log.py"
+TRACE_ARTIFACT_DIR_ENV = "L1_TRACE_ARTIFACT_DIR"
+
+
+@dataclass(frozen=True)
+class TraceResult:
+    """One completed trace test result."""
+
+    case_index: int
+    case_name: str
+    status: str
+    report_text: str
+    failure_excerpt: str
+    summary: str
+    trace_path: Path
+    run_seconds: float
+    analyzer_seconds: float
+    trace_bytes: int
+    event_count: int | None
+
+
+@dataclass(frozen=True)
+class ChildTraceResult:
+    """Build, execution, and independent analysis of one child fixture."""
+
+    fixture: ChildTraceFixture
+    status: str
+    detail: str
+    artifact_dir: Path
+    build_seconds: float
+    run_seconds: float
+    analyzer_seconds: float
+    report_text: str
+    mem_events: int | None
+    arc_events: int | None
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse CLI arguments."""
+
+    parser = argparse.ArgumentParser(
+        description="Run L1 Stage 2 ARC/memory trace checks.",
+        epilog=(
+            "Parallelism defaults to the normal bounded auto-detected worker count. "
+            "Override with L1_TRACE_TEST_JOBS=<n> or L1_TEST_JOBS=<n>."
+        ),
+    )
+    parser.add_argument("-v", "--verbose", action="store_true", help="Show analyzer details for each test.")
+    parser.add_argument(
+        "--include-slow",
+        action="store_true",
+        help="Include trace tests that are intentionally skipped by the default trace suite.",
+    )
+    parser.add_argument(
+        "--children", action="store_true",
+        help="Build, run, and independently analyze L1 child fixtures.",
+    )
+    parser.add_argument("--keep-artifacts", action="store_true", help="Keep trace/stdout/report files under the temp directory.")
+    parser.add_argument(
+        "--artifact-dir",
+        help=(
+            "Write trace/stdout/report files to this directory instead of a temporary location. "
+            f"Also accepts ${TRACE_ARTIFACT_DIR_ENV}."
+        ),
+    )
+    parser.add_argument("--max-details", type=int, default=5, help="Pass through to check_trace_log.py detail limit.")
+    parser.add_argument(
+        "tests",
+        nargs="*",
+        metavar="TEST",
+        help="Parent test names, or declared .l1 fixture names with --children; extensions are optional.",
+    )
+    return parser.parse_args(argv)
+
+
+def resolve_artifact_dir(args: argparse.Namespace) -> tuple[Path, bool]:
+    """Return the effective artifact directory and whether it should be cleaned up."""
+
+    artifact_dir_text = (args.artifact_dir or os.environ.get(TRACE_ARTIFACT_DIR_ENV, "")).strip()
+    if artifact_dir_text:
+        artifact_dir = Path(artifact_dir_text).expanduser() / "stage2"
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        return artifact_dir.resolve(strict=False), False
+    return Path(tempfile.mkdtemp(prefix="l1_stage2_trace_tests.")), not args.keep_artifacts
+
+
+def read_text(path: Path) -> str:
+    """Read one text file with replacement for invalid bytes."""
+
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def read_text_excerpt(path: Path, max_bytes: int = 64 * 1024) -> str:
+    """Read a bounded leading excerpt from one artifact."""
+
+    with path.open("rb") as artifact_file:
+        data = artifact_file.read(max_bytes + 1)
+    truncated = len(data) > max_bytes
+    text = data[:max_bytes].decode("utf-8", errors="replace")
+    if truncated:
+        text += f"\n... trace excerpt truncated after {max_bytes} bytes ...\n"
+    return text
+
+
+def leak_summary(report_text: str) -> str:
+    """Return the leak summary fields from one trace report."""
+
+    fields: list[str] = []
+    for line in report_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("leaked_object_ptrs=") or stripped.startswith("leaked_string_ptrs="):
+            fields.append(stripped)
+    return " ".join(fields)
+
+
+def parsed_event_count(report_text: str) -> int | None:
+    """Return the analyzer's total parsed event count, when present."""
+
+    for line in report_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("total_events="):
+            try:
+                return int(stripped.partition("=")[2])
+            except ValueError:
+                return None
+    return None
+
+
+def parsed_event_families(report_text: str) -> dict[str, int | None]:
+    """Read the analyzer's per-family event counts without accepting missing data."""
+
+    counts: dict[str, int | None] = {"mem": None, "arc": None}
+    for line in report_text.splitlines():
+        key, separator, value = line.strip().partition("=")
+        family = {"mem_events": "mem", "arc_events": "arc"}.get(key)
+        if separator and family is not None:
+            try:
+                counts[family] = int(value)
+            except ValueError:
+                counts[family] = None
+    return counts
+
+
+def select_child_fixtures(requested: list[str]) -> list[ChildTraceFixture]:
+    """Select only declared child fixtures, preserving their metadata order."""
+
+    if not requested:
+        return list(CHILD_TRACE_FIXTURES)
+    by_name = {fixture.name: fixture for fixture in CHILD_TRACE_FIXTURES}
+    selected: set[str] = set()
+    missing: list[str] = []
+    for raw_name in requested:
+        selector = Path(raw_name).name
+        name = selector[:-3] if selector.endswith(".l1") else selector
+        if name in by_name and selector in {name, name + ".l1"}:
+            selected.add(name)
+        else:
+            missing.append(selector)
+    if missing:
+        raise ValueError(f"unknown L1 child trace fixture(s): {' '.join(missing)}")
+    return [fixture for fixture in CHILD_TRACE_FIXTURES if fixture.name in selected]
+
+
+def child_build_command(fixture: ChildTraceFixture, build_dir: Path, executable: Path) -> list[str]:
+    """Build a traced L1 fixture with the normal native test inputs."""
+
+    compiler = subject_compiler(build_dir)
+    return [
+        *wrapper_command(compiler),
+        *native_driver_args(compiler),
+        "--build", "--trace-memory", "--trace-arc",
+        "--project-root", str(fixture.path.parent),
+        "--output", str(executable), fixture.name,
+    ]
+
+
+def child_executable_path(case_dir: Path, name: str, *, windows: bool | None = None) -> Path:
+    """Return the output executable path for the selected host platform."""
+
+    if windows is None:
+        windows = os.name == "nt"
+    return case_dir / (name + (".exe" if windows else ""))
+
+
+def run_child_fixture(
+    fixture: ChildTraceFixture,
+    artifact_dir: Path,
+    build_dir: Path,
+    max_details: int,
+    python_path: Path,
+    repo_env: dict[str, str],
+) -> ChildTraceResult:
+    """Build and run one fixture, then analyze only the child's stderr."""
+
+    case_dir = artifact_dir / fixture.name
+    case_dir.mkdir(parents=True, exist_ok=True)
+    build_out = case_dir / "build.stdout.log"
+    build_err = case_dir / "build.stderr.log"
+    child_out = case_dir / "child.stdout.log"
+    trace_path = case_dir / "child.stderr.log"
+    report_path = case_dir / "child.trace_report.txt"
+    executable = child_executable_path(case_dir, fixture.name)
+    trace_env = repo_env.copy()
+    trace_env.setdefault("DEA_TRACE_FLUSH", "block")
+    build_seconds = run_seconds = analyzer_seconds = 0.0
+    report_text = ""
+    counts: dict[str, int | None] = {"mem": None, "arc": None}
+
+    def result(status: str, detail: str) -> ChildTraceResult:
+        return ChildTraceResult(
+            fixture, status, detail, case_dir, build_seconds, run_seconds,
+            analyzer_seconds, report_text, counts["mem"], counts["arc"],
+        )
+
+    started = time.perf_counter()
+    try:
+        built = run_captured_binary_output(
+            child_build_command(fixture, build_dir, executable),
+            cwd=REPO_ROOT, env=trace_env,
+            stdout_path=build_out, stderr_path=build_err,
+        )
+    except OSError as exc:
+        build_seconds = time.perf_counter() - started
+        return result("BUILD_FAIL", f"build launch failed: {exc}")
+    build_seconds = time.perf_counter() - started
+    if built.returncode != 0:
+        return result("BUILD_FAIL", f"build exited {built.returncode}: {first_lines(read_text_excerpt(build_err), 40)}")
+
+    started = time.perf_counter()
+    try:
+        executed = run_captured_binary_output(
+            [str(executable)], cwd=REPO_ROOT, env=trace_env,
+            stdout_path=child_out, stderr_path=trace_path,
+        )
+    except OSError as exc:
+        run_seconds = time.perf_counter() - started
+        return result("RUN_FAIL", f"child launch failed: {exc}")
+    run_seconds = time.perf_counter() - started
+    if executed.returncode != 0:
+        return result("RUN_FAIL", f"child exited {executed.returncode}: {first_lines(read_text_excerpt(trace_path), 40)}")
+
+    started = time.perf_counter()
+    try:
+        with report_path.open("w", encoding="utf-8") as report_file:
+            analyzed = subprocess.run(
+                [str(python_path), str(TRACE_CHECKER), str(trace_path),
+                 "--triage", "--max-details", str(max_details)],
+                cwd=REPO_ROOT, env=trace_env, stdout=report_file,
+                stderr=subprocess.STDOUT, check=False, text=True,
+                encoding="utf-8", errors="replace",
+            )
+    except OSError as exc:
+        analyzer_seconds = time.perf_counter() - started
+        return result("TRACE_FAIL", f"analyzer launch failed: {exc}")
+    analyzer_seconds = time.perf_counter() - started
+    report_text = read_text(report_path)
+    counts = parsed_event_families(report_text)
+    if analyzed.returncode != 0:
+        return result("TRACE_FAIL", f"analyzer exited {analyzed.returncode}")
+    missing = [family for family in sorted(fixture.required_families) if not counts[family] or counts[family] < 0]
+    if missing:
+        return result("TRACE_FAIL", f"missing required trace events: {', '.join(missing)}")
+    return result("TRACE_OK", leak_summary(report_text))
+
+
+def run_children(
+    fixtures: list[ChildTraceFixture], artifact_dir: Path, build_dir: Path,
+    jobs: int, max_details: int, python_path: Path, repo_env: dict[str, str],
+    verbose: bool = False,
+) -> int:
+    """Run selected children in parallel and retain evidence of every failure."""
+
+    run_dir = Path(tempfile.mkdtemp(prefix="children.", dir=artifact_dir))
+    failures: list[ChildTraceResult] = []
+    unexpected_failures = 0
+    print("Running L1 Stage 2 child fixture trace checks...", flush=True)
+    print(f"artifacts={run_dir}", flush=True)
+    print(f"Parallel jobs: {jobs}", flush=True)
+    with ThreadPoolExecutor(max_workers=jobs) as executor:
+        futures = {
+            executor.submit(run_child_fixture, fixture, run_dir, build_dir, max_details, python_path, repo_env): fixture
+            for fixture in fixtures
+        }
+        for future in as_completed(futures):
+            fixture = futures[future]
+            try:
+                result = future.result()
+            except Exception as exc:
+                unexpected_failures += 1
+                print(f"Running child {fixture.name}... FAIL (unexpected runner error: {exc})", flush=True)
+                print(f"artifacts={run_dir / fixture.name}", flush=True)
+                continue
+            counts = f"mem_events={result.mem_events} arc_events={result.arc_events}"
+            timings = (
+                f" build_s={result.build_seconds:.3f} run_s={result.run_seconds:.3f}"
+                f" analyzer_s={result.analyzer_seconds:.3f} {counts}"
+            )
+            if result.status == "TRACE_OK":
+                print(f"Running child {fixture.name}... PASS{timings} {result.detail}", flush=True)
+                if verbose:
+                    print(result.report_text, flush=True)
+                continue
+            failures.append(result)
+            print(f"Running child {fixture.name}... FAIL ({result.status}){timings}", flush=True)
+            print(f"build_stdout={result.artifact_dir / 'build.stdout.log'}", flush=True)
+            print(f"build_stderr={result.artifact_dir / 'build.stderr.log'}", flush=True)
+            print(f"child_stdout={result.artifact_dir / 'child.stdout.log'}", flush=True)
+            print(f"trace_artifact={result.artifact_dir / 'child.stderr.log'}", flush=True)
+            print(f"trace_report={result.artifact_dir / 'child.trace_report.txt'}", flush=True)
+            print(result.detail, flush=True)
+            if result.report_text:
+                print(result.report_text, flush=True)
+    failed_count = len(failures) + unexpected_failures
+    print(f"Passed: {len(fixtures) - failed_count}", flush=True)
+    print(f"Failed: {failed_count}", flush=True)
+    if failed_count:
+        print(f"Trace artifacts kept at: {run_dir}", flush=True)
+        return 1
+    print("All child trace fixtures passed!", flush=True)
+    return 0
+
+
+def run_one(
+    case_index: int,
+    case_name: str,
+    case_path: Path,
+    artifact_dir: Path,
+    max_details: int,
+    python_path: Path,
+    repo_env: dict[str, str],
+) -> TraceResult:
+    """Run one trace test and analyze its log."""
+
+    out_path = artifact_dir / f"{case_name}.stdout.log"
+    trace_path = artifact_dir / f"{case_name}.stderr.log"
+    report_path = artifact_dir / f"{case_name}.trace_report.txt"
+
+    trace_env = repo_env.copy()
+    trace_env.setdefault("DEA_TRACE_FLUSH", "block")
+    run_started = time.perf_counter()
+    run_result = run_captured_binary_output(
+        [
+            *repo_stage2_command(),
+            *stage2_test_support_args(case_path),
+            "--trace-memory",
+            "--trace-arc",
+            "--project-root",
+            "compiler/stage2_l1/src",
+            "--run",
+            str(case_path),
+        ],
+        cwd=REPO_ROOT,
+        env=trace_env,
+        stdout_path=out_path,
+        stderr_path=trace_path,
+    )
+    run_seconds = time.perf_counter() - run_started
+    if run_result.returncode != 0:
+        return TraceResult(
+            case_index,
+            case_name,
+            "RUN_FAIL",
+            "",
+            read_text_excerpt(trace_path),
+            "",
+            trace_path,
+            run_seconds,
+            0.0,
+            run_result.stderr_bytes,
+            None,
+        )
+
+    analyzer_started = time.perf_counter()
+    with report_path.open("w", encoding="utf-8") as report_file:
+        analyzer_result = subprocess.run(
+            [str(python_path), str(TRACE_CHECKER), str(trace_path), "--triage", "--max-details", str(max_details)],
+            cwd=REPO_ROOT,
+            env=trace_env,
+            stdout=report_file,
+            stderr=subprocess.STDOUT,
+            check=False,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    analyzer_seconds = time.perf_counter() - analyzer_started
+
+    report_text = read_text(report_path)
+    event_count = parsed_event_count(report_text)
+    if analyzer_result.returncode == 0:
+        return TraceResult(
+            case_index,
+            case_name,
+            "TRACE_OK",
+            report_text,
+            "",
+            leak_summary(report_text),
+            trace_path,
+            run_seconds,
+            analyzer_seconds,
+            run_result.stderr_bytes,
+            event_count,
+        )
+
+    return TraceResult(
+        case_index,
+        case_name,
+        "TRACE_FAIL",
+        report_text,
+        "",
+        "",
+        trace_path,
+        run_seconds,
+        analyzer_seconds,
+        run_result.stderr_bytes,
+        event_count,
+    )
+
+
+def main() -> int:
+    """Program entrypoint."""
+
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)
+
+    args = parse_args()
+    if args.children and args.include_slow:
+        print("run_trace_tests.py: --children cannot be combined with --include-slow", file=sys.stderr, flush=True)
+        return 2
+    try:
+        jobs = resolve_trace_job_count()
+    except ValueError as exc:
+        print(f"run_trace_tests.py: {exc}", file=sys.stderr, flush=True)
+        return 2
+    try:
+        python_path, _, build_dir, repo_env = require_repo_stage2_test_env("run_trace_tests.py")
+    except RuntimeError as exc:
+        print(f"run_trace_tests.py: {exc}", file=sys.stderr, flush=True)
+        return 2
+
+    try:
+        if args.children:
+            fixtures = select_child_fixtures(args.tests)
+            cases = []
+        else:
+            include_slow = args.include_slow or bool(args.tests)
+            cases = select_cases(discover_trace_l1_tests(include_slow=include_slow), args.tests)
+    except ValueError as exc:
+        print(f"run_trace_tests.py: {exc}", file=sys.stderr, flush=True)
+        return 2
+    if not args.children and not cases:
+        print("No tests found in compiler/stage2_l1/tests", flush=True)
+        return 0
+
+    artifact_dir, cleanup_artifacts = resolve_artifact_dir(args)
+    failed_results: list[TraceResult] = []
+    passed = 0
+
+    try:
+        if args.children:
+            status = run_children(
+                fixtures, artifact_dir, build_dir, jobs, args.max_details, python_path, repo_env, args.verbose,
+            )
+            if status != 0:
+                cleanup_artifacts = False
+            return status
+        print("Running stage2_l1 trace checks...", flush=True)
+        print(f"artifacts={artifact_dir}", flush=True)
+        print(f"Parallel jobs: {jobs}", flush=True)
+        if TRACE_EXCLUDED_STAGE2_TESTS:
+            print(f"Skipping trace-incompatible tests: {' '.join(sorted(TRACE_EXCLUDED_STAGE2_TESTS))}", flush=True)
+        if TRACE_SLOW_STAGE2_TESTS and not include_slow:
+            print(
+                "Skipping slow trace tests by default: "
+                f"{' '.join(sorted(TRACE_SLOW_STAGE2_TESTS))} "
+                "(use --include-slow or pass the test name explicitly)",
+                flush=True,
+            )
+        print("======================================", flush=True)
+
+        def emit(result: TraceResult) -> None:
+            nonlocal passed
+
+            events = str(result.event_count) if result.event_count is not None else "n/a"
+            summary = f" {result.summary}" if result.summary else ""
+            metrics = (
+                f" run_s={result.run_seconds:.3f} analyzer_s={result.analyzer_seconds:.3f}"
+                f" trace_bytes={result.trace_bytes} events={events}"
+            )
+            if result.status == "TRACE_OK":
+                passed += 1
+                if args.verbose:
+                    print(f"Running {result.case_name}... PASS{metrics}", flush=True)
+                    print(result.report_text, flush=True)
+                else:
+                    print(f"Running {result.case_name}... PASS{summary}{metrics}", flush=True)
+                return
+
+            failed_results.append(result)
+            print(f"Running {result.case_name}... FAIL{metrics}", flush=True)
+            print(f"trace_artifact={result.trace_path} trace_bytes={result.trace_bytes}", flush=True)
+            if result.status == "RUN_FAIL":
+                print(first_lines(result.failure_excerpt, 40), flush=True)
+            else:
+                print(result.report_text, flush=True)
+
+        with ThreadPoolExecutor(max_workers=jobs) as executor:
+            future_map = {
+                executor.submit(
+                    run_one,
+                    case.index,
+                    case.name,
+                    case.path,
+                    artifact_dir,
+                    args.max_details,
+                    python_path,
+                    repo_env,
+                ): case.index
+                for case in cases
+            }
+            for future in as_completed(future_map):
+                emit(future.result())
+
+        print("======================================", flush=True)
+        print(f"Passed: {passed}", flush=True)
+        print(f"Failed: {len(failed_results)}", flush=True)
+        if failed_results:
+            failed_names = [result.case_name for result in sorted(failed_results, key=lambda result: result.case_index)]
+            print(f"Failed tests: {' '.join(failed_names)}", flush=True)
+            print(f"Trace artifacts kept at: {artifact_dir}", flush=True)
+            cleanup_artifacts = False
+            return 1
+        print("All trace tests passed!", flush=True)
+        return 0
+    finally:
+        if cleanup_artifacts:
+            shutil.rmtree(artifact_dir, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

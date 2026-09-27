@@ -1,0 +1,67 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_match_validation_err;
+
+import typing_match_validation_dep;
+import typing_match_validation_other;
+
+func nested_path(x: typing_match_validation_dep::RemoteColor) -> int {
+    match (x) {
+        typing_match_validation_dep::RemoteColor::Red => { return 1; }
+        typing_match_validation_dep::Blue => { return 2; }
+    }
+}
+
+func unknown_plus_missing(x: typing_match_validation_dep::RemoteColor) -> int {
+    match (x) {
+        typing_match_validation_dep::Red => { return 1; }
+        Missing => { return 2; }
+    }
+}
+
+func invalid_before_wildcard(x: typing_match_validation_dep::RemoteColor) -> int {
+    match (x) {
+        typing_match_validation_dep::Red => { return 1; }
+        Missing => { return 2; }
+        _ => { return 3; }
+    }
+}
+
+func wildcard_before_variants(x: typing_match_validation_dep::RemoteColor) -> int {
+    match (x) {
+        _ => { return 1; }
+        typing_match_validation_dep::Red => { return 2; }
+        typing_match_validation_dep::Blue => { return 3; }
+    }
+}
+
+func explicit_exhaustive(x: typing_match_validation_dep::RemoteColor) -> int {
+    match (x) {
+        typing_match_validation_dep::Red => { return 1; }
+        typing_match_validation_dep::Blue => { return 2; }
+    }
+}
+
+func wrong_module_plus_missing(x: typing_match_validation_dep::RemoteColor) -> int {
+    match (x) {
+        typing_match_validation_dep::Red => { return 1; }
+        typing_match_validation_other::Blue => { return 2; }
+    }
+}
+
+func wrong_enum_plus_missing(x: typing_match_validation_dep::RemoteColor) -> int {
+    match (x) {
+        typing_match_validation_dep::Red => { return 1; }
+        typing_match_validation_dep::Circle => { return 2; }
+    }
+}
+
+func invalid_arity_plus_missing(x: typing_match_validation_dep::PayloadColor) -> int {
+    match (x) {
+        typing_match_validation_dep::Loaded(value, extra) => { return value; }
+        typing_match_validation_dep::Empty => { return 0; }
+    }
+}

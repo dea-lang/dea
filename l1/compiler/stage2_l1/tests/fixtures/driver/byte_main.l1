@@ -1,0 +1,13 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module byte_main;
+
+/**
+ * Main entry point for non-preferred return-type warning tests.
+ */
+func main() -> byte {
+    return 1 as byte;
+}

@@ -1,0 +1,133 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module name_resolver.interface;
+
+import std.hashmap;
+import std.hashset;
+import std.vector;
+import util.diag;
+import ast;
+import dea_prelude;
+import module_interface;
+import symbols;
+import types;
+import name_resolver.collect;
+import name_resolver.state;
+
+/**
+ * Create the synthetic module node used by an interface-backed environment.
+ *
+ * @param mi Interface backing the module environment.
+ * @return New empty module node for the interface provider.
+ */
+func nr_make_interface_module(mi: ModuleInterface*) -> Module* {
+    return new Module(mi.module_name, null, ptr_vec_create(0), ptr_vec_create(0), dea_zero_span(),
+        "<interface:" + mi.module_name + ">");
+}
+
+/**
+ * Define an interface-backed local/exported symbol.
+ *
+ * @param env Interface module environment being populated.
+ * @param diags Diagnostic collector.
+ * @param name Symbol name.
+ * @param kind Symbol kind.
+ * @param owner_name Owner name for enum variants, otherwise empty.
+ * @param resolved_type Optional resolved type to clone into the symbol.
+ * @param span Source/interface span for diagnostics.
+ */
+func nr_define_interface_symbol(env: ModuleEnv*, diags: DiagCollector*, name: string, kind: SymbolKind,
+                                owner_name: string, resolved_type: Type*?, span: Span, is_const: bool,
+                                const_literal: string, is_extern: bool) {
+    let sym = symbol_create(name, kind, env.module_name, owner_name, null, span);
+    if (resolved_type != null) {
+        symbol_set_type_clone(sym, resolved_type as Type*);
+    }
+    sym.is_const = is_const;
+    sym.const_literal = const_literal;
+    sym.is_extern = is_extern;
+    nr_define_local(env, diags, name, sym);
+}
+
+/**
+ * Mark every local interface symbol as exported.
+ *
+ * @param env Interface module environment.
+ */
+func nr_export_all_interface_symbols(env: ModuleEnv*) {
+    for (let i = 0; i < spm_capacity(env.locals); i = i + 1) {
+        if (spm_slot_occupied(env.locals, i)) {
+            spm_put(env.exports, spm_slot_key(env.locals, i), spm_slot_value(env.locals, i));
+        }
+    }
+}
+
+/**
+ * Populate one module environment from parsed interface metadata.
+ *
+ * @param env Interface-backed environment to populate.
+ * @param mi Interface metadata.
+ * @param diags Diagnostic collector.
+ */
+func nr_populate_interface_env(env: ModuleEnv*, mi: ModuleInterface*, diags: DiagCollector*) {
+    for (let i = 0; i < vec_size(mi.struct_infos); i = i + 1) {
+        let info = ptr_vec_get(mi.struct_infos, i) as StructInfo*;
+        nr_define_interface_symbol(env, diags, info.name, SYM_STRUCT, "", info.struct_type, info.span, false, "",
+            false);
+        if (info.is_opaque) {
+            ss_add(env.opaque_exports, info.name);
+        }
+    }
+
+    for (let enum_i = 0; enum_i < vec_size(mi.enum_infos); enum_i = enum_i + 1) {
+        let info2 = ptr_vec_get(mi.enum_infos, enum_i) as EnumInfo*;
+        nr_define_interface_symbol(env, diags, info2.name, SYM_ENUM, "", info2.enum_type, info2.span, false, "",
+            false);
+        if (info2.is_opaque) {
+            ss_add(env.opaque_exports, info2.name);
+        } else {
+            for (let variant_i = 0; variant_i < vec_size(info2.variants); variant_i = variant_i + 1) {
+                let variant = ptr_vec_get(info2.variants, variant_i) as EnumVariantInfo*;
+                nr_define_interface_symbol(env, diags, variant.name, SYM_ENUM_VARIANT, info2.name, info2.enum_type,
+                    info2.span, false, "", false);
+            }
+        }
+    }
+
+    for (let alias_i = 0; alias_i < vec_size(mi.alias_entries); alias_i = alias_i + 1) {
+        let entry = ptr_vec_get(mi.alias_entries, alias_i) as InterfaceAliasEntry*;
+        nr_define_interface_symbol(env, diags, entry.name, SYM_TYPE_ALIAS, "", entry.ty, dea_zero_span(), false, "",
+            false);
+    }
+
+    for (let func_i = 0; func_i < vec_size(mi.func_entries); func_i = func_i + 1) {
+        let entry2 = ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*;
+        nr_define_interface_symbol(env, diags, entry2.name, SYM_FUNC, "", entry2.ty, dea_zero_span(), false, "",
+            entry2.is_extern);
+    }
+
+    for (let let_i = 0; let_i < vec_size(mi.let_entries); let_i = let_i + 1) {
+        let entry3 = ptr_vec_get(mi.let_entries, let_i) as InterfaceLetEntry*;
+        nr_define_interface_symbol(env, diags, entry3.name, SYM_LET, "", entry3.ty, dea_zero_span(),
+            entry3.is_const, entry3.literal, false);
+    }
+
+    nr_export_all_interface_symbols(env);
+}
+
+/**
+ * Create a module environment backed by a parsed `.l1m` interface.
+ *
+ * @param mi Interface backing the environment.
+ * @param diags Diagnostic collector.
+ * @return New owned interface environment.
+ */
+func nr_make_interface_env(mi: ModuleInterface*, diags: DiagCollector*) -> ModuleEnv* {
+    let module_ptr = nr_make_interface_module(mi);
+    let env = nr_make_owned_env(module_ptr, true);
+    nr_populate_interface_env(env, mi, diags);
+    return env;
+}

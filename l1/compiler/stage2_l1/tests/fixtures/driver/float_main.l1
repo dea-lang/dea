@@ -1,0 +1,19 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module float_main;
+
+func widen(x: float) -> double {
+    return x;
+}
+
+func main() -> int {
+    let seed: float = 1.0f;
+    let total: double = widen(seed) + 1.5 + 1.5;
+    if (total == 4.0 && total >= 4.0) {
+        return 17;
+    }
+    return 0;
+}

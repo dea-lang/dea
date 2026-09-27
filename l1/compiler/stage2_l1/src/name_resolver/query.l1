@@ -1,0 +1,284 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module name_resolver.query;
+
+import std.hashmap;
+import std.hashset;
+import std.vector;
+import ast;
+import dea_prelude;
+import symbols;
+import name_resolver.state;
+
+/**
+ * Return the canonical dependency name for a resolved symbol.
+ *
+ * @param sym Resolved symbol to normalize.
+ * @return Owning enum name for a variant, otherwise the symbol's own name.
+ */
+func nr_dependency_symbol_name(sym: Symbol*) -> string {
+    if (ord(sym.kind) == ord(SYM_ENUM_VARIANT)) {
+        return sym.owner_name;
+    }
+    return sym.name;
+}
+
+/**
+ * Report whether a resolved symbol is a real cross-module dependency.
+ *
+ * @param consumer_module Module from which the lookup was performed.
+ * @param sym Successfully resolved symbol.
+ * @return `true` for non-virtual provider symbols owned by another module.
+ */
+func nr_is_cross_module_symbol(consumer_module: string, sym: Symbol*) -> bool {
+    return sym.module_name != consumer_module && !dea_is_virtual_module_name(sym.module_name);
+}
+
+/**
+ * Record one successful cross-module symbol lookup in the canonical ledger.
+ *
+ * Repeated lookups of the same provider-owned symbol from one consumer are
+ * deduplicated. Enum variants share their owning enum's ledger identity.
+ *
+ * @param self Name-resolution result receiving the lookup.
+ * @param consumer_env Environment from which the lookup was performed.
+ * @param sym Successfully resolved symbol.
+ */
+func nr_record_resolved_symbol(self: NameResolution*, consumer_env: ModuleEnv*, sym: Symbol*) {
+    if (!nr_is_cross_module_symbol(consumer_env.module_name, sym)) {
+        return;
+    }
+    let symbol_name = nr_dependency_symbol_name(sym);
+    let key = consumer_env.module_name + "|" + sym.module_name + "::" + symbol_name;
+    if (ss_has(self.resolved_symbol_keys, key)) {
+        return;
+    }
+    ss_add(self.resolved_symbol_keys, key);
+    ptr_vec_push(self.resolved_symbols,
+        new ResolvedSymbolRef(consumer_env.module_name, sym.module_name, symbol_name) as void*);
+}
+
+/**
+ * Return the number of canonical cross-module resolved-symbol entries.
+ *
+ * @param self Name-resolution result to inspect.
+ * @return Resolved-symbol entry count.
+ */
+func nr_resolved_symbol_count(self: NameResolution*) -> int {
+    return vec_size(self.resolved_symbols);
+}
+
+/**
+ * Return one canonical cross-module resolved-symbol entry.
+ *
+ * @param self Name-resolution result to inspect.
+ * @param index Zero-based entry index.
+ * @return Borrowed resolved-symbol entry.
+ */
+func nr_resolved_symbol_get(self: NameResolution*, index: int) -> ResolvedSymbolRef* {
+    return ptr_vec_get(self.resolved_symbols, index) as ResolvedSymbolRef*;
+}
+
+/**
+ * Return the number of module environments in the result.
+ *
+ * @param self Name-resolution result to inspect.
+ * @return Module-environment count.
+ */
+func nr_env_count(self: NameResolution*) -> int {
+    return vec_size(self.envs);
+}
+
+/**
+ * Return a module environment by index.
+ *
+ * @param self Name-resolution result to inspect.
+ * @param index Zero-based environment index.
+ * @return Module environment at `index`.
+ */
+func nr_env_get(self: NameResolution*, index: int) -> ModuleEnv* {
+    return ptr_vec_get(self.envs, index) as ModuleEnv*;
+}
+
+/**
+ * Find a module environment by module name.
+ *
+ * @param self Name-resolution result to inspect.
+ * @param module_name Module name to look up.
+ * @return Matching environment, or `null` if absent.
+ */
+func nr_env_find(self: NameResolution*, module_name: string) -> ModuleEnv*? {
+    let value = spm_get(self.by_name, module_name);
+    if (value == null) {
+        return null;
+    }
+    return value as ModuleEnv*;
+}
+
+/**
+ * Look up a locally defined symbol in a module environment.
+ *
+ * @param self Module environment to inspect.
+ * @param name Symbol name to look up.
+ * @return Local symbol, or `null` if absent.
+ */
+func nr_module_env_local(self: ModuleEnv*, name: string) -> Symbol*? {
+    return nr_map_symbol_get(self.locals, name);
+}
+
+/**
+ * Look up an imported symbol in a module environment.
+ *
+ * @param self Module environment to inspect.
+ * @param name Symbol name to look up.
+ * @return Imported symbol, or `null` if absent.
+ */
+func nr_module_env_imported(self: ModuleEnv*, name: string) -> Symbol*? {
+    return nr_map_symbol_get(self.imported, name);
+}
+
+/**
+ * Look up any visible symbol in a module environment.
+ *
+ * @param self Module environment to inspect.
+ * @param name Symbol name to look up.
+ * @return Visible symbol, or `null` if absent or ambiguous.
+ */
+func nr_module_env_all(self: ModuleEnv*, name: string) -> Symbol*? {
+    return nr_map_symbol_get(self.all, name);
+}
+
+/**
+ * Check whether an imported name is ambiguous in a module environment.
+ *
+ * @param self Module environment to inspect.
+ * @param name Symbol name to check.
+ * @return `true` if multiple imports provide `name`.
+ */
+func nr_module_env_is_ambiguous(self: ModuleEnv*, name: string) -> bool {
+    return ss_has(self.ambiguous_imports, name);
+}
+
+/**
+ * Check whether a module environment imports a given module.
+ *
+ * @param self Module environment to inspect.
+ * @param module_name Imported module name to check.
+ * @return `true` if `module_name` appears in the import set.
+ */
+func nr_module_env_imports_module(self: ModuleEnv*, module_name: string) -> bool {
+    return ss_has(self.imported_modules, module_name);
+}
+
+/**
+ * Check whether a module environment allows direct `module::name` lookup for a module.
+ *
+ * @param self Module environment to inspect.
+ * @param module_name Module name to check.
+ * @return `true` if `module_name` can be used as a qualified namespace.
+ */
+func nr_module_env_qualifies_module(self: ModuleEnv*, module_name: string) -> bool {
+    return ss_has(self.qualified_modules, module_name);
+}
+
+/**
+ * Look up the module environment bound to an import alias.
+ *
+ * @param self Module environment to inspect.
+ * @param alias Alias namespace to look up.
+ * @return Imported module environment for `alias`, or `null`.
+ */
+func nr_module_env_alias_target(self: ModuleEnv*, alias: string) -> ModuleEnv*? {
+    let value = spm_get(self.alias_imports, alias);
+    if (value == null) {
+        return null;
+    }
+    return value as ModuleEnv*;
+}
+
+/**
+ * Check whether one visible imported name currently comes from the implicit `dea` prelude.
+ *
+ * @param self Module environment to inspect.
+ * @param name Imported symbol name to check.
+ * @return `true` when `name` currently resolves through the implicit prelude open.
+ */
+func nr_module_env_has_prelude_name(self: ModuleEnv*, name: string) -> bool {
+    return ss_has(self.prelude_imported, name);
+}
+
+/**
+ * Return pending extern-shadow check count.
+ *
+ * @param self Module environment to inspect.
+ * @return Number of deferred checks.
+ */
+func nr_module_env_pending_extern_shadow_count(self: ModuleEnv*) -> int {
+    return vec_size(self.pending_extern_shadows);
+}
+
+/**
+ * Return one pending extern-shadow check.
+ *
+ * @param self Module environment to inspect.
+ * @param index Deferred check index.
+ * @return Pending extern-shadow check at `index`.
+ */
+func nr_module_env_pending_extern_shadow_get(self: ModuleEnv*, index: int) -> PendingExternShadow* {
+    return ptr_vec_get(self.pending_extern_shadows, index) as PendingExternShadow*;
+}
+
+/**
+ * Return the names of locally defined symbols.
+ *
+ * @param self Module environment to inspect.
+ * @return New vector of local symbol names.
+ */
+func nr_module_env_local_keys(self: ModuleEnv*) -> StringVector* {
+    return spm_keys(self.locals);
+}
+
+/**
+ * Return the names of imported symbols.
+ *
+ * @param self Module environment to inspect.
+ * @return New vector of imported symbol names.
+ */
+func nr_module_env_imported_keys(self: ModuleEnv*) -> StringVector* {
+    return spm_keys(self.imported);
+}
+
+/**
+ * Return the names exported by a module environment.
+ *
+ * @param self Module environment to inspect.
+ * @return New vector of exported symbol names.
+ */
+func nr_module_env_export_keys(self: ModuleEnv*) -> StringVector* {
+    return spm_keys(self.exports);
+}
+
+/**
+ * Return the names of all visible non-ambiguous symbols.
+ *
+ * @param self Module environment to inspect.
+ * @return New vector of visible symbol names.
+ */
+func nr_module_env_all_keys(self: ModuleEnv*) -> StringVector* {
+    return spm_keys(self.all);
+}
+
+/**
+ * Return sorted module-environment names.
+ *
+ * @param self Name-resolution result to inspect.
+ * @return Sorted module names.
+ */
+func nr_env_names_sorted(self: NameResolution*) -> StringVector* {
+    let names = spm_keys(self.by_name);
+    sv_sort(names);
+    return names;
+}

@@ -1,0 +1,180 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module wide_math_main;
+
+import std.assert;
+import std.integer;
+import std.text;
+
+func expect_bool(label: string, actual: bool, expected: bool) {
+    assert(actual == expected, label);
+}
+
+func expect_eq_ui(label: string, actual: uint, expected: uint) {
+    assert(actual == expected, label);
+}
+
+func expect_opt_eq_ui(label: string, actual: uint?, expected: uint) {
+    assert(actual != null, label);
+    let value = actual as uint;
+    assert(value == expected, label);
+}
+
+func expect_opt_null_ui(label: string, actual: uint?) {
+    assert(actual == null, label);
+}
+
+func expect_eq_l(label: string, actual: long, expected: long) {
+    assert(actual == expected, label);
+}
+
+func expect_opt_eq_l(label: string, actual: long?, expected: long) {
+    assert(actual != null, label);
+    let value = actual as long;
+    assert(value == expected, label);
+}
+
+func expect_opt_null_l(label: string, actual: long?) {
+    assert(actual == null, label);
+}
+
+func expect_eq_ul(label: string, actual: ulong, expected: ulong) {
+    assert(actual == expected, label);
+}
+
+func expect_opt_eq_ul(label: string, actual: ulong?, expected: ulong) {
+    assert(actual != null, label);
+    let value = actual as ulong;
+    assert(value == expected, label);
+}
+
+func expect_opt_null_ul(label: string, actual: ulong?) {
+    assert(actual == null, label);
+}
+
+func test_uint_math() {
+    let zero: uint = 0;
+    let one: uint = 1;
+    let two: uint = 2;
+    let three: uint = 3;
+    let six: uint = 6;
+    let seven: uint = 7;
+    let eight: uint = 8;
+    let ten: uint = 10;
+    let max_value: uint = 0xffffffff; // 4294967295
+
+    expect_eq_ui("uint_max", uint_max(), max_value);
+    expect_eq_ui("div_ui", div_ui(seven, three), two);
+    expect_eq_ui("mod_ui", mod_ui(seven, three), one);
+    expect_eq_ui("div_ceil_ui", div_ceil_ui(seven, three), three);
+    expect_eq_ui("min_ui", min_ui(max_value, ten), ten);
+    expect_eq_ui("max_ui", max_ui(max_value, ten), max_value);
+    expect_eq_ui("clamp_ui low", clamp_ui(zero, one, ten), one);
+    expect_eq_ui("clamp_ui high", clamp_ui(max_value, one, ten), ten);
+    expect_bool("is_even_ui", is_even_ui(eight), true);
+    expect_bool("is_odd_ui", is_odd_ui(seven), true);
+    expect_bool("is_multiple_ui true", is_multiple_ui(six, three), true);
+    expect_bool("is_multiple_ui false", is_multiple_ui(seven, three), false);
+    expect_eq_ui("gcd_ui", gcd_ui(48, 18), six);
+    expect_eq_ui("gcd_ui zero", gcd_ui(zero, max_value), max_value);
+    expect_opt_eq_ui("lcm_ui", lcm_ui(21, six), 42);
+    expect_opt_null_ui("lcm_ui overflow", lcm_ui(max_value, two));
+    expect_opt_eq_ui("pow_ui", pow_ui(two, 16), 65536);
+    expect_opt_null_ui("pow_ui negative", pow_ui(two, -1));
+    expect_opt_null_ui("pow_ui overflow", pow_ui(two, 32));
+    expect_eq_ui("isqrt_ui max", isqrt_ui(max_value), 65535);
+    expect_eq_ui("align_down_ui", align_down_ui(17, eight), 16);
+    expect_opt_eq_ui("align_up_ui", align_up_ui(17, eight), 24);
+    expect_opt_null_ui("align_up_ui overflow", align_up_ui(max_value, two));
+    expect_bool("is_aligned_ui true", is_aligned_ui(16, eight), true);
+    expect_bool("is_aligned_ui false", is_aligned_ui(17, eight), false);
+}
+
+func test_long_math() {
+    let min_value: long = -0x8000000000000000; // -9223372036854775808
+    let max_value: long = 0x7fffffffffffffff; // 9223372036854775807
+
+    expect_eq_l("long_min", long_min(), min_value);
+    expect_eq_l("long_max", long_max(), max_value);
+    expect_eq_l("emod_l", emod_l(-7, 3), 2);
+    expect_eq_l("ediv_l", ediv_l(-7, 3), -3);
+    expect_eq_l("div_floor_l", div_floor_l(7, -3), -3);
+    expect_eq_l("div_ceil_l", div_ceil_l(7, -3), -2);
+    expect_eq_l("min_l", min_l(max_value, -2), -2);
+    expect_eq_l("max_l", max_l(max_value, -2), max_value);
+    expect_eq_l("clamp_l low", clamp_l(-5, 0, 10), 0);
+    expect_eq_l("clamp_l high", clamp_l(20, 0, 10), 10);
+    assert(sign_l(min_value) == -1, "sign_l min");
+    assert(sign_l(0) == 0, "sign_l zero");
+    assert(sign_l(max_value) == 1, "sign_l max");
+    expect_bool("is_even_l", is_even_l(min_value), true);
+    expect_bool("is_odd_l", is_odd_l(max_value), true);
+    expect_bool("is_multiple_l min -1", is_multiple_l(min_value, -1), true);
+    expect_bool("is_multiple_l false", is_multiple_l(22, -7), false);
+    expect_opt_eq_l("abs_l", abs_l(-17), 17);
+    expect_opt_null_l("abs_l min", abs_l(min_value));
+    expect_opt_eq_l("gcd_l", gcd_l(-48, 18), 6);
+    expect_opt_null_l("gcd_l min", gcd_l(min_value, 0));
+    expect_opt_eq_l("lcm_l", lcm_l(-21, 6), 42);
+    expect_opt_null_l("lcm_l min", lcm_l(min_value, 1));
+    expect_opt_eq_l("pow_l", pow_l(2, 62), 4611686018427387904);
+    expect_opt_null_l("pow_l negative", pow_l(2, -1));
+    expect_opt_null_l("pow_l overflow", pow_l(2, 63));
+    expect_opt_eq_l("isqrt_l max", isqrt_l(max_value), 3037000499);
+    expect_opt_null_l("isqrt_l negative", isqrt_l(-1));
+    expect_opt_null_l("align_down_l min", align_down_l(min_value, 3));
+    expect_opt_eq_l("align_up_l min", align_up_l(min_value, 3), -9223372036854775806);
+    expect_opt_null_l("align_up_l max", align_up_l(max_value, 2));
+    expect_bool("is_aligned_l true", is_aligned_l(-16, 8), true);
+    expect_bool("is_aligned_l false", is_aligned_l(-17, 8), false);
+}
+
+func test_ulong_math() {
+    let zero: ulong = 0;
+    let one: ulong = 1;
+    let two: ulong = 2;
+    let three: ulong = 3;
+    let six: ulong = 6;
+    let seven: ulong = 7;
+    let eight: ulong = 8;
+    let ten: ulong = 10;
+    let max_value: ulong = 0xffffffffffffffff; // 18446744073709551615
+
+    expect_eq_ul("ulong_max", ulong_max(), max_value);
+    expect_eq_ul("div_ul", div_ul(max_value, three), 6148914691236517205);
+    expect_eq_ul("mod_ul", mod_ul(seven, three), one);
+    expect_eq_ul("div_ceil_ul", div_ceil_ul(max_value, two), 9223372036854775808);
+    expect_eq_ul("min_ul", min_ul(max_value, ten), ten);
+    expect_eq_ul("max_ul", max_ul(max_value, ten), max_value);
+    expect_eq_ul("clamp_ul low", clamp_ul(zero, one, ten), one);
+    expect_eq_ul("clamp_ul high", clamp_ul(max_value, one, ten), ten);
+    expect_bool("is_even_ul", is_even_ul(eight), true);
+    expect_bool("is_odd_ul", is_odd_ul(max_value), true);
+    expect_bool("is_multiple_ul true", is_multiple_ul(six, three), true);
+    expect_bool("is_multiple_ul false", is_multiple_ul(seven, three), false);
+    expect_eq_ul("gcd_ul", gcd_ul(48, 18), six);
+    expect_eq_ul("gcd_ul zero", gcd_ul(max_value, zero), max_value);
+    expect_opt_eq_ul("lcm_ul", lcm_ul(21, six), 42);
+    expect_opt_null_ul("lcm_ul overflow", lcm_ul(max_value, two));
+    expect_opt_eq_ul("pow_ul", pow_ul(two, 63), 9223372036854775808);
+    expect_opt_null_ul("pow_ul negative", pow_ul(two, -1));
+    expect_opt_null_ul("pow_ul overflow", pow_ul(two, 64));
+    expect_eq_ul("isqrt_ul max", isqrt_ul(max_value), 0xffffffff);
+    expect_eq_ul("align_down_ul", align_down_ul(max_value, eight), 18446744073709551608);
+    expect_opt_eq_ul("align_up_ul", align_up_ul(17, eight), 24);
+    expect_opt_null_ul("align_up_ul overflow", align_up_ul(max_value, two));
+    expect_bool("is_aligned_ul true", is_aligned_ul(16, eight), true);
+    expect_bool("is_aligned_ul false", is_aligned_ul(17, eight), false);
+}
+
+func main() -> int {
+    test_uint_math();
+    test_long_math();
+    test_ulong_math();
+    let rendered_max = ulong_to_string(ulong_max());
+    assert(rendered_max == "18446744073709551615", "ulong_max text");
+    return 0;
+}

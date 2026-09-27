@@ -1,0 +1,42 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module io_errno_test;
+
+import std.assert;
+import std.fs;
+import std.io;
+import std.string;
+import sys.rt;
+
+/**
+ * Tests test_stale_errno_does_not_break_std_fs_file_io.
+ */
+func test_stale_errno_does_not_break_std_fs_file_io() {
+    let missing_path = "build/l0_io_errno_missing_probe_20260313.txt";
+    let target_path = "build/l0_io_errno_probe_20260313.txt";
+
+    // Seed errno with a failing syscall path before std.fs wrappers.
+    let missing = rt_file_info(missing_path);
+    assert(!missing.exists, "expected missing probe file to not exist");
+
+    let w = write_file(target_path, "ok");
+    assert(w != null, "write_file should not fail due to stale errno");
+
+    let rd = read_file(target_path);
+    assert(rd != null, "read_file should not fail due to stale errno");
+    assert(rd as string == "ok", "read_file content mismatch");
+
+    let deleted = rt_delete_file(target_path);
+    assert(deleted, "cleanup delete failed");
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    test_stale_errno_does_not_break_std_fs_file_io();
+    printl_s("io_errno_test: all tests passed");
+}

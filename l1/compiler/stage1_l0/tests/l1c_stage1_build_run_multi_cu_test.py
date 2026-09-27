@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from support.compiler_subject import selected_compiler
 import shutil
 import subprocess
 import sys
@@ -54,7 +55,7 @@ def stage1_compiler() -> Path:
     build_dir = Path(os.environ.get("L1_BUILD_DIR", "build/dea"))
     if not build_dir.is_absolute():
         build_dir = L1_ROOT / build_dir
-    return resolve_tool(build_dir / "bin" / "l1c-stage1")
+    return resolve_tool(selected_compiler(build_dir / "bin" / "l1c-stage1"))
 
 
 def real_c_compiler() -> str:

@@ -1,0 +1,26 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_with_return_flow_override;
+
+func break_cleanup_overrides_header_return() -> int {
+    while (true) {
+        with (let marker: int = 0 => break, return 1 => null) {
+        }
+        return 2;
+    }
+    return 3;
+}
+
+func continue_cleanup_overrides_header_return() -> int {
+    let i: int = 0;
+    while (i < 1) {
+        i = i + 1;
+        with (let marker: int = 0 => continue, return 1 => null) {
+        }
+        return 2;
+    }
+    return 3;
+}

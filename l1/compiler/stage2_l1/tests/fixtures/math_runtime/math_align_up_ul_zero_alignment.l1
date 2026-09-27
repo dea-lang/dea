@@ -1,0 +1,15 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module math_align_up_ul_zero_alignment;
+
+import std.integer;
+
+func main() -> int {
+    let value: ulong = 8;
+    let zero: ulong = 0;
+    align_up_ul(value, zero);
+    return 0;
+}

@@ -1,0 +1,18 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module iface_dep;
+
+export RemoteColor, RemotePoint;
+
+struct RemotePoint {
+    x: int;
+    y: int;
+}
+
+enum RemoteColor {
+    Red;
+    Rgb(red: int, green: int, blue: int);
+}

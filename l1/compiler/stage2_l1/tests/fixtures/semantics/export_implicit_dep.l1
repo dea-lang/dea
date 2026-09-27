@@ -1,0 +1,22 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module export_implicit_dep;
+
+enum Visible {
+    VisibleCase;
+}
+
+enum _Private {
+    LeakedCase;
+}
+
+func public_value() -> int {
+    return 7;
+}
+
+func _hidden_value() -> int {
+    return 9;
+}

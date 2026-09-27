@@ -1,0 +1,40 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_match_flow_err;
+
+/**
+ * Defines the Status enumeration.
+ */
+enum Status {
+    Idle;
+    Busy;
+    Done;
+}
+
+/**
+ * Triggers a non-exhaustive match diagnostic and function fallthrough.
+ *
+ * @param s The enum value to inspect.
+ * @return A status code for two variants only.
+ */
+func err_match_non_exhaustive(s: Status) -> int {
+    match (s) {
+        Idle => { return 0; }
+        Busy => { return 1; }
+    }
+}
+
+/**
+ * Triggers a missing-return diagnostic for an incomplete `if`.
+ *
+ * @param ok Whether to return the fast-path value.
+ * @return One when `ok` is true.
+ */
+func err_if_missing_else(ok: bool) -> int {
+    if (ok) {
+        return 1;
+    }
+}

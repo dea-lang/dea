@@ -1,0 +1,111 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_const_bool_flow_ok;
+
+const ALWAYS: bool = true;
+const NEVER: bool = false;
+const SHORT_FALSE: bool = false && (1 / 0 == 0);
+const SHORT_TRUE: bool = true || (1 / 0 == 0);
+
+struct Box {
+    value: int;
+}
+
+func if_true_revival() -> int {
+    let p: Box* = new Box(1);
+    drop p;
+    if (true) {
+        p = new Box(2);
+    }
+    return p.value;
+}
+
+func named_bool_revival() -> int {
+    let p: Box* = new Box(1);
+    drop p;
+    if (ALWAYS) {
+        p = new Box(2);
+    }
+    return p.value;
+}
+
+func if_false_body_does_not_drop() -> int {
+    let p: Box* = new Box(1);
+    if (NEVER) {
+        drop p;
+    }
+    return p.value;
+}
+
+func short_circuit_and_skips_local(flag: bool) -> int {
+    let p: Box* = new Box(1);
+    if (NEVER && flag) {
+        drop p;
+    }
+    return p.value;
+}
+
+func folded_short_circuit_and_skips_local(flag: bool) -> int {
+    let p: Box* = new Box(1);
+    if (SHORT_FALSE && flag) {
+        drop p;
+    }
+    return p.value;
+}
+
+func short_circuit_or_skips_local(flag: bool) -> int {
+    let p: Box* = new Box(1);
+    drop p;
+    if (ALWAYS || flag) {
+        p = new Box(2);
+    }
+    return p.value;
+}
+
+func folded_short_circuit_or_skips_local(flag: bool) -> int {
+    let p: Box* = new Box(1);
+    drop p;
+    if (SHORT_TRUE || flag) {
+        p = new Box(2);
+    }
+    return p.value;
+}
+
+func while_false_body_does_not_drop() -> int {
+    let p: Box* = new Box(1);
+    while (NEVER) {
+        drop p;
+    }
+    return p.value;
+}
+
+func while_true_break_revival() -> int {
+    let p: Box* = new Box(1);
+    drop p;
+    while (ALWAYS) {
+        p = new Box(2);
+        break;
+    }
+    return p.value;
+}
+
+func for_false_body_does_not_drop() -> int {
+    let p: Box* = new Box(1);
+    for (; NEVER;) {
+        drop p;
+    }
+    return p.value;
+}
+
+func for_true_break_revival() -> int {
+    let p: Box* = new Box(1);
+    drop p;
+    for (; ALWAYS;) {
+        p = new Box(2);
+        break;
+    }
+    return p.value;
+}

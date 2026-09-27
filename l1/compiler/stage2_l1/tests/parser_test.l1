@@ -1,0 +1,1684 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module parser_test;
+
+import std.io;
+import std.string;
+import std.assert;
+import std.vector;
+
+import ast;
+import parser;
+import std.text;
+
+/**
+ * Parses source and asserts that the first diagnostic matches `expected`.
+ *
+ * @param source The module source to parse.
+ * @param expected The expected diagnostic code.
+ */
+func expect_error_code(source: string, expected: string) {
+    let result = parse_module_source(source, "<test>");
+    if (!parse_has_errors(result)) {
+        assert(false, "Expected parse error " + expected + " but parse succeeded");
+    }
+    if (parse_diag_count(result) < 1) {
+        assert(false, "Expected at least one diagnostic");
+    }
+
+    let diag = parse_diag_get(result, 0);
+    if (diag.code != expected) {
+        printl_ss("actual error code:", diag.code);
+        assert(false, "Expected parse error code " + expected);
+    }
+
+    parse_result_free(result);
+}
+
+/**
+ * Parses source and asserts that the first diagnostic matches code and message.
+ *
+ * @param source The module source to parse.
+ * @param expected_code The expected diagnostic code.
+ * @param expected_message The expected diagnostic message text.
+ */
+func expect_error_code_and_message(source: string, expected_code: string, expected_message: string) {
+    let result = parse_module_source(source, "<test>");
+    if (!parse_has_errors(result)) {
+        assert(false, "Expected parse error " + expected_code + " but parse succeeded");
+    }
+    if (parse_diag_count(result) < 1) {
+        assert(false, "Expected at least one diagnostic");
+    }
+
+    let diag = parse_diag_get(result, 0);
+    if (diag.code != expected_code) {
+        printl_ss("actual error code:", diag.code);
+        assert(false, "Expected parse error code " + expected_code);
+    }
+    if (diag.message != expected_message) {
+        printl_ss("actual error message:", diag.message);
+        assert(false, "Expected parse error message " + expected_message);
+    }
+
+    parse_result_free(result);
+}
+
+/**
+ * Parses source and asserts that it succeeds without diagnostics.
+ *
+ * @param source The module source to parse.
+ */
+func expect_ok(source: string) {
+    let result = parse_module_source(source, "<test>");
+    if (parse_has_errors(result)) {
+        if (parse_diag_count(result) > 0) {
+            let diag = parse_diag_get(result, 0);
+            printl_ss("unexpected parse error code:", diag.code);
+            printl_ss("unexpected parse error message:", diag.message);
+        }
+        assert(false, "Expected parse to succeed");
+    }
+    assert(result.root_module != null, "Expected module for successful parse");
+
+    parse_result_free(result);
+}
+
+/**
+ * Parses source and asserts that at least `expected_min` diagnostics are reported.
+ *
+ * @param source The module source to parse.
+ * @param expected_min The minimum number of diagnostics expected.
+ */
+func expect_min_error_count(source: string, expected_min: int) {
+    let result = parse_module_source(source, "<test>");
+    if (!parse_has_errors(result)) {
+        assert(false, "Expected parse errors");
+    }
+    let count = parse_diag_count(result);
+    if (count < expected_min) {
+        printl_si("actual error count:", count);
+        assert(false, "Expected more parse diagnostics");
+    }
+    parse_result_free(result);
+}
+
+/**
+ * Tests that parser diagnostic messages do not duplicate their structured code.
+ */
+func test_parser_message_omits_embedded_code() {
+    let result = parse_module_source("module main; import std.io as ;", "./hello.l1");
+    assert(parse_has_errors(result), "Expected parse error");
+    let diag = parse_diag_get(result, 0);
+    assert(diag.code == "PAR-0547", "Expected alias diagnostic code");
+    assert(!starts_with_s(diag.message, "[PAR-0547]"), "Parser message should not embed its diagnostic code");
+    parse_result_free(result);
+}
+
+/**
+ * Tests that the slice type suffix `T[]` parses to a slice suffix.
+ */
+func test_slice_type_syntax_ok() {
+    let src = "module main; func use(s: int[]) -> int { return s[0]; } func main() -> int { return 0; }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected slice type syntax to parse");
+    let root = result.root_module as Module*;
+    let top = ptr_vec_get(root.decls, 0) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+    let param0 = ptr_vec_get(func_decl.params, 0) as Param*;
+    assert(param0.type_ref.suffixes != null, "Expected ordered suffixes on int[]");
+    assert(vec_size(param0.type_ref.suffixes as VectorBase*) == 1, "Expected one suffix on int[]");
+    let suffix0 = ptr_vec_get(param0.type_ref.suffixes as VectorBase*, 0) as TypeSuffix*;
+    assert(ord(suffix0.kind) == ord(TS_SLICE), "Expected slice suffix");
+    parse_result_free(result);
+}
+
+/**
+ * Tests declaration, function-type, and call-spread variadic syntax.
+ */
+func test_variadic_syntax_ok() {
+    let src = "module main; type V = func(int, string...) -> int; " +
+        "func count(prefix: int, values: string...) -> int { return prefix + len(values); } " +
+        "func forward(values: string[]) -> int { return count(0, values...); }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected variadic syntax to parse");
+    let root = result.root_module as Module*;
+    let func_top = ptr_vec_get(root.decls, 1) as TopLevelDecl*;
+    let func_decl = func_top.data as FuncDecl*;
+    let last_param = ptr_vec_get(func_decl.params, 1) as Param*;
+    assert(type_ref_is_variadic(last_param.type_ref), "Expected variadic declaration suffix");
+    let forward_top = ptr_vec_get(root.decls, 2) as TopLevelDecl*;
+    let forward_decl = forward_top.data as FuncDecl*;
+    let block = stmt_arena_get(result.stmt_arena, forward_decl.body);
+    let ret_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(block.ids as VectorBase*, 0));
+    let call = expr_arena_get(result.expr_arena, ret_stmt.expr_a);
+    assert(call.has_spread_arg, "Expected final spread argument marker");
+    parse_result_free(result);
+}
+
+/**
+ * Tests variadic parameters and spread arguments must be final.
+ */
+func test_variadic_syntax_err() {
+    expect_error_code("module main; func bad(values: int..., tail: int) {}", "PAR-0520");
+    expect_error_code("module main; func f(values: int...) {} func bad(xs: int[]) { f(xs..., 1); }", "PAR-0521");
+}
+
+/**
+ * Tests nested pointer-before-slice and nullable-before-slice suffix ordering.
+ */
+func test_slice_nested_suffix_order_ok() {
+    let src = "module main; func use(p: int*[], q: int?[]) -> int { return 0; } func main() -> int { return 0; }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected int*[] and int?[] to parse");
+    let root = result.root_module as Module*;
+    let top = ptr_vec_get(root.decls, 0) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+    let p = ptr_vec_get(func_decl.params, 0) as Param*;
+    assert(ord((ptr_vec_get(p.type_ref.suffixes as VectorBase*, 0) as TypeSuffix*).kind) == ord(TS_POINTER),
+        "Expected pointer suffix before slice on int*[]");
+    assert(ord((ptr_vec_get(p.type_ref.suffixes as VectorBase*, 1) as TypeSuffix*).kind) == ord(TS_SLICE),
+        "Expected slice suffix after pointer on int*[]");
+    let q = ptr_vec_get(func_decl.params, 1) as Param*;
+    assert(ord((ptr_vec_get(q.type_ref.suffixes as VectorBase*, 0) as TypeSuffix*).kind) == ord(TS_NULLABLE),
+        "Expected nullable suffix before slice on int?[]");
+    assert(ord((ptr_vec_get(q.type_ref.suffixes as VectorBase*, 1) as TypeSuffix*).kind) == ord(TS_SLICE),
+        "Expected slice suffix after nullable on int?[]");
+    parse_result_free(result);
+}
+
+/**
+ * Tests that the reserved inferred-length array `T[_]` is rejected.
+ */
+func test_reserved_inferred_length_array() {
+    let src = "module main; func use(s: int[_]) -> int { return 0; } func main() -> int { return 0; }";
+    expect_error_code_and_message(src, "PAR-0624",
+        "inferred-length array type '[_]' is reserved for future use");
+}
+
+/**
+ * Tests that a malformed array length still reports PAR-0620.
+ */
+func test_array_type_syntax_message() {
+    let src = "module main; func main() -> int { let x: int[+] = 0; return x; }";
+    expect_error_code_and_message(src, "PAR-0620", "expected constant integer expression in array type");
+}
+
+/**
+ * Tests array literal and array constructor delimiter diagnostics.
+ */
+func test_array_expr_syntax_messages() {
+    expect_error_code(
+        "module main; func main() -> int { let x: int[2] = [1, 2; return 0; }",
+        "PAR-0622");
+    expect_error_code(
+        "module main; func main() -> int { let x = int[2](1, 2; return 0; }",
+        "PAR-0623");
+}
+
+/**
+ * Tests fixed-size array type suffixes, literals, and constructors parse.
+ */
+func test_fixed_array_syntax_ok() {
+    let src = "module main; func main(p: int*[2], q: int[2]*) -> int { let a: int[2][3] = [[1, 2, 3], [4, 5, 6]]; let b = int[3]([1]); let c = int[3](7); return a[1][2] + b[0] + c[1]; }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected fixed-size array syntax to parse");
+    let root = result.root_module as Module*;
+    let top = ptr_vec_get(root.decls, 0) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+    let param0 = ptr_vec_get(func_decl.params, 0) as Param*;
+    assert(param0.type_ref.suffixes != null, "Expected ordered suffixes on int*[2]");
+    assert(vec_size(param0.type_ref.suffixes as VectorBase*) == 2, "Expected two suffixes on int*[2]");
+    let suffix0 = ptr_vec_get(param0.type_ref.suffixes as VectorBase*, 0) as TypeSuffix*;
+    let suffix1 = ptr_vec_get(param0.type_ref.suffixes as VectorBase*, 1) as TypeSuffix*;
+    assert(ord(suffix0.kind) == ord(TS_POINTER), "Expected pointer suffix first");
+    assert(ord(suffix1.kind) == ord(TS_ARRAY), "Expected array suffix second");
+    assert(suffix1.array_len == 2, "Expected array length 2");
+    parse_result_free(result);
+}
+
+/**
+ * Tests named const-value grammar contexts parse in array bounds, array constructors, and `case` arms.
+ */
+func test_const_value_context_syntax_ok() {
+    let src = "module main; const N: int = 3; const OK: int = 200; func main(status: int, xs: int[N]) -> int { let b = int[N]([1, 2, 3]); case (status) { OK => return b[0]; _ => return 0; } }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected named const-value syntax to parse");
+
+    let root = result.root_module as Module*;
+    let top = ptr_vec_get(root.decls, 2) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+    let param1 = ptr_vec_get(func_decl.params, 1) as Param*;
+    let suffix = ptr_vec_get(param1.type_ref.suffixes as VectorBase*, 0) as TypeSuffix*;
+    assert(ord(suffix.kind) == ord(TS_ARRAY), "Expected array suffix for int[N]");
+    assert(suffix.array_len == 0, "Expected unresolved named array length before semantic resolution");
+    assert(suffix.array_len_expr >= 0, "Expected array length expression id");
+    let len_expr = expr_arena_get(result.expr_arena, suffix.array_len_expr);
+    assert(ord(len_expr.kind) == ord(EX_VAR_REF) && len_expr.text_value == "N",
+        "Expected named array length expression");
+
+    let block = stmt_arena_get(result.stmt_arena, func_decl.body);
+    let let_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(block.ids as VectorBase*, 0));
+    let ctor_expr = expr_arena_get(result.expr_arena, let_stmt.expr_a);
+    assert(ord(ctor_expr.kind) == ord(EX_ARRAY_CONSTRUCTOR), "Expected int[N](...) to parse as array constructor");
+
+    let case_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(block.ids as VectorBase*, 1));
+    let arm = ptr_vec_get(case_stmt.case_arms as VectorBase*, 0) as CaseArm*;
+    let arm_value = expr_arena_get(result.expr_arena, arm.literal);
+    assert(ord(arm_value.kind) == ord(EX_VAR_REF) && arm_value.text_value == "OK",
+        "Expected named case arm value expression");
+
+    parse_result_free(result);
+}
+
+/**
+ * Tests mixed array and pointer suffixes keep source order.
+ */
+func test_fixed_array_complex_suffix_order_ok() {
+    let src = "module main; func main(p: string[10]*[20]*[30]) -> int { return 0; }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected complex fixed-size array suffix syntax to parse");
+    let root = result.root_module as Module*;
+    let top = ptr_vec_get(root.decls, 0) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+    let param0 = ptr_vec_get(func_decl.params, 0) as Param*;
+    assert(param0.type_ref.suffixes != null, "Expected ordered suffixes on string[10]*[20]*[30]");
+    assert(vec_size(param0.type_ref.suffixes as VectorBase*) == 5,
+        "Expected five suffixes on string[10]*[20]*[30]");
+    let suffix0 = ptr_vec_get(param0.type_ref.suffixes as VectorBase*, 0) as TypeSuffix*;
+    let suffix1 = ptr_vec_get(param0.type_ref.suffixes as VectorBase*, 1) as TypeSuffix*;
+    let suffix2 = ptr_vec_get(param0.type_ref.suffixes as VectorBase*, 2) as TypeSuffix*;
+    let suffix3 = ptr_vec_get(param0.type_ref.suffixes as VectorBase*, 3) as TypeSuffix*;
+    let suffix4 = ptr_vec_get(param0.type_ref.suffixes as VectorBase*, 4) as TypeSuffix*;
+    assert(ord(suffix0.kind) == ord(TS_ARRAY) && suffix0.array_len == 10, "Expected [10] first");
+    assert(ord(suffix1.kind) == ord(TS_POINTER), "Expected pointer second");
+    assert(ord(suffix2.kind) == ord(TS_ARRAY) && suffix2.array_len == 20, "Expected [20] third");
+    assert(ord(suffix3.kind) == ord(TS_POINTER), "Expected pointer fourth");
+    assert(ord(suffix4.kind) == ord(TS_ARRAY) && suffix4.array_len == 30, "Expected [30] fifth");
+    parse_result_free(result);
+}
+
+/**
+ * Tests pointer and nullable type suffixes keep source order.
+ */
+func test_ordered_pointer_nullable_suffix_syntax_ok() {
+    let src = "module main; func main(a: int??, b: int?*, c: int*?*?, d: int?*?*?) -> int { return 0; }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected ordered pointer/nullable suffix syntax to parse");
+    let root = result.root_module as Module*;
+    let top = ptr_vec_get(root.decls, 0) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+
+    let a = ptr_vec_get(func_decl.params, 0) as Param*;
+    assert(a.type_ref.suffixes != null, "Expected suffixes on int??");
+    assert(vec_size(a.type_ref.suffixes as VectorBase*) == 2, "Expected two suffixes on int??");
+    assert(ord((ptr_vec_get(a.type_ref.suffixes as VectorBase*, 0) as TypeSuffix*).kind) == ord(TS_NULLABLE),
+        "Expected first suffix on int?? to be nullable");
+    assert(ord((ptr_vec_get(a.type_ref.suffixes as VectorBase*, 1) as TypeSuffix*).kind) == ord(TS_NULLABLE),
+        "Expected second suffix on int?? to be nullable");
+
+    let b = ptr_vec_get(func_decl.params, 1) as Param*;
+    assert(ord((ptr_vec_get(b.type_ref.suffixes as VectorBase*, 0) as TypeSuffix*).kind) == ord(TS_NULLABLE),
+        "Expected first suffix on int?* to be nullable");
+    assert(ord((ptr_vec_get(b.type_ref.suffixes as VectorBase*, 1) as TypeSuffix*).kind) == ord(TS_POINTER),
+        "Expected second suffix on int?* to be pointer");
+
+    let c = ptr_vec_get(func_decl.params, 2) as Param*;
+    assert(vec_size(c.type_ref.suffixes as VectorBase*) == 4, "Expected four suffixes on int*?*?");
+    assert(ord((ptr_vec_get(c.type_ref.suffixes as VectorBase*, 0) as TypeSuffix*).kind) == ord(TS_POINTER),
+        "Expected int*?*? suffix 0");
+    assert(ord((ptr_vec_get(c.type_ref.suffixes as VectorBase*, 1) as TypeSuffix*).kind) == ord(TS_NULLABLE),
+        "Expected int*?*? suffix 1");
+    assert(ord((ptr_vec_get(c.type_ref.suffixes as VectorBase*, 2) as TypeSuffix*).kind) == ord(TS_POINTER),
+        "Expected int*?*? suffix 2");
+    assert(ord((ptr_vec_get(c.type_ref.suffixes as VectorBase*, 3) as TypeSuffix*).kind) == ord(TS_NULLABLE),
+        "Expected int*?*? suffix 3");
+
+    parse_result_free(result);
+}
+
+/**
+ * Tests indexed values in call arguments are not parsed as type expressions.
+ */
+func test_call_argument_indexing_is_value_expr() {
+    let src = "module main; func add(a: int, b: int) -> int { return a + b; } func main() -> int { let a: int[2] = [1, 2]; return add(a[0], a[1]); }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected indexed call arguments to parse as expressions");
+    let root = result.root_module as Module*;
+    let main_top = ptr_vec_get(root.decls, 1) as TopLevelDecl*;
+    let main_decl = main_top.data as FuncDecl*;
+    let body = stmt_arena_get(result.stmt_arena, main_decl.body);
+    let stmts = body.ids as VectorBase*;
+    let ret_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 1));
+    let call = expr_arena_get(result.expr_arena, ret_stmt.expr_a);
+    assert(ord(call.kind) == ord(EX_CALL), "Expected return expression to be a call");
+    let args = call.ids as VectorBase*;
+    assert(ord(expr_arena_get(result.expr_arena, id_vec_get(args, 0)).kind) == ord(EX_INDEX),
+        "Expected first call argument to be an index expression");
+    assert(ord(expr_arena_get(result.expr_arena, id_vec_get(args, 1)).kind) == ord(EX_INDEX),
+        "Expected second call argument to be an index expression");
+    parse_result_free(result);
+}
+
+/**
+ * Tests dotted field expressions with try suffix are not parsed as type expressions.
+ */
+func test_call_argument_field_try_is_value_expr() {
+    let src = "module main; func use(x: int?) -> int? { return x; } func main() -> int? { return use(a.b?); }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected dotted try call argument to parse as an expression");
+    let root = result.root_module as Module*;
+    let main_top = ptr_vec_get(root.decls, 1) as TopLevelDecl*;
+    let main_decl = main_top.data as FuncDecl*;
+    let body = stmt_arena_get(result.stmt_arena, main_decl.body);
+    let stmts = body.ids as VectorBase*;
+    let ret_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 0));
+    let call = expr_arena_get(result.expr_arena, ret_stmt.expr_a);
+    assert(ord(call.kind) == ord(EX_CALL), "Expected return expression to be a call");
+    let args = call.ids as VectorBase*;
+    let arg0 = expr_arena_get(result.expr_arena, id_vec_get(args, 0));
+    assert(ord(arg0.kind) == ord(EX_TRY), "Expected call argument to be a try expression");
+    assert(ord(expr_arena_get(result.expr_arena, arg0.expr_a).kind) == ord(EX_FIELD),
+        "Expected try payload to be a field expression");
+    parse_result_free(result);
+}
+
+/**
+ * Tests test_valid_module.
+ */
+func test_valid_module() {
+    let src = "module main; import std.io; func add(a: int, b: int) -> int { return 0; }";
+    expect_ok(src);
+}
+
+/**
+ * Tests that `let` remains valid in a `for` initializer but is rejected in the
+ * update clause.
+ */
+func test_for_update_let_rejected() {
+    let valid = "module main; func main() -> int { for (let i: int = 0; i < 3; i = i + 1) {} return 0; }";
+    expect_ok(valid);
+
+    let non_decl_headers = "module main; " +
+        "func assign_header() -> int { let x: int = 0; for (x = 1; false; x = 2) {} return x; } " +
+        "func expr_header() -> int { let x: int = 0; for (x; false; x) {} return x; } " +
+        "func drop_header() -> int { let p: int* = new int(1); for (drop p; false; drop p) {} return 0; } " +
+        "func control_header() -> int { while (true) { for (break; false; continue) {} } return 0; } " +
+        "func return_header() -> int { for (return 0; false; return 0) {} return 0; }";
+    expect_ok(non_decl_headers);
+
+    let invalid = "module main; func main() -> int { for (let i: int = 0; i < 3; let j: int = i) {} return 0; }";
+    expect_error_code(invalid, "PAR-0145");
+}
+
+/**
+ * Tests export manifests and new import forms.
+ */
+func test_export_and_new_import_forms_ok() {
+    let src = "module main; export foo, Bar; import math as m; import abs, pi from math; func foo() -> int { return 0; } struct Bar { x: int; }";
+    let result = parse_module_source(src, "<test>");
+    if (parse_has_errors(result)) {
+        let diag = parse_diag_get(result, 0);
+        printl_ss("unexpected parse error code:", diag.code);
+        printl_ss("unexpected parse error message:", diag.message);
+        assert(false, "Expected parse to succeed");
+    }
+    assert(result.root_module != null, "Expected parsed module");
+    let root = result.root_module as Module*;
+    assert(root.export_manifest != null, "Expected explicit export manifest");
+    let manifest = root.export_manifest as ExportManifest*;
+    assert(!manifest.export_all, "Expected export allowlist");
+    assert(sv_size(manifest.names) == 2, "Expected two exported names");
+    assert(sv_get(manifest.names, 0) == "foo", "Expected first exported name");
+    assert(sv_get(manifest.names, 1) == "Bar", "Expected second exported name");
+    assert(vec_size(root.imports) == 2, "Expected two imports");
+    let alias_imp = ptr_vec_get(root.imports, 0) as Import*;
+    assert(ord(alias_imp.kind) == ord(IMPORT_ALIAS), "Expected alias import");
+    assert(alias_imp.name == "math", "Expected alias import module name");
+    assert(alias_imp.alias == "m", "Expected import alias");
+    let selective_imp = ptr_vec_get(root.imports, 1) as Import*;
+    assert(ord(selective_imp.kind) == ord(IMPORT_SELECTIVE), "Expected selective import");
+    assert(selective_imp.names != null, "Expected selective import names");
+    assert(sv_size(selective_imp.names as StringVector*) == 2, "Expected two selective imports");
+    assert(sv_get(selective_imp.names as StringVector*, 0) == "abs", "Expected first selective import");
+    assert(sv_get(selective_imp.names as StringVector*, 1) == "pi", "Expected second selective import");
+    parse_result_free(result);
+}
+
+/**
+ * Tests star export syntax.
+ */
+func test_export_star_ok() {
+    let src = "module main; export *; func foo() -> int { return 0; }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected export star parse success");
+    assert(result.root_module != null, "Expected parsed module");
+    let root = result.root_module as Module*;
+    assert(root.export_manifest != null, "Expected explicit export manifest");
+    assert((root.export_manifest as ExportManifest*).export_all, "Expected star export manifest");
+    parse_result_free(result);
+}
+
+/**
+ * Tests arity-one opaque export groups.
+ */
+func test_export_opaque_group_arity_one_ok() {
+    let src = "module main; export opaque { Handle }; struct Handle { x: int; }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected arity-one opaque export group parse success");
+    assert(result.root_module != null, "Expected parsed module");
+    let root = result.root_module as Module*;
+    assert(root.export_manifest != null, "Expected explicit export manifest");
+    let manifest = root.export_manifest as ExportManifest*;
+    assert(!manifest.export_all, "Expected export allowlist");
+    assert(sv_size(manifest.names) == 1, "Expected one exported name");
+    assert(sv_get(manifest.names, 0) == "Handle", "Expected opaque exported name");
+    assert(sv_size(manifest.opaque_names) == 1, "Expected one opaque exported name");
+    assert(sv_get(manifest.opaque_names, 0) == "Handle", "Expected first opaque export");
+    parse_result_free(result);
+}
+
+/**
+ * Tests mixed transparent and grouped opaque export-list syntax.
+ */
+func test_export_opaque_groups_ok() {
+    let src = "module main; export opaque { Handle, State }, make, opaque { Token }; struct Handle { x: int; } enum State { Ready; } struct Token { id: int; } func make() -> Handle* { return new Handle(0); }";
+    let result = parse_module_source(src, "<test>");
+    if (parse_has_errors(result)) {
+        let diag = parse_diag_get(result, 0);
+        printl_ss("unexpected parse error code:", diag.code);
+        printl_ss("unexpected parse error message:", diag.message);
+        assert(false, "Expected opaque export parse to succeed");
+    }
+    assert(result.root_module != null, "Expected parsed module");
+    let root = result.root_module as Module*;
+    assert(root.export_manifest != null, "Expected explicit export manifest");
+    let manifest = root.export_manifest as ExportManifest*;
+    assert(!manifest.export_all, "Expected export allowlist");
+    assert(sv_size(manifest.names) == 4, "Expected four exported names");
+    assert(sv_get(manifest.names, 0) == "Handle", "Expected first exported name");
+    assert(sv_get(manifest.names, 1) == "State", "Expected second exported name");
+    assert(sv_get(manifest.names, 2) == "make", "Expected third exported name");
+    assert(sv_get(manifest.names, 3) == "Token", "Expected fourth exported name");
+    assert(sv_size(manifest.opaque_names) == 3, "Expected three opaque exported names");
+    assert(sv_get(manifest.opaque_names, 0) == "Handle", "Expected first opaque export");
+    assert(sv_get(manifest.opaque_names, 1) == "State", "Expected second opaque export");
+    assert(sv_get(manifest.opaque_names, 2) == "Token", "Expected third opaque export");
+    parse_result_free(result);
+}
+
+/**
+ * Tests malformed opaque export-group syntax.
+ */
+func test_export_opaque_groups_err() {
+    expect_error_code_and_message(
+        "module main; export " + "opaque Handle; struct Handle { x: int; }",
+        "PAR-0548",
+        "expected '{' after 'opaque' in export manifest, got ident(Handle) instead"
+    );
+    expect_error_code("module main; export opaque; struct Handle { x: int; }", "PAR-0548");
+    expect_error_code("module main; export opaque {}; struct Handle { x: int; }", "PAR-0548");
+    expect_error_code("module main; export { Handle }; struct Handle { x: int; }", "PAR-0540");
+    expect_error_code("module main; export opaque { Handle; struct Handle { x: int; }", "PAR-0548");
+    expect_error_code("module main; export *, opaque { Handle }; struct Handle { x: int; }", "PAR-0541");
+}
+
+/**
+ * Tests test_module_decl_error.
+ */
+func test_module_decl_error() {
+    expect_error_code("module ;", "PAR-0311");
+}
+
+/**
+ * Tests test_reserved_variable_name_error.
+ */
+func test_reserved_variable_name_error() {
+    let future_src = "module main; func main() -> int { let __dea__future__keyword__: int = 0; return __dea__future__keyword__; }";
+    expect_error_code(future_src, "PAR-0010");
+
+    let src = "module main; func main() -> int { let uint: int = 0; return uint; }";
+    expect_error_code(src, "PAR-0011");
+}
+
+/**
+ * Tests successful parsing for top-level `const` declarations.
+ */
+func test_top_level_const_ok() {
+    let src = "module main; struct Point { x: int; y: int; } const origin: Point = Point(0, 0); const answer: int = 42;";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected parse to succeed");
+    assert(result.root_module != null, "Expected parsed module");
+
+    let root = result.root_module as Module*;
+    assert(vec_size(root.decls) == 3, "Expected struct plus two top-level bindings");
+
+    let origin_top = ptr_vec_get(root.decls, 1) as TopLevelDecl*;
+    assert(ord(origin_top.kind) == ord(TD_LET), "Expected const to reuse top-level binding node");
+    let origin_decl = origin_top.data as LetDecl*;
+    assert(origin_decl.is_const, "Expected const binding flag");
+    assert(origin_decl.type_ref != null, "Expected explicit const type");
+
+    let answer_top = ptr_vec_get(root.decls, 2) as TopLevelDecl*;
+    let answer_decl = answer_top.data as LetDecl*;
+    assert(answer_decl.is_const, "Expected const scalar binding flag");
+
+    parse_result_free(result);
+}
+
+/**
+ * Tests missing explicit type annotations for top-level `const`.
+ */
+func test_top_level_const_missing_type_err() {
+    let src = "module main; const answer = 42;";
+    expect_error_code(src, "PAR-0260");
+}
+
+/**
+ * Tests missing initializers for top-level `const`.
+ */
+func test_top_level_const_missing_initializer_err() {
+    let src = "module main; const answer: int;";
+    expect_error_code(src, "PAR-0261");
+}
+
+/**
+ * Tests that block-local `const` remains rejected.
+ */
+func test_local_const_rejected_err() {
+    let src = "module main; func main() -> int { const answer: int = 42; return answer; }";
+    expect_error_code(src, "PAR-0263");
+}
+
+/**
+ * Tests unary-bitwise precedence shape.
+ */
+func test_bitwise_unary_precedence_shape() {
+    let src = "module main; func main() -> int { return ~1 + 2; }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected parse to succeed");
+    assert(result.root_module != null, "Expected parsed module");
+
+    let root = result.root_module as Module*;
+    assert(vec_size(root.decls) == 1, "Expected one declaration");
+    let top = ptr_vec_get(root.decls, 0) as TopLevelDecl*;
+    assert(ord(top.kind) == ord(TD_FUNC), "Expected function declaration");
+
+    let func_decl = top.data as FuncDecl*;
+    let body = stmt_arena_get(result.stmt_arena, func_decl.body);
+    assert(body.ids != null, "Expected function body statements");
+    let stmts = body.ids as VectorBase*;
+    assert(vec_size(stmts) == 1, "Expected one return statement");
+
+    let return_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 0));
+    let return_expr = expr_arena_get(result.expr_arena, return_stmt.expr_a);
+    assert(ord(return_expr.kind) == ord(EX_BINARY), "Expected binary top-level expression");
+    assert(return_expr.text_value == "+", "Expected '+' at the root");
+
+    let left = expr_arena_get(result.expr_arena, return_expr.expr_a);
+    assert(ord(left.kind) == ord(EX_UNARY), "Expected unary left operand");
+    assert(left.text_value == "~", "Expected unary '~' operand");
+
+    parse_result_free(result);
+}
+
+/**
+ * Tests test_with_mixed_forms_error.
+ */
+func test_with_mixed_forms_error() {
+    let src = "module main; func main() -> int { with (let x: int = 1 => drop x, let y: int = 2) { return 0; } }";
+    expect_error_code(src, "PAR-0503");
+}
+
+/**
+ * Parses source and asserts that some diagnostic carries `expected`.
+ *
+ * @param source The module source to parse.
+ * @param expected The diagnostic code that must appear at least once.
+ */
+func expect_diag_code_present(source: string, expected: string) {
+    let result = parse_module_source(source, "<test>");
+    let count = parse_diag_count(result);
+    let found = false;
+    let i = 0;
+    while (i < count) {
+        let diag = parse_diag_get(result, i);
+        if (diag.code == expected) {
+            found = true;
+        }
+        i = i + 1;
+    }
+    if (!found) {
+        printl_ss("missing diagnostic code:", expected);
+    }
+    assert(found, "Expected diagnostic code " + expected);
+    parse_result_free(result);
+}
+
+/**
+ * Parses source and asserts that no diagnostic carries `forbidden`.
+ *
+ * @param source The module source to parse.
+ * @param forbidden The diagnostic code that must not appear.
+ */
+func expect_diag_code_absent(source: string, forbidden: string) {
+    let result = parse_module_source(source, "<test>");
+    let count = parse_diag_count(result);
+    let i = 0;
+    while (i < count) {
+        let diag = parse_diag_get(result, i);
+        if (diag.code == forbidden) {
+            printl_ss("unexpected diagnostic code:", forbidden);
+            assert(false, "Did not expect diagnostic code " + forbidden);
+        }
+        i = i + 1;
+    }
+    parse_result_free(result);
+}
+
+/**
+ * Parses source and asserts that exactly `expected_count` diagnostics carry `expected`.
+ *
+ * @param source The module source to parse.
+ * @param expected The diagnostic code to count.
+ * @param expected_count The exact expected count.
+ */
+func expect_diag_code_count(source: string, expected: string, expected_count: int) {
+    let result = parse_module_source(source, "<test>");
+    let count = parse_diag_count(result);
+    let found = 0;
+    let i = 0;
+    while (i < count) {
+        let diag = parse_diag_get(result, i);
+        if (diag.code == expected) {
+            found = found + 1;
+        }
+        i = i + 1;
+    }
+    if (found != expected_count) {
+        printl_ss("diagnostic code:", expected);
+        printl_si("actual count:", found);
+        assert(false, "Unexpected diagnostic count");
+    }
+    parse_result_free(result);
+}
+
+/**
+ * Counts diagnostics with the given code in a parse result.
+ *
+ * @param result Parse result to inspect.
+ * @param code Diagnostic code to count.
+ * @return Number of diagnostics carrying `code`.
+ */
+func count_diag_code(result: ParseResult*, code: string) -> int {
+    let found = 0;
+    for (let i = 0; i < parse_diag_count(result); i = i + 1) {
+        let diag = parse_diag_get(result, i);
+        if (diag.code == code) {
+            found = found + 1;
+        }
+    }
+    return found;
+}
+
+/**
+ * Tests that deferred lexer errors are emitted by the parser, which then
+ * continues and reports the missing module header exactly once.
+ */
+func test_lexer_errors_recover_into_parser() {
+    let result = parse_module_source("@ $ @", "<test>");
+    assert(parse_has_errors(result), "Expected lexer errors");
+    assert(result.root_module == null, "Expected no parsed module without a module header");
+    assert(count_diag_code(result, "LEX-0040") == 3, "Expected exactly three LEX-0040 diagnostics");
+    assert(count_diag_code(result, "PAR-0310") == 1, "Expected one missing-module-header diagnostic");
+    assert(parse_diag_count(result) == 4, "Expected no cascading diagnostics");
+    parse_result_free(result);
+}
+
+/**
+ * Tests that a module with invalid characters inside declarations still
+ * parses: the lexer errors are reported and the parse completes cleanly.
+ */
+func test_lexer_error_tokens_keep_module_parse() {
+    let result = parse_module_source(
+        "module main;\n\nfunc main() -> int {\n    let café: int = 1;\n    return café;\n}\n",
+        "<test>");
+    assert(parse_has_errors(result), "Expected lexer errors");
+    assert(result.root_module != null, "Expected a parsed module despite lexer errors");
+    assert(count_diag_code(result, "LEX-0040") == 2, "Expected two LEX-0040 diagnostics");
+    assert(parse_diag_count(result) == 2, "Expected no parser diagnostics");
+    parse_result_free(result);
+}
+
+/**
+ * Tests that one contiguous run of invalid characters yields one diagnostic
+ * whose span is measured in code points.
+ */
+func test_lexer_error_run_has_codepoint_span() {
+    let result = parse_module_source(
+        "module main;\n⚽⚽⚽\nfunc main() -> int {\n    return 0;\n}\n",
+        "<test>");
+    assert(parse_has_errors(result), "Expected lexer errors");
+    assert(result.root_module != null, "Expected a parsed module despite lexer errors");
+    assert(count_diag_code(result, "LEX-0040") == 1, "Expected one LEX-0040 for the whole run");
+    assert(parse_diag_count(result) == 1, "Expected no parser diagnostics");
+    let diag = parse_diag_get(result, 0);
+    assert(diag.line == 2, "Expected the run on line 2");
+    assert(diag.column == 1, "Expected the run to start at column 1");
+    assert(diag.line_end == 2, "Expected the span to stay on line 2");
+    assert(diag.column_end == 4, "Expected a three-code-point span");
+    parse_result_free(result);
+}
+
+/**
+ * Tests that parser backtracking over a lexer-error token does not duplicate
+ * its diagnostic.
+ */
+func test_lexer_error_not_duplicated_across_backtracking() {
+    let result = parse_module_source(
+        "module main;\n\nfunc main() -> int {\n    let x: int = 1;\n    return x ⚽⚽;\n}\n",
+        "<test>");
+    assert(parse_has_errors(result), "Expected lexer errors");
+    assert(result.root_module != null, "Expected a parsed module despite lexer errors");
+    assert(count_diag_code(result, "LEX-0040") == 1, "Expected exactly one LEX-0040 diagnostic");
+    assert(parse_diag_count(result) == 1, "Expected no parser diagnostics");
+    parse_result_free(result);
+}
+
+/**
+ * Tests recovered integer literals preserve binary-minus parser context and
+ * emit their deferred diagnostic exactly once.
+ */
+func test_recovered_integer_preserves_binary_minus() {
+    let result = parse_module_source(
+        "module main;\nfunc main() -> int {\n    return 0x -5;\n}\n",
+        "<test>");
+    assert(parse_has_errors(result), "Expected the malformed hexadecimal lexer diagnostic");
+    assert(result.root_module != null, "Expected a parsed module after literal recovery");
+    assert(count_diag_code(result, "LEX-0062") == 1, "Expected exactly one hexadecimal diagnostic");
+    assert(parse_diag_count(result) == 1, "Expected no parser diagnostics");
+    parse_result_free(result);
+}
+
+/**
+ * Tests that an unknown escape before newline preserves both lexer diagnostics.
+ */
+func test_queued_lexer_errors_preserve_escape_then_unterminated_string() {
+    let result = parse_module_source(
+        "module main;\nfunc main() -> int {\n    let s: string = \"\\q\n    return 0;\n}\n",
+        "<test>");
+    assert(parse_has_errors(result), "Expected lexer errors");
+    assert(result.root_module != null, "Expected a parsed module despite lexer errors");
+    assert(count_diag_code(result, "LEX-0059") == 1, "Expected one unknown-escape diagnostic");
+    assert(count_diag_code(result, "LEX-0010") == 1, "Expected one unterminated-string diagnostic");
+    assert(count_diag_code(result, "PAR-0100") == 1, "Expected one missing-semicolon parser diagnostic");
+    assert(parse_diag_count(result) == 3, "Expected exactly two lexer diagnostics plus one parser diagnostic");
+    parse_result_free(result);
+}
+
+/**
+ * Tests that an invalid hex escape before newline preserves both lexer diagnostics.
+ */
+func test_queued_lexer_errors_preserve_hex_then_unterminated_string() {
+    let result = parse_module_source(
+        "module main;\nfunc main() -> int {\n    let s: string = \"\\x\n    return 0;\n}\n",
+        "<test>");
+    assert(parse_has_errors(result), "Expected lexer errors");
+    assert(result.root_module != null, "Expected a parsed module despite lexer errors");
+    assert(count_diag_code(result, "LEX-0050") == 1, "Expected one invalid-hex-escape diagnostic");
+    assert(count_diag_code(result, "LEX-0010") == 1, "Expected one unterminated-string diagnostic");
+    assert(count_diag_code(result, "PAR-0100") == 1, "Expected one missing-semicolon parser diagnostic");
+    assert(parse_diag_count(result) == 3, "Expected exactly two lexer diagnostics plus one parser diagnostic");
+    parse_result_free(result);
+}
+
+/**
+ * Tests that multibyte string content does not shift the reported column of
+ * a following invalid character: columns count code points, not bytes.
+ */
+func test_lexer_unicode_string_keeps_following_columns() {
+    let result = parse_module_source(
+        "module main;\nfunc main() -> int {\n    let s: string = \"☕☕\"; ⚽\n    return 0;\n}\n",
+        "<test>");
+    assert(count_diag_code(result, "LEX-0040") == 1, "Expected one LEX-0040 diagnostic");
+    let diag = parse_diag_get(result, 0);
+    assert(diag.line == 3, "Expected the invalid character on line 3");
+    assert(diag.column == 27, "Expected a code-point column for the invalid character");
+    parse_result_free(result);
+}
+
+/**
+ * Parses source and asserts that the `occurrence`th diagnostic with `expected`
+ * appears on `expected_line`.
+ *
+ * @param source The module source to parse.
+ * @param expected The diagnostic code to find.
+ * @param occurrence Zero-based occurrence index for repeated codes.
+ * @param expected_line The expected 1-based line number.
+ */
+func expect_diag_code_line(source: string, expected: string, occurrence: int, expected_line: int) {
+    let result = parse_module_source(source, "<test>");
+    let count = parse_diag_count(result);
+    let seen = 0;
+    let i = 0;
+    while (i < count) {
+        let diag = parse_diag_get(result, i);
+        if (diag.code == expected) {
+            if (seen == occurrence) {
+                if (diag.line != expected_line) {
+                    printl_ss("diagnostic code:", expected);
+                    printl_si("actual line:", diag.line);
+                    assert(false, "Unexpected diagnostic line");
+                }
+                parse_result_free(result);
+                return;
+            }
+            seen = seen + 1;
+        }
+        i = i + 1;
+    }
+    printl_ss("missing diagnostic code:", expected);
+    assert(false, "Expected diagnostic line");
+    parse_result_free(result);
+}
+
+/**
+ * Parses source and asserts that the `occurrence`th diagnostic has the expected span.
+ *
+ * @param source The module source to parse.
+ * @param expected The diagnostic code to find.
+ * @param occurrence Zero-based occurrence index for repeated codes.
+ * @param line The expected 1-based start line.
+ * @param column The expected 1-based start column.
+ * @param line_end The expected 1-based end line.
+ * @param column_end The expected exclusive end column.
+ */
+func expect_diag_code_span(source: string, expected: string, occurrence: int,
+                           line: int, column: int, line_end: int, column_end: int) {
+    let result = parse_module_source(source, "<test>");
+    let count = parse_diag_count(result);
+    let seen = 0;
+    let i = 0;
+    while (i < count) {
+        let diag = parse_diag_get(result, i);
+        if (diag.code == expected) {
+            if (seen == occurrence) {
+                if (diag.line != line || diag.column != column ||
+                    diag.line_end != line_end || diag.column_end != column_end) {
+                    printl_ss("diagnostic code:", expected);
+                    printl_si("actual line:", diag.line);
+                    printl_si("actual column:", diag.column);
+                    printl_si("actual line_end:", diag.line_end);
+                    printl_si("actual column_end:", diag.column_end);
+                    assert(false, "Unexpected diagnostic span");
+                }
+                parse_result_free(result);
+                return;
+            }
+            seen = seen + 1;
+        }
+        i = i + 1;
+    }
+    printl_ss("missing diagnostic code:", expected);
+    assert(false, "Expected diagnostic span");
+    parse_result_free(result);
+}
+
+/**
+ * Tests that an orphaned `else` is diagnosed as PAR-0123, not the generic error.
+ */
+func test_stray_else_reports_par0123() {
+    expect_error_code("module main; func main() -> int { else return 0; }", "PAR-0123");
+}
+
+/**
+ * Tests that an orphaned `cleanup` is diagnosed as PAR-0506.
+ */
+func test_stray_cleanup_reports_par0506() {
+    expect_error_code("module main; func main() -> int { cleanup return 0; }", "PAR-0506");
+}
+
+/**
+ * Tests that a failed in-body statement recovers without a spurious top-level
+ * PAR-0020 cascade.
+ */
+func test_stray_else_does_not_cascade_to_top_level() {
+    let src = "module main; func main() -> int { else let x: int = 1; return x; }";
+    expect_diag_code_present(src, "PAR-0123");
+    expect_diag_code_absent(src, "PAR-0020");
+    expect_diag_code_absent(src, "PAR-0225");
+}
+
+/**
+ * Tests test_case_empty_error.
+ */
+func test_case_empty_error() {
+    let src = "module main; func main() -> int { case (1) { } return 0; }";
+    expect_error_code(src, "PAR-0240");
+}
+
+/**
+ * Tests that `_ =>` parses as the canonical `case` default arm.
+ */
+func test_case_wildcard_default_ok() {
+    let src = "module main; func main() -> int { case (1) { 1 => { return 1; } _ => { return 0; } } }";
+    expect_ok(src);
+}
+
+
+
+/**
+ * Tests that a value arm after the wildcard default is PAR-0234.
+ */
+func test_case_value_arm_after_wildcard_error() {
+    let src = "module main; func main() -> int { case (1) { _ => { return 0; } 2 => { return 2; } } }";
+    expect_error_code(src, "PAR-0234");
+}
+
+/**
+ * Tests that a `_` default missing its `=>` is PAR-0235.
+ */
+func test_case_wildcard_missing_arrow_error() {
+    let src = "module main; func main() -> int { case (1) { _ { return 0; } } }";
+    expect_error_code(src, "PAR-0235");
+}
+
+/**
+ * Tests that an unbraced `if` value-arm body followed by `else` parses cleanly.
+ */
+func test_case_value_arm_if_else_body_ok() {
+    let src = "module main; func main() -> int { case (1) { 1 => if (true) return 1; else return 0; _ => return 2; } }";
+    expect_ok(src);
+}
+
+/**
+ * Tests that a stray `case`-arm `else` is PAR-0123.
+ */
+func test_case_stray_else_arm_error() {
+    let arrowless = "module main; func main() -> int { case (1) { else return 0; } }";
+    let arrow = "module main; func main() -> int { case (1) { else => return 0; } }";
+    expect_diag_code_count(arrowless, "PAR-0123", 1);
+    expect_diag_code_count(arrow, "PAR-0123", 1);
+    expect_diag_code_absent(arrowless, "PAR-0235");
+    expect_diag_code_absent(arrow, "PAR-0235");
+    expect_diag_code_absent(arrowless, "PAR-0225");
+    expect_diag_code_absent(arrow, "PAR-0225");
+    expect_diag_code_absent(arrowless, "PAR-0020");
+    expect_diag_code_absent(arrow, "PAR-0020");
+}
+
+/**
+ * Tests that a default-arm body may be an unbraced if-else.
+ */
+func test_case_default_arm_if_else_body_ok() {
+    let wildcard = "module main; func main() -> int { case (1) { 1 => { return 1; } _ => if (true) return 2; else return 3; } }";
+    expect_ok(wildcard);
+}
+
+/**
+ * Tests that invalid arms after a default recover inside the current `case`.
+ */
+func test_case_default_recovery_stays_inside_case() {
+    let src = "module main;\n" +
+        "func main() -> int {\n" +
+        "    case (1) {\n" +
+        "        _ => { return 0; }\n" +
+        "        \"a\" => { return 1; }\n" +
+        "        _ => 2;\n" +
+        "        _ => 3;\n" +
+        "    }\n" +
+        "    printl_s(\"ok\");\n" +
+        "    return 0;\n" +
+        "}\n";
+    expect_diag_code_present(src, "PAR-0234");
+    expect_diag_code_count(src, "PAR-0236", 2);
+    expect_diag_code_absent(src, "PAR-0225");
+    expect_diag_code_absent(src, "PAR-0123");
+    expect_diag_code_absent(src, "PAR-0020");
+    expect_diag_code_line(src, "PAR-0234", 0, 5);
+    expect_diag_code_line(src, "PAR-0236", 0, 6);
+    expect_diag_code_line(src, "PAR-0236", 1, 7);
+    expect_diag_code_span(src, "PAR-0234", 0, 5, 9, 5, 12);
+    expect_diag_code_span(src, "PAR-0236", 0, 6, 9, 6, 10);
+    expect_diag_code_span(src, "PAR-0236", 1, 7, 9, 7, 10);
+}
+
+/**
+ * Tests that a forbidden `else` arm remains a recovery boundary after another
+ * invalid arm, so it receives PAR-0123 without a generic parse cascade.
+ */
+func test_case_recovery_preserves_one_stray_else_boundary() {
+    let src = "module main;\n" +
+        "func main() -> int {\n" +
+        "    case (1) {\n" +
+        "        _ => return 0;\n" +
+        "        1 => return 1;\n" +
+        "        else return 2;\n" +
+        "    }\n" +
+        "    return 0;\n" +
+        "}\n";
+    expect_diag_code_count(src, "PAR-0234", 1);
+    expect_diag_code_count(src, "PAR-0123", 1);
+    expect_diag_code_absent(src, "PAR-0235");
+    expect_diag_code_absent(src, "PAR-0100");
+    expect_diag_code_absent(src, "PAR-0225");
+    expect_diag_code_absent(src, "PAR-0020");
+    expect_diag_code_line(src, "PAR-0234", 0, 5);
+    expect_diag_code_line(src, "PAR-0123", 0, 6);
+}
+
+/**
+ * Tests that repeated forbidden `else` arms remain distinct recovery boundaries
+ * after another invalid arm.
+ */
+func test_case_recovery_preserves_multiple_stray_else_boundaries() {
+    let src = "module main;\n" +
+        "func main() -> int {\n" +
+        "    case (1) {\n" +
+        "        _ => return 0;\n" +
+        "        1 => return 1;\n" +
+        "        else return 2;\n" +
+        "        else return 3;\n" +
+        "    }\n" +
+        "    return 0;\n" +
+        "}\n";
+    expect_diag_code_count(src, "PAR-0234", 1);
+    expect_diag_code_count(src, "PAR-0123", 2);
+    expect_diag_code_absent(src, "PAR-0235");
+    expect_diag_code_absent(src, "PAR-0100");
+    expect_diag_code_absent(src, "PAR-0225");
+    expect_diag_code_absent(src, "PAR-0020");
+    expect_diag_code_line(src, "PAR-0234", 0, 5);
+    expect_diag_code_line(src, "PAR-0123", 0, 6);
+    expect_diag_code_line(src, "PAR-0123", 1, 7);
+}
+
+/**
+ * Tests that byte literal case-arm diagnostics include quote delimiters in spans.
+ */
+func test_case_default_recovery_byte_literal_span() {
+    let src = "module main;\n" +
+        "func main() -> int {\n" +
+        "    case (1) {\n" +
+        "        _ => 0;\n" +
+        "        'a' => 1;\n" +
+        "    }\n" +
+        "    return 0;\n" +
+        "}\n";
+    expect_diag_code_present(src, "PAR-0234");
+    expect_diag_code_span(src, "PAR-0234", 0, 5, 9, 5, 12);
+}
+
+/**
+ * Tests test_expr_precedence_postfix_and_qualified_type_ok.
+ */
+func test_expr_precedence_postfix_and_qualified_type_ok() {
+    let src = "module main; extern func sink(x: int) -> int; unsafe func helper(v: int*) -> int { return v[0]; } func main() -> int { let p: int* = new int(1); let n: int = sink((1 + 2 * 3) as int); let x: int = helper(p); let y: int = new color::Color::Red*(p).field?; return n + x + y; }";
+    expect_ok(src);
+}
+
+/**
+ * Tests prefixed integer literals in expressions.
+ */
+func test_prefixed_int_literals_ok() {
+    let src = "module main; func main() -> int { let x: int = 0x2a + 0b10 + 0o4; let y: int = -0x2a; return x + y; }";
+    expect_ok(src);
+}
+
+/**
+ * Tests malformed prefixed integer literals surfacing lexer diagnostics through parsing.
+ */
+func test_prefixed_int_literals_err() {
+    expect_error_code("module main; func main() -> int { return 0x; }", "LEX-0062");
+    expect_error_code("module main; func main() -> int { return 0b12; }", "LEX-0061");
+    expect_error_code("module main; func main() -> int { return 0o8; }", "LEX-0064");
+}
+
+/**
+ * Tests test_postfix_chain_ok.
+ */
+func test_postfix_chain_ok() {
+    let src = "module main; func main() -> int { let v: int = a.b(1, 2)[0]?; return v; }";
+    expect_ok(src);
+}
+
+/**
+ * Tests test_type_expr_call_arg_ok.
+ */
+func test_type_expr_call_arg_ok() {
+    let src = "module main; extern func sizeof(x: int) -> int; func main() -> int { return sizeof(int*); }";
+    expect_ok(src);
+}
+
+/**
+ * Tests small integer builtin names in type positions.
+ */
+func test_small_integer_type_positions_ok() {
+    let src = "module main; extern func sizeof(x: int) -> int; struct S { a: tiny; b: short?; c: ushort*; } func f(a: tiny, b: short?, c: ushort*) -> short { let x: tiny* = new tiny(1); let y: ushort? = null; return sizeof(short) as short; }";
+    expect_ok(src);
+}
+
+/**
+ * Tests large integer builtin names in type positions.
+ */
+func test_large_integer_type_positions_ok() {
+    let src = "module main; extern func sizeof(x: int) -> int; struct S { a: uint; b: long?; c: ulong*; } func f(a: uint, b: long?, c: ulong*) -> long { let x: uint* = new uint(1); let y: ulong? = null; return sizeof(long) as long; }";
+    expect_ok(src);
+}
+
+/**
+ * Tests floating builtin names in type positions.
+ */
+func test_float_type_positions_ok() {
+    let src = "module main; extern func sizeof(x: int) -> int; struct S { a: float; b: double?; c: float*; } func f(a: float, b: double?, c: float*) -> double { let x: float* = new float(1); let y: double? = null; return sizeof(double) as double; }";
+    expect_ok(src);
+}
+
+/**
+ * Tests that out-of-int literals parse as `EX_BIGINT` with preserved text and base.
+ */
+func test_bigint_literal_expr_shape() {
+    let src = "module main; func main() -> long { let x: long = 2147483648; return 0x80000000; }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected parse to succeed");
+    assert(result.root_module != null, "Expected parsed module");
+
+    let root = result.root_module as Module*;
+    assert(vec_size(root.decls) == 1, "Expected one declaration");
+    let top = ptr_vec_get(root.decls, 0) as TopLevelDecl*;
+    assert(ord(top.kind) == ord(TD_FUNC), "Expected function declaration");
+
+    let func_decl = top.data as FuncDecl*;
+    let body = stmt_arena_get(result.stmt_arena, func_decl.body);
+    assert(body.ids != null, "Expected function body block statements");
+    let stmts = body.ids as VectorBase*;
+    assert(vec_size(stmts) == 2, "Expected let plus return statements");
+
+    let let_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 0));
+    let let_expr = expr_arena_get(result.expr_arena, let_stmt.expr_a);
+    assert(ord(let_expr.kind) == ord(EX_BIGINT), "Expected bigint let initializer");
+    assert(let_expr.text_value == "2147483648", "Unexpected decimal bigint payload");
+    assert(let_expr.base_value == 10, "Unexpected decimal bigint base");
+
+    let return_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 1));
+    let return_expr = expr_arena_get(result.expr_arena, return_stmt.expr_a);
+    assert(ord(return_expr.kind) == ord(EX_BIGINT), "Expected bigint return expression");
+    assert(return_expr.text_value == "80000000", "Unexpected hexadecimal bigint payload");
+    assert(return_expr.base_value == 16, "Unexpected hexadecimal bigint base");
+
+    parse_result_free(result);
+}
+
+/**
+ * Tests floating literals in ordinary expressions.
+ */
+func test_real_literals_in_exprs_ok() {
+    let src = "module main; func main() -> double { let x: float = 1.0f; let y: double = 1e3; return -x + y / 2.0; }";
+    expect_ok(src);
+}
+
+/**
+ * Tests bitwise operators in ordinary expressions.
+ */
+func test_bitwise_binary_ops_ok() {
+    let src = "module main; func main() -> int { let x: int = (1 & 3) | (2 ^ 4); return x + (~1); }";
+    expect_ok(src);
+}
+
+/**
+ * Tests bitwise precedence across binary layers.
+ */
+func test_bitwise_precedence_shape() {
+    let src = "module main; func main() -> int { return 1 | 2 ^ 3 & 4 == 5 < 6 << 1 + 2 * 3; }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected parse to succeed");
+    assert(result.root_module != null, "Expected parsed module");
+
+    let root = result.root_module as Module*;
+    assert(vec_size(root.decls) == 1, "Expected one declaration");
+    let top = ptr_vec_get(root.decls, 0) as TopLevelDecl*;
+    assert(ord(top.kind) == ord(TD_FUNC), "Expected function declaration");
+
+    let func_decl = top.data as FuncDecl*;
+    let body = stmt_arena_get(result.stmt_arena, func_decl.body);
+    assert(body.ids != null, "Expected function body statements");
+    let stmts = body.ids as VectorBase*;
+    assert(vec_size(stmts) == 1, "Expected one return statement");
+
+    let return_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 0));
+    let root_expr = expr_arena_get(result.expr_arena, return_stmt.expr_a);
+    assert(ord(root_expr.kind) == ord(EX_BINARY), "Expected binary root expression");
+    assert(root_expr.text_value == "|", "Expected '|' at the root");
+
+    let xor_expr = expr_arena_get(result.expr_arena, root_expr.expr_b);
+    assert(ord(xor_expr.kind) == ord(EX_BINARY), "Expected '^' expression");
+    assert(xor_expr.text_value == "^", "Expected '^' below '|'");
+
+    let and_expr = expr_arena_get(result.expr_arena, xor_expr.expr_b);
+    assert(ord(and_expr.kind) == ord(EX_BINARY), "Expected '&' expression");
+    assert(and_expr.text_value == "&", "Expected '&' below '^'");
+
+    let eq_expr = expr_arena_get(result.expr_arena, and_expr.expr_b);
+    assert(ord(eq_expr.kind) == ord(EX_BINARY), "Expected equality expression");
+    assert(eq_expr.text_value == "==", "Expected '==' below '&'");
+
+    let rel_expr = expr_arena_get(result.expr_arena, eq_expr.expr_b);
+    assert(ord(rel_expr.kind) == ord(EX_BINARY), "Expected relational expression");
+    assert(rel_expr.text_value == "<", "Expected '<' below '=='");
+
+    let shift_expr = expr_arena_get(result.expr_arena, rel_expr.expr_b);
+    assert(ord(shift_expr.kind) == ord(EX_BINARY), "Expected shift expression");
+    assert(shift_expr.text_value == "<<", "Expected '<<' below '<'");
+
+    let add_expr = expr_arena_get(result.expr_arena, shift_expr.expr_b);
+    assert(ord(add_expr.kind) == ord(EX_BINARY), "Expected additive expression");
+    assert(add_expr.text_value == "+", "Expected '+' below '<<'");
+
+    let mul_expr = expr_arena_get(result.expr_arena, add_expr.expr_b);
+    assert(ord(mul_expr.kind) == ord(EX_BINARY), "Expected multiplicative expression");
+    assert(mul_expr.text_value == "*", "Expected '*' below '+'");
+
+    parse_result_free(result);
+}
+
+/**
+ * Tests test_qualified_expr_module_path_ok.
+ */
+func test_qualified_expr_module_path_ok() {
+    let src = "module main; func main() -> int { let x = parser.decl::impl_parse_module_tokens; return 0; }";
+    expect_ok(src);
+}
+
+/**
+ * Tests test_qualified_type_name_ok.
+ */
+func test_qualified_type_name_ok() {
+    let src = "module main; func f(x: color::Color::Red*) -> color::Color::Red? { return null; }";
+    expect_ok(src);
+}
+
+/**
+ * Tests bitwise expressions in top-level `let` initializers.
+ */
+func test_top_level_let_bitwise_ok() {
+    let src = "module main; let x: int = ~1;";
+    expect_ok(src);
+}
+
+/**
+ * Tests test_type_alias_missing_semi_error.
+ */
+func test_type_alias_missing_semi_error() {
+    let src = "module main; type Foo = int func main() -> int { return 0; }";
+    expect_error_code(src, "PAR-0073");
+}
+
+/**
+ * Tests test_struct_field_error.
+ */
+func test_struct_field_error() {
+    let src = "module main; struct Foo { x: 123; }";
+    expect_error_code(src, "PAR-0400");
+}
+
+/**
+ * Tests test_enum_variant_field_error.
+ */
+func test_enum_variant_field_error() {
+    let src = "module main; enum Foo { Bar(x: 123); }";
+    expect_error_code(src, "PAR-0400");
+}
+
+/**
+ * Tests bitwise expressions inside `new` arguments.
+ */
+func test_new_expr_bitwise_arg_ok() {
+    let src = "module main; func main() -> int { let x: Foo* = new Foo(~1); return 0; }";
+    expect_ok(src);
+}
+
+/**
+ * Tests function pointer type syntax in annotations and aliases.
+ */
+func test_function_pointer_type_syntax_ok() {
+    let src = "module main; type Callback = func(int, bool) -> int; type MaybeCallback = (func() -> void)?; func main(cb: func(int) -> int) -> int { let chosen: (func(int) -> int)? = cb; return cb(1); }";
+    let result = parse_module_source(src, "<test>");
+    if (parse_has_errors(result)) {
+        let diag = parse_diag_get(result, 0);
+        printl_ss("unexpected parse error code:", diag.code);
+        printl_ss("unexpected parse error message:", diag.message);
+        assert(false, "Expected function pointer type syntax to parse");
+    }
+
+    let root = result.root_module as Module*;
+    let callback_top = ptr_vec_get(root.decls, 0) as TopLevelDecl*;
+    let callback = callback_top.data as TypeAliasDecl*;
+    assert(callback.target.func_params != null, "expected function type params");
+    assert(vec_size(callback.target.func_params as VectorBase*) == 2, "expected two callback parameters");
+    assert(callback.target.func_result != null, "expected callback result");
+
+    let maybe_top = ptr_vec_get(root.decls, 1) as TopLevelDecl*;
+    let maybe = maybe_top.data as TypeAliasDecl*;
+    assert(maybe.target.is_nullable, "expected nullable function pointer alias");
+    assert(maybe.target.func_params != null, "expected nullable function pointer params");
+    assert(vec_size(maybe.target.func_params as VectorBase*) == 0, "expected zero-arg function type");
+
+    parse_result_free(result);
+}
+
+/**
+ * Tests `unsafe` function syntax in declarations and function types.
+ */
+func test_unsafe_function_syntax_ok() {
+    let src = "module main; unsafe extern func sink(cb: unsafe func(int) -> int) -> void; unsafe func helper(cb: unsafe func(int) -> int) -> int { return cb(1); } func main(cb: unsafe func(int) -> int) -> int { let chosen: unsafe func(int) -> int = helper; sink(chosen); return helper(cb); }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected unsafe function syntax to parse");
+    assert(result.root_module != null, "Expected parsed module");
+
+    let root = result.root_module as Module*;
+    let sink_decl = (ptr_vec_get(root.decls, 0) as TopLevelDecl*).data as FuncDecl*;
+    let helper_decl = (ptr_vec_get(root.decls, 1) as TopLevelDecl*).data as FuncDecl*;
+    let main_decl = (ptr_vec_get(root.decls, 2) as TopLevelDecl*).data as FuncDecl*;
+
+    assert(sink_decl.is_extern, "Expected unsafe extern decl");
+    assert(sink_decl.is_unsafe, "Expected unsafe extern flag");
+    assert(helper_decl.is_unsafe, "Expected unsafe function flag");
+    assert(!(main_decl.is_unsafe), "Expected safe main function");
+
+    let sink_param = ptr_vec_get(sink_decl.params, 0) as Param*;
+    assert(sink_param.type_ref.is_unsafe, "Expected unsafe function type parameter");
+    assert(sink_param.type_ref.func_params != null, "Expected function type parameter shape");
+
+    parse_result_free(result);
+}
+
+/**
+ * Tests malformed `unsafe` syntax diagnostics.
+ */
+func test_unsafe_function_syntax_err() {
+    expect_error_code("module main; unsafe struct Box { value: int; }", "PAR-0600");
+    expect_error_code("module main; type Bad = unsafe int;", "PAR-0601");
+}
+
+func test_mixed_named_args() {
+    expect_error_code("module main; func foo() { bar(1, b: 2); }", "PAR-0550");
+    expect_error_code("module main; func foo() { new Point(x: 1, 2); }", "PAR-0550");
+}
+
+/**
+ * Tests that `is(value, Variant)` parses as an ordinary call with a bare variant argument.
+ */
+func test_is_intrinsic_payload_variant_arg_shape() {
+    let src = "module main; enum Color { Red; RGB(r: int, g: int, b: int); } func main(c: Color) -> bool { return is(c, RGB); }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected parse to succeed");
+    assert(result.root_module != null, "Expected parsed module");
+
+    let root = result.root_module as Module*;
+    let top = ptr_vec_get(root.decls, 1) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+    let body = stmt_arena_get(result.stmt_arena, func_decl.body);
+    let stmts = body.ids as VectorBase*;
+    let return_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 0));
+    let call = expr_arena_get(result.expr_arena, return_stmt.expr_a);
+    assert(ord(call.kind) == ord(EX_CALL), "Expected `is` call expression");
+
+    let callee = expr_arena_get(result.expr_arena, call.expr_a);
+    assert(ord(callee.kind) == ord(EX_VAR_REF), "Expected `is` callee to be a plain identifier");
+    assert(callee.text_value == "is", "Expected `is` callee name");
+    assert(call.ids != null && vec_size(call.ids as VectorBase*) == 2, "Expected two `is` arguments");
+
+    let variant_arg = expr_arena_get(result.expr_arena, id_vec_get(call.ids as VectorBase*, 1));
+    assert(ord(variant_arg.kind) == ord(EX_VAR_REF), "Expected payload variant argument to stay a bare var-ref");
+    assert(variant_arg.text_value == "RGB", "Expected payload variant argument name");
+
+    parse_result_free(result);
+}
+
+/**
+ * Tests that `is(call_expr, module::Variant)` preserves both call and qualified-variant shape.
+ */
+func test_is_intrinsic_call_and_qualified_variant_shape() {
+    let src = "module main; import config.types; func main() -> bool { return is(config.types::get_key(), config.types::String); }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected parse to succeed");
+    assert(result.root_module != null, "Expected parsed module");
+
+    let root = result.root_module as Module*;
+    let top = ptr_vec_get(root.decls, 0) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+    let body = stmt_arena_get(result.stmt_arena, func_decl.body);
+    let stmts = body.ids as VectorBase*;
+    let return_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 0));
+    let call = expr_arena_get(result.expr_arena, return_stmt.expr_a);
+    assert(ord(call.kind) == ord(EX_CALL), "Expected outer `is` call expression");
+    assert(call.ids != null && vec_size(call.ids as VectorBase*) == 2, "Expected two `is` arguments");
+
+    let first_arg = expr_arena_get(result.expr_arena, id_vec_get(call.ids as VectorBase*, 0));
+    assert(ord(first_arg.kind) == ord(EX_CALL), "Expected first `is` argument to remain a call expression");
+
+    let second_arg = expr_arena_get(result.expr_arena, id_vec_get(call.ids as VectorBase*, 1));
+    assert(ord(second_arg.kind) == ord(EX_VAR_REF), "Expected second `is` argument to remain a var-ref");
+    assert(second_arg.module_path != null, "Expected qualified variant module path");
+    assert(sv_size(second_arg.module_path as StringVector*) == 2, "Expected two module-path segments");
+    assert(sv_get(second_arg.module_path as StringVector*, 0) == "config", "Expected first module-path segment");
+    assert(sv_get(second_arg.module_path as StringVector*, 1) == "types", "Expected second module-path segment");
+    assert(second_arg.text_value == "String", "Expected qualified variant name");
+
+    parse_result_free(result);
+}
+
+/**
+ * Tests single-statement loop bodies, match arms, and the existing `case` arm precedent.
+ */
+func test_single_statement_loop_and_match_bodies_ok() {
+    let src = "module main; enum Color { Red; Green; } func main(x: int, c: Color) -> int { while (x < 3) x = x + 1; for (; x < 4; x = x + 1) x = x + 2; match (c) { Red => return 1; _ => return 2; } case (x) { 0 => return 3; _ => return 4; } }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected parse to succeed");
+    assert(result.root_module != null, "Expected parsed module");
+
+    let root = result.root_module as Module*;
+    let top = ptr_vec_get(root.decls, 1) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+    let body = stmt_arena_get(result.stmt_arena, func_decl.body);
+    let stmts = body.ids as VectorBase*;
+    assert(vec_size(stmts) == 4, "Expected four top-level statements in function body");
+
+    let while_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 0));
+    assert(ord(while_stmt.kind) == ord(ST_WHILE), "Expected while statement");
+    let while_body = stmt_arena_get(result.stmt_arena, while_stmt.stmt_a);
+    assert(ord(while_body.kind) == ord(ST_ASSIGN), "Expected single assignment while body");
+
+    let for_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 1));
+    assert(ord(for_stmt.kind) == ord(ST_FOR), "Expected for statement");
+    let for_body = stmt_arena_get(result.stmt_arena, for_stmt.stmt_c);
+    assert(ord(for_body.kind) == ord(ST_ASSIGN), "Expected single assignment for body");
+
+    let match_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 2));
+    assert(ord(match_stmt.kind) == ord(ST_MATCH), "Expected match statement");
+    let match_arms = match_stmt.match_arms as VectorBase*;
+    assert(vec_size(match_arms) == 2, "Expected two match arms");
+    assert(ord(stmt_arena_get(result.stmt_arena, (ptr_vec_get(match_arms, 0) as MatchArm*).body).kind) == ord(ST_RETURN),
+        "Expected single return in first match arm");
+    assert(ord(stmt_arena_get(result.stmt_arena, (ptr_vec_get(match_arms, 1) as MatchArm*).body).kind) == ord(ST_RETURN),
+        "Expected single return in wildcard match arm");
+
+    let case_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 3));
+    assert(ord(case_stmt.kind) == ord(ST_CASE), "Expected case statement");
+    assert(ord(stmt_arena_get(result.stmt_arena, (ptr_vec_get(case_stmt.case_arms as VectorBase*, 0) as CaseArm*).body).kind) ==
+        ord(ST_RETURN), "Expected single return in case arm");
+    assert(ord(stmt_arena_get(result.stmt_arena, (case_stmt.case_else as CaseElse*).body).kind) == ord(ST_RETURN),
+        "Expected single return in case else arm");
+
+    parse_result_free(result);
+}
+
+/**
+ * Tests parsing extended case literals (negative and real literals).
+ */
+func test_case_stmt_extended_literals() {
+    let src = "module main; func foo(x: float) -> int { case (x) { -1.5 => return 1; 2.0 => return 2; _ => return 3; } }";
+    let result = parse_module_source(src, "<test>");
+    assert(!parse_has_errors(result), "Expected parse to succeed");
+
+    let root = result.root_module as Module*;
+    let top = ptr_vec_get(root.decls, 0) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+    let body = stmt_arena_get(result.stmt_arena, func_decl.body);
+    let stmts = body.ids as VectorBase*;
+
+    let case_stmt = stmt_arena_get(result.stmt_arena, id_vec_get(stmts, 0));
+    assert(ord(case_stmt.kind) == ord(ST_CASE), "Expected case statement");
+
+    let arms = case_stmt.case_arms as VectorBase*;
+    assert(vec_size(arms) == 2, "Expected two case arms");
+
+    let arm0 = ptr_vec_get(arms, 0) as CaseArm*;
+    let lit0 = expr_arena_get(result.expr_arena, arm0.literal);
+    assert(ord(lit0.kind) == ord(EX_DOUBLE) && lit0.text_value == "-1.5", "Expected negative literal");
+
+    let arm1 = ptr_vec_get(arms, 1) as CaseArm*;
+    let lit1 = expr_arena_get(result.expr_arena, arm1.literal);
+    assert(ord(lit1.kind) == ord(EX_DOUBLE), "Expected double literal");
+
+    parse_result_free(result);
+}
+
+/**
+ * Tests that a spaced negative case literal (`- 5`) is rejected.
+ *
+ * Only the adjacent literal form (`-5`) is accepted; a separated unary minus is not a `case` literal.
+ */
+func test_case_stmt_spaced_negative_rejected() {
+    let src = "module main; func foo(x: int) -> int { case (x) { - 5 => return 1; _ => return 2; } }";
+    let result = parse_module_source(src, "<test>");
+    assert(parse_has_errors(result), "Expected parse error for spaced negative case literal");
+
+    let found = false;
+    for (let i = 0; i < parse_diag_count(result); i = i + 1) {
+        if (parse_diag_get(result, i).code == "PAR-0241") {
+            found = true;
+        }
+    }
+    assert(found, "Expected PAR-0241 for spaced negative case literal");
+
+    parse_result_free(result);
+}
+
+/**
+ * Tests test_top_level_multi_error_collection.
+ */
+func test_top_level_multi_error_collection() {
+    let src = "module main; struct Broken { x: 123; } type T = int func good() -> int { return 0; }";
+    expect_min_error_count(src, 2);
+}
+
+/**
+ * Tests that three unclosed braces report PAR-0091 exactly once. End-of-file is
+ * terminal, so the unterminated-block condition is not re-reported at each
+ * enclosing nesting level.
+ */
+func test_unterminated_nested_blocks_report_par0091_once() {
+    expect_diag_code_count("module hello; func main() {{{", "PAR-0091", 1);
+    expect_diag_code_absent("module hello; func main() {{{", "PAR-0020");
+}
+
+/**
+ * Tests that a single unclosed brace still reports PAR-0091 exactly once, so the
+ * end-of-file fix does not over-suppress at nesting depth one.
+ */
+func test_single_unterminated_block_reports_par0091_once() {
+    expect_diag_code_count("module hello; func main() {", "PAR-0091", 1);
+    expect_diag_code_absent("module hello; func main() {", "PAR-0020");
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() {
+    test_parser_message_omits_embedded_code();
+    test_array_type_syntax_message();
+    test_slice_type_syntax_ok();
+    test_variadic_syntax_ok();
+    test_variadic_syntax_err();
+    test_slice_nested_suffix_order_ok();
+    test_reserved_inferred_length_array();
+    test_array_expr_syntax_messages();
+    test_fixed_array_syntax_ok();
+    test_const_value_context_syntax_ok();
+    test_fixed_array_complex_suffix_order_ok();
+    test_ordered_pointer_nullable_suffix_syntax_ok();
+    test_call_argument_indexing_is_value_expr();
+    test_call_argument_field_try_is_value_expr();
+    test_valid_module();
+    test_for_update_let_rejected();
+    test_export_and_new_import_forms_ok();
+    test_export_star_ok();
+    test_export_opaque_group_arity_one_ok();
+    test_export_opaque_groups_ok();
+    test_export_opaque_groups_err();
+    test_module_decl_error();
+    test_reserved_variable_name_error();
+    test_top_level_const_ok();
+    test_top_level_const_missing_type_err();
+    test_top_level_const_missing_initializer_err();
+    test_local_const_rejected_err();
+    test_bitwise_unary_precedence_shape();
+    test_with_mixed_forms_error();
+    test_stray_else_reports_par0123();
+    test_stray_cleanup_reports_par0506();
+    test_stray_else_does_not_cascade_to_top_level();
+    test_case_empty_error();
+    test_case_wildcard_default_ok();
+    test_case_value_arm_after_wildcard_error();
+    test_case_wildcard_missing_arrow_error();
+    test_case_value_arm_if_else_body_ok();
+    test_case_stray_else_arm_error();
+    test_case_default_arm_if_else_body_ok();
+    test_case_default_recovery_stays_inside_case();
+    test_case_recovery_preserves_one_stray_else_boundary();
+    test_case_recovery_preserves_multiple_stray_else_boundaries();
+    test_case_default_recovery_byte_literal_span();
+    test_expr_precedence_postfix_and_qualified_type_ok();
+    test_prefixed_int_literals_ok();
+    test_prefixed_int_literals_err();
+    test_postfix_chain_ok();
+    test_type_expr_call_arg_ok();
+    test_case_stmt_extended_literals();
+    test_case_stmt_spaced_negative_rejected();
+    test_small_integer_type_positions_ok();
+    test_large_integer_type_positions_ok();
+    test_bigint_literal_expr_shape();
+    test_float_type_positions_ok();
+    test_real_literals_in_exprs_ok();
+    test_bitwise_binary_ops_ok();
+    test_bitwise_precedence_shape();
+    test_qualified_expr_module_path_ok();
+    test_qualified_type_name_ok();
+    test_top_level_let_bitwise_ok();
+    test_type_alias_missing_semi_error();
+    test_struct_field_error();
+    test_enum_variant_field_error();
+    test_new_expr_bitwise_arg_ok();
+    test_function_pointer_type_syntax_ok();
+    test_unsafe_function_syntax_ok();
+    test_unsafe_function_syntax_err();
+    test_is_intrinsic_payload_variant_arg_shape();
+    test_is_intrinsic_call_and_qualified_variant_shape();
+    test_single_statement_loop_and_match_bodies_ok();
+    test_top_level_multi_error_collection();
+    test_lexer_errors_recover_into_parser();
+    test_lexer_error_tokens_keep_module_parse();
+    test_lexer_error_run_has_codepoint_span();
+    test_lexer_error_not_duplicated_across_backtracking();
+    test_recovered_integer_preserves_binary_minus();
+    test_queued_lexer_errors_preserve_escape_then_unterminated_string();
+    test_queued_lexer_errors_preserve_hex_then_unterminated_string();
+    test_lexer_unicode_string_keeps_following_columns();
+    test_unterminated_nested_blocks_report_par0091_once();
+    test_single_unterminated_block_reports_par0091_once();
+    printl_s("parser_test: all tests passed");
+}

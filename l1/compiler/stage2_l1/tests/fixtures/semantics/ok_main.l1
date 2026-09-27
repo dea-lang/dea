@@ -1,0 +1,73 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module ok_main;
+
+import shared_types;
+import shared_more;
+
+/**
+ * Demonstrates variable scope and shadowing.
+ *
+ * @param flag Controls whether the `while` body executes once.
+ * @return The final value assigned to `top`.
+ */
+func scope_demo(flag: bool) -> int {
+    let top: int = 0;
+
+    {
+        let inner: int = 1;
+        top = inner;
+    }
+
+    while (flag) {
+        let w: int = top;
+        break;
+    }
+
+    for (let i: int = 0; i < 1; i = i + 1) {
+        let loop_local: int = i;
+        top = loop_local;
+    }
+
+    case (top) {
+        0 => {
+            let case_local: int = 11;
+            top = case_local;
+        }
+        _ => {
+            let case_else_local: int = 12;
+            top = case_else_local;
+        }
+    }
+
+    match (make_some(top)) {
+        Some(v) => {
+            let arm_local: int = v;
+            top = arm_local;
+        }
+        None => {
+            top = 0;
+        }
+    }
+
+    with (let header_local: int = top) {
+        let body_local: int = header_local;
+        top = body_local;
+    } cleanup {
+        let cleanup_local: int = header_local;
+        top = cleanup_local;
+    }
+
+    return top;
+}
+
+/**
+ * Main entry point for the module.
+ */
+func main() -> int {
+    let p: Point = make_point(1, 2);
+    return p.x;
+}

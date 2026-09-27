@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 gwz
+#
+
+"""Run one L1 Stage 2 test with trace collection."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+import sys
+import tempfile
+
+from test_runner_common import (
+    REPO_ROOT,
+    discover_trace_l1_tests,
+    repo_stage2_command,
+    require_repo_stage2_test_env,
+    run_captured_binary_output,
+    stage2_test_support_args,
+)
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse CLI arguments."""
+
+    parser = argparse.ArgumentParser(description="Run one L1 Stage 2 test with trace output.")
+    parser.add_argument("test", help="Test name in compiler/stage2_l1/tests, with or without .l1.")
+    return parser.parse_args()
+
+
+def resolve_test_path(name: str) -> Path | None:
+    """Resolve one trace-test name to its file path."""
+
+    selector = Path(name).name
+    for case in discover_trace_l1_tests():
+        if selector == case.path.name or selector == case.path.stem:
+            return case.path
+    return None
+
+
+def main() -> int:
+    """Program entrypoint."""
+
+    args = parse_args()
+    test_path = resolve_test_path(args.test)
+    if test_path is None:
+        print(f"Error: Test file not found: compiler/stage2_l1/tests/{Path(args.test).name}", file=sys.stderr)
+        print("Available tests in compiler/stage2_l1/tests:", file=sys.stderr)
+        for case in discover_trace_l1_tests():
+            print(f"  - {case.path.name}", file=sys.stderr)
+        return 2
+
+    try:
+        _, _, _, repo_env = require_repo_stage2_test_env("run_test_trace.py")
+    except RuntimeError as exc:
+        print(f"run_test_trace.py: {exc}", file=sys.stderr)
+        return 2
+
+    artifact_dir = Path(tempfile.mkdtemp(prefix=f"{test_path.stem}."))
+    stdout_path = artifact_dir / f"{test_path.stem}.stdout.log"
+    stderr_path = artifact_dir / f"{test_path.stem}.stderr.log"
+
+    print(f"stdout={stdout_path}")
+    print(f"stderr={stderr_path}")
+
+    trace_env = repo_env.copy()
+    trace_env.setdefault("DEA_TRACE_FLUSH", "block")
+    completed = run_captured_binary_output(
+        [
+            *repo_stage2_command(),
+            *stage2_test_support_args(test_path),
+            "--trace-memory",
+            "--trace-arc",
+            "--project-root",
+            "compiler/stage2_l1/src",
+            "--run",
+            str(test_path),
+        ],
+        cwd=REPO_ROOT,
+        env=trace_env,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+    )
+    return completed.returncode
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

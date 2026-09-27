@@ -1,0 +1,548 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module locals;
+
+import std.hashmap;
+import std.vector;
+import util.diag;
+
+import ast;
+import driver.state;
+
+/**
+ * Defines the LocalKind enumeration.
+ */
+enum LocalKind {
+    LK_PARAM;
+    LK_LOCAL;
+    LK_PATTERN_VAR;
+}
+
+/**
+ * Represents the LocalSymbol structure.
+ */
+struct LocalSymbol {
+    name: string;
+    kind: LocalKind;
+    decl_ptr: void*;
+    decl_id: int;
+    binding_slot: int;
+}
+
+/**
+ * Represents the Scope structure.
+ */
+struct Scope {
+    parent: Scope*?;
+    symbols: StringPtrMap*; // string -> LocalSymbol*
+}
+
+/**
+ * Represents the MatchArmScopeEntry structure.
+ */
+struct MatchArmScopeEntry {
+    arm: MatchArm*;
+    scope: Scope*;
+}
+
+/**
+ * Represents the ScopeSlot structure.
+ */
+struct ScopeSlot {
+    scope: Scope*?;
+}
+
+/**
+ * Represents the FunctionEnv structure.
+ */
+struct FunctionEnv {
+    key: string;
+    module_name: string;
+    func_name: string;
+    func_decl: FuncDecl*;
+    pattern_arena: PatternArena*;
+    stmt_arena: StmtArena*;
+    root_scope: Scope*;
+    scopes: VectorBase*;        // Scope*
+    block_scopes: VectorBase*;  // ScopeSlot indexed by StmtId
+    arm_scopes: VectorBase*;    // MatchArmScopeEntry*
+}
+
+/**
+ * Represents the LocalsResult structure.
+ */
+struct LocalsResult {
+    envs: VectorBase*;          // FunctionEnv*
+    by_name: StringPtrMap*;     // string -> FunctionEnv*
+}
+
+/**
+ * Build a fully qualified function-scope key.
+ *
+ * @param module_name Defining module name.
+ * @param func_name Function name.
+ * @return Key in `module::func` form.
+ */
+func lc_key(module_name: string, func_name: string) -> string {
+    return module_name + "::" + func_name;
+}
+
+/**
+ * Create a local scope with an optional parent scope.
+ *
+ * @param parent Parent scope, or `null` for the root scope.
+ * @return New scope.
+ */
+func lc_scope_create(parent: Scope*?) -> Scope* {
+    return new Scope(parent, spm_create());
+}
+
+/**
+ * Define a local symbol in the current scope if absent.
+ *
+ * @param self Scope to update.
+ * @param name Local name to bind.
+ * @param kind Kind of local binding.
+ * @param decl_ptr AST pointer associated with the binding.
+ * @param decl_id Owning statement, pattern, or parameter index.
+ * @param binding_slot Pattern binder slot, or `-1` for other bindings.
+ */
+func lc_scope_define(self: Scope*, name: string, kind: LocalKind, decl_ptr: void*, decl_id: int,
+                     binding_slot: int) {
+    if (spm_has(self.symbols, name)) {
+        return;
+    }
+    spm_put(self.symbols, name, new LocalSymbol(name, kind, decl_ptr, decl_id, binding_slot) as void*);
+}
+
+/**
+ * Look up a local symbol through the scope chain.
+ *
+ * @param self Starting scope, or `null`.
+ * @param name Local name to look up.
+ * @return Matching symbol, or `null` if not found.
+ */
+func lc_scope_lookup(self: Scope*?, name: string) -> LocalSymbol*? {
+    let cur = self;
+    while (cur != null) {
+        let scope = cur as Scope*;
+        let value = spm_get(scope.symbols, name);
+        if (value != null) {
+            return value as LocalSymbol*;
+        }
+        cur = scope.parent;
+    }
+    return null;
+}
+
+/**
+ * Free a scope and its local-symbol table.
+ *
+ * @param self Scope to free.
+ */
+func lc_scope_free(self: Scope*) {
+    for (let i = 0; i < spm_capacity(self.symbols); i = i + 1) {
+        if (spm_slot_occupied(self.symbols, i)) {
+            let local = spm_slot_value(self.symbols, i) as LocalSymbol*;
+            drop local;
+        }
+    }
+    spm_free(self.symbols);
+    drop self;
+}
+
+/**
+ * Free one function-local environment.
+ *
+ * @param self Function environment to free.
+ */
+func lc_func_env_free(self: FunctionEnv*) {
+    for (let i = 0; i < vec_size(self.arm_scopes); i = i + 1) {
+        let entry = ptr_vec_get(self.arm_scopes, i) as MatchArmScopeEntry*;
+        drop entry;
+    }
+    vec_free(self.arm_scopes);
+    vec_free(self.block_scopes);
+    for (let scope_i = 0; scope_i < vec_size(self.scopes); scope_i = scope_i + 1) {
+        lc_scope_free(ptr_vec_get(self.scopes, scope_i) as Scope*);
+    }
+    vec_free(self.scopes);
+    drop self;
+}
+
+/**
+ * Free the full locals-resolution result.
+ *
+ * @param self Locals result to free.
+ */
+func locals_free(self: LocalsResult*) {
+    for (let i = 0; i < vec_size(self.envs); i = i + 1) {
+        lc_func_env_free(ptr_vec_get(self.envs, i) as FunctionEnv*);
+    }
+    vec_free(self.envs);
+    spm_free(self.by_name);
+    drop self;
+}
+
+/**
+ * Return the number of function environments in the locals result.
+ *
+ * @param self Locals result to inspect.
+ * @return Function-environment count.
+ */
+func locals_env_count(self: LocalsResult*) -> int {
+    return vec_size(self.envs);
+}
+
+/**
+ * Return a function environment by index.
+ *
+ * @param self Locals result to inspect.
+ * @param index Zero-based function-environment index.
+ * @return Function environment at `index`.
+ */
+func locals_env_get(self: LocalsResult*, index: int) -> FunctionEnv* {
+    return ptr_vec_get(self.envs, index) as FunctionEnv*;
+}
+
+/**
+ * Find a function environment by module and function name.
+ *
+ * @param self Locals result to inspect.
+ * @param module_name Module name.
+ * @param func_name Function name.
+ * @return Matching function environment, or `null` if absent.
+ */
+func locals_env_find(self: LocalsResult*, module_name: string, func_name: string) -> FunctionEnv*? {
+    let value = spm_get(self.by_name, lc_key(module_name, func_name));
+    if (value == null) {
+        return null;
+    }
+    return value as FunctionEnv*;
+}
+
+/**
+ * Return the scope associated with a block statement.
+ *
+ * @param self Function environment to inspect.
+ * @param stmt_id Block statement id.
+ * @return Scope for `stmt_id`, or `null` if none is recorded.
+ */
+func lc_func_env_get_block_scope(self: FunctionEnv*, stmt_id: StmtId) -> Scope*? {
+    if (stmt_id < 0 || stmt_id >= vec_size(self.block_scopes)) {
+        return null;
+    }
+    return (vec_get(self.block_scopes, stmt_id) as ScopeSlot*).scope;
+}
+
+/**
+ * Return the scope associated with a match arm.
+ *
+ * @param self Function environment to inspect.
+ * @param arm Match arm to look up.
+ * @return Scope for `arm`, or `null` if none is recorded.
+ */
+func lc_func_env_get_match_arm_scope(self: FunctionEnv*, arm: MatchArm*) -> Scope*? {
+    for (let i = 0; i < vec_size(self.arm_scopes); i = i + 1) {
+        let entry = ptr_vec_get(self.arm_scopes, i) as MatchArmScopeEntry*;
+        if (entry.arm.pattern == arm.pattern && entry.arm.body == arm.body) {
+            return entry.scope;
+        }
+    }
+    return null;
+}
+
+/**
+ * Record a scope so the function environment can free it later.
+ *
+ * @param env Function environment being populated.
+ * @param scope Scope to record.
+ */
+func lc_scope_track(env: FunctionEnv*, scope: Scope*) {
+    ptr_vec_push(env.scopes, scope as void*);
+}
+
+/**
+ * Associate a block statement id with a scope.
+ *
+ * @param env Function environment being populated.
+ * @param stmt_id Block statement id.
+ * @param scope Scope to attach.
+ */
+func lc_scope_set_block(env: FunctionEnv*, stmt_id: StmtId, scope: Scope*) {
+    if (stmt_id < 0 || stmt_id >= vec_size(env.block_scopes)) {
+        return;
+    }
+    let slot = vec_get(env.block_scopes, stmt_id) as ScopeSlot*;
+    slot.scope = scope;
+}
+
+/**
+ * Bind pattern variables for a match arm into a scope.
+ *
+ * @param env Function environment providing the pattern arena.
+ * @param pattern_id Pattern to inspect.
+ * @param scope Scope to receive bindings.
+ */
+func lc_bind_pattern(env: FunctionEnv*, pattern_id: PatternId, scope: Scope*) {
+    let pattern = pattern_arena_get(env.pattern_arena, pattern_id);
+    if (ord(pattern.kind) != ord(PT_VARIANT) || pattern.vars == null) {
+        return;
+    }
+    let vars = pattern.vars as StringVector*;
+    for (let i = 0; i < sv_size(vars); i = i + 1) {
+        lc_scope_define(scope, sv_get(vars, i), LK_PATTERN_VAR, pattern as void*, pattern_id, i);
+    }
+}
+
+/**
+ * Visits a block during AST traversal.
+ *
+ * @param env The current module environment.
+ * @param block_id The block id.
+ * @param scope The scope.
+ */
+func lc_visit_block(env: FunctionEnv*, block_id: StmtId, scope: Scope*) {
+    let block = stmt_arena_get(env.stmt_arena, block_id);
+    if (ord(block.kind) != ord(ST_BLOCK) || block.ids == null) {
+        return;
+    }
+    for (let i = 0; i < vec_size(block.ids as VectorBase*); i = i + 1) {
+        lc_visit_stmt(env, id_vec_get(block.ids as VectorBase*, i), scope);
+    }
+}
+
+/**
+ * Visits a statement body under an already-created scope.
+ *
+ * @param env The current module environment.
+ * @param stmt_id The body statement id.
+ * @param scope The body scope.
+ */
+func lc_visit_scoped_stmt(env: FunctionEnv*, stmt_id: StmtId, scope: Scope*) {
+    let stmt = stmt_arena_get(env.stmt_arena, stmt_id);
+    lc_scope_set_block(env, stmt_id, scope);
+    if (ord(stmt.kind) == ord(ST_BLOCK)) {
+        lc_visit_block(env, stmt_id, scope);
+    } else {
+        lc_visit_stmt(env, stmt_id, scope);
+    }
+}
+
+/**
+ * Visits a arm during AST traversal.
+ *
+ * @param env The current module environment.
+ * @param arm The arm.
+ * @param parent_scope The parent scope.
+ */
+func lc_visit_match_arm(env: FunctionEnv*, arm: MatchArm*, parent_scope: Scope*) {
+    let scope = lc_scope_create(parent_scope);
+    lc_scope_track(env, scope);
+    ptr_vec_push(env.arm_scopes, new MatchArmScopeEntry(arm, scope) as void*);
+    lc_bind_pattern(env, arm.pattern, scope);
+    lc_visit_scoped_stmt(env, arm.body, scope);
+}
+
+/**
+ * Visits a arm during AST traversal.
+ *
+ * @param env The current module environment.
+ * @param arm The arm.
+ * @param parent_scope The parent scope.
+ */
+func lc_visit_case_arm(env: FunctionEnv*, arm: CaseArm*, parent_scope: Scope*) {
+    let scope = lc_scope_create(parent_scope);
+    lc_scope_track(env, scope);
+    lc_visit_scoped_stmt(env, arm.body, scope);
+}
+
+/**
+ * Visits a else during AST traversal.
+ *
+ * @param env The current module environment.
+ * @param arm The arm.
+ * @param parent_scope The parent scope.
+ */
+func lc_visit_case_else(env: FunctionEnv*, arm: CaseElse*, parent_scope: Scope*) {
+    let scope = lc_scope_create(parent_scope);
+    lc_scope_track(env, scope);
+    lc_visit_scoped_stmt(env, arm.body, scope);
+}
+
+/**
+ * Visits a with during AST traversal.
+ *
+ * @param env The current module environment.
+ * @param stmt_id The `with` statement id.
+ * @param stmt The stmt.
+ * @param parent_scope The parent scope.
+ */
+func lc_visit_with(env: FunctionEnv*, stmt_id: StmtId, stmt: StmtNode*, parent_scope: Scope*) {
+    let header_scope = lc_scope_create(parent_scope);
+    lc_scope_track(env, header_scope);
+    lc_scope_set_block(env, stmt_id, header_scope);
+
+    let items = stmt.with_items as VectorBase*;
+    for (let i = 0; i < vec_size(items); i = i + 1) {
+        let item = ptr_vec_get(items, i) as WithItem*;
+        lc_visit_stmt(env, item.init, header_scope);
+    }
+
+    let body_scope = lc_scope_create(header_scope);
+    lc_scope_track(env, body_scope);
+    lc_scope_set_block(env, stmt.stmt_a, body_scope);
+    lc_visit_block(env, stmt.stmt_a, body_scope);
+
+    if (stmt.stmt_b >= 0) {
+        let cleanup_scope = lc_scope_create(header_scope);
+        lc_scope_track(env, cleanup_scope);
+        lc_scope_set_block(env, stmt.stmt_b, cleanup_scope);
+        lc_visit_block(env, stmt.stmt_b, cleanup_scope);
+    }
+}
+
+/**
+ * Visits a stmt during AST traversal.
+ *
+ * @param env The current module environment.
+ * @param stmt_id The stmt id.
+ * @param scope The scope.
+ */
+func lc_visit_stmt(env: FunctionEnv*, stmt_id: StmtId, scope: Scope*) {
+    if (stmt_id < 0) {
+        return;
+    }
+
+    let stmt = stmt_arena_get(env.stmt_arena, stmt_id);
+    match (stmt.kind) {
+        ST_LET => {
+            lc_scope_define(scope, stmt.name, LK_LOCAL, stmt as void*, stmt_id, -1);
+        }
+        ST_IF => {
+            lc_visit_stmt(env, stmt.stmt_a, scope);
+            lc_visit_stmt(env, stmt.stmt_b, scope);
+        }
+        ST_WHILE => {
+            let body_scope = lc_scope_create(scope);
+            lc_scope_track(env, body_scope);
+            lc_visit_scoped_stmt(env, stmt.stmt_a, body_scope);
+        }
+        ST_FOR => {
+            // The loop header (init and step) lives in its own scope so the
+            // loop variable does not leak into the enclosing block and is not
+            // seen as an outer local by later sibling loops.
+            let header_scope = lc_scope_create(scope);
+            lc_scope_track(env, header_scope);
+            lc_scope_set_block(env, stmt_id, header_scope);
+            lc_visit_stmt(env, stmt.stmt_a, header_scope);
+            lc_visit_stmt(env, stmt.stmt_b, header_scope);
+            let body_scope = lc_scope_create(header_scope);
+            lc_scope_track(env, body_scope);
+            lc_visit_scoped_stmt(env, stmt.stmt_c, body_scope);
+        }
+        ST_MATCH => {
+            let arms = stmt.match_arms as VectorBase*;
+            for (let i = 0; i < vec_size(arms); i = i + 1) {
+                lc_visit_match_arm(env, ptr_vec_get(arms, i) as MatchArm*, scope);
+            }
+        }
+        ST_CASE => {
+            let arms = stmt.case_arms as VectorBase*;
+            for (let i = 0; i < vec_size(arms); i = i + 1) {
+                lc_visit_case_arm(env, ptr_vec_get(arms, i) as CaseArm*, scope);
+            }
+            if (stmt.case_else != null) {
+                lc_visit_case_else(env, stmt.case_else as CaseElse*, scope);
+            }
+        }
+        ST_WITH => {
+            lc_visit_with(env, stmt_id, stmt, scope);
+        }
+        ST_BLOCK => {
+            let block_scope = lc_scope_create(scope);
+            lc_scope_track(env, block_scope);
+            lc_scope_set_block(env, stmt_id, block_scope);
+            lc_visit_block(env, stmt_id, block_scope);
+        }
+        _ => {
+        }
+    }
+}
+
+/**
+ * Build locals metadata for one non-extern function.
+ *
+ * @param module_name Defining module name.
+ * @param unit Driver unit owning the function.
+ * @param decl Function declaration.
+ * @return Populated function environment.
+ */
+func lc_make_function_env(module_name: string, unit: DriverUnit*, decl: FuncDecl*) -> FunctionEnv* {
+    let stmt_count = vec_size(unit.parse_result.stmt_arena.nodes);
+    let env = new FunctionEnv(
+        lc_key(module_name, decl.name),
+        module_name,
+        decl.name,
+        decl,
+        unit.parse_result.pattern_arena,
+        unit.parse_result.stmt_arena,
+        lc_scope_create(null),
+        ptr_vec_create(8),
+        vec_create(sizeof(ScopeSlot), stmt_count),
+        ptr_vec_create(4)
+    );
+
+    lc_scope_track(env, env.root_scope);
+    for (let i = 0; i < stmt_count; i = i + 1) {
+        let slot = vec_push(env.block_scopes) as ScopeSlot*;
+        *slot = ScopeSlot(null);
+    }
+
+    for (let param_i = 0; param_i < vec_size(decl.params); param_i = param_i + 1) {
+        let param = ptr_vec_get(decl.params, param_i) as Param*;
+        lc_scope_define(env.root_scope, param.name, LK_PARAM, param as void*, param_i, -1);
+    }
+
+    lc_scope_set_block(env, decl.body, env.root_scope);
+    lc_visit_block(env, decl.body, env.root_scope);
+    return env;
+}
+
+/**
+ * Build local-scope environments for every non-extern function.
+ *
+ * @param driver_state Parsed driver state.
+ * @param diags Diagnostic collector.
+ * @return Locals-resolution result.
+ */
+func locals_resolve(driver_state: DriverState*, diags: DiagCollector*) -> LocalsResult* {
+    let result = new LocalsResult(ptr_vec_create(8), spm_create());
+
+    for (let i = 0; i < driver_unit_count(driver_state); i = i + 1) {
+        let unit = driver_unit_get(driver_state, i);
+        if (unit.parse_result.root_module == null) {
+            continue;
+        }
+
+        let mod = unit.parse_result.root_module as Module*;
+        for (let j = 0; j < vec_size(mod.decls); j = j + 1) {
+            let top = ptr_vec_get(mod.decls, j) as TopLevelDecl*;
+            if (ord(top.kind) != ord(TD_FUNC)) {
+                continue;
+            }
+            let decl = top.data as FuncDecl*;
+            if (decl.is_extern) {
+                continue;
+            }
+            let env = lc_make_function_env(mod.name, unit, decl);
+            ptr_vec_push(result.envs, env as void*);
+            spm_put(result.by_name, env.key, env as void*);
+        }
+    }
+
+    return result;
+}

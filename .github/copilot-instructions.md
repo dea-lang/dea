@@ -74,9 +74,12 @@ Bootstrap and test flows:
 
 ```bash
 cd l1
-make use-dev-stage1
+make use-dev-stage2
 source build/dea/bin/l1-env.sh
 make test-stage1
+make test-stage2
+make test-stage2-trace
+make triple-test
 make test-stage1 TESTS="parser_test"
 make test
 make test-all
@@ -95,8 +98,8 @@ policy, but real implementation workflows are level-local.
   - the Stage 2 self-hosted compiler in Dea/L0
   - shared runtime and stdlib trees
   - the main docs, tests, and release workflows
-- `l1/` is a bootstrap scaffold. Its Stage 1 compiler is written in Dea/L0 and is built using the upstream L0 Stage 2
-  toolchain.
+- `l1/` has an L0-written Stage 1 oracle and a mechanical self-hosted L1 Stage 2 port. Stage 1 bootstraps through L0
+  Stage 2; explicit development selection uses `use-dev-stage1` or `use-dev-stage2`.
 
 For L0, the important big picture is the staged bootstrap chain: Stage 1 (Python) is the reference implementation and
 Stage 2 mirrors the same pass structure through code generation and driver execution, both ultimately targeting a single

@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import json
 from pathlib import Path
+from support.compiler_subject import selected_native
 import shutil
 import subprocess
 import sys
@@ -59,7 +60,7 @@ def providers(result: subprocess.CompletedProcess[str]) -> dict[str, dict]:
 def main() -> int:
     """Verify semantic bootstrap with no native stdlib or runtime preparation."""
     compiler = stage1_compiler()
-    native = compiler.parent / "l1c-stage1.native"
+    native = selected_native(compiler.parent / "l1c-stage1.native")
     cc = resolve_deterministic_host_c_compiler()
     assert native.is_file() and cc, "build Stage 1 and provide a host C compiler first"
     with tempfile.TemporaryDirectory(prefix="l1-semantic-test-") as temporary:

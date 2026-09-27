@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from support.compiler_subject import selected_compiler
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -22,7 +23,7 @@ def main() -> int:
     build_dir = Path(os.environ.get("L1_BUILD_DIR", "build/dea"))
     if not build_dir.is_absolute():
         build_dir = L1_ROOT / build_dir
-    compiler = build_dir / "bin" / "l1c-stage1"
+    compiler = selected_compiler(build_dir / "bin" / "l1c-stage1")
     return subprocess.run(
         [
             sys.executable,

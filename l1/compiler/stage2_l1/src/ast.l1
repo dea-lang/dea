@@ -1,0 +1,1118 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module ast;
+
+import std.assert;
+import std.string;
+
+import std.vector;
+
+/* ---------------------------------
+   IDs and shared utilities
+   --------------------------------- */
+
+type ExprId = int;
+type StmtId = int;
+type PatternId = int;
+
+/**
+ * Returns an invalid ID for a expr to indicate absence.
+ *
+ * @return The sentinel value indicating an invalid expression ID (-1).
+ */
+func invalid_expr_id() -> ExprId {
+    return -1;
+}
+
+/**
+ * Returns an invalid ID for a stmt to indicate absence.
+ *
+ * @return The sentinel value indicating an invalid statement ID (-1).
+ */
+func invalid_stmt_id() -> StmtId {
+    return -1;
+}
+
+/**
+ * Returns an invalid ID for a pattern to indicate absence.
+ *
+ * @return The sentinel value indicating an invalid pattern ID (-1).
+ */
+func invalid_pattern_id() -> PatternId {
+    return -1;
+}
+
+/**
+ * Create a vector of pointer slots.
+ *
+ * @param initial_capacity Initial vector capacity.
+ * @return New pointer vector.
+ */
+func ptr_vec_create(initial_capacity: int) -> VectorBase* {
+    return vec_create(sizeof(void*), initial_capacity);
+}
+
+/**
+ * Append a pointer value to a pointer vector.
+ *
+ * @param self Pointer vector to extend.
+ * @param ptr Pointer value to append.
+ */
+func ptr_vec_push(self: VectorBase*, ptr: void*) {
+    let dest = vec_push(self) as void**;
+    *dest = ptr;
+}
+
+/**
+ * Return a pointer value from a pointer vector.
+ *
+ * @param self Pointer vector to inspect.
+ * @param index Zero-based element index.
+ * @return Pointer value at `index`.
+ */
+func ptr_vec_get(self: VectorBase*, index: int) -> void* {
+    let src = vec_get(self, index) as void**;
+    return *src;
+}
+
+/**
+ * Create a vector of integer ids.
+ *
+ * @param initial_capacity Initial vector capacity.
+ * @return New id vector.
+ */
+func id_vec_create(initial_capacity: int) -> VectorBase* {
+    return vec_create(sizeof(int), initial_capacity);
+}
+
+/**
+ * Append an id to an id vector.
+ *
+ * @param self Id vector to extend.
+ * @param id Id value to append.
+ */
+func id_vec_push(self: VectorBase*, id: int) {
+    vec_push_int(self, id);
+}
+
+/**
+ * Return an id from an id vector.
+ *
+ * @param self Id vector to inspect.
+ * @param index Zero-based element index.
+ * @return Id value at `index`.
+ */
+func id_vec_get(self: VectorBase*, index: int) -> int {
+    let src = vec_get(self, index) as int*;
+    return *src;
+}
+
+/**
+ * Represents the Span structure.
+ */
+struct Span {
+    start_line: int;
+    start_column: int;
+    end_line: int;
+    end_column: int;
+}
+
+/**
+ * Build a zero-width span at a source location.
+ *
+ * @param line One-based source line.
+ * @param column One-based source column.
+ * @return Span whose start and end are the same location.
+ */
+func span_here(line: int, column: int) -> Span {
+    return Span(line, column, line, column);
+}
+
+/* ---------------------------------
+   Pointer-owned metadata nodes
+   --------------------------------- */
+
+/**
+ * Represents the TypeRef structure.
+ */
+struct TypeRef {
+    name: string;
+    pointer_depth: int;
+    is_nullable: bool;
+    is_unsafe: bool;
+    module_path: StringVector*?;      // string entries
+    name_qualifier: StringVector*?;   // string entries
+    func_params: VectorBase*?;        // TypeRef*
+    func_result: TypeRef*?;
+    suffixes: VectorBase*?;           // TypeSuffix*
+    span: Span;
+}
+
+/**
+ * Defines parsed type suffix kinds.
+ */
+enum TypeSuffixKind {
+    TS_POINTER;
+    TS_NULLABLE;
+    TS_ARRAY;
+    TS_SLICE;
+    TS_VARIADIC;
+}
+
+/**
+ * Represents one source-ordered type suffix.
+ */
+struct TypeSuffix {
+    kind: TypeSuffixKind;
+    array_len: int;
+    array_len_expr: ExprId;
+    span: Span;
+}
+
+/**
+ * Represents the ExportManifest structure.
+ */
+struct ExportManifest {
+    export_all: bool;
+    names: StringVector*;
+    opaque_names: StringVector*;
+    span: Span;
+}
+
+/**
+ * Defines the ImportKind enumeration.
+ */
+enum ImportKind {
+    IMPORT_OPEN;
+    IMPORT_ALIAS;
+    IMPORT_SELECTIVE;
+}
+
+/**
+ * Represents the Import structure.
+ */
+struct Import {
+    name: string;
+    kind: ImportKind;
+    alias: string;
+    names: StringVector*?;
+    span: Span;
+}
+
+/**
+ * Represents the Param structure.
+ */
+struct Param {
+    name: string;
+    type_ref: TypeRef*;
+}
+
+/**
+ * Represents the FieldDecl structure.
+ */
+struct FieldDecl {
+    name: string;
+    type_ref: TypeRef*;
+}
+
+/**
+ * Represents the EnumVariant structure.
+ */
+struct EnumVariant {
+    name: string;
+    fields: VectorBase*; // FieldDecl*
+}
+
+/**
+ * Represents the FuncDecl structure.
+ */
+struct FuncDecl {
+    name: string;
+    params: VectorBase*;     // Param*
+    return_type: TypeRef*;
+    body: StmtId;            // points into stmt arena
+    is_extern: bool;
+    is_unsafe: bool;
+    span: Span;
+}
+
+/**
+ * Represents the StructDecl structure.
+ */
+struct StructDecl {
+    name: string;
+    fields: VectorBase*;     // FieldDecl*
+    span: Span;
+}
+
+/**
+ * Represents the EnumDecl structure.
+ */
+struct EnumDecl {
+    name: string;
+    variants: VectorBase*;   // EnumVariant*
+    span: Span;
+}
+
+/**
+ * Represents the TypeAliasDecl structure.
+ */
+struct TypeAliasDecl {
+    name: string;
+    target: TypeRef*;
+    span: Span;
+}
+
+/**
+ * Represents the LetDecl structure.
+ */
+struct LetDecl {
+    name: string;
+    type_ref: TypeRef*?;
+    value: ExprId;
+    is_const: bool;
+    span: Span;
+}
+
+/**
+ * Defines the TopLevelDeclKind enumeration.
+ */
+enum TopLevelDeclKind {
+    TD_FUNC;
+    TD_STRUCT;
+    TD_ENUM;
+    TD_TYPE_ALIAS;
+    TD_LET;
+}
+
+/**
+ * Represents the TopLevelDecl structure.
+ */
+struct TopLevelDecl {
+    kind: TopLevelDeclKind;
+    data: void*;
+}
+
+/**
+ * Represents the Module structure.
+ */
+struct Module {
+    name: string;
+    export_manifest: ExportManifest*?;
+    imports: VectorBase*; // Import*
+    decls: VectorBase*;   // TopLevelDecl*
+    span: Span;
+    filename: string;
+}
+
+/* ---------------------------------
+   Pattern arena
+   --------------------------------- */
+
+/**
+ * Defines the PatternKind enumeration.
+ */
+enum PatternKind {
+    PT_WILDCARD;
+    PT_VARIANT;
+}
+
+/**
+ * Represents the PatternNode structure.
+ */
+struct PatternNode {
+    kind: PatternKind;
+    span: Span;
+    name: string;
+    vars: StringVector*?;
+    module_path: StringVector*?;
+    name_qualifier: StringVector*?;
+}
+
+/**
+ * Represents the PatternArena structure.
+ */
+struct PatternArena {
+    nodes: VectorBase*; // PatternNode*
+}
+
+/**
+ * Create a pattern node.
+ *
+ * @param kind Pattern kind.
+ * @param span Source span for the node.
+ * @return New pattern node.
+ */
+func pattern_node_create(kind: PatternKind, span: Span) -> PatternNode* {
+    return new PatternNode(kind, span, "", null, null, null);
+}
+
+/**
+ * Create a pattern arena.
+ *
+ * @param initial_capacity Initial arena capacity.
+ * @return New pattern arena.
+ */
+func pattern_arena_create(initial_capacity: int) -> PatternArena* {
+    return new PatternArena(ptr_vec_create(initial_capacity));
+}
+
+/**
+ * Add a pattern node to the arena.
+ *
+ * @param self Pattern arena to extend.
+ * @param node Pattern node to store.
+ * @return Pattern id assigned to the stored node.
+ */
+func pattern_arena_add(self: PatternArena*, node: PatternNode*) -> PatternId {
+    let id = vec_size(self.nodes);
+    ptr_vec_push(self.nodes, node as void*);
+    return id;
+}
+
+/**
+ * Return a pattern node from the arena.
+ *
+ * @param self Pattern arena to inspect.
+ * @param id Pattern id to look up.
+ * @return Pattern node for `id`.
+ */
+func pattern_arena_get(self: PatternArena*, id: PatternId) -> PatternNode* {
+    assert(id >= 0 && id < vec_size(self.nodes), "invalid PatternId");
+    return ptr_vec_get(self.nodes, id) as PatternNode*;
+}
+
+/**
+ * Free an optional string vector.
+ *
+ * @param v Optional vector to free.
+ */
+func sv_free_opt(v: StringVector*?) {
+    if (v != null) {
+        sv_free(v as StringVector*);
+    }
+}
+
+/**
+ * Free a pattern node and any owned vectors.
+ *
+ * @param node Pattern node to free.
+ */
+func pattern_node_free(node: PatternNode*) {
+    sv_free_opt(node.vars);
+    sv_free_opt(node.module_path);
+    sv_free_opt(node.name_qualifier);
+    drop node;
+}
+
+/**
+ * Free a pattern arena and every stored node.
+ *
+ * @param self Pattern arena to free.
+ */
+func pattern_arena_free(self: PatternArena*) {
+    for (let i = 0; i < vec_size(self.nodes); i = i + 1) {
+        let node = ptr_vec_get(self.nodes, i) as PatternNode*;
+        pattern_node_free(node);
+    }
+    vec_free(self.nodes);
+    drop self;
+}
+
+/* ---------------------------------
+   Expression arena
+   --------------------------------- */
+
+/**
+ * Defines the ExprKind enumeration.
+ */
+enum ExprKind {
+    EX_INT;
+    EX_BIGINT;
+    EX_FLOAT;
+    EX_DOUBLE;
+    EX_BYTE;
+    EX_STRING;
+    EX_BOOL;
+    EX_NULL;
+    EX_VAR_REF;
+    EX_NEW;
+    EX_UNARY;
+    EX_BINARY;
+    EX_CALL;
+    EX_INDEX;
+    EX_FIELD;
+    EX_PAREN;
+    EX_CAST;
+    EX_TRY;
+    EX_TYPE;
+    EX_ARRAY_LITERAL;
+    EX_ARRAY_CONSTRUCTOR;
+}
+
+/**
+ * Represents the ExprNode structure.
+ */
+struct ExprNode {
+    kind: ExprKind;
+    span: Span;
+
+    int_value: int;
+    bool_value: bool;
+    text_value: string;
+    base_value: int;
+
+    expr_a: ExprId;
+    expr_b: ExprId;
+    expr_c: ExprId;
+
+    ids: VectorBase*?;        // int entries, typically call/new args
+    arg_labels: StringVector*?; // string entries, for call/new named arguments
+    has_spread_arg: bool;     // final call argument carries `...`
+    type_ref: TypeRef*?;
+    module_path: StringVector*?;
+    name_qualifier: StringVector*?;
+}
+
+/**
+ * Represents the ExprArena structure.
+ */
+struct ExprArena {
+    nodes: VectorBase*; // ExprNode*
+}
+
+/**
+ * Create an expression node.
+ *
+ * @param kind Expression kind.
+ * @param span Source span for the node.
+ * @return New expression node.
+ */
+func expr_node_create(kind: ExprKind, span: Span) -> ExprNode* {
+    return new ExprNode(
+        kind,
+        span,
+        0,
+        false,
+        "",
+        0,
+        invalid_expr_id(),
+        invalid_expr_id(),
+        invalid_expr_id(),
+        null,
+        null,
+        false,
+        null,
+        null,
+        null
+    );
+}
+
+/**
+ * Report whether a type reference carries the parameter-only variadic suffix.
+ *
+ * @param self Type reference to inspect.
+ * @return `true` when the final ordered suffix is `TS_VARIADIC`.
+ */
+func type_ref_is_variadic(self: TypeRef*) -> bool {
+    if (self.suffixes == null) {
+        return false;
+    }
+    let suffixes = self.suffixes as VectorBase*;
+    if (vec_size(suffixes) == 0) {
+        return false;
+    }
+    return ord((ptr_vec_get(suffixes, vec_size(suffixes) - 1) as TypeSuffix*).kind) == ord(TS_VARIADIC);
+}
+
+/**
+ * Create an expression arena.
+ *
+ * @param initial_capacity Initial arena capacity.
+ * @return New expression arena.
+ */
+func expr_arena_create(initial_capacity: int) -> ExprArena* {
+    return new ExprArena(ptr_vec_create(initial_capacity));
+}
+
+/**
+ * Add an expression node to the arena.
+ *
+ * @param self Expression arena to extend.
+ * @param node Expression node to store.
+ * @return Expression id assigned to the stored node.
+ */
+func expr_arena_add(self: ExprArena*, node: ExprNode*) -> ExprId {
+    let id = vec_size(self.nodes);
+    ptr_vec_push(self.nodes, node as void*);
+    return id;
+}
+
+/**
+ * Return an expression node from the arena.
+ *
+ * @param self Expression arena to inspect.
+ * @param id Expression id to look up.
+ * @return Expression node for `id`.
+ */
+func expr_arena_get(self: ExprArena*, id: ExprId) -> ExprNode* {
+    assert(id >= 0 && id < vec_size(self.nodes), "invalid ExprId");
+    return ptr_vec_get(self.nodes, id) as ExprNode*;
+}
+
+/* ---------------------------------
+   Statement arena
+   --------------------------------- */
+
+/**
+ * Represents the MatchArm structure.
+ */
+struct MatchArm {
+    pattern: PatternId;
+    body: StmtId;
+    span: Span;
+}
+
+/**
+ * Represents the CaseArm structure.
+ */
+struct CaseArm {
+    literal: ExprId;
+    body: StmtId;
+    span: Span;
+}
+
+/**
+ * Represents the CaseElse structure.
+ */
+struct CaseElse {
+    body: StmtId;
+    span: Span;
+}
+
+/**
+ * Represents the WithItem structure.
+ */
+struct WithItem {
+    init: StmtId;
+    cleanup_stmt: StmtId;
+    has_cleanup: bool;
+    span: Span;
+}
+
+/**
+ * Defines the StmtKind enumeration.
+ */
+enum StmtKind {
+    ST_BLOCK;
+    ST_LET;
+    ST_ASSIGN;
+    ST_EXPR;
+    ST_IF;
+    ST_WHILE;
+    ST_FOR;
+    ST_RETURN;
+    ST_DROP;
+    ST_MATCH;
+    ST_CASE;
+    ST_BREAK;
+    ST_CONTINUE;
+    ST_WITH;
+}
+
+/**
+ * Represents the StmtNode structure.
+ */
+struct StmtNode {
+    kind: StmtKind;
+    span: Span;
+
+    name: string;
+    type_ref: TypeRef*?;
+
+    expr_a: ExprId;
+    expr_b: ExprId;
+
+    stmt_a: StmtId;
+    stmt_b: StmtId;
+    stmt_c: StmtId;
+
+    ids: VectorBase*?;         // int entries, used for block stmt lists
+    match_arms: VectorBase*?;  // MatchArm*
+    case_arms: VectorBase*?;   // CaseArm*
+    case_else: CaseElse*?;
+    with_items: VectorBase*?;  // WithItem*
+}
+
+/**
+ * Represents the StmtArena structure.
+ */
+struct StmtArena {
+    nodes: VectorBase*; // StmtNode*
+}
+
+/**
+ * Create a statement node.
+ *
+ * @param kind Statement kind.
+ * @param span Source span for the node.
+ * @return New statement node.
+ */
+func stmt_node_create(kind: StmtKind, span: Span) -> StmtNode* {
+    return new StmtNode(
+        kind,
+        span,
+        "",
+        null,
+        invalid_expr_id(),
+        invalid_expr_id(),
+        invalid_stmt_id(),
+        invalid_stmt_id(),
+        invalid_stmt_id(),
+        null,
+        null,
+        null,
+        null,
+        null
+    );
+}
+
+/**
+ * Create a statement arena.
+ *
+ * @param initial_capacity Initial arena capacity.
+ * @return New statement arena.
+ */
+func stmt_arena_create(initial_capacity: int) -> StmtArena* {
+    return new StmtArena(ptr_vec_create(initial_capacity));
+}
+
+/**
+ * Add a statement node to the arena.
+ *
+ * @param self Statement arena to extend.
+ * @param node Statement node to store.
+ * @return Statement id assigned to the stored node.
+ */
+func stmt_arena_add(self: StmtArena*, node: StmtNode*) -> StmtId {
+    let id = vec_size(self.nodes);
+    ptr_vec_push(self.nodes, node as void*);
+    return id;
+}
+
+/**
+ * Return a statement node from the arena.
+ *
+ * @param self Statement arena to inspect.
+ * @param id Statement id to look up.
+ * @return Statement node for `id`.
+ */
+func stmt_arena_get(self: StmtArena*, id: StmtId) -> StmtNode* {
+    assert(id >= 0 && id < vec_size(self.nodes), "invalid StmtId");
+    return ptr_vec_get(self.nodes, id) as StmtNode*;
+}
+
+/* ---------------------------------
+   Free helpers
+   --------------------------------- */
+
+/**
+ * Free an optional type reference.
+ *
+ * @param self Optional type reference to free.
+ */
+func type_ref_free(self: TypeRef*?) {
+    if (self != null) {
+        let type_ref = self as TypeRef*;
+        sv_free_opt(type_ref.module_path);
+        sv_free_opt(type_ref.name_qualifier);
+        if (type_ref.func_params != null) {
+            let params = type_ref.func_params as VectorBase*;
+            for (let i = 0; i < vec_size(params); i = i + 1) {
+                type_ref_free(ptr_vec_get(params, i) as TypeRef*);
+            }
+            vec_free(params);
+        }
+        type_ref_free(type_ref.func_result);
+        if (type_ref.suffixes != null) {
+            let suffixes = type_ref.suffixes as VectorBase*;
+            for (let i = 0; i < vec_size(suffixes); i = i + 1) {
+                let suffix = ptr_vec_get(suffixes, i) as TypeSuffix*;
+                drop suffix;
+            }
+            vec_free(suffixes);
+        }
+        drop type_ref;
+    }
+}
+
+/**
+ * Free a function parameter node.
+ *
+ * @param self Parameter to free.
+ */
+func param_free(self: Param*) {
+    type_ref_free(self.type_ref);
+    drop self;
+}
+
+/**
+ * Free a field declaration node.
+ *
+ * @param self Field declaration to free.
+ */
+func field_decl_free(self: FieldDecl*) {
+    type_ref_free(self.type_ref);
+    drop self;
+}
+
+/**
+ * Free an enum variant declaration.
+ *
+ * @param self Enum variant to free.
+ */
+func enum_variant_free(self: EnumVariant*) {
+    for (let i = 0; i < vec_size(self.fields); i = i + 1) {
+        let fd = ptr_vec_get(self.fields, i) as FieldDecl*;
+        field_decl_free(fd);
+    }
+    vec_free(self.fields);
+    drop self;
+}
+
+/**
+ * Free a function declaration.
+ *
+ * @param self Function declaration to free.
+ */
+func func_decl_free(self: FuncDecl*) {
+    for (let i = 0; i < vec_size(self.params); i = i + 1) {
+        let p = ptr_vec_get(self.params, i) as Param*;
+        param_free(p);
+    }
+    vec_free(self.params);
+    type_ref_free(self.return_type);
+    drop self;
+}
+
+/**
+ * Free a struct declaration.
+ *
+ * @param self Struct declaration to free.
+ */
+func struct_decl_free(self: StructDecl*) {
+    for (let i = 0; i < vec_size(self.fields); i = i + 1) {
+        let fd = ptr_vec_get(self.fields, i) as FieldDecl*;
+        field_decl_free(fd);
+    }
+    vec_free(self.fields);
+    drop self;
+}
+
+/**
+ * Free an enum declaration.
+ *
+ * @param self Enum declaration to free.
+ */
+func enum_decl_free(self: EnumDecl*) {
+    for (let i = 0; i < vec_size(self.variants); i = i + 1) {
+        let v = ptr_vec_get(self.variants, i) as EnumVariant*;
+        enum_variant_free(v);
+    }
+    vec_free(self.variants);
+    drop self;
+}
+
+/**
+ * Free a type-alias declaration.
+ *
+ * @param self Type-alias declaration to free.
+ */
+func type_alias_decl_free(self: TypeAliasDecl*) {
+    type_ref_free(self.target);
+    drop self;
+}
+
+/**
+ * Free a top-level `let` declaration.
+ *
+ * @param self Let declaration to free.
+ */
+func let_decl_free(self: LetDecl*) {
+    type_ref_free(self.type_ref);
+    drop self;
+}
+
+/**
+ * Free a top-level declaration wrapper and its payload.
+ *
+ * @param self Top-level declaration to free.
+ */
+func top_level_decl_free(self: TopLevelDecl*) {
+    match (self.kind) {
+        TD_FUNC => {
+            func_decl_free(self.data as FuncDecl*);
+        }
+        TD_STRUCT => {
+            struct_decl_free(self.data as StructDecl*);
+        }
+        TD_ENUM => {
+            enum_decl_free(self.data as EnumDecl*);
+        }
+        TD_TYPE_ALIAS => {
+            type_alias_decl_free(self.data as TypeAliasDecl*);
+        }
+        TD_LET => {
+            let_decl_free(self.data as LetDecl*);
+        }
+    }
+    drop self;
+}
+
+/**
+ * Free an optional export manifest.
+ *
+ * @param self Optional export manifest to free.
+ */
+func export_manifest_free(self: ExportManifest*?) {
+    if (self != null) {
+        let manifest = self as ExportManifest*;
+        sv_free(manifest.names);
+        sv_free(manifest.opaque_names);
+        drop manifest;
+    }
+}
+
+/**
+ * Free an import declaration.
+ *
+ * @param self Import declaration to free.
+ */
+func import_free(self: Import*) {
+    sv_free_opt(self.names);
+    drop self;
+}
+
+/**
+ * Free a parsed module and its owned declarations.
+ *
+ * @param self Module to free.
+ */
+func module_free(self: Module*) {
+    export_manifest_free(self.export_manifest);
+
+    for (let i = 0; i < vec_size(self.imports); i = i + 1) {
+        let imp = ptr_vec_get(self.imports, i) as Import*;
+        import_free(imp);
+    }
+    vec_free(self.imports);
+
+    for (let decl_i = 0; decl_i < vec_size(self.decls); decl_i = decl_i + 1) {
+        let decl = ptr_vec_get(self.decls, decl_i) as TopLevelDecl*;
+        top_level_decl_free(decl);
+    }
+    vec_free(self.decls);
+
+    drop self;
+}
+
+/**
+ * Free an optional id vector.
+ *
+ * @param v Optional vector to free.
+ */
+func id_vec_free(v: VectorBase*?) {
+    if (v != null) {
+        vec_free(v as VectorBase*);
+    }
+}
+
+/**
+ * Free an optional import vector.
+ *
+ * @param v Optional import vector to free.
+ */
+func import_vec_free(v: VectorBase*?) {
+    if (v != null) {
+        let vec = v as VectorBase*;
+        for (let i = 0; i < vec_size(vec); i = i + 1) {
+            let imp = ptr_vec_get(vec, i) as Import*;
+            import_free(imp);
+        }
+        vec_free(vec);
+    }
+}
+
+/**
+ * Free an optional top-level declaration vector.
+ *
+ * @param v Optional declaration vector to free.
+ */
+func top_level_decl_vec_free(v: VectorBase*?) {
+    if (v != null) {
+        let vec = v as VectorBase*;
+        for (let i = 0; i < vec_size(vec); i = i + 1) {
+            let decl = ptr_vec_get(vec, i) as TopLevelDecl*;
+            top_level_decl_free(decl);
+        }
+        vec_free(vec);
+    }
+}
+
+/**
+ * Free an optional parameter vector.
+ *
+ * @param v Optional parameter vector to free.
+ */
+func param_vec_free(v: VectorBase*?) {
+    if (v != null) {
+        let vec = v as VectorBase*;
+        for (let i = 0; i < vec_size(vec); i = i + 1) {
+            let p = ptr_vec_get(vec, i) as Param*;
+            param_free(p);
+        }
+        vec_free(vec);
+    }
+}
+
+/**
+ * Free an optional field-declaration vector.
+ *
+ * @param v Optional field-declaration vector to free.
+ */
+func field_decl_vec_free(v: VectorBase*?) {
+    if (v != null) {
+        let vec = v as VectorBase*;
+        for (let i = 0; i < vec_size(vec); i = i + 1) {
+            let fd = ptr_vec_get(vec, i) as FieldDecl*;
+            field_decl_free(fd);
+        }
+        vec_free(vec);
+    }
+}
+
+/**
+ * Free an optional enum-variant vector.
+ *
+ * @param v Optional enum-variant vector to free.
+ */
+func enum_variant_vec_free(v: VectorBase*?) {
+    if (v != null) {
+        let vec = v as VectorBase*;
+        for (let i = 0; i < vec_size(vec); i = i + 1) {
+            let ev = ptr_vec_get(vec, i) as EnumVariant*;
+            enum_variant_free(ev);
+        }
+        vec_free(vec);
+    }
+}
+
+/**
+ * Free an optional match-arm vector.
+ *
+ * @param v Optional match-arm vector to free.
+ */
+func match_arm_vec_free(v: VectorBase*?) {
+    if (v != null) {
+        let vec = v as VectorBase*;
+        for (let i = 0; i < vec_size(vec); i = i + 1) {
+            let arm = ptr_vec_get(vec, i) as MatchArm*;
+            drop arm;
+        }
+        vec_free(vec);
+    }
+}
+
+/**
+ * Free an optional case-arm vector.
+ *
+ * @param v Optional case-arm vector to free.
+ */
+func case_arm_vec_free(v: VectorBase*?) {
+    if (v != null) {
+        let vec = v as VectorBase*;
+        for (let i = 0; i < vec_size(vec); i = i + 1) {
+            let arm = ptr_vec_get(vec, i) as CaseArm*;
+            drop arm;
+        }
+        vec_free(vec);
+    }
+}
+
+/**
+ * Free an optional `with`-item vector.
+ *
+ * @param v Optional `with`-item vector to free.
+ */
+func with_item_vec_free(v: VectorBase*?) {
+    if (v != null) {
+        let vec = v as VectorBase*;
+        for (let i = 0; i < vec_size(vec); i = i + 1) {
+            let it = ptr_vec_get(vec, i) as WithItem*;
+            drop it;
+        }
+        vec_free(vec);
+    }
+}
+
+/**
+ * Free an expression node and its owned payload.
+ *
+ * @param self Expression node to free.
+ */
+func expr_node_free(self: ExprNode*) {
+    id_vec_free(self.ids);
+    type_ref_free(self.type_ref);
+    sv_free_opt(self.module_path);
+    sv_free_opt(self.name_qualifier);
+    sv_free_opt(self.arg_labels);
+    drop self;
+}
+
+/**
+ * Free a statement node and its owned payload.
+ *
+ * @param self Statement node to free.
+ */
+func stmt_node_free(self: StmtNode*) {
+    type_ref_free(self.type_ref);
+    id_vec_free(self.ids);
+    match_arm_vec_free(self.match_arms);
+    case_arm_vec_free(self.case_arms);
+    let case_else = self.case_else;
+    drop case_else;
+    with_item_vec_free(self.with_items);
+
+    drop self;
+}
+
+/**
+ * Free an expression arena and every stored node.
+ *
+ * @param self Expression arena to free.
+ */
+func expr_arena_free(self: ExprArena*) {
+    for (let i = 0; i < vec_size(self.nodes); i = i + 1) {
+        let node = ptr_vec_get(self.nodes, i) as ExprNode*;
+        expr_node_free(node);
+    }
+    vec_free(self.nodes);
+    drop self;
+}
+
+/**
+ * Free a statement arena and every stored node.
+ *
+ * @param self Statement arena to free.
+ */
+func stmt_arena_free(self: StmtArena*) {
+    for (let i = 0; i < vec_size(self.nodes); i = i + 1) {
+        let node = ptr_vec_get(self.nodes, i) as StmtNode*;
+        stmt_node_free(node);
+    }
+    vec_free(self.nodes);
+    drop self;
+}

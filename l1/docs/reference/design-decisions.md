@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-09-11
+Version: 2026-09-27
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -203,11 +203,12 @@ These boundaries are recorded in
 [l1/docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md](../decisions/0039-native-preparation-identity-and-reuse-boundary.md)
 and [l1/docs/reference/stdlib-preparation.md](stdlib-preparation.md).
 
-The native L1 Stage 1 compiler is itself an L0 program. Its default compiler-build runtime uses basic pointer validation
-and a 256-record quarantine limit, retaining core checked-runtime diagnostics without the full interior-pointer index.
-`L1_COMPILER_RT_CHECK_BASIC`, `L1_COMPILER_RT_UNCHECKED`, `L1_COMPILER_RT_QUARANTINE_MAX_BYTES`, and
-`L1_COMPILER_RT_QUARANTINE_MAX_COUNT` configure only that native compiler binary. They do not change the full checked
-default of L1 runtime archives or the runtime mode selected for programs produced by `l1c`.
+The native L1 Stage 1 compiler is an L0 program; Stage 2 is its mechanical L1 port. Both default compiler-build runtimes
+use basic pointer validation and a 256-record quarantine limit, retaining core checked-runtime diagnostics without the
+full interior-pointer index. `L1_COMPILER_RT_CHECK_BASIC`, `L1_COMPILER_RT_UNCHECKED`,
+`L1_COMPILER_RT_QUARANTINE_MAX_BYTES`, and `L1_COMPILER_RT_QUARANTINE_MAX_COUNT` configure only the native compiler
+binaries. They do not change the full checked default of L1 runtime archives or the runtime mode selected for programs
+produced by `l1c`.
 
 ## 7.1 Fixed-Size Array Policy
 

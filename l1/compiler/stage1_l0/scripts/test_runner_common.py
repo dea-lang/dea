@@ -192,6 +192,7 @@ def build_repo_test_env(build_dir_text: str, build_dir: Path) -> dict[str, str]:
     """Return the sanitized repo-local environment for L1 Stage 1 implementation tests."""
 
     env = os.environ.copy()
+    env.pop("L1_TEST_COMPILER", None)
     env[L1_BUILD_DIR_ENV] = build_dir_text
     env["L0_HOME"] = str(MONOREPO_ROOT / "l0" / "compiler")
     env["L0_SYSTEM"] = str(MONOREPO_ROOT / "l0" / "compiler" / "shared" / "l0" / "stdlib")

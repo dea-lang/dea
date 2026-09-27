@@ -1,0 +1,14 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module replay_extern_shadow_bad;
+
+import replay_provider;
+
+extern func c_score(value: bool) -> int;
+
+func main() -> int {
+    return 0;
+}

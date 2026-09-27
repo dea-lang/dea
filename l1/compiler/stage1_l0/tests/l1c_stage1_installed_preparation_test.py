@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import os
 from pathlib import Path
+from support.compiler_subject import selected_native
 import shutil
 import subprocess
 import sys
@@ -22,7 +23,7 @@ from l1c_stage1_managed_preparation_test import analysis_count, preparation_c_co
 
 def main() -> int:
     """Build and link through installed interfaces without installed native artifacts."""
-    native = stage1_compiler().parent / "l1c-stage1.native"
+    native = selected_native(stage1_compiler().parent / "l1c-stage1.native")
     cc = preparation_c_compiler()
     assert cc
     with tempfile.TemporaryDirectory(prefix="l1-installation-fixture-") as directory:

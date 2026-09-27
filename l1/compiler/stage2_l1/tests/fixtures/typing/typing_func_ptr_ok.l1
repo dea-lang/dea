@@ -1,0 +1,26 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_func_ptr_ok;
+
+type UnaryInt = func(int) -> int;
+type MaybeUnaryInt = (func(int) -> int)?;
+
+func inc(x: int) -> int {
+    return x + 1;
+}
+
+func apply(cb: UnaryInt, value: int) -> int {
+    return cb(value);
+}
+
+func main() -> int {
+    let cb: UnaryInt = inc;
+    let maybe: MaybeUnaryInt = cb;
+    if (maybe != null) {
+        return apply(cb, 4);
+    }
+    return 0;
+}

@@ -1,0 +1,158 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module type_resolve.materialize;
+
+import std.hashset;
+import std.hashmap;
+import std.string;
+import std.vector;
+import util.diag;
+import ast;
+import driver.state;
+import module_interface;
+import name_resolver.query;
+import name_resolver.state;
+import symbols;
+import types;
+import type_resolve.ref;
+
+/**
+ * Finalize all owned type trees in one active semantic interface.
+ *
+ * @param tables Signature tables available during finalization.
+ * @param nr Name-resolution data containing semantic symbols.
+ * @param driver_state Driver state owning the interface.
+ * @param mi Active semantic interface to mutate.
+ * @param diags Diagnostic collector.
+ * @param seen Reusable alias-cycle stack.
+ */
+func tr_finalize_interface_types(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*,
+                                  mi: ModuleInterface*, diags: DiagCollector*, seen: StringSet*) {
+    for (let struct_i = 0; struct_i < vec_size(mi.struct_infos); struct_i = struct_i + 1) {
+        let info = ptr_vec_get(mi.struct_infos, struct_i) as StructInfo*;
+        tr_finalize_materialized_type(tables, nr, driver_state, mi.module_name, info.struct_type, diags, seen);
+        for (let field_i = 0; field_i < vec_size(info.fields); field_i = field_i + 1) {
+            tr_finalize_materialized_type(tables, nr, driver_state, mi.module_name,
+                (ptr_vec_get(info.fields, field_i) as StructFieldInfo*).field_type, diags, seen);
+        }
+    }
+    for (let enum_i = 0; enum_i < vec_size(mi.enum_infos); enum_i = enum_i + 1) {
+        let info2 = ptr_vec_get(mi.enum_infos, enum_i) as EnumInfo*;
+        tr_finalize_materialized_type(tables, nr, driver_state, mi.module_name, info2.enum_type, diags, seen);
+        for (let variant_i = 0; variant_i < vec_size(info2.variants); variant_i = variant_i + 1) {
+            let variant = ptr_vec_get(info2.variants, variant_i) as EnumVariantInfo*;
+            for (let field_i2 = 0; field_i2 < vec_size(variant.field_types); field_i2 = field_i2 + 1) {
+                tr_finalize_materialized_type(tables, nr, driver_state, mi.module_name,
+                    ptr_vec_get(variant.field_types, field_i2) as Type*, diags, seen);
+            }
+        }
+    }
+    for (let alias_i = 0; alias_i < vec_size(mi.alias_entries); alias_i = alias_i + 1) {
+        tr_finalize_materialized_type(tables, nr, driver_state, mi.module_name,
+            (ptr_vec_get(mi.alias_entries, alias_i) as InterfaceAliasEntry*).ty, diags, seen);
+    }
+    for (let func_i = 0; func_i < vec_size(mi.func_entries); func_i = func_i + 1) {
+        tr_finalize_materialized_type(tables, nr, driver_state, mi.module_name,
+            (ptr_vec_get(mi.func_entries, func_i) as InterfaceFuncEntry*).ty, diags, seen);
+    }
+    for (let let_i = 0; let_i < vec_size(mi.let_entries); let_i = let_i + 1) {
+        tr_finalize_materialized_type(tables, nr, driver_state, mi.module_name,
+            (ptr_vec_get(mi.let_entries, let_i) as InterfaceLetEntry*).ty, diags, seen);
+    }
+}
+
+/**
+ * Finalize semantic interfaces, name-resolution symbols, and signature tables.
+ *
+ * Raw graph interfaces and projection interfaces are intentionally excluded so
+ * interface parsing and projection preserve their original type spelling.
+ *
+ * @param tables Signature tables to update.
+ * @param nr Name-resolution data to update.
+ * @param driver_state Driver state owning active semantic interfaces.
+ * @param diags Diagnostic collector.
+ */
+func tr_finalize_materialized_types(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*,
+                                     diags: DiagCollector*) {
+    with (let seen = ss_create() => ss_free(seen)) {
+        for (let iface_i = 0; iface_i < driver_interface_count(driver_state); iface_i = iface_i + 1) {
+            tr_finalize_interface_types(tables, nr, driver_state, driver_interface_get(driver_state, iface_i), diags,
+                seen);
+        }
+
+        for (let env_i = 0; env_i < nr_env_count(nr); env_i = env_i + 1) {
+            let env = nr_env_get(nr, env_i);
+            for (let sym_i = 0; sym_i < spm_capacity(env.locals); sym_i = sym_i + 1) {
+                if (!spm_slot_occupied(env.locals, sym_i)) {
+                    continue;
+                }
+                let sym = spm_slot_value(env.locals, sym_i) as Symbol*;
+                if (sym.resolved_type == null) {
+                    continue;
+                }
+                if (ord(sym.kind) == ord(SYM_TYPE_ALIAS)) {
+                    let resolved = tr_resolve_alias(tables, nr, driver_state, env, sym, diags, seen);
+                    if (resolved != null) {
+                        type_free(resolved as Type*);
+                    }
+                } else {
+                    tr_finalize_materialized_type(tables, nr, driver_state, env.module_name,
+                        sym.resolved_type as Type*, diags, seen);
+                }
+            }
+        }
+
+        for (let func_i = 0; func_i < spm_capacity(tables.func_types); func_i = func_i + 1) {
+            if (spm_slot_occupied(tables.func_types, func_i)) {
+                let ty = spm_slot_value(tables.func_types, func_i) as Type*;
+                let key = spm_slot_key(tables.func_types, func_i);
+                let split = find_s(key, "::");
+                let module_name = key;
+                if (split >= 0) {
+                    module_name = slice_s(key, 0, split);
+                }
+                tr_finalize_materialized_type(tables, nr, driver_state, module_name, ty, diags, seen);
+            }
+        }
+        for (let let_i = 0; let_i < spm_capacity(tables.let_types); let_i = let_i + 1) {
+            if (spm_slot_occupied(tables.let_types, let_i)) {
+                let ty2 = spm_slot_value(tables.let_types, let_i) as Type*;
+                let key2 = spm_slot_key(tables.let_types, let_i);
+                let split2 = find_s(key2, "::");
+                let module_name2 = key2;
+                if (split2 >= 0) {
+                    module_name2 = slice_s(key2, 0, split2);
+                }
+                tr_finalize_materialized_type(tables, nr, driver_state, module_name2, ty2, diags, seen);
+            }
+        }
+        for (let struct_i = 0; struct_i < spm_capacity(tables.struct_infos); struct_i = struct_i + 1) {
+            if (!spm_slot_occupied(tables.struct_infos, struct_i)) {
+                continue;
+            }
+            let info = spm_slot_value(tables.struct_infos, struct_i) as StructInfo*;
+            tr_finalize_materialized_type(tables, nr, driver_state, info.module_name, info.struct_type, diags, seen);
+            for (let field_i = 0; field_i < vec_size(info.fields); field_i = field_i + 1) {
+                tr_finalize_materialized_type(tables, nr, driver_state, info.module_name,
+                    (ptr_vec_get(info.fields, field_i) as StructFieldInfo*).field_type, diags, seen);
+            }
+        }
+        for (let enum_i = 0; enum_i < spm_capacity(tables.enum_infos); enum_i = enum_i + 1) {
+            if (!spm_slot_occupied(tables.enum_infos, enum_i)) {
+                continue;
+            }
+            let info2 = spm_slot_value(tables.enum_infos, enum_i) as EnumInfo*;
+            tr_finalize_materialized_type(tables, nr, driver_state, info2.module_name, info2.enum_type, diags, seen);
+            for (let variant_i = 0; variant_i < vec_size(info2.variants); variant_i = variant_i + 1) {
+                let variant = ptr_vec_get(info2.variants, variant_i) as EnumVariantInfo*;
+                for (let field_i2 = 0; field_i2 < vec_size(variant.field_types); field_i2 = field_i2 + 1) {
+                    tr_finalize_materialized_type(tables, nr, driver_state, info2.module_name,
+                        ptr_vec_get(variant.field_types, field_i2) as Type*, diags, seen);
+                }
+            }
+        }
+    }
+}

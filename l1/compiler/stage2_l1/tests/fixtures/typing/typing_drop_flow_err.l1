@@ -1,0 +1,29 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_drop_flow_err;
+
+struct Box {
+    value: int;
+}
+
+/**
+ * Triggers a second-drop diagnostic.
+ */
+func err_drop_twice() {
+    let p: Box* = new Box(1);
+    drop p;
+    drop p; // TYP-0062
+}
+
+/**
+ * Triggers a use-after-drop diagnostic.
+ */
+func err_use_after_drop() {
+    let p: Box* = new Box(1);
+    drop p;
+    let q: Box* = p; // TYP-0150
+    drop q;
+}

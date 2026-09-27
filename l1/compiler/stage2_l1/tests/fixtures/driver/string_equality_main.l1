@@ -1,0 +1,25 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module string_equality_main;
+
+import std.string;
+
+func main() -> int {
+    let lit = "dea";
+    let same_lit = "dea";
+    let different_lit = "dea!";
+    let empty = "";
+    let built_a = "de" + "a";
+    let built_b = "de" + "a";
+    let built_diff = "de" + "a!";
+    if (lit == same_lit && lit != different_lit &&
+        empty == "" && empty != "x" &&
+        built_a == built_b && built_a != built_diff &&
+        built_a == lit && lit == built_b) {
+        return 23;
+    }
+    return 0;
+}
