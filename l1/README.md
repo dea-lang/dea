@@ -33,6 +33,17 @@ or install/dist/release workflow.
 `--prepare-stdlib` explicitly prepares a reusable profile; `--no-auto-prepare` requires a valid existing profile when
 bundled native support is needed.
 
+Full L1 support currently requires **upstream Clang 16 or newer** when selecting Clang as the C compiler. Clang 14/15
+lack `--no-default-config`, which managed stdlib/runtime preparation requires. The minimum version is necessary, not a
+guarantee that every toolchain configuration supports persistent reuse. Apple Clang uses separate version numbering; its
+selected installation must support the required configuration controls and pass L1 preparation validation.
+
+Use Clang 16+ or the supported GCC lane for normal builds, tests, benchmarks, and experiments. The repo-owned `l1-test`
+Bookworm image supplies Clang 14, so keep its default GCC selection; use a separately verified modern Clang environment
+when Clang coverage is needed. Older Clang is reserved for isolated compatibility validation under
+[l1/work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md][legacy-clang-plan]. That Draft plan
+does not yet provide legacy support; this requirement remains in effect until support is implemented and documented.
+
 Current Stage 1 validation combines the `.l0` implementation test suite under `compiler/stage1_l0/tests/` with
 warning-free latest-stage `--check` coverage for `examples/*.l1`. Exact generated-C golden-file parity is not part of
 the active L1 Stage 1 contract.
@@ -54,6 +65,7 @@ running `make build-stage1`.
 [docker-wine]: docker/wine/README.md
 [docs]: docs/
 [examples]: examples/
+[legacy-clang-plan]: work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md
 [linking]: docs/user/linking.md
 [preparation]: docs/reference/stdlib-preparation.md
 [project-status]: docs/project-status.md

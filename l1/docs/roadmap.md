@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-09-26
+Version: 2026-09-27
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -286,6 +286,9 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 
 ## Active standalone plans
 
+- Bug Fix [2026-09-27-legacy-clang-preparation-compatibility-noref][legacy-clang-preparation] drafts Clang 14/15
+  preparation compatibility, with persistent reuse gated on configuration isolation, discovery, identity, and
+  invalidation validation, and private fallback when reuse cannot be authorized.
 - Feature [2026-07-11-shared-l1-stage2-self-hosting-port-noref][stage2-self-hosting] ports the settled Stage 1 compiler
   to `.l1`, adds the Stage 2 build and test workflow, and establishes strict triple-bootstrap validation.
 - Tool [2026-04-02-l1-bootstrap-productization-noref][bootstrap-productization] defines the first L1 bootstrap
@@ -415,6 +418,7 @@ update to be promoted to an initiative or plan:
 [interface-fingerprints]: ../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [is-intrinsic]: ../work/plans/features/closed/2026-04-20-is-intrinsic-noref.md
 [l1m-authoritative-linking]: ../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
+[legacy-clang-preparation]: ../work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md
 [let-initializers]: ../work/plans/features/closed/2026-04-17-l1-let-non-constant-initializers-noref.md
 [library-linking]: ../work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md
 [lifecycle-entrypoints]: ../work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md

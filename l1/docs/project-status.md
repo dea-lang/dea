@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-09-24
+Version: 2026-09-27
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -271,11 +271,14 @@ latest-stage `--check` coverage for `examples/*.l1`. `make test` combines the im
 environment-stackability checks, and example checks without the dedicated broad trace sweep; `make test-all` adds the
 default ARC/memory trace checks and both declared child trace fixtures. Linux portability is exercised via
 `make test-docker`, which runs `test-all` inside the repo-owned Docker image with GCC selected for `L0_CC`, `L1_CC`, and
-`L1_RUNTIME_CC`. Set `DOCKER_CC=clang` to switch all three roles together. `make test-stage1-trace-smoke` retains a
-focused ARC/memory subset for quick developer diagnostics. `make test-ci` delegates to `make test-all` on every
-supported host, so Windows, Linux, and macOS all run the full normal suite, default dedicated trace sweep, and child
-trace fixtures. The legacy `DOCKER_L0_CC` selector remains a compatibility fallback when `DOCKER_CC` is unset. Run the
-Docker lane after runtime, Makefile, or build-driver changes.
+`L1_RUNTIME_CC`. Full L1 support with upstream Clang currently requires Clang 16 or newer; the repo-owned Bookworm image
+supplies unsupported Clang 14. Use `DOCKER_CC=clang` to switch all three roles together only in a separately verified
+environment providing supported Clang. Clang 14/15 compatibility remains planned in
+[l1/work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md][legacy-clang-plan].
+`make test-stage1-trace-smoke` retains a focused ARC/memory subset for quick developer diagnostics. `make test-ci`
+delegates to `make test-all` on every supported host, so Windows, Linux, and macOS all run the full normal suite,
+default dedicated trace sweep, and child trace fixtures. The legacy `DOCKER_L0_CC` selector remains a compatibility
+fallback when `DOCKER_CC` is unset. Run the Docker lane after runtime, Makefile, or build-driver changes.
 
 `make test-stage1-trace-children` builds the declared successful math runtime fixtures with ARC and memory tracing, runs
 each executable directly, and analyzes each child stderr file independently. `TESTS="wide_math_main"` selects one
@@ -340,3 +343,5 @@ These remain true today:
 3. Fixed-size arrays `T[N]` and escape-restricted non-owning slices `T[]` are implemented; owning dynamic buffers,
    shared buffers, and general escape-capable slices are not language features.
 4. Address-of (`&`) and generics are not part of the current active language surface.
+
+[legacy-clang-plan]: ../work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md

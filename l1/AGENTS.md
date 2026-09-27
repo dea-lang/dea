@@ -23,6 +23,24 @@ Dea/L1 is in bootstrap-scaffold status.
 - Override the upstream compiler explicitly with `L1_BOOTSTRAP_L0C=/path/to/l0c-stage2`.
 - Do not rely on whichever `l0c` happens to be active on `PATH`.
 
+## C Compiler Support for Agent Work
+
+- Full L1 support currently requires upstream Clang 16 or newer when selecting Clang. Clang 14/15 lack
+  `--no-default-config`, which current managed preparation requires. A successful direct C compilation does not
+  establish full L1 compatibility or persistent reuse capability.
+- Do not use Clang older than 16 for routine L1 builds, tests, benchmarks, experiments, or candidate validation until
+  legacy support is implemented and this guidance is updated. Use a supported GCC toolchain or verified modern Clang.
+- Verify and record the selected compiler executable and version in each actual builder, test, and measurement
+  environment. An image name or the host compiler version is not sufficient evidence. Apple Clang has separate version
+  numbering; verify its required configuration capabilities and L1 preparation behavior.
+- The repo-owned `l1-test` image uses Bookworm and supplies Clang 14. Keep the normal Docker lane on GCC; do not select
+  `DOCKER_CC=clang` in that image for full validation. A modern investigation runtime does not upgrade the separate
+  builder/test image. Set `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC` explicitly for custom validation invocations.
+- The sole exception is deliberate, isolated legacy compatibility or regression validation under
+  [l1/work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md][legacy-clang-plan]. Label these
+  runs as compatibility investigations and retain a supported compiler control. Do not use their results as evidence of
+  full support before the plan's acceptance criteria pass.
+
 ## Commands
 
 ```bash
@@ -77,3 +95,5 @@ validation all run the full normal suite, default dedicated trace sweep, and chi
 - Reuse one reference id per target within a file, and place the reference definitions at the end of the document.
 - This is a preferred style for new L1 docs and work docs. It is not a blanket backfill requirement for existing closed
   plans, and it does not require rewriting existing initiative documents unless the task explicitly asks for it.
+
+[legacy-clang-plan]: work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md

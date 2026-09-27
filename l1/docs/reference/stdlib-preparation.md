@@ -1,10 +1,18 @@
 # L1 Bundled Interfaces and Native Preparation
 
-Version: 2026-09-25
+Version: 2026-09-27
 
 L1 supplies bundled semantic interfaces with the toolchain and derives native stdlib/runtime support when a command
 needs it. Preparation covers only compiler-owned `std.*` and `sys.*` modules and runtime implementation sources.
 Application and third-party objects remain caller-owned inputs.
+
+Full L1 support with upstream Clang currently requires version 16 or newer, including support for `--no-default-config`.
+Clang 14/15 are unsupported for current managed preparation, even if individual C compilations succeed. Version alone
+does not authorize reuse: the selected installation must also satisfy the adapter's observation and toolchain
+requirements. Apple Clang has independent version numbering and requires capability validation. Legacy compatibility and
+safe persistent reuse are planned in
+[l1/work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md][legacy-clang-plan]; that Draft plan
+does not change the current support boundary.
 
 ## Bootstrap and semantic discovery
 
@@ -322,4 +330,5 @@ developer workflow for standalone runtime archives/objects; its products are not
 users compiling outside `l1c` arrange their own matching runtime.
 
 [cli]: ../../../docs/specs/compiler/cli-contract.md
+[legacy-clang-plan]: ../../work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md
 [productization]: ../../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
