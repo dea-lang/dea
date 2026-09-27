@@ -1,0 +1,6 @@
+diff --git a/l1/scripts/build_stage1_l1c.py b/l1/scripts/build_stage1_l1c.py
+--- a/l1/scripts/build_stage1_l1c.py
++++ b/l1/scripts/build_stage1_l1c.py
+@@ -339 +339 @@ def build_stage1_artifact(layout: L1BuildLayout, bootstrap_command: list[str], k
+-    build_args = [*bootstrap_command, "--build", *stage1_support_args()]
++    build_args = [*bootstrap_command, "--build", "-v", *stage1_support_args()]

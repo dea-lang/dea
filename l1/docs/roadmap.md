@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-09-24
+Version: 2026-09-26
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -207,6 +207,10 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Feature [2026-09-24-preparation-observability-noref][preparation-observability] added schema-versioned `-vvv`
   decisions, timings, probe labels, hash accounting and provider selection, plus paired local reuse scenarios for cwd
   changes, copied caches, removed memos and explicit system roots.
+- Refactor
+  [l1/work/plans/refactors/closed/2026-09-25-preparation-sha256-cost-investigation-noref.md][preparation-sha256-cost]
+  measured two portable SHA-256 candidates. Neither met the prepared-request adoption thresholds; the completed
+  investigation retained its evidence and concluded "separately investigate", with production unchanged.
 - Tool [l1/work/plans/tools/closed/2026-09-13-native-reuse-capability-report-noref.md][reuse-report] added explicit CI
   capability reports with exact compiler attribution, cold/warm counters, guarded reuse, header invalidation and
   retained failure evidence.
@@ -431,6 +435,7 @@ update to be promoted to an initiative or plan:
 [preparation-observability]: ../work/plans/features/closed/2026-09-24-preparation-observability-noref.md
 [preparation-portability]: ../work/plans/bug-fixes/closed/2026-09-13-native-preparation-ci-portability-noref.md
 [preparation-reuse-efficiency]: ../work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md
+[preparation-sha256-cost]: ../work/plans/refactors/closed/2026-09-25-preparation-sha256-cost-investigation-noref.md
 [preparation-test-cost]: ../work/plans/tools/closed/2026-09-13-preparation-test-cost-noref.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md
 [reuse-report]: ../work/plans/tools/closed/2026-09-13-native-reuse-capability-report-noref.md

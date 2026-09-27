@@ -1,0 +1,36 @@
+diff --git a/l1/compiler/stage1_l0/support/preparation/sha256.h b/l1/compiler/stage1_l0/support/preparation/sha256.h
+--- a/l1/compiler/stage1_l0/support/preparation/sha256.h
++++ b/l1/compiler/stage1_l0/support/preparation/sha256.h
+@@ -27,13 +27,7 @@ static void pc_sha_block(PcSha *s, const unsigned char *p) {
+         0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+         0xc67178f2};
+-    uint32_t w[64], a, b, c, d, e, f, g, h, t1, t2;
++    uint32_t w[16], a, b, c, d, e, f, g, h, t1, t2;
+     size_t i;
+-    for (i = 0; i < 16; ++i)
+-        w[i] = ((uint32_t)p[4 * i] << 24) | ((uint32_t)p[4 * i + 1] << 16) |
+-               ((uint32_t)p[4 * i + 2] << 8) | p[4 * i + 3];
+-    for (i = 16; i < 64; ++i)
+-        w[i] = (pc_rotr(w[i - 2], 17) ^ pc_rotr(w[i - 2], 19) ^ (w[i - 2] >> 10)) + w[i - 7] +
+-               (pc_rotr(w[i - 15], 7) ^ pc_rotr(w[i - 15], 18) ^ (w[i - 15] >> 3)) + w[i - 16];
+     a = s->h[0];
+     b = s->h[1];
+     c = s->h[2];
+@@ -44,9 +38,17 @@ static void pc_sha_block(PcSha *s, const unsigned char *p) {
+     g = s->h[6];
+     h = s->h[7];
+     for (i = 0; i < 64; ++i) {
++        if (i < 16)
++            w[i] = ((uint32_t)p[4 * i] << 24) | ((uint32_t)p[4 * i + 1] << 16) |
++                   ((uint32_t)p[4 * i + 2] << 8) | p[4 * i + 3];
++        else {
++            uint32_t x = w[(i + 14) & 15], y = w[(i + 1) & 15];
++            w[i & 15] = (pc_rotr(x, 17) ^ pc_rotr(x, 19) ^ (x >> 10)) + w[(i + 9) & 15] +
++                          (pc_rotr(y, 7) ^ pc_rotr(y, 18) ^ (y >> 3)) + w[i & 15];
++        }
+         t1 = h + (pc_rotr(e, 6) ^ pc_rotr(e, 11) ^ pc_rotr(e, 25)) + ((e & f) ^ (~e & g)) + k[i] +
+-             w[i];
++             w[i & 15];
+         t2 = (pc_rotr(a, 2) ^ pc_rotr(a, 13) ^ pc_rotr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c));
+         h = g;
+         g = f;
