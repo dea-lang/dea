@@ -516,11 +516,42 @@ func ld_wrap_system_command(command: string, windows: bool) -> string {
     return command;
 }
 
+/** Serialize validated arguments after argv[0] using GNU response-file quoting. */
+func ld_response_file_text(words: StringVector*) -> string {
+    with (let sb = sb_create() => sb_free(sb)) {
+        for (let i = 1; i < sv_size(words); i = i + 1) {
+            let word = sv_get(words, i);
+            sb_append(sb, "\"");
+            for (let j = 0; j < len_s(word); j = j + 1) {
+                let c = char_at_s(word, j);
+                if (c == '\\' || c == '"') {
+                    sb_append(sb, "\\");
+                }
+                sb_append_byte(sb, c);
+            }
+            sb_append(sb, "\"\n");
+        }
+        return sb_to_string(sb);
+    }
+}
+
+/** Render the shell command including capture paths and Windows transport. */
+func ld_captured_command(words: StringVector*, stdout_path: string,
+    stderr_path: string) -> string {
+    return ld_wrap_system_command(
+        bd_join_shell_words(words) + " > " +
+            bd_shell_quote(stdout_path) + " 2> " +
+            bd_shell_quote(stderr_path),
+        bd_is_windows()
+    );
+}
+
 /** Execute one captured host command and preserve its output. */
 func ld_run_host_command(
     words: StringVector*,
     stdout_path: string,
     stderr_path: string,
+    response_path: string?,
     code: string,
     failure_message: string,
     cfg: LogConfig*,
@@ -534,6 +565,9 @@ func ld_run_host_command(
             }
             sv_push(shell_values, stdout_path);
             sv_push(shell_values, stderr_path);
+            if (response_path != null) {
+                sv_push(shell_values, response_path as string);
+            }
             if (!ld_validate_windows_shell_words(
                     shell_values,
                     code,
@@ -545,12 +579,25 @@ func ld_run_host_command(
         }
     }
     log_info(cfg, bd_join_display_words(words));
-    let command = ld_wrap_system_command(
-        bd_join_shell_words(words) + " > " +
-            bd_shell_quote(stdout_path) + " 2> " +
-            bd_shell_quote(stderr_path),
-        bd_is_windows()
-    );
+    let command = ld_captured_command(words, stdout_path, stderr_path);
+    /* Leave room below cmd.exe's 8191-character ceiling, including transport.
+     * Apply the same threshold on POSIX so ordinary validation covers this path.
+     * Only recognized GCC/Clang drivers promise GNU response-file syntax. */
+    if (response_path != null && len_s(command) >= 7000 &&
+        bd_compiler_flag_family(sv_get(words, 0)) == "gcc") {
+        let path = response_path as string;
+        if (write_file(path, ld_response_file_text(words)) == null) {
+            ld_error(diags, code, failure_message +
+                ": cannot write host response file: " + path, path);
+            return false;
+        }
+        log_info(cfg, "Using host response file: " + path);
+        with (let compact_words = sv_create(2) => sv_free(compact_words)) {
+            sv_push(compact_words, sv_get(words, 0));
+            sv_push(compact_words, "@" + path);
+            command = ld_captured_command(compact_words, stdout_path, stderr_path);
+        }
+    }
     let rc = system(command);
     let failed = rc != 0;
     if (failed) {
@@ -630,6 +677,7 @@ func ld_execute_plan(
                 compile_words,
                 scratch.compile_stdout,
                 scratch.compile_stderr,
+                null,
                 "L1C-2108",
                 "standalone-link wrapper compilation failed",
                 cfg,
@@ -654,6 +702,7 @@ func ld_execute_plan(
                 link_words,
                 scratch.link_stdout,
                 scratch.link_stderr,
+                scratch.link_response,
                 "L1C-2109",
                 "standalone host link failed",
                 cfg,

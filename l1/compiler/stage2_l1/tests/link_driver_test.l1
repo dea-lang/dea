@@ -810,6 +810,24 @@ func test_output_validation() {
     }
 }
 
+/** Preserve exact argument bytes and order through GNU response-file parsing. */
+func test_link_response_file_text() {
+    with (let words = sv_create(8) => sv_free(words)) {
+        sv_push(words, "compiler must not enter response");
+        sv_push(words, "");
+        sv_push(words, "C:\\objects with spaces\\unit.o");
+        sv_push(words, "quote\"and'apostrophe");
+        sv_push(words, "trailing\\");
+        sv_push(words, "-Lone");
+        sv_push(words, "-ltwo");
+        assert(ld_response_file_text(words) ==
+            "\"\"\n\"C:\\\\objects with spaces\\\\unit.o\"\n" +
+            "\"quote\\\"and'apostrophe\"\n\"trailing\\\\\"\n" +
+            "\"-Lone\"\n\"-ltwo\"\n",
+            "response file must quote words without changing bytes or order");
+    }
+}
+
 /** Remove one transaction directory that contains only known children. */
 func ldt_remove_transaction(root: string) {
     if (cfs_path_kind(root) != CFS_PATH_DIRECTORY) {
@@ -837,6 +855,8 @@ func test_link_transaction_lifecycle() {
         assert(txn.root == root1, "link transaction retry path mismatch");
         assert(write_file(txn.wrapper_c, "wrapper") != null,
             "expected known transaction child");
+        assert(write_file(txn.link_response, "response") != null,
+            "expected response-file transaction child");
         assert(ld_cleanup_transaction(txn),
             "known transaction children should clean");
         assert(cfs_path_kind(root1) == CFS_PATH_ABSENT,
@@ -1328,6 +1348,7 @@ func main() {
     test_lifecycle_diamond_and_entry_selection();
     test_host_command_words_and_windows_preflight();
     test_external_link_command_words();
+    test_link_response_file_text();
     test_windows_shell_option_word_validation();
     test_windows_system_command_transport();
     test_output_validation();

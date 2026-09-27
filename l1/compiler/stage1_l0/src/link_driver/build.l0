@@ -55,12 +55,14 @@ func ld_build_run_transaction(
     let compile_stderr = join(scratch_root, "wrapper-compile.stderr");
     let link_stdout = join(scratch_root, "final-link.stdout");
     let link_stderr = join(scratch_root, "final-link.stderr");
+    let link_response = join(scratch_root, "final-link.rsp");
     cfs_workspace_register_file(workspace, wrapper_c);
     cfs_workspace_register_file(workspace, wrapper_object);
     cfs_workspace_register_file(workspace, compile_stdout);
     cfs_workspace_register_file(workspace, compile_stderr);
     cfs_workspace_register_file(workspace, link_stdout);
     cfs_workspace_register_file(workspace, link_stderr);
+    cfs_workspace_register_file(workspace, link_response);
     return new LinkTransaction(
         scratch_root,
         wrapper_c,
@@ -68,7 +70,8 @@ func ld_build_run_transaction(
         compile_stdout,
         compile_stderr,
         link_stdout,
-        link_stderr
+        link_stderr,
+        link_response
     );
 }
 

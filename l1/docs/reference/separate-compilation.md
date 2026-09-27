@@ -1,6 +1,6 @@
 # L1 Separate Compilation, Build, Run, and Standalone Linking
 
-Version: 2026-09-24
+Version: 2026-09-27
 
 This document describes the implemented Dea/L1 Stage 1 path from per-module generated C and one-module compilation to an
 interface-authoritative executable. It is the current behavioral reference for `l1c --gen`, `l1c --compile`,
@@ -238,6 +238,12 @@ directory, complete command, and capture names before invocation. Pre-allocation
 environment-controlled value already known; after allocation, the common executor validates each exact rendered
 wrapper-compile or final-link command together with its transaction-owned capture paths immediately before invocation.
 
+For recognized GCC and Clang drivers, a final link command of 7000 or more rendered characters uses a private GNU-style
+response file to stay below the Windows shell command limit. This transport is also exercised on POSIX. The response
+contains the already-validated arguments in their original order, with whitespace, quotes, and backslashes preserved;
+the verbose log still shows the expanded command. Caller-supplied response files remain rejected. Short commands and
+other compiler families retain their existing transport.
+
 Runtime mode selects `libdea_rt.a`, `libdea_rt_traced.a`, `libdea_rt_check_basic.a`, or `libdea_rt_unchecked.a`. Normal
 compiler families receive one exact archive path. Under ADR-0027, TinyCC receives the complete variant-matched raw
 runtime object set when available, with exact archive fallback. Native runtime inputs are opaque and the carve-out does
@@ -266,7 +272,7 @@ Standalone link uses a bounded transaction beside `OUTPUT`:
 5. The driver exclusively creates `.l1c-link-<pid>-<seconds>-<nanoseconds>-<attempt>` under the output parent. Attempts
    `0` through `99` are bounded; exhaustion fails without an unchecked fallback.
 6. The transaction owns only `wrapper.c`, `wrapper.o`, `compile.stdout`, `compile.stderr`, `link.stdout`, and
-   `link.stderr`. Original caller inputs and the final executable remain outside it.
+   `link.stderr`, plus `link.rsp` when needed. Original caller inputs and the final executable remain outside it.
 7. Cleanup removes only known regular children without following aliases, then removes the verified empty directory. It
    never recursively deletes. Unexpected or substituted contents cause failure and retain the transaction path.
 8. Cleanup failure returns nonzero even after a successful host link. A successfully produced executable remains at the

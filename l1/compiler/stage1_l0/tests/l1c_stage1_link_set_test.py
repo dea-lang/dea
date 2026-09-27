@@ -19,6 +19,7 @@ import sys
 import tempfile
 
 from l1c_stage1_compile_only_test import (
+    compiler_driver_name_matches,
     require_reusable_set,
     run_compiler,
     stage1_compiler,
@@ -2091,6 +2092,47 @@ def test_stale_provider_fingerprint(
     assert_no_link_transactions(root)
 
 
+def test_long_build_link(compiler: Path, c_compiler: str, root: Path) -> None:
+    """Build a graph whose final host command exceeds the Windows shell limit.
+
+    Args:
+        compiler: Selected Stage 1 or Stage 2 launcher.
+        c_compiler: Explicit host compiler.
+        root: Test-owned scratch directory.
+
+    Raises:
+        LinkSetFailure: If linking, execution, or bounded cleanup fails.
+    """
+    source = root / "long link sources"
+    source.mkdir()
+    modules = [f"long_module_{index:03d}_" + "x" * 65 for index in range(80)]
+    for name in modules:
+        (source / f"{name}.l1").write_text(f"module {name};\n", encoding="utf-8")
+    (source / "main.l1").write_text(
+        "module main;\n" + "".join(f"import {name};\n" for name in modules)
+        + "func main() -> int { return 23; }\n", encoding="utf-8",
+    )
+    output = executable_path(root, "long linked program")
+    env = {**os.environ, "TMPDIR": str(root), "TEMP": str(root), "TMP": str(root)}
+    for fail in (False, True):
+        extra = ["--link-arg=-ldea_missing_response_test_library"] if fail else []
+        completed = run_compiler(
+            compiler, root, "--build", "-v", *native_driver_args(compiler, c_compiler),
+            "--c-compiler", c_compiler, "--project-root", str(source),
+            "--output", str(output), *extra, "main", env=env,
+        )
+        if fail:
+            require_link_failure(completed, "long host-link failure", "L1C-2109")
+        else:
+            require_link_success(completed, output, "long many-module host link")
+            require_program_status(output, 23, "long-link executable")
+        if any(compiler_driver_name_matches(c_compiler, name) for name in ("gcc", "clang")):
+            if "Using host response file:" not in completed.stderr:
+                raise LinkSetFailure("long link did not exercise the response-file transport")
+        if list(root.glob(".l1c-*")):
+            raise LinkSetFailure("long-link response file or transaction was not cleaned")
+
+
 def main() -> int:
     """Run the standalone link-set integration matrix."""
 
@@ -2106,6 +2148,7 @@ def main() -> int:
     keep_artifacts = os.environ.get("KEEP_ARTIFACTS", "0") == "1"
     try:
         c_compiler = resolve_c_compiler()
+        test_long_build_link(compiler, c_compiler, root)
         workspace = root / "workspace with spaces"
         workspace.mkdir()
         artifact_root = workspace / "dea objects"

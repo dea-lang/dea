@@ -24,6 +24,7 @@ struct LinkTransaction {
     compile_stderr: string;
     link_stdout: string;
     link_stderr: string;
+    link_response: string;
 }
 
 /** Construct the fixed paths inside one standalone-link transaction. */
@@ -35,7 +36,8 @@ func ld_transaction_create(root: string) -> LinkTransaction* {
         join(root, "compile.stdout"),
         join(root, "compile.stderr"),
         join(root, "link.stdout"),
-        join(root, "link.stderr")
+        join(root, "link.stderr"),
+        join(root, "link.rsp")
     );
 }
 
@@ -124,6 +126,7 @@ func ld_cleanup_transaction(txn: LinkTransaction*) -> bool {
     if (!ld_delete_if_present(txn.compile_stderr)) ok = false;
     if (!ld_delete_if_present(txn.link_stdout)) ok = false;
     if (!ld_delete_if_present(txn.link_stderr)) ok = false;
+    if (!ld_delete_if_present(txn.link_response)) ok = false;
     if (cfs_remove_empty_dir(txn.root) != 1) ok = false;
     return ok;
 }

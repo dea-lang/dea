@@ -105,6 +105,35 @@ inherited lines. Their bytes are verified against the source snapshot; the remai
 check. A second check disables only blank-at-end-of-line reporting for those copied files. No production or fixture
 formatting change is folded into this port.
 
+## Windows Stage 2 Link Follow-up (2026-09-27)
+
+The first Windows UCRT64 CI attempt passed all 84 Stage 1 tests, then failed while linking the Stage 2 compiler:
+`cmd.exe` reported "The command line is too long" and the driver emitted `L1C-2109`. The common link executor expanded
+all per-module object paths directly into its shell command.
+
+The Stage 1 fix and mechanical Stage 2 port serialize long recognized GCC/Clang final-link commands into a private
+transaction-owned response file. Existing argument validation, ordering, capture/replay, diagnostics, and bounded
+cleanup remain in force. The ordinary integration suite now builds an 81-module graph to exercise the long-command path
+on every host; implementation tests cover response quoting and transaction cleanup. No diagnostic codes are added or
+reassigned. Native Windows CI remains a closure gate.
+
+Local follow-up validation used `/usr/bin/clang` (Apple Clang 17.0.0), with its `--no-default-config` probe passing, for
+`L0_CC`, `L1_CC`, and `L1_RUNTIME_CC`. An explicit `L1_BOOTSTRAP_L0C` selected the existing L0 Stage 2 artifact from the
+primary checkout.
+
+- `make -C l1 test-all` passed 83 Stage 1 normal cases; the identity test's read-only `sysctl kern.osversion` probe was
+  denied by the execution sandbox. Running `compiler/stage1_l0/tests/preparation_identity_test.py` outside that sandbox
+  passed, completing all 84 cases without changing sources or compiler selection.
+- `make -C l1 -o test-stage1 -o build-stage1 test-all` reused those Stage 1 results and the freshly built compiler, then
+  passed Stage 2 construction, all 68 Stage 2 normal cases (including stage parity), environment stackability, all four
+  examples, six runner tests, fourteen tooling tests, both 46-case default trace sweeps, and both stages' two child
+  fixtures. All trace checks reported zero leaked objects and strings.
+- The long-link regression also passed separately with spaces, an ampersand, and an apostrophe in its temporary path. It
+  verified response-file use, executable status, the expected host-link failure, and cleanup in both outcomes.
+- The three modified production modules match byte for byte between stages. No relevant source, test, build, or
+  toolchain changes intervened between the reused validation results and finalization; only this evidence was updated.
+- Staged whitespace, ADR Impact, copyright, and Markdown formatting checks passed. No push or workflow rerun was made.
+
 ## Current Branch Refresh (2026-09-27)
 
 This is the highest-priority L1 completion plan. The current source baseline has 120 production modules and 50,953
