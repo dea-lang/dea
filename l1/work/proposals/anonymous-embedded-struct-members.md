@@ -202,6 +202,6 @@ The proposal is ready for acceptance only when:
 [parser]: ../../compiler/stage1_l0/src/parser.l0
 [parser-shared]: ../../compiler/stage1_l0/src/parser/shared.l0
 [roadmap]: ../../docs/roadmap.md
-[stage 2 self-hosting plan]: ../../../work/plans/features/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md
+[stage 2 self-hosting plan]: ../../../work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md
 [types]: ../../compiler/stage1_l0/src/types.l0
 [withdrawn feature plan]: ../plans/features/closed/2026-04-22-anonymous-embedded-struct-members-noref.md

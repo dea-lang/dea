@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-09-27
+Version: 2026-09-28
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -292,13 +292,16 @@ performance experiments, and delivery workflows are not prerequisites. Select St
 - Initiative [0004-array-primitives-and-unsafe-marker][arrays-unsafe] added the function-level `unsafe` marker for
   raw-memory contracts, pointer-indexing, and fixed-size arrays.
 
+## Completed standalone plans
+
+- Feature [2026-07-11-shared-l1-stage2-self-hosting-port-noref][stage2-self-hosting] ported the settled Stage 1 compiler
+  to `.l1`, added the Stage 2 build and test workflow, and established strict triple-bootstrap validation.
+
 ## Active standalone plans
 
 - Bug Fix [2026-09-27-legacy-clang-preparation-compatibility-noref][legacy-clang-preparation] drafts Clang 14/15
   preparation compatibility, with persistent reuse gated on configuration isolation, discovery, identity, and
   invalidation validation, and private fallback when reuse cannot be authorized.
-- Feature [2026-07-11-shared-l1-stage2-self-hosting-port-noref][stage2-self-hosting] ports the settled Stage 1 compiler
-  to `.l1`, adds the Stage 2 build and test workflow, and establishes strict triple-bootstrap validation.
 - Tool [2026-04-02-l1-bootstrap-productization-noref][bootstrap-productization] defines the first L1 bootstrap
   install/dist/product workflow.
 - Feature [2026-06-21-cheap-string-slices-noref][cheap-string-slices] extends `dea::slice` to ARC-backed string views
@@ -370,7 +373,7 @@ backlog does not imply missing work where L1 already has a narrower surface.
 
 ### Tooling and delivery
 
-- Self-hosted `stage2_l1` compiler implementation and Stage 1/Stage 2 parity validation are tracked by Feature
+- Self-hosted `stage2_l1` compiler implementation and Stage 1/Stage 2 parity validation are complete under Feature
   [2026-07-11-shared-l1-stage2-self-hosting-port-noref][stage2-self-hosting].
 - Release-bearing L1 install, distribution, release, and docs-publishing workflows after the bootstrap productization
   plan lands.
@@ -462,7 +465,7 @@ update to be promoted to an initiative or plan:
 [small-int]: ../work/plans/features/closed/2026-04-04-l1-small-int-builtins-on-dea-abi-noref.md
 [stage1-slices]: ../work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md
 [stage1-source-decomposition]: ../work/plans/refactors/closed/2026-07-08-stage1-source-decomposition-noref.md
-[stage2-self-hosting]: ../../work/plans/features/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md
+[stage2-self-hosting]: ../../work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md
 [stdlib-coverage]: ../work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md
 [stdlib-preparation]: ../work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
 [string-concat]: ../work/plans/features/closed/2026-04-22-string-concatenation-operator-noref.md

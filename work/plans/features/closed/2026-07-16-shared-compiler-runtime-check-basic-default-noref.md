@@ -48,8 +48,17 @@
   - `work/plans/features/closed/2026-07-05-shared-compiler-runtime-quarantine-default-noref.md`
   - `work/plans/features/closed/2026-07-08-shared-runtime-check-basic-mode-noref.md`
   - `work/plans/bug-fixes/closed/2026-07-11-shared-checked-runtime-review-gaps-noref.md`
-  - `work/plans/features/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md`
+  - `work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md`
 - Repro: `make -C l0 triple-test` compared with `make -C l0 triple-test L0_COMPILER_RT_CHECK_BASIC=`
+
+## ADR Impact
+
+- Decision: Use basic checked runtime validation as the default for native compiler binaries.
+  - Scope: Shared
+  - Disposition: Covered by ADR
+  - ADR: `docs/decisions/0010-checked-runtime-pointer-access-validation.md`
+  - Rationale: ADR-0010 records the compiler-only checked-runtime mode and its relationship to generated programs and
+    runtime archives.
 
 ## Summary
 

@@ -65,7 +65,7 @@
   - `l1/docs/decisions/0015-slice-types-and-intrinsics.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
   - [docs/decisions/0010-checked-runtime-pointer-access-validation.md][pointer-validation]
-  - [work/plans/features/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md][self-hosting]
+  - [work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md][self-hosting]
 - Repro: `make -C l1 test-stage1 && make -C l1 test-stage1-trace`
 
 ## Summary
@@ -640,5 +640,5 @@ This Draft-plan refresh requires only Markdown, link, ADR Impact, and staged pre
 [pointer-validation]: ../../../../docs/decisions/0010-checked-runtime-pointer-access-validation.md
 [project status]: ../../../docs/project-status.md
 [roadmap]: ../../../docs/roadmap.md
-[self-hosting]: ../../../../work/plans/features/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md
+[self-hosting]: ../../../../work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md
 [standard library]: ../../../docs/reference/standard-library.md

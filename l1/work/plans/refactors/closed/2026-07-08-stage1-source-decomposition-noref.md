@@ -39,7 +39,7 @@
   - `l1/docs/reference/architecture.md`
   - `l1/docs/roadmap.md`
   - `l1/compiler/stage1_l0/README.md`
-  - `work/plans/features/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md`
+  - `work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md`
   - [l1/work/plans/bug-fixes/closed/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md][fingerprint-blocker]
 - Repro: `make -C l1 test-all`
 

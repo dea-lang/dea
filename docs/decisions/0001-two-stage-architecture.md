@@ -1,7 +1,7 @@
 # ADR-0001: Two-Stage Compiler Architecture
 
 - Decision date: 2025-12-05
-- Last edited: 2026-05-20
+- Last edited: 2026-09-28
 - Status: Accepted
 
 ## Context
@@ -55,6 +55,8 @@ oracle; Stage 2 must reuse them exactly for equivalent conditions.
   Stage 2 backend and C emitter
 - [l0/work/plans/features/closed/2026-03-11-triple-bootstrap-self-hosting-noref.md](../../l0/work/plans/features/closed/2026-03-11-triple-bootstrap-self-hosting-noref.md):
   triple-bootstrap validation
+- [work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md](../../work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md):
+  ported L1 Stage 2 to a self-hosted compiler with Stage 1 parity and fixed-point validation
 
 ## Current Docs
 

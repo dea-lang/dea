@@ -42,8 +42,9 @@ for TinyCC and Windows), and runs the full Stage 2 normal suite and examples thr
 the selected build root; `KEEP_ARTIFACTS=1` also retains successful evidence. `test-ci` includes this gate; local
 `test-all` leaves it explicit.
 
-The initial port and supported-host validation are tracked in
-[work/plans/features/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md][port-plan]. Future semantic fixes land in
-Stage 1 first and carry their Stage 2 equivalents in the same change. Permanent textual identity is not required.
+The initial port and supported-host validation were completed under
+[work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md][port-plan]. Future semantic fixes
+land in Stage 1 first and carry their Stage 2 equivalents in the same change. Permanent textual identity is not
+required.
 
-[port-plan]: ../../../work/plans/features/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md
+[port-plan]: ../../../work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md

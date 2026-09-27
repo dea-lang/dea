@@ -2,9 +2,9 @@
 
 ## Port the L1 compiler to self-hosted Stage 2
 
-- Date: 2026-07-11
-- Last reviewed: 2026-09-27
-- Status: In progress
+- Date: 2026-09-28
+- Last reviewed: 2026-09-28
+- Status: Completed
 - Title: Port the L1 compiler to self-hosted Stage 2
 - Kind: Feature
 - Scope: Shared
@@ -18,7 +18,7 @@
   through the first fixed point, and defer L1-native source divergence to separately reviewed follow-up work.
 - Target status:
   - L1 Stage 1 semantic and diagnostic oracle: Implemented
-  - L1 Stage 2 self-hosted compiler: Implemented; local and Docker validation recorded; supported-host CI pending
+  - L1 Stage 2 self-hosted compiler: Implemented; local, Docker, and supported-host CI validation passed
 - Subsystem: Compiler bootstrap / Stage 2 port / parity validation
 - Modules:
   - `l1/compiler/stage1_l0/src/`
@@ -97,7 +97,13 @@ implementation.
   tooling regressions passed. Both 46-case default trace sweeps and both stages' two child fixtures passed with zero
   leaked objects or strings.
 - Local validation is complete, with the Linux ASan environment exception recorded above. Supported-host CI evidence is
-  the remaining closure gate; no remote push or workflow dispatch is part of this local implementation.
+  recorded below as the final closure evidence.
+
+## Completion (2026-09-28)
+
+- Windows CI passed for the L1 Stage 2 self-hosting workflow, completing the supported-host CI closure gate.
+- The implementation, local and Docker validation, and supported-host CI requirements are complete. The L1 Stage 2
+  self-hosting port is closed; subsequent L1-native compiler changes remain separate follow-up work.
 
 The initial snapshot deliberately retains blank-line trailing whitespace from Stage 1 in `parser/expr`, two
 implementation tests, and the named-argument typing fixtures. The ordinary staged whitespace check reports those
@@ -115,7 +121,7 @@ The Stage 1 fix and mechanical Stage 2 port serialize long recognized GCC/Clang 
 transaction-owned response file. Existing argument validation, ordering, capture/replay, diagnostics, and bounded
 cleanup remain in force. The ordinary integration suite now builds an 81-module graph to exercise the long-command path
 on every host; implementation tests cover response quoting and transaction cleanup. No diagnostic codes are added or
-reassigned. Native Windows CI remains a closure gate.
+reassigned. Native Windows CI passed on 2026-09-28 and completed this follow-up's closure gate.
 
 Local follow-up validation used `/usr/bin/clang` (Apple Clang 17.0.0), with its `--no-default-config` probe passing, for
 `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC`. An explicit `L1_BOOTSTRAP_L0C` selected the existing L0 Stage 2 artifact from the
@@ -146,10 +152,9 @@ runtime-owned. Retained C is a directory of exact translation units, not one C f
 
 Validation runs use supported toolchains with recorded executable/version evidence. `test` covers both normal stage
 suites and parity; `test-all` adds both default trace suites and independently selected child fixtures. `test-ci` adds
-strict triple bootstrap. Full local validation, Linux Docker validation, and supported-host CI evidence are closure
-gates. Remote CI dispatch and pushes are separate authorization boundaries, so this plan remains active while that
-evidence is pending. The existing ADR Impact record remains applicable; update ADR-0001's Related Plans when this plan
-closes.
+strict triple bootstrap. Full local validation, Linux Docker validation, and supported-host CI evidence were required
+closure gates and are now complete. Windows CI passed on 2026-09-28. The existing ADR Impact record remains applicable;
+ADR-0001's Related Plans now links this closed plan.
 
 ## Historical State and Feasibility Evidence (2026-09-07)
 
@@ -424,11 +429,11 @@ The plan closes only when all of the following are true:
 4. The current per-module C99 backend and multi-unit linking workflow remain the initial Stage 2 compiler contract.
 5. Productization may proceed independently, but this plan does not depend on it.
 
-[architecture]: ../../../l1/docs/reference/architecture.md
-[fingerprint-blocker]: ../../../l1/work/plans/bug-fixes/closed/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md
-[l0-triple-bootstrap]: ../../../l0/work/plans/features/closed/2026-03-11-triple-bootstrap-self-hosting-noref.md
-[project-status]: ../../../l1/docs/project-status.md
-[roadmap]: ../../../l1/docs/roadmap.md
-[stage1-architecture]: ../../../l1/docs/reference/architecture.md
-[stage1-decomposition]: ../../../l1/work/plans/refactors/closed/2026-07-08-stage1-source-decomposition-noref.md
-[two-stage-architecture]: ../../../docs/decisions/0001-two-stage-architecture.md
+[architecture]: ../../../../l1/docs/reference/architecture.md
+[fingerprint-blocker]: ../../../../l1/work/plans/bug-fixes/closed/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md
+[l0-triple-bootstrap]: ../../../../l0/work/plans/features/closed/2026-03-11-triple-bootstrap-self-hosting-noref.md
+[project-status]: ../../../../l1/docs/project-status.md
+[roadmap]: ../../../../l1/docs/roadmap.md
+[stage1-architecture]: ../../../../l1/docs/reference/architecture.md
+[stage1-decomposition]: ../../../../l1/work/plans/refactors/closed/2026-07-08-stage1-source-decomposition-noref.md
+[two-stage-architecture]: ../../../../docs/decisions/0001-two-stage-architecture.md

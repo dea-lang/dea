@@ -28,7 +28,7 @@
   - `l1/compiler/stage1_l0/tests/l1c_stage1_cleanup_policy_ice_test.py`
 - Related:
   - [l1/work/plans/refactors/closed/2026-07-08-stage1-source-decomposition-noref.md][decomposition]
-  - [work/plans/features/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md][self-hosting]
+  - [work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md][self-hosting]
   - [l1/docs/roadmap.md][roadmap]
 - Repro: `make -C l1 test-stage1 TESTS=interface_fingerprint_runtime_test`
 
@@ -249,4 +249,4 @@ conflict through the expanded generated-C regression.
 [decomposition]: ../../refactors/closed/2026-07-08-stage1-source-decomposition-noref.md
 [diagnostics]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
 [roadmap]: ../../../../docs/roadmap.md
-[self-hosting]: ../../../../../work/plans/features/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md
+[self-hosting]: ../../../../../work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md
