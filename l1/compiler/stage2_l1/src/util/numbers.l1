@@ -359,9 +359,9 @@ func bigint_fits_implemented_domain(text: string, base: int) -> bool {
 /**
  * Convert one implemented-domain bigint payload to canonical decimal spelling.
  *
- * Decimal input is normalized directly. Non-decimal multiply-add conversion
- * runs only after the implemented-domain check has bounded significant input
- * to at most 64 bits.
+ * Decimal input is normalized directly. Non-decimal input uses unsigned stdlib
+ * conversion after validation bounds its magnitude to at most 64 bits. The
+ * magnitude remains unsigned even for the minimum signed long value.
  *
  * @param text Canonical bigint digits with optional leading `-`.
  * @param base Numeric base (2, 8, 10, or 16).
@@ -381,33 +381,11 @@ func bigint_to_canonical_decimal(text: string, base: int) -> string? {
         return digits;
     }
 
-    let decimal = "0";
-    for (let i = 0; i < len_s(digits); i = i + 1) {
-        let digit = -1;
-        let c = char_at_s(digits, i);
-        if (c >= '0' && c <= '9') {
-            digit = c - '0';
-        } else if (c >= 'a' && c <= 'f') {
-            digit = 10 + c - 'a';
-        }
-        if (digit < 0 || digit >= base) {
-            return null;
-        }
-        with (let reversed = cb_create() => cb_free(reversed)) {
-            let carry = digit;
-            for (let j = len_s(decimal) - 1; j >= 0; j = j - 1) {
-                let value = (char_at_s(decimal, j) - '0') * base + carry;
-                cb_append(reversed, ('0' + (value % 10)) as byte);
-                carry = value / 10;
-            }
-            while (carry > 0) {
-                cb_append(reversed, ('0' + (carry % 10)) as byte);
-                carry = carry / 10;
-            }
-            cb_reverse(reversed);
-            decimal = cb_to_string(reversed);
-        }
+    let magnitude = string_to_ulong_base(digits, base);
+    if (magnitude == null) {
+        return null;
     }
+    let decimal = ulong_to_string(magnitude as ulong);
 
     if (negative && decimal != "0") {
         return "-" + decimal;

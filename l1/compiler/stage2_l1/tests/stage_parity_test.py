@@ -10,6 +10,7 @@ from pathlib import Path
 import os
 import subprocess
 import sys
+import tempfile
 
 L1_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(L1_ROOT / "compiler/stage1_l0/tests"))
@@ -46,6 +47,47 @@ def main() -> int:
         for compiler in (oracle, subject):
             results.append(invoke(compiler, ["--run", *native_driver_args(compiler), "--project-root", str(root), module]))
         assert results[0] == results[1], (module, results)
+    # One module path keeps module identity and interface fingerprints comparable.
+    with tempfile.TemporaryDirectory(prefix="l1-bigint-parity-") as directory:
+        source = Path(directory) / "phase1_bigints.l1"
+        spellings = (
+            ("-9223372036854775808", "18446744073709551615", "-0000"),
+            ("-0x8000000000000000", "0x0000ffffffffffffffff", "-0x0000"),
+            ("-0o1000000000000000000000", "0o0001777777777777777777777", "-0o0000"),
+            ("-0b1" + "0" * 63, "0b000" + "1" * 64, "-0b0000"),
+        )
+        canonical = None
+        for minimum, maximum, zero in spellings:
+            source.write_text(
+                "module phase1_bigints;\nexport *;\n"
+                f"const minimum: long = {minimum};\n"
+                f"const maximum: ulong = {maximum};\n"
+                f"const zero: long = {zero};\n"
+            )
+            args = ["--emit-interface", str(source)]
+            left, right = invoke(oracle, args), invoke(subject, args)
+            assert left == right, (args, minimum, maximum, left, right)
+            assert left[0] == 0 and left[1], (args, left)
+            if canonical is None:
+                canonical = left
+            assert left == canonical, (minimum, maximum, left, canonical)
+        for literal in (
+            "18446744073709551616", "-9223372036854775809",
+            "0x10000000000000000", "-0x8000000000000001",
+            "0o2000000000000000000000", "-0o1000000000000000000001",
+            "0b1" + "0" * 64, "-0b1" + "0" * 62 + "1",
+            "0b102", "0o8", "0xg",
+        ):
+            type_name = "long" if literal.startswith("-") else "ulong"
+            source.write_text(
+                "module phase1_bigints;\nexport *;\n"
+                f"const invalid: {type_name} = {literal};\n"
+            )
+            for mode in ("--check", "--emit-interface"):
+                args = [mode, str(source)]
+                left, right = invoke(oracle, args), invoke(subject, args)
+                assert left == right, (args, literal, left, right)
+                assert left[0] != 0 and left[2], (args, literal, left)
     print("stage_parity_test: PASS")
     return 0
 

@@ -493,21 +493,21 @@ struct ExprArena {
  */
 func expr_node_create(kind: ExprKind, span: Span) -> ExprNode* {
     return new ExprNode(
-        kind,
-        span,
-        0,
-        false,
-        "",
-        0,
-        invalid_expr_id(),
-        invalid_expr_id(),
-        invalid_expr_id(),
-        null,
-        null,
-        false,
-        null,
-        null,
-        null
+        kind: kind,
+        span: span,
+        int_value: 0,
+        bool_value: false,
+        text_value: "",
+        base_value: 0,
+        expr_a: invalid_expr_id(),
+        expr_b: invalid_expr_id(),
+        expr_c: invalid_expr_id(),
+        ids: null,
+        arg_labels: null,
+        has_spread_arg: false,
+        type_ref: null,
+        module_path: null,
+        name_qualifier: null
     );
 }
 
@@ -663,20 +663,20 @@ struct StmtArena {
  */
 func stmt_node_create(kind: StmtKind, span: Span) -> StmtNode* {
     return new StmtNode(
-        kind,
-        span,
-        "",
-        null,
-        invalid_expr_id(),
-        invalid_expr_id(),
-        invalid_stmt_id(),
-        invalid_stmt_id(),
-        invalid_stmt_id(),
-        null,
-        null,
-        null,
-        null,
-        null
+        kind: kind,
+        span: span,
+        name: "",
+        type_ref: null,
+        expr_a: invalid_expr_id(),
+        expr_b: invalid_expr_id(),
+        stmt_a: invalid_stmt_id(),
+        stmt_b: invalid_stmt_id(),
+        stmt_c: invalid_stmt_id(),
+        ids: null,
+        match_arms: null,
+        case_arms: null,
+        case_else: null,
+        with_items: null
     );
 }
 

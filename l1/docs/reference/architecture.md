@@ -1,13 +1,14 @@
 # L1 Compiler Architecture
 
-Version: 2026-09-27
+Version: 2026-09-28
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
 Both compiler stages implement the same pipeline:
 
 - `compiler/stage1_l0/` contains the runnable L1 compiler implemented in Dea/L0.
-- `compiler/stage2_l1/` is the mechanical L1 port of Stage 1, using the same pass structure and shared assets.
+- `compiler/stage2_l1/` is the self-hosted L1 implementation, initially ported from Stage 1 and using the same pass
+  structure and shared assets.
 - `compiler/shared/l1/stdlib/` and `compiler/shared/runtime/` are the current copied stdlib/runtime source inputs
   consumed by the bootstrap toolchain.
 - `$L1_BUILD_DIR/include/` and `$L1_BUILD_DIR/interfaces/` contain bootstrap-owned public headers and verified bundled
@@ -30,6 +31,13 @@ Related canonical docs:
 `make build-stage2` builds the L1 source port through the explicit repo-local Stage 1 artifact. `use-dev-stage2` selects
 it as `l1c`; `use-dev-stage1` selects the bootstrap compiler. Ordinary builds and tests preserve that selection. The
 port reuses common compiler support and native preparation support; the runtime supplies fingerprint bridge symbols.
+
+Stage 2's shared utility/model review uses typed scalar constants, existing unsigned text conversion, and named AST
+constructor fields without changing the pass structure or ownership model. The current tree has 119 production modules
+after removing an unused path-wrapper module. The ledger in
+[l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/review.md][native-review] preserves the
+original 120-module inventory, phase assignments, ownership rationale, and validation evidence. Subsystem-specific
+models remain with their frontend, backend, or CLI review phases.
 
 `make test` covers both normal stage suites, parity, environment checks, and Stage 2 examples. `make test-all` adds both
 default trace suites and each stage's independently selected child fixtures. Slow trace cases remain opt-in.
@@ -244,7 +252,9 @@ l1c --help
 
 ## 2. Pass Responsibilities
 
-All current implementation modules live under `compiler/stage1_l0/src/`.
+Stage 1 implementation modules live under `compiler/stage1_l0/src/`; their Stage 2 counterparts live under
+`compiler/stage2_l1/src/` with `.l1` extensions. The pass descriptions below use Stage 1 filenames as the semantic
+reference.
 
 ### 2.1 Lexer (`lexer.l0`, `tokens.l0`)
 
@@ -480,10 +490,10 @@ The L1-owned support directory under `compiler/stage1_l0/support/` separates thr
 symbols from the runtime archive. `compiler_support.c` supplies filesystem and process helpers for both stages,
 including canonical native temporary-parent validation, build/run workspaces, compile-only publication, and standalone
 link transactions. `preparation_support.c` supplies native cache storage, hashing, supported toolchain observation and
-preparation subprocess primitives through private `preparation/` helpers. Stage 1 links all three source files; a future
-L1-built compiler needs common compiler and preparation support alongside the runtime. `compiler_filesystem.l0` wraps
-the general filesystem primitives; `preparation.l0` wraps preparation-specific services. Neither extends the public
-runtime or standard library.
+preparation subprocess primitives through private `preparation/` helpers. Stage 1 links all three source files; the
+L1-built Stage 2 compiler needs common compiler and preparation support alongside the runtime. `compiler_filesystem.l0`
+wraps the general filesystem primitives; `preparation.l0` wraps preparation-specific services. Neither extends the
+public runtime or standard library.
 
 ## 6. Host and Toolchain Assumptions
 
@@ -493,3 +503,5 @@ runtime or standard library.
 - The bootstrap compiler implementation remains `.l0` source code.
 - `--compile`, `--link`, `--build`, `--run`, and `--prepare-stdlib` require a host C99 toolchain.
 - Local bootstrap builds use `../l0/build/dea/bin/l0c-stage2` by default unless overridden with `L1_BOOTSTRAP_L0C`.
+
+[native-review]: ../../work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/review.md

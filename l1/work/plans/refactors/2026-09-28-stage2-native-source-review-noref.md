@@ -3,7 +3,7 @@
 ## Review and idiomatize the self-hosted L1 compiler source
 
 - Date: 2026-09-28
-- Status: Draft
+- Status: In Progress
 - Title: Review and idiomatize the self-hosted L1 compiler source
 - Kind: Refactor
 - Severity: Medium
@@ -23,8 +23,9 @@
 
 ## Summary
 
-The mechanical L1 Stage 2 port is complete. Its production tree currently contains 120 modules, and the repository
-provides Stage 2 normal and trace tests, behavioral parity checks, and strict triple-bootstrap validation.
+The mechanical L1 Stage 2 port is complete. The review inventory contains 120 original production modules; Phase 1
+removes one unused path-wrapper module, leaving 119. The repository provides Stage 2 normal and trace tests, behavioral
+parity checks, and strict triple-bootstrap validation.
 
 Review every production module and replace inherited L0 constraints with implemented L1 facilities where this improves
 correctness of representation, ownership clarity, readability, or implementation simplicity.
@@ -109,13 +110,20 @@ an already validated tree.
 
 ### Phase 1: Baseline, inventory, utilities, and models
 
-- Status: Pending
+- Status: Complete
+- Review scope: The 16 shared utility/model modules identified in the
+  [l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/review.md][review-ledger].
+  Subsystem-specific state and models remain with their owning later phases.
 - Complete the baseline and review-evidence steps above before editing compiler sources.
 - Assign every production module to exactly one review phase (1 through 4) in the ledger. Assign newly added modules as
   they appear and retain provenance for renamed or split modules.
 - Review shared data representations, diagnostics utilities, strings, containers, paths, filesystem wrappers, and
   numeric helpers. Apply justified improvements in bounded tranches.
 - Deliverable: A validated baseline, complete phase-assigned inventory, and completed utility/model review entries.
+- Completion: All 16 modules reviewed (five changed, eleven unchanged); full normal/trace validation, stage parity,
+  strict triple bootstrap, and seven-pair performance/allocation evidence passed. The original 120-module inventory is
+  preserved; 119 modules remain after removing unused `util.path`. See the review ledger for retained helpers, all 265
+  original function bodies, and exact results. Phases 2 through 5 remain pending.
 - Exit gate: Every Phase 1 module has a completed disposition, and all source-changing tranches satisfy the common
   validation gate with required performance evidence.
 
@@ -224,6 +232,7 @@ compiler suite is required merely to create the planning document.
 [decomposition]: closed/2026-07-08-stage1-source-decomposition-noref.md
 [guidance]: ../../../AGENTS.md
 [project-status]: ../../../docs/project-status.md
+[review-ledger]: attachments/2026-09-28-stage2-native-source-review/review.md
 [roadmap]: ../../../docs/roadmap.md
 [self-hosting]: ../../../../work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md
 [stage2-readme]: ../../../compiler/stage2_l1/README.md

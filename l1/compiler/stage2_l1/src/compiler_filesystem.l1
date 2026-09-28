@@ -77,15 +77,15 @@ extern func l1c_process_run(
 ) -> int;
 
 /** No filesystem object exists at the path. */
-let CFS_PATH_ABSENT: int = 0;
+const CFS_PATH_ABSENT: int = 0;
 /** A regular file exists at the path. */
-let CFS_PATH_REGULAR: int = 1;
+const CFS_PATH_REGULAR: int = 1;
 /** A directory exists at the path. */
-let CFS_PATH_DIRECTORY: int = 2;
+const CFS_PATH_DIRECTORY: int = 2;
 /** A symlink, reparse point, or other unsupported object exists at the path. */
-let CFS_PATH_OTHER: int = 3;
+const CFS_PATH_OTHER: int = 3;
 /** Internal marker requesting actual-host classification of one candidate. */
-let CFS_TEMP_KIND_INSPECT: int = -2;
+const CFS_TEMP_KIND_INSPECT: int = -2;
 
 /** Invocation-owned native build/run workspace. */
 struct CompilerWorkspace {

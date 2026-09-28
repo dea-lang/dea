@@ -12,7 +12,7 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 ## Current position
 
 - `compiler/stage1_l0/` is the bootstrap compiler and semantic/diagnostic oracle.
-- `compiler/stage2_l1/` implements the mechanical L1 port, with explicit build, selection, test, and fixed-point
+- `compiler/stage2_l1/` implements the self-hosted L1 compiler, with explicit build, selection, test, and fixed-point
   targets.
 - Stage 1 uses 120 phase/ownership modules with explicit canonical state imports. The settled layout and its two
   recursive-kernel exceptions are documented in [l1/docs/reference/architecture.md][compiler-architecture].
@@ -48,12 +48,14 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   an explicit `L1_BOOTSTRAP_L0C` override.
 - Strict L1 triple-bootstrap runs through `make triple-test` and is required by `make test-ci`.
 
-## Stage 2 Completion Priority
+## Stage 2 Source Review
 
-The mechanical Stage 2 port is the highest-priority L1 completion effort. The active shared plan tracks parity, the
-strict self-hosting fixed point, and supported-host evidence. New stdlib APIs, L1-native compiler refactoring,
-performance experiments, and delivery workflows are not prerequisites. Select Stage 2 with `make use-dev-stage2`;
-`make test-ci` runs both stages and strict triple bootstrap.
+The mechanical Stage 2 port and supported-host validation are complete under the
+[work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md][stage2-self-hosting]. The active
+[l1/work/plans/refactors/2026-09-28-stage2-native-source-review-noref.md][stage2-native-review] applies existing L1
+facilities while preserving Stage 1 parity and the strict self-hosting fixed point. New stdlib APIs and delivery
+workflows remain separate work. Select Stage 2 with `make use-dev-stage2`; `make test-ci` runs both stages and strict
+triple bootstrap.
 
 ## Roadmap assumptions
 
@@ -301,7 +303,8 @@ performance experiments, and delivery workflows are not prerequisites. Select St
 
 - Refactor [2026-09-28-stage2-native-source-review-noref][stage2-native-review] reviews every Stage 2 production module
   for appropriate use of implemented L1 facilities while preserving Stage 1 behavioral and diagnostic parity and the
-  strict self-hosting fixed point.
+  strict self-hosting fixed point. Phase 1 is complete: all 16 shared utility/model modules are reviewed, with full
+  validation and paired performance evidence. Phases 2 through 5 remain pending.
 - Bug Fix [2026-09-27-legacy-clang-preparation-compatibility-noref][legacy-clang-preparation] drafts Clang 14/15
   preparation compatibility, with persistent reuse gated on configuration isolation, discovery, identity, and
   invalidation validation, and private fallback when reuse cannot be authorized.

@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-09-27
+Version: 2026-09-28
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -9,7 +9,7 @@ Dea/L1 currently supports local self-hosted development:
 - the bootstrap compiler is `compiler/stage1_l0/`, implemented in Dea/L0; Stage 2 is implemented in Dea/L1
 - the current shared assets are `compiler/shared/l1/stdlib/` plus the copied runtime sources under
   `compiler/shared/runtime/`
-- `compiler/stage2_l1/` contains the mechanical L1 compiler port and its self-hosting validation workflow
+- `compiler/stage2_l1/` contains the self-hosted L1 compiler and its validation workflow
 
 L0 remains the active release line. The L1 subtree is the current home for bootstrap compiler work, library surface, and
 future language growth beyond L0.
@@ -345,8 +345,9 @@ bootstrap path:
 
 These remain true today:
 
-1. The Stage 2 port is implemented; supported-host completion evidence remains tracked by the active shared self-hosting
-   plan.
+1. The Stage 2 port and supported-host validation are complete. Its native-source review remains active, with Phase 1
+   complete (16 shared utility/model modules) and Phases 2 through 5 pending; Stage 1 is still the semantic and
+   diagnostic oracle.
 2. Standalone linking consumes explicit object paths plus derived sibling interfaces; it does not discover implicit Dea
    objects, compile sources, or infer external-library dependencies from modules or manifests.
 3. Fixed-size arrays `T[N]` and escape-restricted non-owning slices `T[]` are implemented; owning dynamic buffers,

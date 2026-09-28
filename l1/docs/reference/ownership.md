@@ -1,6 +1,6 @@
 # L1 Ownership and Memory Management Reference
 
-Version: 2026-09-11
+Version: 2026-09-28
 
 This document describes how ownership works in current Dea/L1 bootstrap builds, covering:
 
@@ -11,8 +11,9 @@ This document describes how ownership works in current Dea/L1 bootstrap builds, 
 
 ## Scope and Status
 
-- The ground truth is the current bootstrap implementation in `compiler/stage1_l0/` plus the shared L1 stdlib/runtime.
-- `compiler/stage2_l1/` is not implemented yet, so this document describes only current bootstrap behavior.
+- Stage 1 in `compiler/stage1_l0/` remains the semantic oracle alongside the shared L1 stdlib/runtime.
+- The self-hosted compiler in `compiler/stage2_l1/` implements the same ownership rules and has its own normal and trace
+  validation suites.
 - If runtime or codegen behavior differs from this document, treat that as a bug.
 
 ## 1. Ownership Model at a Glance

@@ -1,0 +1,41 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module numeric_benchmark;
+
+import std.assert;
+import std.io;
+import std.string;
+import std.system;
+import std.text;
+import util.numbers;
+
+/** Check one conversion and return its output length to keep the result observable. */
+func measured_conversion(text: string, base: int, expected: string) -> int {
+    let result = bigint_to_canonical_decimal(text, base);
+    assert(result != null, "conversion unexpectedly failed");
+    assert((result as string) == expected, "conversion result changed");
+    return len_s(result as string);
+}
+
+/** Run the same bounded conversion corpus with a caller-selected iteration count. */
+func main() {
+    let iterations = 10000;
+    if (argc() > 1) {
+        iterations = string_to_int(argv(1)) as int;
+    }
+    let checksum = 0;
+    for (let i = 0; i < iterations; i = i + 1) {
+        checksum = checksum + measured_conversion("ffffffffffffffff", 16, "18446744073709551615");
+        checksum = checksum + measured_conversion("-8000000000000000", 16, "-9223372036854775808");
+        checksum = checksum + measured_conversion("1777777777777777777777", 8, "18446744073709551615");
+        checksum = checksum + measured_conversion("-1000000000000000000000", 8, "-9223372036854775808");
+        checksum = checksum + measured_conversion("1111111111111111111111111111111111111111111111111111111111111111", 2, "18446744073709551615");
+        checksum = checksum + measured_conversion("000000ff", 16, "255");
+        checksum = checksum + measured_conversion("-0000", 2, "0");
+        checksum = checksum + measured_conversion("18446744073709551615", 10, "18446744073709551615");
+    }
+    printl_i(checksum);
+}

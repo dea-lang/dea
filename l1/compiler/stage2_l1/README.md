@@ -1,8 +1,14 @@
 # L1 Stage 2
 
 This is the self-hosted L1 compiler, mechanically seeded from the 120-module Stage 1 source graph. Stage 1 remains the
-semantic and diagnostic oracle. The initial production snapshot changes only `.l0` filenames to `.l1` and the compiler
+semantic and diagnostic oracle. The initial production snapshot changed only `.l0` filenames to `.l1` and the compiler
 identity string. Existing source comments describing Stage 1 algorithms retain their original wording.
+
+The current tree contains 119 production modules. The first shared-utility/model tranche uses typed scalar constants,
+unsigned stdlib conversion for canonical bigint decimals, and named fields in the large AST default constructors. It
+removes the unused `util.path` wrappers while retaining growable collections, explicit ownership cleanup, structural
+type comparison, and native filesystem/process bridges. Review findings and validation are recorded in
+[l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/review.md][native-review].
 
 Run these commands from `l1/`:
 
@@ -17,9 +23,9 @@ make triple-test
 
 `build-stage2` builds through the explicit repo-local Stage 1 artifact. It reuses common filesystem/process and native
 preparation C support from `compiler/stage1_l0/support/`; fingerprint bridges come from the L1 runtime archive. No new
-stdlib capability or L1-native compiler refactoring is required. `L1_CC` and `L1_CFLAGS` select native construction
-inputs; `L1_COMPILER_RT_*` controls apply only to the compiler construction environment. Both stages use the same
-runtime, bundled interfaces, stdlib, environment variables, and CLI contract.
+stdlib capability is required. `L1_CC` and `L1_CFLAGS` select native construction inputs; `L1_COMPILER_RT_*` controls
+apply only to the compiler construction environment. Both stages use the same runtime, bundled interfaces, stdlib,
+environment variables, and CLI contract.
 
 `use-dev-stage1` selects the bootstrap compiler again. Ordinary build and test commands preserve the selected alias.
 `KEEP_C=1 make build-stage2` retains exact per-module C and `__dea_wrapper.c` under
@@ -47,4 +53,5 @@ The initial port and supported-host validation were completed under
 land in Stage 1 first and carry their Stage 2 equivalents in the same change. Permanent textual identity is not
 required.
 
+[native-review]: ../../work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/review.md
 [port-plan]: ../../../work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md

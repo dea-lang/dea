@@ -16,11 +16,11 @@ import std.assert;
 import std.array;
 
 /* Slot states — same values as std.hashset */
-let ISET_EMPTY: byte = 0;
-let ISET_OCCUPIED: byte = 1;
-let ISET_TOMBSTONE: byte = 2;
+const ISET_EMPTY: byte = 0;
+const ISET_OCCUPIED: byte = 1;
+const ISET_TOMBSTONE: byte = 2;
 
-let ISET_DEFAULT_CAP: int = 16;
+const ISET_DEFAULT_CAP: int = 16;
 
 /**
  * Compute a non-negative slot index from a key and a power-of-2 capacity.
