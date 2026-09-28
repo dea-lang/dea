@@ -299,6 +299,9 @@ performance experiments, and delivery workflows are not prerequisites. Select St
 
 ## Active standalone plans
 
+- Refactor [2026-09-28-stage2-native-source-review-noref][stage2-native-review] reviews every Stage 2 production module
+  for appropriate use of implemented L1 facilities while preserving Stage 1 behavioral and diagnostic parity and the
+  strict self-hosting fixed point.
 - Bug Fix [2026-09-27-legacy-clang-preparation-compatibility-noref][legacy-clang-preparation] drafts Clang 14/15
   preparation compatibility, with persistent reuse gated on configuration isolation, discovery, identity, and
   invalidation validation, and private fallback when reuse cannot be authorized.
@@ -465,6 +468,7 @@ update to be promoted to an initiative or plan:
 [small-int]: ../work/plans/features/closed/2026-04-04-l1-small-int-builtins-on-dea-abi-noref.md
 [stage1-slices]: ../work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md
 [stage1-source-decomposition]: ../work/plans/refactors/closed/2026-07-08-stage1-source-decomposition-noref.md
+[stage2-native-review]: ../work/plans/refactors/2026-09-28-stage2-native-source-review-noref.md
 [stage2-self-hosting]: ../../work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md
 [stdlib-coverage]: ../work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md
 [stdlib-preparation]: ../work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
