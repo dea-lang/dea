@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-09-28
+Version: 2026-09-29
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -448,9 +448,9 @@ Important analysis tables include:
 
 ## 5. File/Module Layout
 
-The production tree under `l1/compiler/stage1_l0/src/` contains 120 modules and 50,800 lines. Modules are organized by
-owned state, compiler phase, and output contract. Imports expose only locally declared symbols: callers import a shared
-state/model owner explicitly, and implementation children never import their command/pass facade.
+The production tree under `l1/compiler/stage1_l0/src/` contains 119 modules. Modules are organized by owned state,
+compiler phase, and output contract. Imports expose only locally declared symbols: callers import a shared state/model
+owner explicitly, and implementation children never import their command/pass facade.
 
 | Family                        | Coarse entrypoints                 | Implementation owners                                                                                                                                             |
 | ----------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |

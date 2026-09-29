@@ -43,7 +43,7 @@ same native-input selection as Python driver tests and analyzes only each child 
 independently of parent `TESTS` selectors.
 
 Production sources are organized into phase and ownership families. Coarse pass/command entrypoints remain at the root;
-shared state and helpers are imported directly from their canonical child modules. The 120-module layout and the two
+shared state and helpers are imported directly from their canonical child modules. The 119-module layout and the two
 retained recursive kernels are documented in [`l1/docs/reference/architecture.md`][architecture].
 
 Run the local bootstrap workflow from [`l1/`][l1-root]:

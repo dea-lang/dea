@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-09-28
+Version: 2026-09-29
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -14,7 +14,7 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - `compiler/stage1_l0/` is the bootstrap compiler and semantic/diagnostic oracle.
 - `compiler/stage2_l1/` implements the self-hosted L1 compiler, with explicit build, selection, test, and fixed-point
   targets.
-- Stage 1 uses 120 phase/ownership modules with explicit canonical state imports. The settled layout and its two
+- Stage 1 uses 119 phase/ownership modules with explicit canonical state imports. The settled layout and its two
   recursive-kernel exceptions are documented in [l1/docs/reference/architecture.md][compiler-architecture].
 - The current L1 runtime and stdlib inputs live under `compiler/shared/runtime/` and `compiler/shared/l1/stdlib/`.
 - The Stage 1 child fixture trace runner analyzes successful math runtime executables independently as part of
