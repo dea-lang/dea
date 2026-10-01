@@ -242,7 +242,7 @@ class Service:
 
     def require(self, operation: str, *args: int) -> None:
         """Require a successful operation and retain its actionable error on failure."""
-        assert self.call(operation, *args) == 1, (operation, self.get("error"))
+        assert self.call(operation, *args) == 1, (operation, self.get("error"), self.get("ineligible"))
 
     def stats(self) -> dict:
         """Return counters used to assert warm-path behavior without timing gates."""

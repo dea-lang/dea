@@ -4,6 +4,34 @@
  */
 
 /** @file preparation_dependencies_test.c Exercise the private production dependency decoder. */
+#if defined(_WIN32)
+#include <windows.h>
+
+static int probe_exit_race, probe_exit_observed, probe_exit_error;
+
+/** Model output arriving after empty pipe checks but before process exit is observed. */
+static BOOL WINAPI fixture_peek_pipe(HANDLE pipe, LPVOID buffer, DWORD size,
+                                     LPDWORD read, LPDWORD available, LPDWORD remaining) {
+    if (probe_exit_race && !probe_exit_observed) {
+        *available = 0;
+        return TRUE;
+    }
+    return PeekNamedPipe(pipe, buffer, size, read, available, remaining);
+}
+
+/** Make the competing child completion deterministic without a timing assumption. */
+static BOOL WINAPI fixture_exit_code(HANDLE process, LPDWORD code) {
+    BOOL ok;
+    if (probe_exit_error) return FALSE;
+    if (probe_exit_race && WaitForSingleObject(process, 5000) != WAIT_OBJECT_0)
+        return FALSE;
+    ok = GetExitCodeProcess(process, code);
+    if (probe_exit_race && ok && *code != STILL_ACTIVE) probe_exit_observed = 1;
+    return ok;
+}
+#define PeekNamedPipe fixture_peek_pipe
+#define GetExitCodeProcess fixture_exit_code
+#endif
 #include "../support/preparation_support.c"
 
 #define BS "\\"
@@ -145,6 +173,34 @@ static void check_reported_tool(const char *self) {
     l1c_prep_free(c);
 }
 
+/** Retain both output streams and the exit status when a short-lived probe finishes. */
+static void check_probe_output(const char *self) {
+    PcJson *words = pj_new(PJ_ARRAY);
+    PcProbe probe;
+#if defined(_WIN32)
+    probe_exit_race = 1;
+    probe_exit_observed = 0;
+#endif
+    pj_add(words, NULL, pj_string(self));
+    pj_add(words, NULL, pj_string("--probe-output"));
+    probe = pc_probe(words, 10000);
+    require_case(probe.status == 23 && !probe.timed_out &&
+                 !strcmp(probe.out, "probe stdout") && !strcmp(probe.err, "probe stderr"),
+                 "completed probe retains stdout, stderr and exit status");
+    pc_probe_free(&probe);
+#if defined(_WIN32)
+    probe_exit_observed = 0;
+    check_family(self, NULL, "completed version probe remains eligible");
+    probe_exit_race = 0;
+    probe_exit_error = 1;
+    probe = pc_probe(words, 10000);
+    require_case(probe.status == -1 && !probe.timed_out, "failed exit-status query fails the probe");
+    pc_probe_free(&probe);
+    probe_exit_error = 0;
+#endif
+    pj_free(words);
+}
+
 #if defined(_WIN32)
 /** Accept MSYS-style and extensionless tool paths when the compiler is native Windows. */
 static void check_windows_reported_path(const char *self) {
@@ -190,6 +246,11 @@ static void check_image_reads(const char *self, const char *directory) {
 /** Run privately linked production checks in a caller-owned empty directory. */
 int main(int argc, char **argv) {
     char *directory, *self;
+    if (argc == 2 && !strcmp(argv[1], "--probe-output")) {
+        fputs("probe stdout", stdout);
+        fputs("probe stderr", stderr);
+        return 23;
+    }
     if (argc == 2 && !strcmp(argv[1], "--version")) {
         puts("gcc (preparation dependency fixture)");
         return 0;
@@ -206,6 +267,7 @@ int main(int argc, char **argv) {
     check_dependencies(directory);
     check_image_reads(self, directory);
     check_reported_tool(self);
+    check_probe_output(self);
 #if defined(_WIN32)
     check_windows_reported_path(self);
 #endif

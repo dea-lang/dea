@@ -279,7 +279,16 @@ native binaries, and the final self-built compiler's 65 normal tests, examples a
 
 The repo-owned Linux Docker image build was attempted with the session CA mounted for dependency installation, but
 Docker Hub refused its `python:3.14-bookworm` base with HTTP 429. No container compiler ran. Windows and macOS
-environments are unavailable; these are coverage gaps.
+environments are unavailable locally; these are coverage gaps.
+
+The first hosted Windows run used MSYS2 UCRT64 GCC 16.2.0 at `/ucrt64/bin/gcc`. It passed 86 Stage 1 tests, including
+direct construction, then failed the native storage test when a repeated resolution declined persistent reuse. Its
+assertion omitted the refusal reason. Investigation found an existing Windows probe race: a child could write and exit
+after empty pipe checks, losing its final output. Exit observation now precedes pipe draining, and the native fixture
+forces that ordering with real child processes on Windows. Failed test operations also report the eligibility reason. A
+local simulation of the Windows API schedule reproduced lost stdout/stderr before the fix and retained both streams and
+exit status after it; a failed exit-status query also fails cleanly. Focused Linux GCC 14.2 support and identity tests
+and both stages' direct construction tests passed after the fix. Native Windows CI confirmation remains pending.
 
 ## Diagnostics and Documentation
 
