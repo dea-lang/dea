@@ -1,12 +1,12 @@
 # L1 Initiative 0010 - Explicit Profiles and Composable Builds
 
 - Version: 2026-10-01
-- Status: Draft
+- Status: In progress
 - Kind: Initiative
 - Open plans:
-  - `l1/work/plans/refactors/2026-09-30-profile-construction-boundary-noref.md`
   - `l1/work/plans/features/2026-09-30-explicit-profile-artifacts-noref.md`
-- Closed plans: (none)
+- Closed plans:
+  - `l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md`
 - Stage: Shared
 - Scope: L1 Stage 1 and Stage 2
 - Subsystem: Profile construction, native preparation, compiler driver and external build integration
@@ -22,8 +22,8 @@ explicit destination and consumes it through existing compile, link, build and r
 system, a new package manager, or a rewrite of the compiler bootstrap.
 
 This initiative records the direction agreed in the September 30 design discussion and reviewed against the repository
-on October 1. Its detailed contracts and child plans remain drafts, not descriptions of implemented features. All new
-command examples below are proposed syntax.
+on October 1. Phase A is complete: the internal constructor accepts frozen inputs and a caller-owned destination. The
+public artifact contract and later phases remain planned work. All new command examples below are proposed syntax.
 
 ## ADR Impact
 
@@ -94,16 +94,15 @@ build nor an explicit-profile manifest authorizes a managed cache hit.
 
 ### Phase A: Isolate the existing construction boundary
 
-Execute [l1/work/plans/refactors/2026-09-30-profile-construction-boundary-noref.md][boundary-plan].
+Completed in [l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md][boundary-plan].
 
-Separate explicit construction inputs, an owned staging destination and the resulting payload from managed lookup,
-eligibility and storage policy. Native writes and completion currently depend on cache/private-directory state, so a
-wrapper around `pr_build_selected` alone is insufficient. Keep managed identities, locks, publication policy and
-completion metadata with the managed caller while the managed and private paths share construction. Preserve all
-external behavior, cache formats, diagnostics and default policies.
+The shared constructor consumes frozen native/frontend inputs, a verified semantic dependency order and an already owned
+staging destination, and returns a validated payload inventory. Managed and command-private callers use that same
+implementation. Cache identities, eligibility, lookup, locks, publication and completion metadata remain with the
+managed caller. External behavior, cache formats, diagnostics and default policies are preserved.
 
-This is the first implementation tranche. It must be independently useful and independently closable. Do not add a
-public manifest or CLI mode during this refactor.
+This independently closed refactor adds no public manifest or CLI mode. Host validation and unavailable
+platform/container coverage are recorded in the closed plan.
 
 ### Phase B: Introduce explicit profile artifacts
 
@@ -193,12 +192,12 @@ A valid completion must demonstrate the same program behavior, provider authorit
 module-C identity through explicit and managed composition. Do not require byte-identical native executables across
 arbitrary host toolchains or identical retention inventories when one workflow consumes prebuilt providers.
 
-Update [l1/docs/roadmap.md][roadmap] when opening this initiative, and maintain the parent/open/closed links as each
-child plan advances. No implementation result, user review of exact text, or successful validation is claimed by this
-draft. Drafting and local implementation do not authorize remote writes, releases or workflow dispatches.
+Maintain [l1/docs/roadmap.md][roadmap] and the parent/open/closed links as each child plan advances. Phase A's completed
+implementation and validation are recorded in its closed plan; later phases remain unimplemented. Drafting and local
+implementation do not authorize remote writes, releases or workflow dispatches.
 
 [architecture]: ../../docs/reference/architecture.md
-[boundary-plan]: ../plans/refactors/2026-09-30-profile-construction-boundary-noref.md
+[boundary-plan]: ../plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md
 [efficiency-plan]: ../plans/features/2026-09-24-preparation-reuse-efficiency-noref.md
 [preparation]: ../../docs/reference/stdlib-preparation.md
 [profile-plan]: ../plans/features/2026-09-30-explicit-profile-artifacts-noref.md

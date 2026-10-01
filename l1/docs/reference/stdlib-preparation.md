@@ -111,6 +111,8 @@ with `memo-saved`, or a nonfatal `miss` with `write-unavailable`. These observat
 validation, lock waiting and native publication. `probe` events report each purpose, elapsed time, status and timeout;
 runtime dependency probes name the individual translation unit and generated-C dependency probes name their real/float
 configuration. Nested probe and hash time is already included in its enclosing span and must not be added to that span.
+Payload-inventory hashing occurs before the managed native-publication span and retains its `publication` hash category;
+the span covers managed manifest serialization, validation and publication.
 
 `hash` events report the reason, success, elapsed time and bytes actually read into SHA-256 under `dea-input`,
 `toolchain-input`, `artifact-validation` or `publication`. These byte counts include failed stable-read attempts but do
@@ -211,6 +213,27 @@ aliases, and never writes into the installation.
 Installed payloads provide equivalent verified semantic interfaces plus compiler, stdlib/runtime sources, headers, and
 other rebuild inputs. This feature validates that contract with fixtures; installation, distribution, and relocation
 workflows remain future work in [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization].
+
+### Internal construction boundary
+
+Managed and command-private preparation share one in-process constructor. Its immutable input snapshot contains the
+selected compiler and archiver, ordered effective generated-C options, separate runtime options and variant, frontend
+code-generation settings, source and semantic roots, verified interface digests, module set, and public-header root. The
+caller supplies the validated dependency order and an already owned staging directory. The constructor does not reread
+compiler selection, `L1_CFLAGS`, runtime defaults, or cache selection.
+
+The constructor writes declared interface/object/runtime roles and registered `generated/` and `runtime-build/` scratch.
+It validates payload paths, hashes and exact semantic copies and returns an owned inventory. This internal description
+is not a public profile format. It requires no cache identity, lookup, lock, or managed completion record. Required
+compilation capability checks and conservative reuse observations remain scheduled by the managed caller before
+construction, as before.
+
+The managed adapter retains identity, eligibility, lock/recheck, destination allocation, manifest serialization and
+publication. The constructor borrows its destination: freeing the description removes no payload. Runtime temporary
+objects are cleaned after native commands; generated C remains optional recovery/debugging evidence. A failed result
+retains the staging path and partial outputs without a completed inventory. The caller owns their eventual cleanup or
+replacement. Managed private support still lives until the consuming command finishes, when its owner removes the
+private directory. These boundaries do not add reader snapshots, crash durability, or concurrent replacement guarantees.
 
 ## Native configuration and reuse
 

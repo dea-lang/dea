@@ -13,7 +13,7 @@
   - L1 Stage 1: Pending
   - L1 Stage 2: Pending
 - Subsystem: Explicit native support artifacts, CLI selection, compilation and linking
-- Depends on: `l1/work/plans/refactors/2026-09-30-profile-construction-boundary-noref.md`
+- Depends on: `l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md`
 - Modules:
   - `l1/compiler/stage1_l0/src/cli_args.l0`
   - `l1/compiler/stage1_l0/src/cli_args/`
@@ -43,7 +43,7 @@
   - Both stages' normal/trace runner registrations for the new coverage.
 - Related:
   - [l1/work/initiatives/0010-explicit-profiles-and-composable-builds.md][initiative]
-  - [l1/work/plans/refactors/2026-09-30-profile-construction-boundary-noref.md][boundary-plan]
+  - [l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md][boundary-plan]
   - [l1/docs/reference/stdlib-preparation.md][preparation]
   - [l1/docs/reference/separate-compilation.md][separate-compilation]
 - Repro: The proposed explicit compilation sequence under Public CLI Contract.
@@ -317,10 +317,11 @@ existing no-profile retention contract and [l1/docs/decisions/0035-cross-mode-ge
 
 ### Phase 1: Freeze the smallest public contract
 
-Complete the prerequisite [l1/work/plans/refactors/2026-09-30-profile-construction-boundary-noref.md][boundary-plan].
-Specify manifest fields/limits, configuration precedence, authority order, diagnostic meanings and publication/lifetime
-rules before enabling new commands. Audit public-header dependencies and runtime variants. Recheck diagnostic
-availability and proposed filenames against the live repository.
+Build on the completed prerequisite
+[l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md][boundary-plan]. Specify manifest
+fields/limits, configuration precedence, authority order, diagnostic meanings and publication/lifetime rules before
+enabling new commands. Audit public-header dependencies and runtime variants. Recheck diagnostic availability and
+proposed filenames against the live repository.
 
 Keep producer provenance, payload integrity, Dea protocol compatibility and external freshness as separate concepts.
 Freeze required versus optional manifest fields, compatibility-version bump rules, bounded reader behavior and the
@@ -458,7 +459,7 @@ verification is claimed by this draft.
 This plan authorizes no remote operation. Pushes, releases, tags, hosted workflow dispatches and deployment require
 separate fresh approval under the repository's authorization rules.
 
-[boundary-plan]: ../refactors/2026-09-30-profile-construction-boundary-noref.md
+[boundary-plan]: ../refactors/closed/2026-09-30-profile-construction-boundary-noref.md
 [byte-adr]: ../../../docs/decisions/0035-cross-mode-generated-c-byte-identity.md
 [diagnostics]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
 [initiative]: ../../initiatives/0010-explicit-profiles-and-composable-builds.md

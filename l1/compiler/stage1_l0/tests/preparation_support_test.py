@@ -163,20 +163,27 @@ def check_digest_seeds(root: Path) -> None:
 class Service:
     """Small test adapter for the compiler-private, caller-owned byte-span ABI."""
 
-    def __init__(self, library: Path, config: dict | bytes):
+    def __init__(self, library: Path, config: dict | bytes, destination: Path | None = None):
         self.lib = None
         self.context = None
         try:
             self.lib = ctypes.CDLL(str(library))
             self.lib.l1c_prep_create.argtypes = [ctypes.c_char_p, ctypes.c_int]
             self.lib.l1c_prep_create.restype = ctypes.c_void_p
+            self.lib.l1c_prep_construction_create.argtypes = [ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
+            self.lib.l1c_prep_construction_create.restype = ctypes.c_void_p
+            self.lib.l1c_prep_construction_complete.argtypes = [ctypes.c_void_p]
             self.lib.l1c_prep_free.argtypes = [ctypes.c_void_p]
             self.lib.l1c_prep_free.restype = None
             self.lib.l1c_prep_get.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_int]
             for name, count in (("resolve", 0), ("find", 0), ("lock", 0), ("unlock", 0), ("private", 0), ("begin", 0), ("complete", 0), ("copy_interfaces", 0), ("runtime", 0), ("error_code", 0)):
                 getattr(self.lib, "l1c_prep_" + name).argtypes = [ctypes.c_void_p] + [ctypes.c_int] * count
             data = config if isinstance(config, bytes) else json.dumps(config).encode()
-            self.context = self.lib.l1c_prep_create(data, len(data))
+            if destination is None:
+                self.context = self.lib.l1c_prep_create(data, len(data))
+            else:
+                path = str(destination).encode()
+                self.context = self.lib.l1c_prep_construction_create(data, len(data), path, len(path))
         except BaseException:
             self.close()
             raise

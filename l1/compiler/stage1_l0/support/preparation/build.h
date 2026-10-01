@@ -3,36 +3,42 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file build.h Coordinated output writes and native stdlib/runtime preparation. */
+/** @file build.h Payload writes and native commands in an explicitly owned destination. */
 #ifndef L1_PREPARATION_BUILD_H
 #define L1_PREPARATION_BUILD_H
 
 /** Validate one declared output and detach old files before writing new contents. */
 static char *pc_output_path(PcContext *c, const char *relative) {
-    PcJson *expected;
+    PcConstruction *p = c->construction;
     char *path, *parent;
     int valid;
-    if ((!c->lock && !c->private_root) || !c->begun || !c->selected || !pc_relative(relative))
+    if (!p || !p->active || !pc_relative(relative))
         return pc_fail(c, 2152, "artifact writes require begun preparation", relative), NULL;
-    expected = pc_expected_artifacts(c->native);
-    valid = expected && pj_get(expected, relative);
+    valid = pj_get(p->expected, relative) != NULL;
     if (!valid) {
         const PcJson *module;
-        for (module = c->modules->child; module; module = module->next) {
+        for (module = pj_get(p->inputs, "modules")->child; module; module = module->next) {
             char *scratch = pc_module_artifact(module->key, ".c", "generated");
             if (!strcmp(relative, scratch)) valid = 1;
             free(scratch);
         }
     }
-    pj_free(expected);
     if (!valid)
         return pc_fail(c, 2151, "undeclared preparation output", relative), NULL;
-    path = pc_join(c->selected, relative);
+    path = pc_join(p->root, relative);
     parent = pc_parent(path);
-    if (!pc_mkdirs(parent) || (pc_kind(path, 0) != 0 && remove(path) != 0)) {
-        pc_fail(c, 2150, "cannot establish preparation output", path);
+    if (!pc_construction_directory(c, p, parent)) {
         free(path);
         path = NULL;
+    }
+    if (path) {
+        char *canonical = pc_path_call(parent, l1c_fs_canonical_existing_path);
+        if (!canonical || !pc_within(canonical, p->root) ||
+            (pc_kind(path, 0) != 0 && remove(path) != 0)) {
+            pc_fail(c, 2150, "cannot establish preparation output", path);
+            free(path); path = NULL;
+        }
+        free(canonical);
     }
     free(parent);
     return path;
@@ -103,10 +109,11 @@ int32_t l1c_prep_write(void *context, const uint8_t *relative, int32_t length, c
 /** Copy the exact selected toolchain semantic bytes; never re-emit profile interfaces. */
 int32_t l1c_prep_copy_interfaces(void *context) {
     PcContext *c = context;
+    PcConstruction *p = c ? c->construction : NULL;
     const PcJson *item;
-    if (!c || c->error || !c->begun) return 0;
-    for (item = c->interfaces->child; item; item = item->next) {
-        char *source = pc_join(c->semantic_root, item->key + strlen("modules/")), *data;
+    if (!c || c->error || !p || !p->active) return 0;
+    for (item = pj_get(p->inputs, "interfaces")->child; item; item = item->next) {
+        char *source = pc_join(pc_construction_field(p, "semantic_root"), item->key + strlen("modules/")), *data;
         size_t size;
         char digest[65];
         int ok;
@@ -122,23 +129,24 @@ int32_t l1c_prep_copy_interfaces(void *context) {
 /** Compile already-emitted module C using the exact options resolved by this context. */
 int32_t l1c_prep_compile(void *context, const uint8_t *module, int32_t length) {
     PcContext *c = context;
+    PcConstruction *p = c ? c->construction : NULL;
     char *name, *relative, *object, *generated, *source, *include;
     PcJson *words;
     int ok;
     if (!c || c->error || !module || length < 0 || memchr(module, 0, (size_t)length))
         return 0;
     name = pc_slice((const char *)module, (size_t)length);
-    if ((!c->lock && !c->private_root) || !c->begun || !c->selected || !c->native ||
-        !pc_module_name(name) || !pj_get(c->modules, name)) {
+    if (!p || !p->active || !pc_module_name(name) || !pj_get(p->inputs, "modules") ||
+        !pj_get(pj_get(p->inputs, "modules"), name)) {
         free(name);
         return pc_fail(c, 2151, "unknown native preparation module", NULL);
     }
     relative = pc_module_artifact(name, ".o", "modules");
     object = pc_output_path(c, relative);
     generated = pc_module_artifact(name, ".c", "generated");
-    source = pc_join(c->selected, generated);
-    include = pc_string(c->include);
-    words = pc_words(c, 1);
+    source = pc_join(p->root, generated);
+    include = pc_string(pc_construction_field(p, "include"));
+    words = pc_construction_words(p, 0);
     pj_add(words, NULL, pj_string("-I"));
     pj_add(words, NULL, pj_string(include));
     pj_add(words, NULL, pj_string("-c"));
@@ -164,25 +172,25 @@ int32_t l1c_prep_compile(void *context, const uint8_t *module, int32_t length) {
 /** Build the selected runtime with the same compiler with compiler-owned runtime options and variant. */
 int32_t l1c_prep_runtime(void *context) {
     PcContext *c = context;
+    PcConstruction *p = c ? c->construction : NULL;
     const char *variant, *family;
     char *include, *internal, *scratch = NULL, *archive = NULL;
     PcJson *objects = pj_new(PJ_ARRAY);
     const PcJson *object;
     int traced, tcc, i, ok = 1;
-    if (!c || c->error || !c->native || !c->begun || (!c->lock && !c->private_root)) {
+    if (!c || c->error || !p || !p->active) {
         pj_free(objects);
         return 0;
     }
-    variant = pj_field(pj_get(c->native, "runtime"), "variant");
-    family = pj_field(pj_get(c->native, "toolchain"), "family");
+    variant = pc_construction_field(p, "variant");
+    family = pc_construction_field(p, "family");
     traced = !strcmp(variant, "traced");
     tcc = !strcmp(family, "tcc");
-    include = pc_join(c->home, "shared/runtime/include");
-    internal = pc_join(c->home, "shared/runtime/internal");
+    include = pc_join(pc_construction_field(p, "home"), "shared/runtime/include");
+    internal = pc_join(pc_construction_field(p, "home"), "shared/runtime/internal");
     if (!tcc) {
-        scratch = pc_join(c->selected, "runtime-build");
-        if (!pc_mkdirs(scratch))
-            ok = pc_fail(c, 2150, "cannot create runtime build directory", scratch);
+        scratch = pc_join(p->root, "runtime-build");
+        ok = pc_construction_directory(c, p, scratch);
         if (ok)
             archive = pc_output_path(c, pc_runtime_archive(variant));
         if (!archive)
@@ -192,10 +200,10 @@ int32_t l1c_prep_runtime(void *context) {
         const char *name = i == -1 ? "dea_rt_trace" : pc_runtime_sources[i];
         PcBuffer filename = {0};
         char *source, *output, *stem, *relative;
-        PcJson *words = pc_runtime_words(c);
+        PcJson *words = pc_construction_words(p, 1);
         pc_text(&filename, name);
         pc_text(&filename, ".c");
-        stem = pc_join(c->home, "shared/runtime/src");
+        stem = pc_join(pc_construction_field(p, "home"), "shared/runtime/src");
         source = pc_join(stem, filename.s);
         free(stem);
         free(filename.s);
@@ -235,7 +243,7 @@ int32_t l1c_prep_runtime(void *context) {
         free(output);
     }
     if (ok && !tcc) {
-        const char *ar = pj_field(pj_get(c->native, "toolchain"), "archiver");
+        const char *ar = pc_construction_field(p, "archiver");
         PcJson *words = pj_new(PJ_ARRAY);
         if (!ar) {
             pj_free(words);

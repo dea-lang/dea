@@ -1,7 +1,7 @@
 # ADR-0039: Native Preparation Identity and Reuse Boundary
 
 - Decision date: 2026-09-11
-- Last edited: 2026-09-24
+- Last edited: 2026-10-01
 - Status: Accepted
 
 ## Context
@@ -83,6 +83,8 @@ general toolchain or project build system.
 
 ## Related Plans
 
+- [l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md][profile-boundary]
+
 - [l1/work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md][reuse-efficiency] (Phase 2 completed; parent
   plan remains active).
 
@@ -105,5 +107,6 @@ general toolchain or project build system.
 [preparation]: ../reference/stdlib-preparation.md
 [preparation-economy]: ../../work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md
 [preparation-plan]: ../../work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
+[profile-boundary]: ../../work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md
 [reuse-efficiency]: ../../work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md
 [separate-compilation]: ../reference/separate-compilation.md

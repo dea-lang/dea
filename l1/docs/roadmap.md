@@ -285,10 +285,10 @@ triple bootstrap.
 - Initiative [0009-safe-concurrency][safe-concurrency] promotes the Priority 4 concurrency direction into memory-model
   and runtime-readiness design before safe threads, synchronization, atomics, or channels are exposed.
 - Initiative [0010-explicit-profiles-and-composable-builds][explicit-profiles] drafts caller-owned profile artifacts and
-  composable compilation while preserving managed build/run ergonomics and existing cache controls. It starts with
-  Refactor [2026-09-30-profile-construction-boundary-noref][profile-boundary], then Feature
-  [2026-09-30-explicit-profile-artifacts-noref][profile-artifacts]. Managed integration and dependency discovery follow
-  through separately scoped plans; all four phases are required for initiative completion. The proposed
+  composable compilation while preserving managed build/run ergonomics and existing cache controls. Its internal
+  construction boundary landed in Refactor [2026-09-30-profile-construction-boundary-noref][profile-boundary]; Feature
+  [2026-09-30-explicit-profile-artifacts-noref][profile-artifacts] is next. Managed integration and dependency discovery
+  follow through separately scoped plans; all four phases are required for initiative completion. The proposed
   `--create-profile` and `--profile` options are not implemented yet. Production compiler Make conversion and
   ordinary-project stdlib construction remain separate adoption work.
 
@@ -467,7 +467,7 @@ update to be promoted to an initiative or plan:
 [preparation-sha256-cost]: ../work/plans/refactors/closed/2026-09-25-preparation-sha256-cost-investigation-noref.md
 [preparation-test-cost]: ../work/plans/tools/closed/2026-09-13-preparation-test-cost-noref.md
 [profile-artifacts]: ../work/plans/features/2026-09-30-explicit-profile-artifacts-noref.md
-[profile-boundary]: ../work/plans/refactors/2026-09-30-profile-construction-boundary-noref.md
+[profile-boundary]: ../work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md
 [reuse-report]: ../work/plans/tools/closed/2026-09-13-native-reuse-capability-report-noref.md
 [runtime-library]: ../work/initiatives/closed/0002-runtime-static-library.md

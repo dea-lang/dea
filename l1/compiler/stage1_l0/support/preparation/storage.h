@@ -7,6 +7,13 @@
 #ifndef L1_PREPARATION_STORAGE_H
 #define L1_PREPARATION_STORAGE_H
 
+/** Construction borrows a caller-owned destination and owns its immutable inputs/result. */
+typedef struct {
+    PcJson *inputs, *expected, *inventory;
+    char *root;
+    int active;
+} PcConstruction;
+
 typedef struct {
     PcJson *config, *options, *runtime_options, *dea, *native, *modules, *interfaces;
     PcJson *old_files, *new_files, *digest_donor;
@@ -20,6 +27,7 @@ typedef struct {
     int64_t build_commands, module_compiles;
     int64_t option_file_parses, option_root_expansions;
     PcLock *lock;
+    PcConstruction *construction;
 } PcContext;
 
 static int pc_verbosity(PcContext *c);
@@ -432,11 +440,10 @@ static const char *const pc_runtime_sources[] = {
     "dea_rt_panic", "dea_rt_sys", "dea_rt_math", "dea_rt_rand", "dea_rt_string",
     "dea_rt_alloc", "dea_rt_io",  "dea_rt_hash", "dea_rt_time", NULL};
 
-/** Expected roles come from the selected compiler's complete input inventory. */
-static PcJson *pc_expected_artifacts(const PcJson *identity) {
-    const PcJson *modules = pj_get(pj_get(identity, "dea_inputs"), "modules"), *m;
-    const char *family = pj_field(pj_get(identity, "toolchain"), "family");
-    const char *variant = pj_field(pj_get(identity, "runtime"), "variant"), *archive;
+/** Payload roles depend only on the semantic set and normalized native configuration. */
+static PcJson *pc_payload_artifacts(const PcJson *modules, const char *family, const char *variant) {
+    const PcJson *m;
+    const char *archive;
     PcJson *expected = pj_new(PJ_OBJECT);
     int i;
     if (!modules || modules->type != PJ_OBJECT || !pj_count(modules) || !family || !variant ||
@@ -462,6 +469,12 @@ static PcJson *pc_expected_artifacts(const PcJson *identity) {
     return expected;
 invalid:
     pj_free(expected); return NULL;
+}
+/** Managed validation derives the same roles from its existing identity format. */
+static PcJson *pc_expected_artifacts(const PcJson *identity) {
+    return pc_payload_artifacts(pj_get(pj_get(identity, "dea_inputs"), "modules"),
+        pj_field(pj_get(identity, "toolchain"), "family"),
+        pj_field(pj_get(identity, "runtime"), "variant"));
 }
 static char *pc_entry_path(const char *root, const char *key) {
     char *directory = pc_join(root, "v1/native"), *entry = pc_join(directory, key);

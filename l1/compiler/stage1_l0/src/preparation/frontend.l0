@@ -44,13 +44,11 @@ func pr_write(context: void*, relative: string, data: string) -> bool {
 }
 
 /** Generate canonical bundled C from source and the selected semantic interfaces. */
-func pr_generate_module(name: string, search: SourceSearchPaths*, interfaces: StringVector*,
-    opts: CliOptions*, cfg: LogConfig*, diags: DiagCollector*) -> string? {
+func pr_generate_module_with_options(name: string, search: SourceSearchPaths*, interfaces: StringVector*,
+    codegen: CodegenOptions*, c_options: StringVector*, cfg: LogConfig*, diags: DiagCollector*) -> string? {
     with (
         let unit = analysis_analyze_entry_with_resolution(search, name, interfaces,
-            MRP_REQUIRE_INTERFACE, null, cfg) => analysis_result_free(unit),
-        let codegen = cg_options_from_cli(opts) => cg_options_free(codegen),
-        let c_options = bd_collect_c_option_words(opts) => sv_free(c_options)
+            MRP_REQUIRE_INTERFACE, null, cfg) => analysis_result_free(unit)
     ) {
         pr_copy_diags(diags, unit.diags);
         if (analysis_has_errors(unit)) {
@@ -64,10 +62,20 @@ func pr_generate_module(name: string, search: SourceSearchPaths*, interfaces: St
     }
 }
 
+/** Normalize retained-C regeneration options for ordinary command callers. */
+func pr_generate_module(name: string, search: SourceSearchPaths*, interfaces: StringVector*,
+    opts: CliOptions*, cfg: LogConfig*, diags: DiagCollector*) -> string? {
+    with (let codegen = cg_options_from_cli(opts) => cg_options_free(codegen),
+          let c_options = bd_collect_c_option_words(opts) => sv_free(c_options)) {
+        return pr_generate_module_with_options(name, search, interfaces, codegen, c_options, cfg, diags);
+    }
+}
+
 /** Compile a bundled module without independently emitting its semantic interface. */
 func pr_frontend_module(context: void*, name: string, search: SourceSearchPaths*,
-    interfaces: StringVector*, opts: CliOptions*, cfg: LogConfig*, diags: DiagCollector*) -> bool {
-    let c_text = pr_generate_module(name, search, interfaces, opts, cfg, diags);
+    interfaces: StringVector*, codegen: CodegenOptions*, c_options: StringVector*,
+    cfg: LogConfig*, diags: DiagCollector*) -> bool {
+    let c_text = pr_generate_module_with_options(name, search, interfaces, codegen, c_options, cfg, diags);
     if (c_text == null) { return false; }
     let module_stem = sp_module_relstem(name) as string;
     if (!pr_write(context, "generated/" + module_stem + ".c", c_text as string)) { return false; }
@@ -142,7 +150,8 @@ func pr_frontend_order(semantic_root: string, home: string, module_names: string
 
 /** Generate complete profiles without re-emitting their authoritative semantic interfaces. */
 func pr_frontend_prepare(context: void*, semantic_root: string, home: string, ordered: StringVector*,
-    opts: CliOptions*, cfg: LogConfig*, diags: DiagCollector*) -> bool {
+    codegen: CodegenOptions*, c_options: StringVector*, verbosity: int, cfg: LogConfig*,
+    diags: DiagCollector*) -> bool {
     if (l1c_prep_copy_interfaces(context) != 1) { return false; }
     with (let search = sp_create() => sp_free(search),
           let interfaces = sv_create(1) => sv_free(interfaces)) {
@@ -150,8 +159,8 @@ func pr_frontend_prepare(context: void*, semantic_root: string, home: string, or
         sv_push(interfaces, semantic_root);
         for (let i = 0; i < sv_size(ordered); i = i + 1) {
             let name = sv_get(ordered, i);
-            if (opts.verbosity >= 1) { err_printl_s("Preparing module " + name); }
-            if (!pr_frontend_module(context, name, search, interfaces, opts, cfg, diags)) { return false; }
+            if (verbosity >= 1) { err_printl_s("Preparing module " + name); }
+            if (!pr_frontend_module(context, name, search, interfaces, codegen, c_options, cfg, diags)) { return false; }
         }
     }
     return l1c_prep_runtime(context) == 1;
