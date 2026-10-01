@@ -61,6 +61,17 @@ targeted level work, enter that level's directory first.
 
 ## Documentation And Work Tracking
 
+- In every repository document, including plans, initiatives, ADRs, and agent/skill guidance, never refer to the person
+  directing the work as "the user". Use "the project maintainer" for an individual, or "the project team" / "the Dea
+  team" for collective work, only when attribution is needed. Otherwise state the requirement or finding directly.
+  Reserve user terminology for actual Dea users; never conflate them with the project maintainer or team. For example:
+  "The project team measured the performance under Linux."
+- Keep plans and other lifecycle documents concise records of scope, methods, findings, decisions, conclusions, and
+  verification evidence. Update the relevant sections as work progresses and consolidate superseded notes. Do not append
+  conversational back-and-forth, a step-by-step development history, repeated progress reports, or a diary of
+  implementation attempts. Preserve an unsuccessful approach only when its evidence or conclusion informs the design or
+  prevents repeating a known failure, and summarize that lesson directly. Planned steps, reproducible procedures,
+  current status, and remaining work are still appropriate.
 - Level-owned docs stay inside that level subtree (for example `l0/docs/**`).
 - Level-owned lifecycle artifacts stay inside that level subtree under `work/` (for example `l0/work/**`).
 - Root `docs/**` is for Dea-wide and monorepo-wide stable material only.
@@ -164,19 +175,20 @@ Treat local implementation, remote writes, and publication as separate authoriza
 | Action                                                                         | Required authorization                                                                                                                                                                                                                                                                                 |
 | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Analysis, tests, builds, and explicitly requested local edits                  | Allowed within the stated task scope. "Organize" and "review" are read-only; "draft" authorizes only the named draft artifact.                                                                                                                                                                         |
-| Local commits                                                                  | Allowed when the user requests implementation or finalization and the commit follows repository conventions. A local commit never authorizes a push.                                                                                                                                                   |
+| Local commits                                                                  | Allowed when the project maintainer requests implementation or finalization and the commit follows repository conventions. A local commit never authorizes a push.                                                                                                                                     |
 | Push to the current private upstream                                           | Requires an explicit push request and verification that the checked-out branch's configured upstream is the exact requested destination.                                                                                                                                                               |
-| Public, cross-repository, workflow-dispatching, or deployment-triggering write | Requires fresh user confirmation immediately before execution. Show the exact command or action, remote and branch or artifact, pending commit range where applicable, and all known downstream effects.                                                                                               |
+| Public, cross-repository, workflow-dispatching, or deployment-triggering write | Requires fresh project maintainer confirmation immediately before execution. Show the exact command or action, remote and branch or artifact, pending commit range where applicable, and all known downstream effects.                                                                                 |
 | Public branch push                                                             | Also requires repository instructions to designate that public target and the checked-out branch to track that exact public remote and branch. Do not bypass this requirement with `HEAD:<branch>`, `--set-upstream`, `pushRemote`, an ad hoc refspec, or an upstream change made as part of the push. |
-| Release tag creation                                                           | Requires a separate, explicit user request naming the exact tag and target commit. A request to implement a plan that mentions the tag does not satisfy this gate.                                                                                                                                     |
-| Release tag push                                                               | Always requires a separate, fresh user confirmation immediately before the push, even if tag creation or release preparation was already requested. Show the tag, target commit, exact remote URL, and all release, asset, Pages, deployment, and cross-repository effects.                            |
-| Blog or announcement publication                                               | Keep copy as a local draft until the user reviews its exact final contents. Any content change invalidates that review. Promotion or deployment requires a fresh user confirmation that the exact copy is clear to publish.                                                                            |
+| Release tag creation                                                           | Requires a separate, explicit project maintainer request naming the exact tag and target commit. A request to implement a plan that mentions the tag does not satisfy this gate.                                                                                                                       |
+| Release tag push                                                               | Always requires a separate, fresh project maintainer confirmation immediately before the push, even if tag creation or release preparation was already requested. Show the tag, target commit, exact remote URL, and all release, asset, Pages, deployment, and cross-repository effects.              |
+| Blog or announcement publication                                               | Keep copy as a local draft until the project maintainer reviews its exact final contents. Any content change invalidates that review. Promotion or deployment requires a fresh project maintainer confirmation that the exact copy is clear to publish.                                                |
 
 - A plan describes possible future work; it does not grant authority to create a release tag or cross a manual
-  remote-write or publication gate, even when the user asks to implement the whole plan.
-- "Reviewed" means reviewed by the user in the exact form to be published. Agent review, tests, and CI do not satisfy
-  this requirement.
-- Sandbox escalation, tool approval, stored credentials, and technical capability are not user authorization.
+  remote-write or publication gate, even when the project maintainer asks to implement the whole plan.
+- "Reviewed" means reviewed by the project maintainer in the exact form to be published. Agent review, tests, and CI do
+  not satisfy this requirement.
+- Sandbox escalation, tool approval, stored credentials, and technical capability are not project maintainer
+  authorization.
 - Treat a private-source push that automatically updates a public site as a deployment-triggering write.
 - Authorization for one remote write does not authorize follow-up pushes, CI fixes, workflow reruns, dispatches, or
   publication actions. Obtain the authorization required for each new action.
@@ -241,8 +253,8 @@ Treat local implementation, remote writes, and publication as separate authoriza
 ## Quality Standards
 
 - When operating in autopilot or agentic mode, do not send an extra follow-up request after the task is already complete
-  (for example asking whether the user wants a summary). End after delivering the result unless the user explicitly asks
-  for more.
+  (for example asking whether the project maintainer wants a summary). End after delivering the result unless the
+  project maintainer explicitly asks for more.
 - Python uses Google Style docstrings with `Args`, `Returns`, and `Raises` sections.
 - C and Dea source files use Doxygen/Javadoc-style block comments.
 - Keep code names and comments in English.

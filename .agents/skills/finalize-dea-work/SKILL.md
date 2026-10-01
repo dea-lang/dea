@@ -5,15 +5,15 @@ description: Finalize Dea repo work by checking plans/docs/tests, staging only i
 
 ### Finalize and commit Dea work
 
-Use this skill when the user asks to finalize, close plans, commit changes, prepare a commit, or package completed Dea
-work.
+Use this skill when the project maintainer asks to finalize, close plans, commit changes, prepare a commit, or package
+completed Dea work.
 
 ## Required context
 
 1. Read root `AGENTS.md` first.
 2. If touched paths are under `l0/`, read `l0/AGENTS.md`.
 3. If touched paths are under `l1/`, read `l1/AGENTS.md`.
-4. Check `git status --short` before staging. Never stage unrelated user files.
+4. Check `git status --short` before staging. Never stage unrelated files.
 
 ## Authorization boundary
 
@@ -28,10 +28,10 @@ While using this skill:
 - do not dispatch workflows or trigger documentation, Pages, package, or site deployments
 - do not write to another repository
 
-Plans that mention those operations do not grant authority to perform them, even when the user asks to implement the
-whole plan. Sandbox, tool, or escalation approval grants capability only and is not user authorization. Stop after the
-local commit, report the current upstream and pending commit range, and leave every remote action for a separately
-authorized follow-up.
+Plans that mention those operations do not grant authority to perform them, even when the project maintainer asks to
+implement the whole plan. Sandbox, tool, or escalation approval grants capability only and is not project maintainer
+authorization. Stop after the local commit, report the current upstream and pending commit range, and leave every remote
+action for a separately authorized follow-up.
 
 ## Finalization workflow
 
@@ -39,7 +39,7 @@ authorized follow-up.
 
 - one cohesive change: one commit
 - separable implementation/docs/tooling pieces: two or three commits
-- unrelated work: leave it unstaged and tell the user
+- unrelated work: leave it unstaged and tell the project maintainer
 
 2. Finish lifecycle artifacts before committing:
 
@@ -47,6 +47,9 @@ authorized follow-up.
 - whenever a plan moves to `closed/`, refresh its metadata block's `Date:` value to the current date, even when moving
   the file to `closed/` would otherwise be the only change
 - update `Status: Completed`, completion notes, and final repro/validation commands
+- consolidate implementation notes into methods, findings, decisions, conclusions, and verification evidence; remove
+  conversational back-and-forth, repeated progress reports, and step-by-step development history while preserving useful
+  lessons and reproducible procedures
 - future follow-up work stays as a draft plan in the correct kind, for example `tools` for test-runner/tooling work
 - if completion depends on a push, tag, release, deployment, cross-repository write, or other gated external result,
   keep the plan active; do not close it based on unauthorized external state
@@ -72,6 +75,8 @@ checks pass.
 
 3. Refresh docs affected by shipped behavior:
 
+- check all in-scope documents for root `AGENTS.md` terminology: use project maintainer, project team, or Dea team when
+  attribution is needed, and reserve user terminology for actual Dea users
 - update relevant `Version: YYYY-MM-DD` metadata when editing reference/status docs
 - do not document draft-only future behavior as shipped
 
@@ -81,8 +86,9 @@ checks pass.
 ### Mandatory reuse of just-completed validation
 
 Reuse is a requirement, not an optional optimization. When an applicable full or level test suite completed successfully
-earlier in the same task and its result remains available in the task tool history, including immediately before a user
-says "ok commit", record and reuse that result if the validated inputs have not changed. **Do not run the suite again.**
+earlier in the same task and its result remains available in the task tool history, including immediately before the
+project maintainer says "ok commit", record and reuse that result if the validated inputs have not changed. **Do not run
+the suite again.**
 
 Treat validation as reusable when all of these are true:
 
@@ -91,14 +97,14 @@ Treat validation as reusable when all of these are true:
   satisfy an aggregate tier.
 - No code, tests, build configuration, dependencies, generated source, or compiler/toolchain selection covered by the
   result changed after the run. Any branch or `HEAD` change preserved the exact validated tree.
-- No user, external process, or other agent modified an input covered by the result after the run.
+- No project maintainer, external process, or other agent modified an input covered by the result after the run.
 - The result was complete and successful, and the current `git status --short`, diff, and task tool history provide
   enough evidence that it still applies.
 
-A new user message such as "ok commit", activation of this skill, a short passage of time, diff/status inspection, or
-staging unchanged content does not invalidate validation. Plan closure, documentation edits, and Markdown-only hook
-formatting after the suite also do not invalidate code-test results; run the applicable docs checks plus the mandatory
-staged whitespace and pre-commit checks instead.
+A new project maintainer message such as "ok commit", activation of this skill, a short passage of time, diff/status
+inspection, or staging unchanged content does not invalidate validation. Plan closure, documentation edits, and
+Markdown-only hook formatting after the suite also do not invalidate code-test results; run the applicable docs checks
+plus the mandatory staged whitespace and pre-commit checks instead.
 
 When unchanged inputs already passed `test-extended` and exhaustive L1 validation is required, reuse the local-normal
 result and run only the missing `test-ci` categories: explicitly select the cases listed in
