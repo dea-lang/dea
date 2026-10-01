@@ -128,12 +128,15 @@ documentation or blog repository.
 
 If the repository normally publishes documentation as an automatic effect of a push, treat that push as a deployment
 operation and leave it for a separately authorized follow-up. Neither a plan that includes publication nor any sandbox,
-tool, or escalation approval replaces the required user authorization. End with the local diff or commit and report the
-pending publication action explicitly.
+tool, or escalation approval replaces the required project maintainer authorization. End with the local diff or commit
+and report the pending publication action explicitly.
 
 ## Writing rules
 
 - Prefer concise, factual updates over broad rewrites.
+- Follow root `AGENTS.md` terminology: use project maintainer, project team, or Dea team when attribution is needed, and
+  reserve user terminology for actual Dea users. Describe methods, findings, and conclusions without importing
+  conversational exchanges or step-by-step development history into the documentation.
 - Use repository-root paths as visible Markdown link text for repo files.
 - Keep code names and comments in English.
 - Do not create or update plan docs unless the task explicitly asks for lifecycle artifacts.

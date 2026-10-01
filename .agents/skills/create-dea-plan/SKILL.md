@@ -5,7 +5,8 @@ description: Create a new Dea plan in the correct work tree with the right categ
 
 ### Create a new Dea plan
 
-Use this skill when the user asks to add, draft, open, or write a new Dea plan or other lifecycle work item.
+Use this skill when the project maintainer asks to add, draft, open, or write a new Dea plan or other lifecycle work
+item.
 
 Do not use this skill for:
 
@@ -205,8 +206,8 @@ Use the closest local precedent:
   `## Verification Criteria`
 - shared plans often include target-specific status and porting guidance
 
-Do not write an `Outcome`, `Results`, or completed verification section in a brand-new draft plan unless the user is
-actually documenting already landed work.
+Do not write an `Outcome`, `Results`, or completed verification section in a brand-new draft plan unless the project
+maintainer is actually documenting already landed work.
 
 ## ADR Impact requirement
 
@@ -237,26 +238,27 @@ Do not omit the section with the intention of deciding at closure. Run
 
 ## Remote and publication approval gates
 
-A plan may describe remote or publication work, but it never authorizes that work. This remains true when the user asks
-to implement the whole plan.
+A plan may describe remote or publication work, but it never authorizes that work. This remains true when the project
+maintainer asks to implement the whole plan.
 
 When a plan includes any push, tag, release, workflow dispatch, cross-repository write, documentation deployment, or
 site publication:
 
-- mark each such phase as a manual user-approval gate
+- mark each such phase as a manual maintainer-approval gate
 - state the exact remote, branch, tag, artifact, or deployment target governed by the gate
 - state the known automatic effects, including release creation, asset publication, Pages deployment, or downstream
   repository dispatches
-- require fresh user confirmation immediately before the gated operation; an earlier request to draft or implement the
-  plan does not satisfy the gate
+- require fresh project maintainer confirmation immediately before the gated operation; an earlier request to draft or
+  implement the plan does not satisfy the gate
 - keep publication-dependent targets and the plan active until the authorized operation completes and is verified, or
-  until the user explicitly defers or cancels that target
+  until the project maintainer explicitly defers or cancels that target
 
-Do not describe material as user-reviewed unless the user reviewed the exact version. Agent review, tests, CI, or an
-implementation request are not substitutes for user review. Any later content change invalidates the prior review and
-requires the updated material to be reviewed again before publication.
+Do not describe material as maintainer-reviewed unless the project maintainer reviewed the exact version. Agent review,
+tests, CI, or an implementation request are not substitutes for project maintainer review. Any later content change
+invalidates the prior review and requires the updated material to be reviewed again before publication.
 
-Sandbox, tool, or command-escalation approval grants technical capability only. It never satisfies a user-approval gate.
+Sandbox, tool, or command-escalation approval grants technical capability only. It never satisfies a maintainer-approval
+gate.
 
 ## Diagnostic-code planning rules
 
@@ -336,11 +338,17 @@ Use the next available zero-padded number, carry the initiative metadata block, 
 ## Writing rules
 
 - Keep the plan factual, concrete, and scoped to the actual work item.
+- Follow root `AGENTS.md` terminology: attribute work or approvals to the project maintainer, project team, or Dea team
+  only when needed; reserve user terminology for actual Dea users.
+- Record methods, findings, decisions, conclusions, and verification evidence in the relevant sections. During
+  implementation, revise and consolidate those sections instead of appending conversational exchanges, repeated progress
+  updates, or a step-by-step development history. Summarize failed approaches only when they leave a useful lesson;
+  retain planned steps, reproducible procedures, current status, and remaining work.
 - Do not document draft future work as shipped behavior in stable docs.
 - Use repository-root paths as visible Markdown link text for repo files.
 - Prefer explicit module/test lists over vague subsystem descriptions.
 - Match the formatting and section style of nearby current plans instead of inventing a new template variation.
-- If the user asked only for the plan, do not implement code changes.
+- If the project maintainer asked only for the plan, do not implement code changes.
 
 ## Deliverable checklist
 
@@ -355,5 +363,6 @@ Use the next available zero-padded number, carry the initiative metadata block, 
 - diagnostic-code reservation guidance included when the work may add new diagnostics
 - explicit subtree link/update steps followed where required, for example the current `l1/docs/roadmap.md` rule
 - no lifecycle plan written under `docs/`
-- every remote or publication phase has an explicit manual user-approval gate with destination and downstream effects
-- no unverified claim that the user reviewed or approved exact publication material
+- every remote or publication phase has an explicit manual maintainer-approval gate with destination and downstream
+  effects
+- no unverified claim that the project maintainer reviewed or approved exact publication material
