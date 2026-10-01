@@ -46,9 +46,9 @@
 
 ## Summary
 
-Expose one internal construction operation underneath the current preparation policy. Its inputs describe what to build
-and an already owned staging destination. Its result describes the constructed payload. Cache selection, persistent
-reuse eligibility, locks and publication ownership remain with the caller.
+The refactor exposes one internal construction operation underneath preparation policy. Its inputs describe what to
+build and an already owned staging destination. Its result describes the constructed payload. Cache selection,
+persistent reuse eligibility, locks and publication ownership remain with the caller.
 
 This plan adds no CLI option and no public profile format. It prepares the smallest useful implementation boundary for
 the subsequent feature, without promising a broad source decomposition or changing the existing native service ABI
@@ -76,19 +76,15 @@ beyond what the extraction needs.
 
 ## Starting State
 
-The proposal was drafted against `dea-lang/dea` on `main`, 2026-09-30, and rechecked against the local worktree on
-2026-10-01. `pr_prepare` currently coordinates resolution, lookup, complete bundled validation on misses, eligibility,
-locking, private fallback and construction. `pr_build_selected` connects destination setup, `pr_frontend_prepare` and
-completion. `ManagedPreparation` retains the selected native support until the final consumer finishes.
+Before extraction, the construction path was
+`pr_prepare -> pr_build_selected -> pc_begin_profile -> pr_frontend_prepare -> pc_complete_profile`. Preparation context
+supplied the destination and configuration; native writers and completion depended on managed identity,
+locks/private-root state and completion metadata. The frontend reread merged C options for each module. A wrapper around
+`pr_build_selected` alone could not provide explicit construction without cache state.
 
-These are usable seams, but the selected destination and construction configuration are supplied through preparation
-context state. Native `pc_begin_profile`, `pc_output_path` and `pc_complete_profile` also depend on cache locks or a
-private root, native identity and managed completion metadata. Wrapping `pr_build_selected` alone does not establish the
-required boundary. The future explicit constructor must not need a fake cache root, cache identity or cache hit.
-
-The current contract and earlier economy work are recorded in [l1/docs/reference/stdlib-preparation.md][preparation] and
-[l1/work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md][economy-plan]. Recheck current function
-boundaries before changing them; the lists above identify ownership, not a demand to edit every file.
+The preserved contract and earlier economy findings are recorded in
+[l1/docs/reference/stdlib-preparation.md][preparation] and
+[l1/work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md][economy-plan].
 
 ## Goal and Non-Goals
 
@@ -211,11 +207,6 @@ rules.
 
 ## Implementation Notes
 
-The original path was
-`pr_prepare -> pr_build_selected -> pc_begin_profile -> pr_frontend_prepare -> pc_complete_profile`. The frontend reread
-merged C options for each module, and native writers derived their roles, configuration and authorization from the
-managed identity and lock/private-root fields.
-
 The landed path keeps resolution, lookup, complete miss validation, eligibility, lock/recheck and fallback in
 `pr_prepare`. `pc_begin_profile` allocates the selected destination and invalidates its managed completion marker, then
 projects resolved inputs into `pc_begin_construction`. `pr_construct` passes the frozen code-generation settings and C
@@ -228,6 +219,10 @@ not resolve toolchain paths, default options, a cache root, `D`, `N`, locks or r
 reused only as an error/statistics and ownership carrier. Paired frontend fixtures exercise this entry through the same
 `pr_construct` implementation; no public CLI or artifact format was added.
 
+Windows native probes observe process exit before draining stdout/stderr, preserving output written during termination.
+This prevents missing compiler observations from incorrectly declining persistent reuse. Native test failures retain the
+eligibility refusal reason.
+
 | Responsibility                 | Owner and inputs                                                                                                                                                                                                                                                      |
 | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Native execution prerequisites | The policy caller resolves the executable family, runtime target options, archiver and required capabilities before construction, preserving the existing schedule.                                                                                                   |
@@ -239,12 +234,10 @@ reused only as an error/statistics and ownership carrier. Paired frontend fixtur
 
 ### Verification Evidence
 
-The host builder and tests use `/usr/bin/gcc`, Debian GCC 14.2.0, with `L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc`. Baseline
-focused preparation, native support, identity and managed-provider tests passed before the extraction. Both stages'
-direct construction, preparation, managed-provider, recovery/concurrency and installed-layout tests passed after it.
-Direct cases cover hostile later ambient defaults, exact semantic copies, real module/runtime commands, invalid
-configuration, incomplete payloads, changed interfaces, escaped/undeclared writes, native failure and retained
-caller-owned paths.
+Local validation used `/usr/bin/gcc`, Debian GCC 14.2.0, with `L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc`. Both stages'
+preparation, direct construction, managed-provider, recovery/concurrency and installed-layout tests passed. Direct cases
+cover ambient-default isolation, exact semantic copies, real module/runtime commands, invalid configuration, incomplete
+payloads, changed interfaces, escaped/undeclared writes, native failure and retained caller-owned paths.
 
 Isolated before/after snapshots used the same GCC and sequential
 `--prepare-stdlib --c-compiler /usr/bin/gcc --stdlib-cache PATH -vvv` calls for a cold entry, unchanged warm entry and
@@ -266,29 +259,26 @@ Cold native-resolution spans were 0.462/0.479 seconds and warm spans 0.010/0.011
 extra compilation, probing or warm frontend work. Payload-inventory hashing now precedes the managed-publication span;
 its hash observations retain the existing `publication` category, so the shorter publication span is not a speedup.
 
-`make test-extended` passed 79 Stage 1 and 65 Stage 2 normal cases, stage parity, all four examples, six Docker/Wine
-runner regressions and 18 Stage 2/bootstrap tooling checks. The CI-only native identity and optional-selection ownership
-cases also passed through the Stage 1 runner. `L1_CONSTRUCTION_TRACE=1` with the new shared Python fixture passed in
-each stage: both successful construction and native-failure cleanup produced memory/ARC events with zero errors, leaked
-objects or leaked strings.
+Local `make test-extended`, native identity and optional-selection ownership checks passed. Both stages' direct
+constructor traces (`L1_CONSTRUCTION_TRACE=1`) and dedicated preparation/link-driver traces reported zero errors or
+leaked objects/strings on the covered success and failure paths. `make triple-test` produced 137 identical retained C
+translation units and identical normalized native binaries; the final compiler's tests, examples and smoke test passed.
 
-Dedicated preparation/link-driver traces passed in both stages with zero leaks. The trace targets reused the unchanged
-aggregate compiler/runtime builds with `-o build-stage1 -o build-stage2 -o runtime`; each selected trace harness was
-freshly built and run. `make triple-test` passed with 137 identical retained C translation units, identical normalized
-native binaries, and the final self-built compiler's 65 normal tests, examples and smoke test.
+Hosted `make test-ci` passed on all four platforms below, covering both stages, native storage, construction, ownership
+traces and strict triple bootstrap. The Windows native fixture deterministically verifies final stdout/stderr capture,
+compiler eligibility and exit-status query failure with real child processes. ADR impact validation passed. Compiler
+executables and versions were verified in each environment:
 
-The repo-owned Linux Docker image build was attempted with the session CA mounted for dependency installation, but
-Docker Hub refused its `python:3.14-bookworm` base with HTTP 429. No container compiler ran. Windows and macOS
-environments are unavailable locally; these are coverage gaps.
+| Platform              | Compiler executable | Version                                     |
+| --------------------- | ------------------- | ------------------------------------------- |
+| Linux x86_64          | `/usr/bin/gcc`      | GCC 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04.1) |
+| Windows UCRT64 x86_64 | `/ucrt64/bin/gcc`   | GCC 16.2.0 (MSYS2 Rev4)                     |
+| macOS Intel           | `/usr/bin/clang`    | Apple Clang 17.0.0 (clang-1700.0.13.5)      |
+| macOS ARM64           | `/usr/bin/clang`    | Apple Clang 21.0.0 (clang-2100.1.1.101)     |
 
-The first hosted Windows run used MSYS2 UCRT64 GCC 16.2.0 at `/ucrt64/bin/gcc`. It passed 86 Stage 1 tests, including
-direct construction, then failed the native storage test when a repeated resolution declined persistent reuse. Its
-assertion omitted the refusal reason. Investigation found an existing Windows probe race: a child could write and exit
-after empty pipe checks, losing its final output. Exit observation now precedes pipe draining, and the native fixture
-forces that ordering with real child processes on Windows. Failed test operations also report the eligibility reason. A
-local simulation of the Windows API schedule reproduced lost stdout/stderr before the fix and retained both streams and
-exit status after it; a failed exit-status query also fails cleanly. Focused Linux GCC 14.2 support and identity tests
-and both stages' direct construction tests passed after the fix. Native Windows CI confirmation remains pending.
+The repo-owned Linux Bookworm container passed `make test-extended` with `/usr/bin/gcc`, GCC 12.2.0 (Debian
+12.2.0-14+deb12u1), selected by `L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc`. Coverage included 79 Stage 1 tests, 65 Stage 2
+tests, stage parity, all four examples, six Docker/Wine runner checks and 18 Stage 2/bootstrap tooling tests.
 
 ## Diagnostics and Documentation
 

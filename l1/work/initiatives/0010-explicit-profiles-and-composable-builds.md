@@ -101,8 +101,8 @@ staging destination, and returns a validated payload inventory. Managed and comm
 implementation. Cache identities, eligibility, lookup, locks, publication and completion metadata remain with the
 managed caller. External behavior, cache formats, diagnostics and default policies are preserved.
 
-This independently closed refactor adds no public manifest or CLI mode. Host validation and unavailable
-platform/container coverage are recorded in the closed plan.
+This independently closed refactor adds no public manifest or CLI mode. Host, container and cross-platform validation
+results are recorded in the closed plan.
 
 ### Phase B: Introduce explicit profile artifacts
 
