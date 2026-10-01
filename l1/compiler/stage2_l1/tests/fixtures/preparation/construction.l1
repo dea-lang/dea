@@ -1,0 +1,52 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module construction;
+
+import sys.rt;
+import std.assert;
+import std.fs;
+import std.string;
+import std.system;
+import std.vector;
+import preparation;
+import preparation.frontend;
+import util.diag;
+import util.log;
+
+/** Exercise the full shared constructor without managed resolution or cache selection. */
+func main() {
+    let config = read_file(env_get("L1_CONSTRUCTION_INPUTS") as string) as string;
+    let destination = env_get("L1_CONSTRUCTION_DESTINATION") as string;
+    let failure = env_get("L1_CONSTRUCTION_FAILURE") != null;
+    with (
+        let context = l1c_prep_construction_create(rt_string_bytes_ptr(config), len_s(config),
+            rt_string_bytes_ptr(destination), len_s(destination)) => l1c_prep_free(context),
+        let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+        let diags = diag_create() => diag_free(diags)
+    ) {
+        assert(l1c_prep_error_code(context) == 0, pr_get(context, "error"));
+        assert(pr_get(context, "native_key") == "" && pr_get(context, "dea_key") == "" &&
+            pr_get(context, "local") == "", "direct construction invented managed identity or storage");
+        let ordered_opt = pr_frontend_order(pr_get(context, "construction_semantic_root"),
+            pr_get(context, "construction_home"), "std.types\n", cfg, diags);
+        assert(ordered_opt != null, "explicit semantic validation failed");
+        with (let ordered = ordered_opt as StringVector* => sv_free(ordered)) {
+            let ok = pr_construct(context, ordered, 0, cfg, diags);
+            assert(ok != failure, pr_get(context, "error"));
+            if (failure) {
+                assert(l1c_prep_error_code(context) == 2156, "construction failure lost native diagnostic");
+            }
+        }
+        assert(!diag_has_errors(diags), "constructor reread ambient C options");
+        if (failure) {
+            assert(pr_get(context, "construction_inventory") == "", "failed construction returned a complete payload");
+        } else {
+            assert(pr_get(context, "construction_inventory") != "", "constructor returned no payload inventory");
+        }
+        assert(pr_get(context, "selected") == "", "constructor selected a managed entry");
+    }
+    assert(is_dir(destination), "releasing construction deleted its caller-owned destination");
+}

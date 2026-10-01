@@ -1,7 +1,7 @@
 # ADR-0040: Warm Preparation Reuses Completed-Profile Semantic Validation
 
 - Decision date: 2026-09-15
-- Last edited: 2026-09-15
+- Last edited: 2026-10-01
 - Status: Accepted
 
 ## Context
@@ -49,7 +49,10 @@ inspectable provenance beyond the manifest itself.
 
 ## Related Plans
 
+- [l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md][profile-boundary]
+
 - [l1/work/plans/features/closed/2026-09-13-warm-preparation-validation-reuse-noref.md][warm-plan]
+
 - [l1/work/plans/tools/closed/2026-09-13-preparation-test-cost-noref.md][test-cost]
 
 ## Current Docs
@@ -57,5 +60,6 @@ inspectable provenance beyond the manifest itself.
 - [l1/docs/reference/stdlib-preparation.md][preparation]
 
 [preparation]: ../reference/stdlib-preparation.md
+[profile-boundary]: ../../work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md
 [test-cost]: ../../work/plans/tools/closed/2026-09-13-preparation-test-cost-noref.md
 [warm-plan]: ../../work/plans/features/closed/2026-09-13-warm-preparation-validation-reuse-noref.md

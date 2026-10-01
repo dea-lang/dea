@@ -385,8 +385,15 @@ reference.
   original application analysis and replace only managed artifact associations after successful preparation, preserving
   semantic source provenance and the independent final sibling checks.
 - `preparation.l0` owns frontend/native orchestration, progress, repair guidance, per-key preparation and finalization.
+  Its `pr_construct` operation consumes frozen construction inputs and the verified dependency order, with no ambient
+  compiler-option reads during module generation. Stage 2 uses the same boundary.
 - `preparation_support.c` and `support/preparation/` implement one local cache, installed-payload protection,
   compiler-input identity, conservative native adapters, process locks, complete inventories and digest memoization.
+  `construction.h` owns a copied construction configuration and payload inventory while borrowing an already owned
+  staging root. `build.h` writes only declared payloads and registered scratch beneath that root. Construction needs no
+  cache key, lock or private-root flag; the managed adapter allocates the destination, invalidates completion metadata,
+  and publishes the existing manifest after payload validation. Releasing the construction description preserves the
+  destination; the command owner removes private support after its last consumer.
 - Completed corruption never triggers automatic persistent replacement. Eligible ordinary consumers prepare privately;
   explicit `--prepare-stdlib --force` requires external serialization and recomputes validation.
 - Semantic-only commands use bundled interfaces without native cache access, toolchain probing or source-tree hashing.

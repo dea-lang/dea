@@ -736,6 +736,12 @@ static PcProbe pc_probe(const PcJson *words, int timeout_ms) {
         DWORD exit_code;
         int active = 0;
         char buffer[8192];
+        /* Observe exit before the final pipe drain. A child can write and exit
+           between an empty PeekNamedPipe and a later exit-status query. */
+        if (!GetExitCodeProcess(pi.hProcess, &exit_code)) {
+            failed = 1;
+            break;
+        }
         for (i = 0; i < 2; ++i) {
             DWORD available = 0, n = 0;
             if (reads[i] && PeekNamedPipe(reads[i], NULL, 0, NULL, &available, NULL) && available) {
@@ -752,7 +758,6 @@ static PcProbe pc_probe(const PcJson *words, int timeout_ms) {
             failed = 1;
             break;
         }
-        GetExitCodeProcess(pi.hProcess, &exit_code);
         if (exit_code != STILL_ACTIVE && !active) {
             result.status = (int)exit_code;
             break;

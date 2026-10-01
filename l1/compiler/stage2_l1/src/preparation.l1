@@ -16,6 +16,7 @@ import std.vector;
 import build_driver;
 import cli_args.model;
 import compiler_filesystem;
+import codegen_options;
 import diag_print;
 import preparation.frontend;
 import util.diag;
@@ -31,6 +32,8 @@ extern func l1c_prep_private(context: void*) -> int;
 extern func l1c_prep_unlock(context: void*);
 extern func l1c_prep_begin(context: void*) -> int;
 extern func l1c_prep_complete(context: void*) -> int;
+extern func l1c_prep_construction_create(data: byte*, length: int, destination: byte*, destination_length: int) -> void*;
+extern func l1c_prep_construction_complete(context: void*) -> int;
 extern func l1c_prep_error_code(context: void*) -> int;
 extern func l1c_prep_get(context: void*, field: byte*, length: int, output: byte*?, capacity: int) -> int;
 
@@ -188,12 +191,37 @@ func pr_report_disabled(context: void*, opts: CliOptions*, diags: DiagCollector*
     }
 }
 
+/**
+ * Construct one payload from a begun destination and frozen invocation inputs.
+ * The native owner retains the payload inventory or failed destination until released;
+ * its caller alone publishes managed metadata or removes the destination.
+ */
+func pr_construct(context: void*, ordered: StringVector*, verbosity: int,
+    cfg: LogConfig*, diags: DiagCollector*) -> bool {
+    if (l1c_prep_error_code(context) != 0) { return false; }
+    with (let words = sv_create(8) => sv_free(words),
+          let codegen = cg_options_create() => cg_options_free(codegen)) {
+        let count = string_to_int(pr_get(context, "construction_option_count"));
+        if (count == null) { return false; }
+        for (let i = 0; i < (count as int); i = i + 1) {
+            sv_push(words, pr_get(context, "construction_option_" + int_to_string(i)));
+        }
+        codegen.emit_line_directives = pr_get(context, "construction_codegen_no_line_directives") != "1";
+        codegen.trace_arc = pr_get(context, "construction_codegen_trace_arc") == "1";
+        codegen.trace_memory = pr_get(context, "construction_codegen_trace_memory") == "1";
+        codegen.rt_unchecked = pr_get(context, "construction_codegen_unchecked") == "1";
+        codegen.rt_check_basic = pr_get(context, "construction_codegen_check_basic") == "1";
+        if (!pr_frontend_prepare(context, pr_get(context, "construction_semantic_root"),
+            pr_get(context, "construction_home"), ordered, codegen, words, verbosity, cfg, diags)) { return false; }
+        return l1c_prep_construction_complete(context) == 1;
+    }
+}
+
 /** Execute one selected destination through the common preparation pipeline. */
 func pr_build_selected(context: void*, ordered: StringVector*, opts: CliOptions*, cfg: LogConfig*,
     diags: DiagCollector*) -> bool {
     if (l1c_prep_begin(context) != 1) { return false; }
-    if (!pr_frontend_prepare(context, pr_get(context, "semantic_root"),
-        pr_get(context, "home"), ordered, opts, cfg, diags)) { return false; }
+    if (!pr_construct(context, ordered, opts.verbosity, cfg, diags)) { return false; }
     return l1c_prep_complete(context) == 1;
 }
 

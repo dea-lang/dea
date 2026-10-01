@@ -20,30 +20,31 @@
 #include "preparation/platform.h"
 #include "preparation/storage.h"
 #include "preparation/identity.h"
+#include "preparation/construction.h"
 #include "preparation/build.h"
 
-/** Remove a known Dea-owned scratch tree without following aliases or ignoring failures. */
-static int pc_remove_owned_tree(const char *root) {
-    int kind = pc_kind(root, 0), ok = 1;
-    PcJson *names;
-    const PcJson *name;
-    if (kind == 0) return 1;
-    if (kind != 2) return remove(root) == 0;
-    names = pc_list(root);
-    if (!names) return 0;
-    for (name = names->child; name && ok; name = name->next) {
-        char *path = pc_join(root, name->text);
-        ok = pc_remove_owned_tree(path);
-        free(path);
-    }
-    pj_free(names);
-    return ok && l1c_fs_remove_empty_dir((const uint8_t *)root, (int32_t)strlen(root)) == 1;
+/** Project resolved managed inputs without copying cache identities or storage policy. */
+static PcJson *pc_managed_construction_inputs(PcContext *c) {
+    PcJson *inputs = pj_new(PJ_OBJECT);
+    pj_set_string(inputs, "compiler", c->compiler);
+    pj_set_string(inputs, "family", c->family);
+    if (c->archiver) pj_set_string(inputs, "archiver", c->archiver);
+    pj_set_string(inputs, "home", c->home);
+    pj_set_string(inputs, "semantic_root", c->semantic_root);
+    pj_set_string(inputs, "include", c->include);
+    pj_set_string(inputs, "variant", pj_field(pj_get(c->native, "runtime"), "variant"));
+    pj_add(inputs, "options", pj_clone(c->options));
+    pj_add(inputs, "runtime_options", pj_clone(c->runtime_options));
+    pj_add(inputs, "modules", pj_clone(c->modules));
+    pj_add(inputs, "interfaces", pj_clone(c->interfaces));
+    pj_add(inputs, "codegen", pj_get(c->config, "codegen") ?
+           pj_clone(pj_get(c->config, "codegen")) : pj_new(PJ_OBJECT));
+    return inputs;
 }
 /** Establish a profile only under per-key coordination or a command-owned private directory. */
 static int pc_begin_profile(PcContext *c) {
     char *entry, *marker;
-    PcJson *expected;
-    const PcJson *item;
+    PcJson *inputs;
     int ok = 1;
     if ((!c->lock && !c->private_root) || !c->native)
         return pc_fail(c, 2152, "native preparation requires coordination or a command-private workspace", NULL);
@@ -53,40 +54,21 @@ static int pc_begin_profile(PcContext *c) {
     if (pc_kind(marker, 0) != 0 && remove(marker) != 0)
         ok = pc_fail(c, 2150, "cannot invalidate selected profile", marker);
     free(marker);
-    /* Quoted generated-C includes must not select stale scratch headers. A forced
-       or incomplete-profile rebuild starts with clean compiler-owned scratch. */
-    {
-        static const char *const names[] = {"generated", "runtime-build", NULL};
-        int i;
-        for (i = 0; names[i] && ok; ++i) {
-            char *scratch = pc_join(entry, names[i]);
-            if (!pc_remove_owned_tree(scratch))
-                ok = pc_fail(c, 2150, "cannot reset preparation scratch", scratch);
-            free(scratch);
-        }
-    }
-    expected = pc_expected_artifacts(c->native);
-    if (!expected) ok = pc_fail(c, 2151, "cannot derive native artifact roles", entry);
-    for (item = expected ? expected->child : NULL; item && ok; item = item->next) {
-        char *path = pc_join(entry, item->key), *parent = pc_parent(path);
-        if (!pc_mkdirs(parent)) ok = pc_fail(c, 2150, "cannot create artifact directory", parent);
-        free(path); free(parent);
-    }
-    pj_free(expected);
+    inputs = pc_managed_construction_inputs(c);
+    if (ok) ok = pc_begin_construction(c, inputs, entry);
+    pj_free(inputs);
     if (ok) { free(c->selected); c->selected = entry; c->begun = 1; }
     else free(entry);
     return ok;
 }
-/** Hash every expected output and write the sole completion record last. */
+/** Publish an already validated payload using the unchanged managed completion contract. */
 static int pc_complete_profile(PcContext *c) {
-    PcJson *manifest, *expected, *inventory;
-    const PcJson *item;
+    PcJson *manifest;
     char *marker, *pending;
     int ok = 1;
     if (!c->begun || !c->selected || (!c->lock && !c->private_root))
         return pc_fail(c, 2152, "completion requires active preparation", NULL);
-    expected = pc_expected_artifacts(c->native);
-    if (!expected) return pc_fail(c, 2151, "invalid native preparation identity", NULL);
+    if (!c->construction || (!c->construction->inventory && !pc_finish_construction(c))) return 0;
     marker = pc_join(c->selected, "manifest.json");
     pending = pc_join(c->selected, ".manifest.pending");
     manifest = pj_new(PJ_OBJECT);
@@ -96,26 +78,7 @@ static int pc_complete_profile(PcContext *c) {
     pj_set_string(manifest, "D", c->dea_key);
     pj_add(manifest, "identity", pj_clone(c->native));
     pj_set_string(manifest, "compiler_description", c->description ? c->description : "");
-    inventory = pj_new(PJ_ARRAY);
-    pj_add(manifest, "artifacts", inventory);
-    for (item = expected->child; item && ok; item = item->next) {
-        char *path = pc_join(c->selected, item->key);
-        char *canonical = pc_path_call(path, l1c_fs_canonical_existing_path);
-        char digest[65];
-        PcJson *metadata = NULL, *record;
-        if (!canonical || !pc_within(canonical, c->selected) ||
-            !pc_hash_observed(c, path, digest, &metadata, "publication", "completion-inventory"))
-            ok = pc_fail(c, 2153, "cannot validate prepared artifact", path);
-        else {
-            record = pj_new(PJ_OBJECT);
-            pj_set_string(record, "path", item->key);
-            pj_set_string(record, "role", item->text);
-            pj_set_number(record, "size", pj_get(metadata, "size")->number);
-            pj_set_string(record, "sha256", digest);
-            pj_add(inventory, NULL, record);
-        }
-        pj_free(metadata); free(canonical); free(path);
-    }
+    pj_add(manifest, "artifacts", pj_clone(c->construction->inventory));
     if (ok) ok = pc_preparation_inputs_current(c);
     if (ok && pc_kind(pending, 0) != 0 && remove(pending) != 0)
         ok = pc_fail(c, 2150, "cannot establish pending completion manifest", pending);
@@ -125,7 +88,7 @@ static int pc_complete_profile(PcContext *c) {
        and ensures readers never mistake a partial record for completed corruption. */
     if (ok && rename(pending, marker) != 0) ok = pc_fail(c, 2150, "cannot publish completion manifest", marker);
     if (!ok) remove(pending);
-    pj_free(expected); pj_free(manifest); free(marker); free(pending);
+    pj_free(manifest); free(marker); free(pending);
     c->begun = 0;
     return ok;
 }
@@ -162,6 +125,7 @@ void l1c_prep_free(void *context) {
     PcContext *c = context;
     if (!c) return;
     pc_unlock(c->lock);
+    pc_construction_free(c->construction);
     if (c->private_root) pc_remove_owned_tree(c->private_root);
     pj_free(c->config); pj_free(c->options); pj_free(c->runtime_options); pj_free(c->dea); pj_free(c->native);
     pj_free(c->old_files); pj_free(c->new_files); pj_free(c->digest_donor);
@@ -196,7 +160,10 @@ int32_t l1c_prep_lock(void *context) {
 }
 void l1c_prep_unlock(void *context) {
     PcContext *c = context;
-    if (c) { pc_unlock(c->lock); c->lock = NULL; c->begun = 0; }
+    if (c) {
+        pc_unlock(c->lock); c->lock = NULL; c->begun = 0;
+        if (c->construction) c->construction->active = 0;
+    }
 }
 /** Allocate fresh support for this consuming command, without publishing persistent state. */
 int32_t l1c_prep_private(void *context) {
@@ -226,6 +193,32 @@ int32_t l1c_prep_complete(void *context) {
     int result = c && !c->error ? pc_complete_profile(c) : 0;
     if (c) pc_observe_span(c, "native-publication", started, result);
     return result;
+}
+/**
+ * Internal direct constructor entry: inputs are normalized and destination is already owned.
+ * No toolchain defaults, cache roots, reuse identities, locks or publication are resolved here.
+ * The returned context owns its descriptions, never the caller's directory, even on failure.
+ */
+void *l1c_prep_construction_create(const uint8_t *data, int32_t length,
+                                  const uint8_t *destination, int32_t destination_length) {
+    PcContext *c = pc_alloc(sizeof(*c));
+    char *root = NULL;
+    c->config = pj_new(PJ_OBJECT);
+    c->old_files = pj_new(PJ_OBJECT); c->new_files = pj_new(PJ_OBJECT);
+    if (data && length >= 0 && destination && destination_length >= 0 &&
+        !memchr(destination, 0, (size_t)destination_length)) {
+        PcJson *inputs = pj_parse((const char *)data, (size_t)length);
+        root = pc_slice((const char *)destination, (size_t)destination_length);
+        pc_begin_construction(c, inputs, root);
+        pj_free(inputs);
+    } else pc_fail(c, 2151, "invalid construction inputs or destination", NULL);
+    free(root);
+    return c;
+}
+/** Finish payload validation without writing a managed manifest or publication memo. */
+int32_t l1c_prep_construction_complete(void *context) {
+    PcContext *c = context;
+    return c && !c->error ? pc_finish_construction(c) : 0;
 }
 int32_t l1c_prep_error_code(void *context) {
     PcContext *c = context;
@@ -265,6 +258,26 @@ int32_t l1c_prep_get(void *context, const uint8_t *field, int32_t field_length, 
     else if (!strcmp(key, "native_inventory") && c->native) {
         PcJson *j = pc_expected_artifacts(c->native);
         if (j) { owned = pj_encode(j); pj_free(j); }
+    } else if (!strncmp(key, "construction_", 13) && c->construction) {
+        PcConstruction *p = c->construction;
+        const char *field = key + 13;
+        if (!strcmp(field, "root")) value = p->root;
+        else if (!strcmp(field, "inputs")) owned = pj_encode(p->inputs);
+        else if (!strcmp(field, "inventory") && p->inventory) owned = pj_encode(p->inventory);
+        else if (!strcmp(field, "option_count")) {
+            PcBuffer count = {0};
+            char number[32];
+            snprintf(number, sizeof(number), "%lu", (unsigned long)pj_count(pj_get(p->inputs, "options")));
+            pc_text(&count, number); owned = pc_take(&count);
+        } else if (!strncmp(field, "option_", 7)) {
+            const PcJson *option = pj_get(p->inputs, "options");
+            int index = atoi(field + 7);
+            option = option ? option->child : NULL;
+            while (option && index-- > 0) option = option->next;
+            value = pj_str(option);
+        } else if (!strncmp(field, "codegen_", 8)) {
+            value = pj_is_number(pj_get(pj_get(p->inputs, "codegen"), field + 8), 1) ? "1" : "0";
+        } else value = pj_field(p->inputs, field);
     } else if (!strcmp(key, "stats")) {
         PcJson *j = pj_new(PJ_OBJECT);
         pj_set_number(j, "identity_content_reads", c->identity_reads);

@@ -2,16 +2,17 @@
 
 ## Isolate profile construction from managed preparation policy
 
-- Date: 2026-09-30
-- Status: Draft
+- Date: 2026-10-01
+- Status: Completed
+- Completed: 2026-10-01
 - Title: Isolate the L1 profile construction boundary without changing managed behavior
 - Kind: Refactor
 - Severity: Medium
 - Stage: Shared
 - Parent Initiative: `l1/work/initiatives/0010-explicit-profiles-and-composable-builds.md`
 - Targets:
-  - L1 Stage 1: Pending
-  - L1 Stage 2: Pending
+  - L1 Stage 1: Completed
+  - L1 Stage 2: Completed
 - Subsystem: Native preparation, destination ownership and shared construction
 - Modules:
   - `l1/compiler/stage1_l0/src/preparation.l0`
@@ -28,6 +29,9 @@
   - `l1/compiler/stage1_l0/tests/preparation_test.l0`
   - `l1/compiler/stage2_l1/tests/preparation_test.l1`
   - `l1/compiler/stage1_l0/tests/preparation_support_test.py`
+  - `l1/compiler/stage1_l0/tests/preparation_construction_test.py`
+  - `l1/compiler/stage1_l0/tests/fixtures/preparation/construction.l0`
+  - `l1/compiler/stage2_l1/tests/fixtures/preparation/construction.l1`
   - `l1/compiler/stage1_l0/tests/preparation_identity_test.py`
   - `l1/compiler/stage1_l0/tests/preparation_ownership_test.py`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_managed_preparation_test.py`
@@ -42,9 +46,9 @@
 
 ## Summary
 
-Expose one internal construction operation underneath the current preparation policy. Its inputs describe what to build
-and an already owned staging destination. Its result describes the constructed payload. Cache selection, persistent
-reuse eligibility, locks and publication ownership remain with the caller.
+The refactor exposes one internal construction operation underneath preparation policy. Its inputs describe what to
+build and an already owned staging destination. Its result describes the constructed payload. Cache selection,
+persistent reuse eligibility, locks and publication ownership remain with the caller.
 
 This plan adds no CLI option and no public profile format. It prepares the smallest useful implementation boundary for
 the subsequent feature, without promising a broad source decomposition or changing the existing native service ABI
@@ -57,7 +61,7 @@ beyond what the extraction needs.
   - Disposition: Covered by ADR
   - ADR: `l1/docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md`
   - Rationale: The refactor reorganizes existing ownership; semantic inputs, private fallback and user workflows are
-    unchanged. Add the closed-plan link when completing the work.
+    unchanged. The ADR links this closed plan.
 - Decision: Preserve identity coverage, native configurations and conservative managed reuse eligibility.
   - Scope: L1
   - Disposition: Covered by ADR
@@ -70,21 +74,17 @@ beyond what the extraction needs.
   - ADR: `l1/docs/decisions/0040-warm-preparation-semantic-validation-reuse.md`
   - Rationale: This change must not put bundled frontend validation back onto the unchanged warm path.
 
-## Current State
+## Starting State
 
-The proposal was drafted against `dea-lang/dea` on `main`, 2026-09-30, and rechecked against the local worktree on
-2026-10-01. `pr_prepare` currently coordinates resolution, lookup, complete bundled validation on misses, eligibility,
-locking, private fallback and construction. `pr_build_selected` connects destination setup, `pr_frontend_prepare` and
-completion. `ManagedPreparation` retains the selected native support until the final consumer finishes.
+Before extraction, the construction path was
+`pr_prepare -> pr_build_selected -> pc_begin_profile -> pr_frontend_prepare -> pc_complete_profile`. Preparation context
+supplied the destination and configuration; native writers and completion depended on managed identity,
+locks/private-root state and completion metadata. The frontend reread merged C options for each module. A wrapper around
+`pr_build_selected` alone could not provide explicit construction without cache state.
 
-These are usable seams, but the selected destination and construction configuration are supplied through preparation
-context state. Native `pc_begin_profile`, `pc_output_path` and `pc_complete_profile` also depend on cache locks or a
-private root, native identity and managed completion metadata. Wrapping `pr_build_selected` alone does not establish the
-required boundary. The future explicit constructor must not need a fake cache root, cache identity or cache hit.
-
-The current contract and earlier economy work are recorded in [l1/docs/reference/stdlib-preparation.md][preparation] and
-[l1/work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md][economy-plan]. Recheck current function
-boundaries before changing them; the lists above identify ownership, not a demand to edit every file.
+The preserved contract and earlier economy findings are recorded in
+[l1/docs/reference/stdlib-preparation.md][preparation] and
+[l1/work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md][economy-plan].
 
 ## Goal and Non-Goals
 
@@ -205,6 +205,81 @@ compiler executable/version in each environment under [l1/AGENTS.md][l1-agents].
 coverage gap, not a passing result. Existing evidence may be reused only under the repository's current validation
 rules.
 
+## Implementation Notes
+
+The landed path keeps resolution, lookup, complete miss validation, eligibility, lock/recheck and fallback in
+`pr_prepare`. `pc_begin_profile` allocates the selected destination and invalidates its managed completion marker, then
+projects resolved inputs into `pc_begin_construction`. `pr_construct` passes the frozen code-generation settings and C
+options through frontend generation; native copy/compile/runtime operations consume the same `PcConstruction` snapshot.
+`pc_finish_construction` returns the owned payload inventory. Only `pc_complete_profile` checks managed input freshness,
+serializes the existing manifest, validates it and publishes it.
+
+`l1c_prep_construction_create` accepts normalized internal JSON inputs and an already owned directory directly. It does
+not resolve toolchain paths, default options, a cache root, `D`, `N`, locks or reuse evidence. The existing context is
+reused only as an error/statistics and ownership carrier. Paired frontend fixtures exercise this entry through the same
+`pr_construct` implementation; no public CLI or artifact format was added.
+
+Windows native probes observe process exit before draining stdout/stderr, preserving output written during termination.
+This prevents missing compiler observations from incorrectly declining persistent reuse. Native test failures retain the
+eligibility refusal reason.
+
+| Responsibility                 | Owner and inputs                                                                                                                                                                                                                                                      |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Native execution prerequisites | The policy caller resolves the executable family, runtime target options, archiver and required capabilities before construction, preserving the existing schedule.                                                                                                   |
+| Persistent reuse observations  | Dea/native identities, image and dependency observations, option eligibility, memos, lookup and lock/recheck remain outside construction. No identity dependency was removed.                                                                                         |
+| Constructor reads              | Explicit compiler/archiver, generated options, separate runtime options/variant, frontend settings, source and semantic roots, module set, verified interface digests, public-header root and dependency order. No repeated `bd_collect_c_option_words` in this path. |
+| Constructor writes             | Declared `modules/` and `lib/` payload roles plus registered `generated/` and `runtime-build/` scratch beneath the supplied root. Parent aliases escaping that root are refused before directory creation.                                                            |
+| Result and failure ownership   | Construction owns copied inputs, expected roles and the completed inventory; its root is borrowed. Failure retains the root/partial evidence without a complete inventory. Runtime temporary objects are cleaned; generated C remains optional evidence.              |
+| Destination and publication    | The caller owns allocation, managed metadata, publication, replacement and eventual directory removal. Managed private support remains live through its final consumer. No new atomic-reader, durability or replacement guarantee is claimed.                         |
+
+### Verification Evidence
+
+Local validation used `/usr/bin/gcc`, Debian GCC 14.2.0, with `L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc`. Both stages'
+preparation, direct construction, managed-provider, recovery/concurrency and installed-layout tests passed. Direct cases
+cover ambient-default isolation, exact semantic copies, real module/runtime commands, invalid configuration, incomplete
+payloads, changed interfaces, escaped/undeclared writes, native failure and retained caller-owned paths.
+
+Isolated before/after snapshots used the same GCC and sequential
+`--prepare-stdlib --c-compiler /usr/bin/gcc --stdlib-cache PATH -vvv` calls for a cold entry, unchanged warm entry and
+`--force`. Times are individual observations, not a speedup claim or a new performance threshold:
+
+| Case   | Before seconds | After seconds | Module compiles | Native commands | Native resolutions | Complete bundled validations |
+| ------ | -------------- | ------------- | --------------- | --------------- | ------------------ | ---------------------------- |
+| Cold   | 4.448          | 4.538         | 23 / 23         | 33 / 33         | 1 / 1              | 1 / 1                        |
+| Warm   | 0.017          | 0.019         | 0 / 0           | 0 / 0           | 1 / 1              | 0 / 0                        |
+| Forced | 4.644          | 4.416         | 23 / 23         | 33 / 33         | 1 / 1              | 1 / 1                        |
+
+Native probes remained 43/1/43 and artifact reads 47/47/47. Cold/forced identity content reads increased from 294 to 295
+because the new construction header is an identity input; warm identity content reads remain zero. No literal cache-key
+equality was required across rebuilt compiler inputs. Payload roles and semantic interface bytes match. All 23 generated
+C modules match after substituting only the isolated snapshot root in source-line directives.
+
+Cold native-resolution spans were 0.462/0.479 seconds and warm spans 0.010/0.011 seconds. Total attributed hashing was
+0.243/0.245 seconds cold, 0.003/0.003 warm and 0.259/0.251 forced. The small wall-time differences do not correspond to
+extra compilation, probing or warm frontend work. Payload-inventory hashing now precedes the managed-publication span;
+its hash observations retain the existing `publication` category, so the shorter publication span is not a speedup.
+
+Local `make test-extended`, native identity and optional-selection ownership checks passed. Both stages' direct
+constructor traces (`L1_CONSTRUCTION_TRACE=1`) and dedicated preparation/link-driver traces reported zero errors or
+leaked objects/strings on the covered success and failure paths. `make triple-test` produced 137 identical retained C
+translation units and identical normalized native binaries; the final compiler's tests, examples and smoke test passed.
+
+Hosted `make test-ci` passed on all four platforms below, covering both stages, native storage, construction, ownership
+traces and strict triple bootstrap. The Windows native fixture deterministically verifies final stdout/stderr capture,
+compiler eligibility and exit-status query failure with real child processes. ADR impact validation passed. Compiler
+executables and versions were verified in each environment:
+
+| Platform              | Compiler executable | Version                                     |
+| --------------------- | ------------------- | ------------------------------------------- |
+| Linux x86_64          | `/usr/bin/gcc`      | GCC 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04.1) |
+| Windows UCRT64 x86_64 | `/ucrt64/bin/gcc`   | GCC 16.2.0 (MSYS2 Rev4)                     |
+| macOS Intel           | `/usr/bin/clang`    | Apple Clang 17.0.0 (clang-1700.0.13.5)      |
+| macOS ARM64           | `/usr/bin/clang`    | Apple Clang 21.0.0 (clang-2100.1.1.101)     |
+
+The repo-owned Linux Bookworm container passed `make test-extended` with `/usr/bin/gcc`, GCC 12.2.0 (Debian
+12.2.0-14+deb12u1), selected by `L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc`. Coverage included 79 Stage 1 tests, 65 Stage 2
+tests, stage parity, all four examples, six Docker/Wine runner checks and 18 Stage 2/bootstrap tooling tests.
+
 ## Diagnostics and Documentation
 
 No diagnostic identifiers are added or reassigned. Existing preparation, compile and link errors keep their meanings.
@@ -215,7 +290,7 @@ Maintain [l1/docs/reference/architecture.md][architecture] and [l1/docs/referenc
 needed for landed ownership changes. Preserve current user instructions and command examples.
 
 Run `python3 scripts/check_adr_impact.py --all-active` while planning, and the staged ADR, whitespace and required root
-pre-commit checks before any implementation commit. This draft records intended validation only.
+pre-commit checks before any implementation commit.
 
 ## Dependencies and Authorization
 
@@ -225,10 +300,10 @@ not authorize their deferred optimizations, legacy-toolchain changes or a Makefi
 Remote pushes, tags, releases, workflow dispatches and deployments are outside this plan. Any such operation requires
 its own fresh authorization under `AGENTS.md`; writing or implementing this plan is not that authorization.
 
-[architecture]: ../../../docs/reference/architecture.md
-[diagnostics]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
-[economy-plan]: closed/2026-09-12-native-preparation-economy-noref.md
-[initiative]: ../../initiatives/0010-explicit-profiles-and-composable-builds.md
-[l1-agents]: ../../../AGENTS.md
-[preparation]: ../../../docs/reference/stdlib-preparation.md
-[profile-plan]: ../features/2026-09-30-explicit-profile-artifacts-noref.md
+[architecture]: ../../../../docs/reference/architecture.md
+[diagnostics]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md
+[economy-plan]: 2026-09-12-native-preparation-economy-noref.md
+[initiative]: ../../../initiatives/0010-explicit-profiles-and-composable-builds.md
+[l1-agents]: ../../../../AGENTS.md
+[preparation]: ../../../../docs/reference/stdlib-preparation.md
+[profile-plan]: ../../features/2026-09-30-explicit-profile-artifacts-noref.md

@@ -30,6 +30,7 @@ from build_stage2_l1c import build_support_objects
 
 # Runtime-only and Stage 1 construction tests remain in the Stage 1 suite.
 SHARED_PYTHON_TESTS = (
+    "preparation_construction_test.py",
     "l1c_stage1_help_output_test.py",
     "l1c_stage1_toplet_test.py",
     "l1c_stage1_build_run_workspace_test.py",
