@@ -80,6 +80,9 @@ targeted level work, enter that level's directory first.
   `docs/specs/compiler/diagnostic-code-catalog.md`), not relative-path text such as `../../..`.
 - Do not mention commit IDs, short SHAs, or full SHAs in work plans, documentation, ADRs, or other lifecycle artifacts.
   Refer to named plans, dates, features, bug IDs, or descriptive change names instead.
+- Do not identify specific CI or workflow runs in work plans, documentation, ADRs, or other lifecycle artifacts. Omit
+  run IDs, run numbers, and run-specific URLs, including job and artifact links. Record workflow or check names,
+  relevant platforms, reproducible commands, and outcomes instead.
 - Shared compiler CLI modes, options, exit-code meanings, and level-extension rules live in
   `docs/specs/compiler/cli-contract.md`.
 - Shared compiler diagnostic-code registry, levels, and meanings live in
@@ -205,8 +208,9 @@ Treat local implementation, remote writes, and publication as separate authoriza
 - Avoid assigning to `zsh` special parameters such as `status` in shell helpers.
 - No tag-phrases such as "for clarity" or "for consistency".
 - Use backticks for language/code identifiers in commit messages.
-- Do not mention commit IDs, short SHAs, or full SHAs in commit messages. Refer to the relevant plan, issue, feature, or
-  behavior instead.
+- Do not mention commit IDs, short SHAs, full SHAs, or specific CI or workflow runs in commit messages. Omit run IDs,
+  run numbers, and run-specific URLs, including job and artifact links. Refer to the relevant plan, issue, feature, or
+  behavior and summarize validation by check name and outcome instead.
 - No `Co-Authored-By` lines.
 
 ### Example-only validation
