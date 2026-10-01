@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-09-30
+Version: 2026-10-01
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -284,6 +284,13 @@ triple bootstrap.
   roadmap's currently unspecified `IFF` item.
 - Initiative [0009-safe-concurrency][safe-concurrency] promotes the Priority 4 concurrency direction into memory-model
   and runtime-readiness design before safe threads, synchronization, atomics, or channels are exposed.
+- Initiative [0010-explicit-profiles-and-composable-builds][explicit-profiles] drafts caller-owned profile artifacts and
+  composable compilation while preserving managed build/run ergonomics and existing cache controls. It starts with
+  Refactor [2026-09-30-profile-construction-boundary-noref][profile-boundary], then Feature
+  [2026-09-30-explicit-profile-artifacts-noref][profile-artifacts]. Managed integration and dependency discovery follow
+  through separately scoped plans; all four phases are required for initiative completion. The proposed
+  `--create-profile` and `--profile` options are not implemented yet. Production compiler Make conversion and
+  ordinary-project stdlib construction remain separate adoption work.
 
 ## Completed initiatives
 
@@ -421,6 +428,7 @@ update to be promoted to an initiative or plan:
 [design-decisions]: reference/design-decisions.md
 [embedded-members]: ../work/proposals/anonymous-embedded-struct-members.md
 [env-text-reassessment]: ../work/plans/refactors/closed/2026-09-15-native-identity-environment-text-reassessment-noref.md
+[explicit-profiles]: ../work/initiatives/0010-explicit-profiles-and-composable-builds.md
 [export-imports]: ../work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
 [filesystem-io]: ../work/initiatives/0005-filesystem-and-stream-io.md
 [fingerprint-blocker]: ../work/plans/bug-fixes/closed/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md
@@ -458,6 +466,8 @@ update to be promoted to an initiative or plan:
 [preparation-reuse-efficiency]: ../work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md
 [preparation-sha256-cost]: ../work/plans/refactors/closed/2026-09-25-preparation-sha256-cost-investigation-noref.md
 [preparation-test-cost]: ../work/plans/tools/closed/2026-09-13-preparation-test-cost-noref.md
+[profile-artifacts]: ../work/plans/features/2026-09-30-explicit-profile-artifacts-noref.md
+[profile-boundary]: ../work/plans/refactors/2026-09-30-profile-construction-boundary-noref.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md
 [reuse-report]: ../work/plans/tools/closed/2026-09-13-native-reuse-capability-report-noref.md
 [runtime-library]: ../work/initiatives/closed/0002-runtime-static-library.md
