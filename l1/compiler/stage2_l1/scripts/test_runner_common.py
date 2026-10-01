@@ -45,6 +45,7 @@ SHARED_PYTHON_TESTS = (
     "diagnostic_code_parity_test.py",
     "diagnostic_message_parity_test.py",
     "io_runtime_test.py",
+    "mul_runtime_overflow_test.py",
     "vector_aliasing_test.py",
     "runtime_pointer_validation_test.py",
     "trace_gen_runtime_test.py",
@@ -61,12 +62,22 @@ L1_BUILD_DIR_ENV = "L1_BUILD_DIR"
 DEFAULT_L1_BUILD_DIR = "build/dea"
 TRACE_EXCLUDED_STAGE2_TESTS: set[str] = set()
 TRACE_SLOW_STAGE2_TESTS: set[str] = {"math_runtime_compile_test"}
+CI_ONLY_NORMAL_STAGE2_TESTS = frozenset(
+    {
+        "l1c_stage1_arc_trace_regression_test.py",
+        "l1c_stage1_installed_preparation_test.py",
+        "l1c_stage1_preparation_test.py",
+        "slice_trace_test",
+        "math_runtime_compile_test",
+        "mul_runtime_compile_test",
+    }
+)
 MATH_RUNTIME_FIXTURE_DIR = TESTS_DIR / "fixtures" / "math_runtime"
 # Tests whose imported implementation modules require the preparation C ABI.
 # A new dependency must be listed here; omitting one fails at native linking.
 PREPARATION_SUPPORT_TESTS = frozenset({
     "l1c_lib_test", "link_driver_test", "math_runtime_compile_test",
-    "mul_runtime_test", "preparation_test", "slice_trace_test",
+    "mul_runtime_compile_test", "preparation_test", "slice_trace_test",
 })
 
 

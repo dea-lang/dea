@@ -27,11 +27,20 @@ def main() -> int:
     root = L1_ROOT / "compiler/stage1_l0/tests/fixtures/driver"
 
     def invoke(compiler: Path, args: list[str]) -> tuple[int, bytes, bytes]:
-        """Capture only documented observable output; preserve every diagnostic byte."""
+        """Capture behavior while dropping cache-dependent native build progress."""
         if os.name == "nt" and compiler.suffix != ".native" and compiler.with_suffix(".cmd").exists():
             compiler = compiler.with_suffix(".cmd")
         result = subprocess.run([str(compiler), *args], cwd=L1_ROOT, capture_output=True)
-        return result.returncode, result.stdout, result.stderr
+        preparation_progress = (
+            b"Preparing stdlib and runtime with ",
+            b"Prepared stdlib and runtime with ",
+        )
+        stderr = b"".join(
+            line
+            for line in result.stderr.splitlines(keepends=True)
+            if not line.startswith(preparation_progress)
+        )
+        return result.returncode, result.stdout, stderr
 
     for args in (["--help"], ["--version"], ["--unknown-stage-parity-option"]):
         left, right = invoke(oracle, args), invoke(subject, args)

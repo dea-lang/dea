@@ -74,7 +74,7 @@ on:
       l0_make_target:
         description: L0 make target to run
         required: true
-        default: test-all
+        default: test-extended
         type: string
       l1_make_target:
         description: L1 make target to run
@@ -396,7 +396,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "value=${{ inputs.l0_make_target }}" >> "$GITHUB_OUTPUT"
           else
-            echo "value=test-all" >> "$GITHUB_OUTPUT"
+            echo "value=test-extended" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Select L1 Make target

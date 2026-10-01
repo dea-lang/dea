@@ -535,10 +535,10 @@ subject to the same workload performance gate.
 
 The implementation is cross-level and trace-sensitive even though cheap string views remain L1-only. Run focused L0
 runtime/public-header and both levels' batch-wrapper/compiler-filesystem tests, L1 fingerprint known-answer and
-generated-code tests, and the string/bridge probes below. Then run root `make test-all` from a clean artifact baseline,
-reusing equivalent just-completed level validation where permitted. Run L1's explicit slow trace cases required by the
-changed fixtures; the default aggregate does not include those cases. Verify L0 triple-bootstrap and L1 examples through
-these gates.
+generated-code tests, and the string/bridge probes below. Then run root `make clean test-extended` and
+`make -C l1 test-ci`, reusing equivalent just-completed level validation where permitted. Run L1's explicit slow trace
+cases required by the changed fixtures; the default aggregate does not include those cases. Verify L0 triple-bootstrap
+with `make -C l0 triple-test`; `test-ci` runs L1 examples and triple bootstrap.
 
 This Draft-plan refresh requires only Markdown, link, ADR Impact, and staged pre-commit validation.
 

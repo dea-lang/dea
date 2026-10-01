@@ -18,6 +18,11 @@ L1_COMPILER_RT_UNCHECKED ?=
 L1_COMPILER_RT_QUARANTINE_MAX_BYTES ?=
 L1_COMPILER_RT_QUARANTINE_MAX_COUNT ?= 256
 TRACE_SMOKE_TESTS := analysis_trace_test array_test io_errno_test lexer_error_cleanup_test slice_trace_test string_vector_test
+# Keep the local gate representative and cheap: Stage 1 covers core parsing,
+# analysis, typing, interfaces, backend/C emission, and driver behavior; Stage 2
+# checks array execution and parsing, with test-stage-parity covering stage identity.
+L1_TEST_STAGE1_SMOKE_TESTS := array_test parser_test analysis_test expr_types_test interface_test backend_test c_emitter_test driver_test
+L1_TEST_STAGE2_SMOKE_TESTS := array_test parser_test
 DOCKER_IMAGE ?= l1-test
 DOCKER_CC ?= $(if $(strip $(DOCKER_L0_CC)),$(DOCKER_L0_CC),gcc)
 AR ?= ar
@@ -65,7 +70,7 @@ RUNTIME_CFLAGS ?= -O2 -std=c99
 RUNTIME_TUNING_CFLAGS := $(if $(strip $(L1_RT_QUARANTINE_MAX_BYTES)),-D_RT_QUARANTINE_MAX_BYTES=$(L1_RT_QUARANTINE_MAX_BYTES)) $(if $(strip $(L1_RT_QUARANTINE_MAX_COUNT)),-D_RT_QUARANTINE_MAX_COUNT=$(L1_RT_QUARANTINE_MAX_COUNT))
 RUNTIME_INCLUDE_FLAGS := -I$(RUNTIME_ROOT)/include -I$(RUNTIME_ROOT)/internal
 
-.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test test-ci test-stage1 test-stage1-trace test-stage1-trace-smoke test-stage1-trace-all test-stage1-trace-children test-env check-examples bench-runtime bench-link-provenance test-all test-docker print-l1-build-dir clean docker docker-wine docker-wine-toolchain docker-wine-image test-docker-wine-runner FORCE
+.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test test-ci test-stage1 test-stage1-smoke test-stage2 test-stage2-smoke test-stage1-trace test-stage1-trace-smoke test-stage1-trace-all test-stage1-trace-children test-env check-examples bench-runtime bench-link-provenance test-extended test-docker print-l1-build-dir clean docker docker-wine docker-wine-toolchain docker-wine-image test-docker-wine-runner FORCE
 
 help:
 	@printf '%s\n' \
@@ -76,11 +81,13 @@ help:
 		'  runtime            Build the repo-local L1 runtime archives (`libdea_rt.a`, traced, unchecked, and check-basic) and public headers under `$(L1_BUILD_DIR)`.' \
 		'  build-stage1       Build the L1 compiler, public headers, and verified bundled semantic interfaces.' \
 		'  use-dev-stage1     Build and switch the repo-local `l1c` alias to Stage 1.' \
-		'  test               Run the default L1 validation suite without the dedicated trace sweep.' \
-		'  test-ci            Run both stages, default traces, and strict triple bootstrap.' \
-		'  test-all           Run the full L1 validation suite, including parent and child trace checks.' \
-		'  test-docker        Run the full L1 validation suite under the repo-owned Linux container (POSIX reference path).' \
+		'  test               Run Stage 1/2 smoke checks, parity, examples, Stage 2 tooling, and Docker/Wine runner regressions.' \
+		'  test-ci            Run test-extended with CI-only normal cases, environment/bootstrap, traces, child fixtures, and triple bootstrap.' \
+		'  test-extended      Run normal suites without CI-only cases, examples, parity, and tooling checks.' \
+		'  test-docker        Run the broad local-normal gate under the repo-owned Linux container (POSIX reference path).' \
 		'  test-stage1        Run the L1 Stage 1 `.l0` implementation tests with the built repo-local compiler.' \
+		'  test-stage1-smoke  Run array, parser, analysis, expression typing, interface, backend, C emitter, and driver tests.' \
+		'  test-stage2-smoke  Run the Stage 2 array and parser smoke tests.' \
 		'  test-stage1-trace  Run default L1 Stage 1 ARC/memory trace checks; skips intentionally slow trace tests.' \
 		'  test-stage1-trace-smoke' \
 		'                     Run the focused ARC/memory trace smoke set for developer diagnostics.' \
@@ -90,9 +97,9 @@ help:
 		'                     Build, run, and analyze L1 child runtime fixtures independently; TESTS selects fixture names.' \
 		'  test-env           Validate stackable L0/L1 repo-local env script activation.' \
 		'  check-examples     Validate all `examples/*.l1` sources with the repo-local Stage 2 compiler; fail on warnings or errors.' \
-		'  bench-runtime      Benchmark the checked runtime allocation tracker across C compilers and quarantine settings (informational; not part of `test-all`). Variables: `BENCH_CC="tcc clang gcc-16"`, `BENCH_SCALE=<n>`, `BENCH_RUNS=<n>`.' \
+		'  bench-runtime      Benchmark the checked runtime allocation tracker across C compilers and quarantine settings (informational; not part of `test-extended`). Variables: `BENCH_CC="tcc clang gcc-16"`, `BENCH_SCALE=<n>`, `BENCH_RUNS=<n>`.' \
 		'  bench-link-provenance' \
-		'                     Benchmark standalone-link provenance validation across chain and DAG shapes (informational; not part of `test-all`). Variables: `BENCH_PROVENANCE_SHAPES=<csv>`, `BENCH_PROVENANCE_SIZES=<csv>`, `BENCH_PROVENANCE_WARMUPS=<n>`, `BENCH_PROVENANCE_RUNS=<n>`, `BENCH_PROVENANCE_JSON=<path>`, `BENCH_PROVENANCE_COMPARE=<path>`.' \
+		'                     Benchmark standalone-link provenance validation across chain and DAG shapes (informational; not part of `test-extended`). Variables: `BENCH_PROVENANCE_SHAPES=<csv>`, `BENCH_PROVENANCE_SIZES=<csv>`, `BENCH_PROVENANCE_WARMUPS=<n>`, `BENCH_PROVENANCE_RUNS=<n>`, `BENCH_PROVENANCE_JSON=<path>`, `BENCH_PROVENANCE_COMPARE=<path>`.' \
 		'  clean              Remove repo-local build artifacts under `build/*`.' \
 		'  clean-runtime      Remove only repo-local runtime build products under `$(L1_BUILD_DIR)`.' \
 		'  clean-all          Run both `clean` and `clean-runtime`.' \
@@ -164,7 +171,7 @@ help:
 		'  test-stage2-trace-smoke / test-stage2-trace-all / test-stage2-trace-children' \
 		'  test-stage-parity   Compare Stage 1 and Stage 2 observable behavior.' \
 		'  triple-test        Strict retained-C/native fixed point and final compiler tests.' \
-		'  test-ci            Both full stage suites plus triple-test.' \
+		'  test-ci            Run exhaustive CI-only, environment, trace, child-fixture, and triple-bootstrap checks.' \
 		'' \
 		'Default local bootstrap flow:' \
 		'  1. `make use-dev-stage2`  # auto-prepares ../l0 Stage 2 if needed' \
@@ -392,9 +399,14 @@ _print-test-compiler-env:
 		'C compiler used for repo-local L1 runtime archives'
 
 test-stage1: venv build-stage1 runtime _print-test-compiler-env
-	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_tests.py $(TESTS)
+	@printf '%s\n' 'L1 Stage 1 complete normal suite:'
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_tests.py $(L1_NORMAL_TEST_RUNNER_ARGS) $(TESTS)
+
+test-stage1-smoke: venv build-stage1 runtime _print-test-compiler-env
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_tests.py $(L1_NORMAL_TEST_RUNNER_ARGS) $(if $(strip $(TESTS)),$(TESTS),$(L1_TEST_STAGE1_SMOKE_TESTS))
 
 test-stage1-trace: venv build-stage1 runtime _print-test-compiler-env
+	@printf '%s\n' 'L1 Stage 1 dedicated trace sweep:'
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_trace_tests.py $(TESTS)
 
 test-stage1-trace-smoke: venv build-stage1 runtime _print-test-compiler-env
@@ -407,6 +419,7 @@ test-stage1-trace-children: venv build-stage1 runtime _print-test-compiler-env
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_trace_tests.py --children $(TESTS)
 
 test-env: venv
+	@printf '%s\n' 'L1 environment/bootstrap integration:'
 	"$(VENV_PYTHON)" ./tests/test_env_stackability.py
 
 build-stage2: build-stage1 runtime
@@ -419,9 +432,14 @@ build-stage2: build-stage1 runtime
 	@"$(L1_BUILD_DIR)/bin/l1c-stage2" --version
 
 test-stage2: venv build-stage2 _print-test-compiler-env
-	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" compiler/stage2_l1/scripts/run_tests.py $(TESTS)
+	@printf '%s\n' 'L1 Stage 2 complete normal suite:'
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" compiler/stage2_l1/scripts/run_tests.py $(L1_NORMAL_TEST_RUNNER_ARGS) $(TESTS)
+
+test-stage2-smoke: venv build-stage2 _print-test-compiler-env
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" compiler/stage2_l1/scripts/run_tests.py $(L1_NORMAL_TEST_RUNNER_ARGS) $(if $(strip $(TESTS)),$(TESTS),$(L1_TEST_STAGE2_SMOKE_TESTS))
 
 test-stage2-trace: venv build-stage2 _print-test-compiler-env
+	@printf '%s\n' 'L1 Stage 2 dedicated trace sweep:'
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" compiler/stage2_l1/scripts/run_trace_tests.py $(TESTS)
 
 test-stage2-trace-smoke: venv build-stage2 _print-test-compiler-env
@@ -445,19 +463,24 @@ triple-test: build-stage1 runtime
 check-examples: build-stage2
 	"$(PYTHON)" ../scripts/check_examples.py --compiler "$(L1_BUILD_DIR)/bin/l1c-stage2" --examples-dir examples --extension .l1 --label "L1 Stage 2"
 
-test: test-stage1 test-stage2 test-env check-examples test-docker-wine-runner test-stage2-tooling
+test: test-stage1-smoke test-stage2-smoke test-stage-parity check-examples test-docker-wine-runner test-stage2-tooling
 
-test-all: test test-stage1-trace test-stage2-trace
+test-extended: test-stage1 test-stage2 test-stage-parity check-examples test-docker-wine-runner test-stage2-tooling
+
+# Hosted CI is the exhaustive union: full local-normal suites with CI-only cases, environment/bootstrap integration,
+# dedicated Stage 1/2 trace sweeps, child trace fixtures, and triple bootstrap. The normal runners list their
+# included CI-only cases; trace checks are separate execution modes and are intentionally retained.
+test-ci: L1_NORMAL_TEST_RUNNER_ARGS = --include-ci-only
+test-ci: test-extended test-env test-stage1-trace test-stage2-trace
+	@printf '%s\n' 'L1 child trace fixtures (Stage 1 and Stage 2):'
 	# Parent TESTS selectors do not filter the independently declared child fixtures.
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage1_l0/scripts/run_trace_tests.py --children
-	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" ./compiler/stage2_l1/scripts/run_trace_tests.py --children
-
-# Hosted CI includes the strict fixed point; local full validation keeps it explicit.
-test-ci: test-all
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" compiler/stage2_l1/scripts/run_trace_tests.py --children
+	@printf '%s\n' 'L1 strict triple bootstrap:'
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" scripts/triple_bootstrap.py
 
 test-docker:
-	$(MAKE) docker CMD=test-all
+	$(MAKE) docker CMD=test-extended
 
 print-l1-build-dir:
 	@printf '%s\n' "$(L1_BUILD_DIR)"
@@ -472,7 +495,7 @@ clean:
 docker:
 	@if [ -z "$(CMD)" ]; then \
 		echo "Usage: make docker CMD=<target>"; \
-		echo "Example: make docker CMD=test-all"; \
+		echo "Example: make docker CMD=test-extended"; \
 		exit 2; \
 	else \
 		$(if $(strip $(L1_TRACE_ARTIFACT_DIR)),mkdir -p "$(L1_TRACE_ARTIFACT_DIR)" &&) \

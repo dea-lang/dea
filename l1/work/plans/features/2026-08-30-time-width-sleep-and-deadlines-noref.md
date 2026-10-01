@@ -228,9 +228,9 @@ check the live shared diagnostic catalog before assigning any code.
    timeout and avoid fragile upper-latency assertions.
 
 During implementation, run the new `time_runtime_test` harness, existing I/O/runtime-symbol regressions, and L0-seed
-`time_test` compatibility checks through the L1 runner. Then run L1 `make test-all` from clean runtime artifacts and the
-documented Linux Docker lane for runtime portability, reusing applicable just-completed validation. Ensure new `.l1`
-fixtures explicitly run under ARC/memory tracing. This plan refresh requires documentation checks only.
+`time_test` compatibility checks through the L1 runner. Then run L1 `make test-ci` from clean runtime artifacts and the
+documented Linux Docker lane with `CMD=test-ci` for runtime portability, reusing applicable just-completed validation.
+Ensure new `.l1` fixtures explicitly run under ARC/memory tracing. This plan refresh requires documentation checks only.
 
 [apple-sleep]: https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/nanosleep.2.html
 [glibc-sleep]: https://sourceware.org/glibc/manual/2.42/html_node/Sleeping.html

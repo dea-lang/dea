@@ -187,9 +187,12 @@ class ReporterTest(unittest.TestCase):
                     lines.append(stats)
                 return subprocess.CompletedProcess(argv, code, stdout, "\n".join(lines) + "\n")
 
+            # Windows platform discovery can call the shared subprocess mock through `ver`.
             with patch.object(reporter, "L1_ROOT", root), patch.object(reporter.shutil, "which", return_value=cc), \
+                    patch.object(reporter.platform, "system", return_value="Windows"), \
+                    patch.object(reporter.platform, "machine", return_value="AMD64"), \
                     patch.object(reporter.subprocess, "run", side_effect=process), redirect_stdout(io.StringIO()), \
-                    patch.dict(reporter.os.environ, {"L1_CFLAGS": "poison", "L1_RUNTIME_LIB": "poison"}):
+                    patch.dict(reporter.os.environ, {"MSYSTEM": "", "L1_CFLAGS": "poison", "L1_RUNTIME_LIB": "poison"}):
                 arguments = ["--c-compiler", cc, "--build-dir", str(build), "--output-dir", str(output),
                              "--expect", expect]
                 if observability:
@@ -198,6 +201,15 @@ class ReporterTest(unittest.TestCase):
             report = json.loads((output / "report.json").read_text())
             files = {path.name: path.read_text() for path in output.iterdir() if path.is_file()}
             return result, report, files
+
+    def test_platform_discovery_is_isolated(self):
+        """Keep host platform discovery outside the controlled compiler subprocess fixture."""
+        with patch.object(reporter.platform, "system", side_effect=AssertionError("real OS discovery")) as system, \
+                patch.object(reporter.platform, "machine", side_effect=AssertionError("real architecture discovery")) as machine:
+            result, report, _ = self.exercise()
+        system.assert_not_called()
+        machine.assert_not_called()
+        self.assertEqual((result, report["platform"], report["architecture"]), (0, "Windows", "AMD64"))
 
     def test_available_requires_complete_sequence(self):
         """Require both warm consumers, current manifests and successful invalidation."""

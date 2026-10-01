@@ -4,9 +4,10 @@ Assistant guidance for the Dea monorepo.
 
 Read `AGENTS.md` first for monorepo structure, then read the level-local guide before changing a language subtree.
 
-The root `Makefile` is monorepo-only orchestration (`help`, `venv`, `test`, `test-all`, `clean`, `clean-all`). Root
-`test` runs normal validation across registered levels without the dedicated broad trace sweeps; `test-all` adds those
-sweeps. Focused level-specific commands still run inside the level directory.
+The root `Makefile` is monorepo-only orchestration (`help`, `venv`, `test`, `test-extended`, `clean`, `clean-all`). Root
+`test` and `test-extended` delegate to the corresponding target in each registered level. The extended tier varies by
+level: L0 includes its Stage 2 trace sweep, while L1 covers both Stage 1 and Stage 2 normal suites. Use
+`make -C l1 test-ci` for exhaustive L1 validation. Focused level-specific commands still run inside the level directory.
 
 For Dea/L0 work, use `l0/AGENTS.md`.
 

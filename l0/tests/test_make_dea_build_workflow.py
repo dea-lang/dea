@@ -334,12 +334,13 @@ def main() -> int:
             "test-compiler-runtime-flags",
             "test-dist",
             "triple-test",
-            "test-all",
+            "test-extended",
             "docs",
             "docs-pdf",
             "clean-dea-build",
         ):
             assert_output_contains(help_output, target)
+        assert_output_not_contains(help_output, "test-all")
         assert_output_contains(help_output, "  test               Run Stage 1")
         assert_output_contains(help_output, "PREFIX=<required>")
         for variable in (
@@ -535,7 +536,7 @@ def main() -> int:
             "test-compiler-runtime-flags": "./tests/test_compiler_runtime_build_flags.py",
             "test-dist": "./tests/test_make_dist_workflow.py",
             "triple-test": "./compiler/stage2_l0/tests/l0c_triple_bootstrap_test.py",
-            "test-all": "./compiler/stage2_l0/scripts/run_trace_tests.py",
+            "test-extended": "./compiler/stage2_l0/scripts/run_trace_tests.py",
             "docs": "./scripts/gen_docs.py",
             "docs-pdf": "./scripts/gen_docs.py --strict --pdf",
         }
@@ -544,7 +545,7 @@ def main() -> int:
             assert_output_contains(output, expected)
             if target in {"test-stage2", "test-stage2-trace", "triple-test", "check-examples"}:
                 assert_output_contains(output, "./scripts/build_stage2_l0c.py")
-            if target in {"test", "test-all"}:
+            if target in {"test", "test-extended"}:
                 for component in (
                     "pytest -n auto",
                     "./compiler/stage2_l0/scripts/run_tests.py",
@@ -558,7 +559,7 @@ def main() -> int:
                     assert_output_contains(output, component)
             if target == "test":
                 assert_output_not_contains(output, "./compiler/stage2_l0/scripts/run_trace_tests.py")
-            if target == "test-all":
+            if target == "test-extended":
                 assert_output_contains(output, "./compiler/stage2_l0/scripts/run_trace_tests.py")
 
         run_checked(make_command(dea_build_rel, "clean-dea-build"))

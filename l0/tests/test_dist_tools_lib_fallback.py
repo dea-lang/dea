@@ -115,7 +115,7 @@ def main() -> int:
             "GITHUB_ACTIONS": "true",
             "GITHUB_RUN_ID": "23854449995",
             "GITHUB_RUN_ATTEMPT": "1",
-            "GITHUB_JOB": "test-all",
+            "GITHUB_JOB": "test-extended",
             "RUNNER_OS": "Linux",
             "RUNNER_ARCH": "X64",
         }
@@ -127,7 +127,7 @@ def main() -> int:
         gha_provenance, gha_resolved_compiler = collect_stage2_build_provenance(REPO_ROOT, gha_env)
     if gha_resolved_compiler != "gcc":
         fail(f"expected GHA resolved compiler 'gcc', got {gha_resolved_compiler!r}")
-    if gha_provenance.build_id != "gha-23854449995.1-test-all-Linux-X64":
+    if gha_provenance.build_id != "gha-23854449995.1-test-extended-Linux-X64":
         fail(f"expected GitHub Actions build id, got {gha_provenance.build_id!r}")
     if gha_provenance.commit_full != "unknown":
         fail(f"expected unknown commit without git in GHA env, got {gha_provenance.commit_full!r}")

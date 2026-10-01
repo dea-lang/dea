@@ -9,16 +9,16 @@ The monorepo root owns a minimal maintenance `Makefile`:
 ```bash
 make help   # show root-only monorepo targets
 make venv   # create or sync the shared ./.venv (uv if available, pip fallback otherwise)
-make test  # run each registered level's normal test entrypoint without dedicated broad trace sweeps
-make test-all  # run each registered level's full test entrypoint
+make test  # run each registered level's normal test entrypoint
+make test-extended  # run each registered level's extended validation entrypoint
 make clean  # clean each registered level plus root caches/artifacts
 make clean-all  # run each level's full cleanup entrypoint plus root caches/artifacts
 ```
 
-The root `Makefile` is not a dispatcher for focused level-specific targets. Use root `make test` for normal
-registered-level validation without the dedicated broad trace sweeps and root `make test-all` for the full
-trace-inclusive validation. Build, targeted test, docs, and compiler workflows should be run inside the relevant level
-directory.
+The root `Makefile` is not a dispatcher for focused level-specific targets. Root `make test` and `make test-extended`
+delegate to each registered level. Extended coverage varies by level: L0 adds its dedicated Stage 2 trace sweep; L1 runs
+its Stage 1 and Stage 2 normal suites. Use `make -C l1 test-ci` for exhaustive L1 coverage. Build, targeted test, docs,
+and compiler workflows should be run inside the relevant level directory.
 
 The repository is a single `uv` workspace: the root `pyproject.toml` declares `l0/` and `l1/` as members, owns the
 shared dev/docs dependency groups, and produces a single root `uv.lock`. Level Makefiles' `venv` targets delegate to the
@@ -94,7 +94,7 @@ make venv   # shared by all level subtrees
 cd l0
 make help
 make test
-make test-all
+make test-extended
 ```
 
 Third-party notices for shared vendored assets live at [`THIRD_PARTY_NOTICES`](THIRD_PARTY_NOTICES).

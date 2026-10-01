@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-09-29
+Version: 2026-09-30
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -17,8 +17,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 - Stage 1 uses 119 phase/ownership modules with explicit canonical state imports. The settled layout and its two
   recursive-kernel exceptions are documented in [l1/docs/reference/architecture.md][compiler-architecture].
 - The current L1 runtime and stdlib inputs live under `compiler/shared/runtime/` and `compiler/shared/l1/stdlib/`.
-- The Stage 1 child fixture trace runner analyzes successful math runtime executables independently as part of
-  `test-all` under Tool [2026-04-17-l1-child-process-trace-support-noref][child-trace].
+- The Stage 1 child fixture trace runner analyzes successful math runtime executables independently as part of `test-ci`
+  under Tool [2026-04-17-l1-child-process-trace-support-noref][child-trace].
 - `--gen` emits one source-backed module through the shared per-module backend; ordinary `--build` and `--run` compile
   one translation unit per source-backed graph node and reuse the verified common linker.
 - Internal resolution-aware APIs expose canonical artifact associations, a deterministic source/interface module graph,

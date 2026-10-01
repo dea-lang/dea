@@ -36,13 +36,16 @@ The monorepo root `Makefile` is intentionally minimal. Use it only for monorepo 
 - `make help`
 - `make venv`
 - `make test`
-- `make test-all`
+- `make test-extended`
 - `make clean`
 - `make clean-all`
 
 Do not treat the root `Makefile` as a dispatcher for focused level-local build, test, or docs targets. Root `make test`
-runs each registered level's normal validation without its dedicated broad trace sweep; root `make test-all` adds those
-trace sweeps for full registered-level validation. For targeted level work, enter the level directory first.
+runs each registered level's normal validation, and root `make test-extended` runs each level's extended gate. Their
+contents vary by level: L0 `test-extended` includes its Stage 2 trace sweep, while L1 `test-extended` covers both Stage
+1 and Stage 2 normal suites without CI-only cases. Use `make -C l1 test-ci` for exhaustive L1 validation, including
+CI-only normal tests, environment and bootstrap integration, trace sweeps, child fixtures, and triple bootstrap. For
+targeted level work, enter that level's directory first.
 
 ## Shared Environment
 
@@ -199,9 +202,9 @@ Treat local implementation, remote writes, and publication as separate authoriza
 - Treat a change as example-only only when the complete intended diff is confined to example programs and example-local
   supporting files. Changes to shared compiler, runtime, build, test, or tooling behavior follow the normal validation
   rules.
-- For an example-only change, do not run aggregate `test`, `test-all`, trace, or other extensive suites. From each
-  affected level directory, run `make check-examples`, then manually run every added or modified example through its
-  intended execution workflow and inspect its output and behavior.
+- For an example-only change, do not run aggregate `test`, `test-extended`, `test-ci`, trace, or other extensive suites.
+  From each affected level directory, run `make check-examples`, then manually run every added or modified example
+  through its intended execution workflow and inspect its output and behavior.
 - Still run the required staged whitespace and pre-commit checks before committing.
 
 ### Level naming in summaries

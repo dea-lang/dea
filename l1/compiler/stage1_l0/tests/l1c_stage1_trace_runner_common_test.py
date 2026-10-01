@@ -9,6 +9,8 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import redirect_stdout
+import io
 import os
 from pathlib import Path
 import shutil
@@ -16,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+from unittest.mock import patch
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 RUNNER_DIR = SCRIPT_DIR.parent / "scripts"
@@ -24,6 +27,129 @@ if str(RUNNER_DIR) not in sys.path:
 
 import test_runner_common as common
 import run_trace_tests
+import run_tests as normal_runner
+
+
+def test_normal_runner_ci_only_selection() -> str | None:
+    """Require default exclusion, explicit selectors, and CI-inclusive discovery to compose correctly."""
+
+    expected_ci_only = {
+        "l1c_stage1_arc_trace_regression_test.py",
+        "l1c_stage1_installed_preparation_test.py",
+        "l1c_stage1_preparation_test.py",
+        "preparation_ownership_test.py",
+        "slice_trace_test",
+        "math_runtime_compile_test",
+        "mul_runtime_compile_test",
+        "preparation_identity_test.py",
+    }
+    if common.CI_ONLY_NORMAL_STAGE1_TESTS != expected_ci_only:
+        return f"unexpected Stage 1 CI-only normal test classification: {common.CI_ONLY_NORMAL_STAGE1_TESTS}"
+    discovered = normal_runner.discover_stage1_l0_tests()
+    normal = normal_runner.select_cases(discovered, [])
+    included = normal_runner.select_cases(discovered, [], include_ci_only=True)
+    if len(included) != len(discovered) or expected_ci_only.intersection(case.name for case in normal):
+        return "actual discovery did not preserve the complete CI union"
+    for name in expected_ci_only:
+        if [case.name for case in normal_runner.select_cases(discovered, [name])] != [name]:
+            return f"CI-only case is not directly selectable: {name}"
+    if not {"mul_runtime_overflow_test.py", "l1c_stage1_managed_preparation_test.py"}.issubset(
+        case.name for case in normal
+    ):
+        return "local discovery lost overflow or representative managed preparation coverage"
+    if not any(
+        case.name == "l1c_stage1_arc_trace_regression_test.py"
+        for case in normal_runner.discover_stage1_l0_tests()
+    ):
+        return "shared ARC regression is not discovered by the Stage 1 normal runner"
+
+    cases = [
+        common.TestCase(0, "array_test", Path("array_test.l0"), "l0"),
+        common.TestCase(1, "slice_trace_test", Path("slice_trace_test.l0"), "l0"),
+    ]
+    default_cases = normal_runner.select_cases(cases, [])
+    if [case.name for case in default_cases] != ["array_test"]:
+        return f"default selection did not exclude CI-only cases: {[case.name for case in default_cases]}"
+
+    explicit_cases = normal_runner.select_cases(cases, ["slice_trace_test"])
+    if [case.name for case in explicit_cases] != ["slice_trace_test"]:
+        return f"explicit selection did not run the CI-only case: {[case.name for case in explicit_cases]}"
+    included_selector_cases = normal_runner.select_cases(cases, ["array_test"], include_ci_only=True)
+    if [case.name for case in included_selector_cases] != ["array_test"]:
+        return f"CI-inclusive mode ignored explicit selectors: {[case.name for case in included_selector_cases]}"
+
+    try:
+        normal_runner.select_cases(cases, ["missing_test"])
+    except ValueError:
+        pass
+    else:
+        return "invalid selectors did not raise ValueError"
+
+    included_cases = normal_runner.select_cases(cases, [], include_ci_only=True)
+    if [case.name for case in included_cases] != ["array_test", "slice_trace_test"]:
+        return f"CI-inclusive selection missed cases: {[case.name for case in included_cases]}"
+
+    if not normal_runner.parse_args(["--include-ci-only"]).include_ci_only:
+        return "--include-ci-only was not parsed"
+    help_output = io.StringIO()
+    try:
+        with redirect_stdout(help_output):
+            normal_runner.parse_args(["--help"])
+    except SystemExit as exc:
+        if exc.code != 0:
+            return f"runner help exited with unexpected status: {exc.code}"
+    else:
+        return "--help did not exit"
+    if "--include-ci-only" not in help_output.getvalue():
+        return "runner help does not expose --include-ci-only"
+    return None
+
+
+def test_trace_selection_ignores_normal_cost_classification() -> str | None:
+    """Retain CI-only trace cases and the independent slow-trace opt-in policy."""
+
+    names = {case.name for case in run_trace_tests.select_trace_cases([])}
+    if not {"slice_trace_test", "mul_runtime_compile_test"}.issubset(names) or "math_runtime_compile_test" in names:
+        return f"incorrect default trace selection: {sorted(names)}"
+    explicit = run_trace_tests.select_trace_cases(["math_runtime_compile_test"])
+    if [case.name for case in explicit] != ["math_runtime_compile_test"]:
+        return "explicit selection did not include the slow CI-only trace case"
+    if "math_runtime_compile_test" not in {
+        case.name for case in run_trace_tests.select_trace_cases([], include_slow=True)
+    }:
+        return "slow-inclusive trace selection missed a CI-only normal case"
+    return None
+
+
+def test_trace_main_selection_and_slow_logging() -> str | None:
+    """Exercise aggregate and explicit selection through the complete runner path."""
+
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        result = run_trace_tests.TraceResult(0, "sample", "TRACE_OK", "", "", "", root / "trace", 0, 0, 0, 0)
+        for argv in ([], ["math_runtime_compile_test"], ["--include-slow"]):
+            args = run_trace_tests.parse_args(argv)
+            output = io.StringIO()
+            with (
+                patch.object(run_trace_tests, "parse_args", return_value=args),
+                patch.object(run_trace_tests, "resolve_trace_job_count", return_value=1),
+                patch.object(run_trace_tests, "require_repo_stage1_test_env", return_value=(sys.executable, root, root, {})),
+                patch.object(run_trace_tests, "resolve_artifact_dir", return_value=(root, False)),
+                patch.object(run_trace_tests, "run_one", return_value=result) as run_one,
+                redirect_stdout(output),
+            ):
+                if run_trace_tests.main() != 0:
+                    return f"trace runner main failed for {argv}"
+            selected = {call.args[1] for call in run_one.call_args_list}
+            if not argv and not {"slice_trace_test", "mul_runtime_compile_test"}.issubset(selected):
+                return "aggregate trace main lost CI-only normal cases"
+            if argv == ["math_runtime_compile_test"] and selected != {"math_runtime_compile_test"}:
+                return "explicit trace main ignored the slow selector"
+            if argv == ["--include-slow"] and "math_runtime_compile_test" not in selected:
+                return "slow-inclusive trace main lost the slow case"
+            if ("Skipping slow trace tests by default" in output.getvalue()) != (not argv):
+                return f"incorrect slow-case logging for {argv}"
+    return None
 
 
 def test_native_support_selection() -> str | None:
@@ -32,6 +158,8 @@ def test_native_support_selection() -> str | None:
     for name, requires_preparation in (
         ("array_test", False), ("preparation_test", True), ("l1c_lib_test", True),
         ("link_driver_test", True),
+        ("mul_runtime_test", False),
+        ("mul_runtime_compile_test", True),
     ):
         path = common.TESTS_DIR / f"{name}.l0"
         args = common.stage1_test_support_args(path)
@@ -285,6 +413,9 @@ def main() -> int:
     """Program entrypoint."""
 
     checks = [
+        test_normal_runner_ci_only_selection,
+        test_trace_selection_ignores_normal_cost_classification,
+        test_trace_main_selection_and_slow_logging,
         test_native_support_selection,
         test_resolve_trace_job_count_matches_normal_default_policy,
         test_resolve_trace_job_count_honors_trace_override_first,

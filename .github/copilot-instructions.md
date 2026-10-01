@@ -12,14 +12,15 @@ The root `Makefile` is monorepo maintenance only:
 make help
 make venv
 make test
-make test-all
+make test-extended
 make clean
 make clean-all
 ```
 
 Do not use the root `Makefile` as a dispatcher for level-specific build or test commands. `cd` into the relevant level
-directory first. Root `make test` runs normal validation across every registered level without the dedicated broad trace
-sweeps; root `make test-all` is the full trace-inclusive entrypoint.
+directory first. Root `make test` and `make test-extended` delegate to the corresponding target in every registered
+level. L0 `test-extended` includes its Stage 2 trace sweep; L1 `test-extended` is the broad local-normal gate. Use
+`make -C l1 test-ci` for exhaustive L1 validation.
 
 ### `l0/`
 
@@ -45,11 +46,10 @@ make test-stage2-trace
 make triple-test
 make test-workflows
 make -j test
-make -j test-all
+make -j test-extended
 ```
 
-Use `test` for confidently trace-independent work. Use `test-all` when runtime, ownership, emitted lifetime, trace
-infrastructure, or trace-eligible test inputs change, and whenever the classification is uncertain.
+Use `test` for confidently trace-independent L0 work and `test-extended` when L0 trace coverage is required.
 
 Single-test examples:
 
@@ -82,8 +82,15 @@ make test-stage2-trace
 make triple-test
 make test-stage1 TESTS="parser_test"
 make test
-make test-all
+make test-extended
+make test-ci
 ```
+
+In L1, `test` is the fast representative development gate, `test-extended` runs the Stage 1 and Stage 2 normal suites
+without CI-only cases, and `test-ci` is the exhaustive hosted gate. For trace-, bootstrap-, environment-, and
+preparation-sensitive changes, run the affected focused targets locally. Use `test-ci` when hosted equivalence or
+exhaustive L1 coverage is needed; it adds CI-only normal tests, environment/bootstrap, trace suites, child fixtures, and
+triple bootstrap to `test-extended`.
 
 `l1/` bootstraps with the repo-local upstream L0 Stage 2 compiler at `../l0/build/dea/bin/l0c-stage2` by default. Use
 `L1_BOOTSTRAP_L0C=/path/to/l0c-stage2` to override that explicitly.

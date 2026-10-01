@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-09-29
+Version: 2026-09-30
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -39,13 +39,21 @@ after removing an unused path-wrapper module. The ledger in
 original 120-module inventory, phase assignments, ownership rationale, and validation evidence. Subsystem-specific
 models remain with their frontend, backend, or CLI review phases.
 
-`make test` covers both normal stage suites, parity, environment checks, and Stage 2 examples. `make test-all` adds both
-default trace suites and each stage's independently selected child fixtures. Slow trace cases remain opt-in.
-`make triple-test` builds three Stage 2 generations and requires identical relative retained-C inventories and bytes,
-including the lifecycle wrapper, between the second and third generations. Native comparison follows the L0 platform
-policy; the complete Stage 2 normal suite and example checks then run through the final compiler. `test-ci` includes
-this fixed-point gate; local `test-all` leaves it explicit. `KEEP_ARTIFACTS=1` retains successful bootstrap evidence;
-failures always retain their artifacts. No install, distribution, or release interface is added.
+`make test` is the fast development gate: selected Stage 1 and Stage 2 smoke tests, parity, examples, Stage 2 tooling,
+and Docker/Wine runner regressions. `make test-extended` runs the Stage 1 and Stage 2 normal suites with CI-only cases
+excluded, plus parity, examples, and tooling. It omits environment reconstruction, dedicated trace sweeps, child
+fixtures, and triple bootstrap. `make test-ci` adds CI-only normal cases, environment/bootstrap integration, both
+default trace suites, child fixtures, and triple bootstrap; the normal runners report their CI-only cases explicitly.
+Local normal coverage retains arithmetic and all six multiplication overflow fixtures using the already-built subject,
+plus representative managed preparation. Installed read-only inputs and preparation recovery/concurrency are CI-only
+normal cases in both stages, as is embedded-driver overflow compilation in `mul_runtime_compile_test`. Dedicated trace
+discovery applies its own slow-case policy and retains normal CI-only cases. Slow trace cases remain opt-in through the
+`*-trace-all` targets. `make triple-test` builds three Stage 2 generations and requires identical relative retained-C
+inventories and bytes, including the lifecycle wrapper, between the second and third generations. Native comparison
+follows the L0 platform policy; the complete Stage 2 normal suite and example checks then run through the final
+compiler. `test-ci` includes this fixed-point gate; local `test-extended` leaves it explicit. `KEEP_ARTIFACTS=1` retains
+successful bootstrap evidence; failures always retain their artifacts. No install, distribution, or release interface is
+added.
 
 ## 1. High-Level Pipeline
 

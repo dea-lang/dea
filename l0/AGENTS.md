@@ -103,9 +103,10 @@ Therefore:
 ## Commands
 
 Run L0-specific commands from the `l0/` directory. The monorepo root `Makefile` only owns `help`, `venv`, `test`,
-`test-all`, `clean`, and `clean-all`; root `test` is normal registered-level validation without the dedicated broad
-trace sweeps, while root `test-all` is the full trace-inclusive entrypoint. Neither is a focused L0 target. For normal
-development, prefer the repo-local switchable `l0c` alias:
+`test-extended`, `clean`, and `clean-all`; root targets delegate to the corresponding target in each registered level.
+L0 `test-extended` includes the dedicated Stage 2 trace sweep. Root `test-extended` does not include L1's exhaustive
+`test-ci` categories; run `make -C l1 test-ci` when exhaustive L1 validation is required. For normal development, prefer
+the repo-local switchable `l0c` alias:
 
 ```bash
 make use-dev-stage2 # or `make use-dev-stage1`; each builds and installs the launcher automatically
@@ -139,8 +140,8 @@ python scripts/gen_docs.py --pdf-fast  # faster preview PDF build (single pdflat
 make help                         # show the repo-local developer workflow targets
 make venv                         # create or reuse the shared ../.venv
 make check-examples               # run latest-stage --check across `examples/*.l0`; fail on warnings or errors
-make docker CMD=test-all          # explicitly run a make target inside the repo-owned Linux test container
-make docker CMD=test-all DOCKER_L0_CC=gcc
+make docker CMD=test-extended          # explicitly run a make target inside the repo-owned Linux test container
+make docker CMD=test-extended DOCKER_L0_CC=gcc
 ```
 
 Verbosity: `-v` (info), `-vvv` (debug).
@@ -161,7 +162,7 @@ make use-dev-stage2 # build, install, and select the Stage 2 launcher under buil
 source build/dea/bin/l0-env.sh # activate the repo-local Dea build workflow in your shell
 make PREFIX=/tmp/l0-install install # install the self-hosted Stage 2 compiler under one prefix
 make test # run normal Stage 1 + Stage 2 validation without the dedicated broad trace sweep
-make test-all # add the dedicated Stage 2 ARC/memory trace sweep
+make test-extended # add the dedicated Stage 2 ARC/memory trace sweep
 make triple-test # run the strict triple-bootstrap regression
 ```
 
@@ -203,7 +204,7 @@ The aggregate validation tiers can be run in parallel with:
 
 ```bash
 make -j test # normal Stage 1, Stage 2, example, workflow, and distribution validation
-make -j test-all # the same validation plus the dedicated broad Stage 2 trace sweep
+make -j test-extended # the same validation plus the dedicated broad Stage 2 trace sweep
 ```
 
 For workflow and distribution tooling validation:
@@ -228,9 +229,9 @@ traces and leak triage across all trace-eligible Stage 2 tests. Routine changes 
 use `make test` instead.
 
 The root `Dockerfile` is a supported Linux test environment, but Docker use is always explicit. Prefer
-`make docker CMD=test-all` when you want the containerized workflow; do not add Docker as an implicit dependency of the
-default host-side `make` targets. If the container needs a specific compiler, pass `DOCKER_L0_CC=...`; do not reuse the
-host `L0_CC` setting automatically.
+`make docker CMD=test-extended` when you want the containerized workflow; do not add Docker as an implicit dependency of
+the default host-side `make` targets. If the container needs a specific compiler, pass `DOCKER_L0_CC=...`; do not reuse
+the host `L0_CC` setting automatically.
 
 For Stage 1 ownership-sensitive changes (ARC lowering, `drop` behavior, container ownership paths), run targeted ARC
 trace tests from `compiler/stage1_py/tests/backend/test_trace_arc.py` and prefer the full file when touching shared ARC

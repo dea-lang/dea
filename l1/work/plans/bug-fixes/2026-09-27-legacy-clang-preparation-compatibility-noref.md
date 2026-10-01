@@ -185,7 +185,7 @@ compile failures, and context destruction. Include concurrent contexts and paths
 Windows portability fixtures for new scratch/argv handling. Keep strict persistent-reuse assertions intact.
 
 Run focused preparation, identity, ownership, integration, and reporter suites plus the dedicated legacy matrix. Run L1
-`make test-all` on the normal supported host and Linux GCC lane because runtime invocation and context ownership affect
+`make test-ci` on the normal supported host and Linux GCC lane because runtime invocation and context ownership affect
 trace-sensitive behavior. Measure added warm-resolution work without repeating the SHA-256 benchmark matrix. Retain a
 curated evidence report under the matching bug-fix attachments directory; avoid committing binaries or unnecessary raw
 logs when the curated report is sufficient.

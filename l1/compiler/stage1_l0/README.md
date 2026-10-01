@@ -39,8 +39,8 @@ filesystem and fingerprint support. Compiler builds continue including every sup
 
 `make test-stage1-trace-children` runs the declared L1 math runtime fixtures as separate traced executables. It uses the
 same native-input selection as Python driver tests and analyzes only each child executable's stderr. Pass
-`TESTS="math_int_trace_main"` to select a fixture. `make test-all` always includes both declared child fixtures,
-independently of parent `TESTS` selectors.
+`TESTS="math_int_trace_main"` to select a fixture. `make test-ci` always includes both declared child fixtures for each
+compiler stage, independently of parent `TESTS` selectors.
 
 Production sources are organized into phase and ownership families. Coarse pass/command entrypoints remain at the root;
 shared state and helpers are imported directly from their canonical child modules. The 119-module layout and the two
@@ -56,14 +56,15 @@ l1c --version
 
 `make use-dev-stage1` auto-prepares the default repo-local upstream `../../l0/build/dea/bin/l0c-stage2` when needed.
 
-`make docker CMD=test-all` runs the explicit Linux container validation path while preserving that same default
-repo-local `../../l0` bootstrap layout.
+`make docker CMD=test-extended` runs the broad local-normal Linux container path while preserving that same default
+repo-local `../../l0` bootstrap layout. Use `CMD=test-ci` for the exhaustive hosted-equivalent L1 validation path.
 
 Use `make bench-link-provenance` for the informational standalone-link provenance matrix. It measures warmed validation
 over control, direct-provider, terminal-provider, and layered-DAG graphs without including graph construction. Override
 the matrix with `BENCH_PROVENANCE_SHAPES`, `BENCH_PROVENANCE_SIZES`, `BENCH_PROVENANCE_WARMUPS`, and
 `BENCH_PROVENANCE_RUNS`; save or compare machine-readable results with `BENCH_PROVENANCE_JSON` and
-`BENCH_PROVENANCE_COMPARE`. The benchmark has no CI timing threshold and is not part of `test-all`.
+`BENCH_PROVENANCE_COMPARE`. The benchmark has no CI timing threshold and is not part of `test`, `test-extended`, or
+`test-ci`.
 
 For a non-default upstream bootstrap compiler, set `L1_BOOTSTRAP_L0C=/path/to/l0c-stage2` when running
 `make build-stage1`.

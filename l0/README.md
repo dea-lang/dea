@@ -167,7 +167,7 @@ owns the dev/docs dependency groups, and there is one `./.venv` plus one `./uv.l
 For an optional reproducible Linux test environment, use the explicit Docker wrapper:
 
 ```shell
-make docker CMD=test-all
+make docker CMD=test-extended
 ```
 
 The image builds from the monorepo root and includes L1 sources and vendored tools used by L0's runtime compatibility,

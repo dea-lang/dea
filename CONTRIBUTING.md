@@ -109,7 +109,7 @@ make test-stage2 TESTS="driver_test l0c_build_run_test" # runs a specific subset
 make test-stage2-trace  # runs the Stage 2 L0-based tests with trace collection and leak triage
 make triple-test  # runs only the triple-bootstrap test
 make test  # runs normal L0 validation without the dedicated broad trace sweep
-make test-all  # runs normal validation plus the dedicated broad trace sweep
+make test-extended  # runs normal validation plus the dedicated broad trace sweep
 ```
 
 These Make targets are self-contained repo-local workflows: they ensure `../.venv`, prepare the Stage 2 artifact under
@@ -117,8 +117,14 @@ These Make targets are self-contained repo-local workflows: they ensure `../.ven
 
 `make test-stage2-trace` is the required finalization gate when a Stage 2 change can affect runtime, ownership, emitted
 lifetimes, trace infrastructure, or trace-eligible test inputs because it checks runtime trace health (including leak
-triage) across the trace-eligible Stage 2 suite. Confidently trace-independent work can use `make test`; uncertain or
-mixed work uses `make test-all`.
+triage) across the trace-eligible Stage 2 suite. Confidently trace-independent work can use `make test`; broader or
+uncertain L0 validation uses `make test-extended`.
+
+For L1, `make test` is the fast development gate and `make test-extended` runs the Stage 1 and Stage 2 normal suites
+without CI-only cases. Use `make test-ci` for the exhaustive hosted gate, which adds CI-only normal tests,
+environment/bootstrap integration, trace suites, child fixtures, and triple bootstrap. For trace-, bootstrap-,
+preparation-, or environment-sensitive changes, run the relevant focused targets locally instead of routinely running
+the entire CI suite.
 
 `make triple-test` is a focused test for the triple-bootstrap process, which is a critical end-to-end validation of the
 compiler's ability to build itself and produce a stable artifact.

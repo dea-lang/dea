@@ -59,30 +59,52 @@ make test-stage1-trace
 make test-stage1-trace-smoke
 make test-stage1-trace-all
 make test-stage1-trace-children
-make test-all
+make test-extended
 make test-ci
 ```
 
-`make test` combines the normal Stage 1 and Stage 2, parity, environment-stackability, and example validation without
-the dedicated broad ARC/memory trace sweep. Use it for confidently trace-independent work. `make test-all` adds both
-default dedicated trace sweeps and both declared child trace fixtures for each stage, and remains the full local/Docker
-backstop.
+`make test` is the fast local development gate. It runs representative Stage 1 and Stage 2 smoke tests, parity,
+examples, Stage 2 tooling, and Docker/Wine runner regressions. Use it after ordinary implementation work.
+
+`make test-extended` is the broad local-normal gate for subsystem work and refactors. It runs both Stage 1 and Stage 2
+normal suites, parity, examples, Stage 2 tooling, and Docker/Wine runner regressions. Normal runner discovery excludes
+CI-only cases. This target omits environment reconstruction, the dedicated trace sweeps, child trace fixtures, and
+triple bootstrap.
+
+Local normal discovery retains multiplication arithmetic, all six overflow fixtures through the already-built subject
+compiler, and representative managed preparation. Embedded-driver overflow compilation remains in the CI-only
+`mul_runtime_compile_test` and the default trace sweep. The installed read-only toolchain fixture
+(`l1c_stage1_installed_preparation_test.py`) and preparation recovery/concurrency matrix
+(`l1c_stage1_preparation_test.py`) are CI-only in both stages. Run either directly with
+`make test-stage1 TESTS="<test-name>"` or `make test-stage2 TESTS="<test-name>"` when changing those behaviors.
+
+`make test-ci` is the exhaustive hosted gate. It runs `test-extended` with CI-only normal cases included, followed by
+environment/bootstrap integration, both default Stage 1 and Stage 2 ARC/memory trace suites, both child-fixture suites,
+and triple bootstrap. Runner output lists included CI-only cases and each category has a visible boundary. Use `test-ci`
+for hosted-equivalent exhaustive validation. For subsystem changes, run the corresponding direct target or explicit test
+selector; a change involving trace, environment, child-process, preparation, or fixed-point behavior does not by itself
+require the entire `test-ci` suite.
 
 `make test-stage1-trace` is the default ARC/memory trace suite and skips intentionally slow trace cases such as
 `math_runtime_compile_test`. Use `make test-stage1-trace-all` to include those slow trace checks, or pass a slow test
 explicitly with `TESTS="math_runtime_compile_test"` when investigating it.
 
-`make test-stage1-trace-children` is the focused suite for successful L1 math runtime fixtures. It builds traced child
-executables and analyzes each child's stderr separately; `TESTS="wide_math_main"` selects one fixture. `make test-all`
-always runs both declared children, independently of parent `TESTS` selectors.
+Normal CI-only classification does not filter dedicated trace discovery; `slice_trace_test` remains in the default trace
+sweep. The slow-trace policy is independent of the normal-suite cost policy.
 
-`make test-stage1-trace-smoke` retains the focused ARC/memory trace subset for quick developer diagnostics. The
-`make test-ci` target runs `make test-all` and `make triple-test` on every supported host, so hosted Windows, Linux, and
-macOS validation all run the full normal suite, default dedicated trace sweep, and child trace fixtures.
+`make test-stage1-trace-children` is the focused suite for successful L1 math runtime fixtures. It builds traced child
+executables and analyzes each child's stderr separately; `TESTS="wide_math_main"` selects one fixture. `make test-ci`
+always runs both declared children for each stage, independently of parent `TESTS` selectors.
+
+`make test-stage1-trace-smoke` retains the focused ARC/memory trace subset for quick developer diagnostics. Hosted
+Windows, Linux, and macOS run `make test-ci`, which includes the complete local-normal suites plus CI-only normal cases,
+environment/bootstrap validation, default trace suites, child fixtures, and strict triple bootstrap.
 
 `use-dev-stage1` and `use-dev-stage2` explicitly select the `l1c` alias. Build and test commands preserve its selection.
 Stage 2 exposes the same trace target suffixes as Stage 1. `triple-test` runs the final self-built compiler through its
-normal suite and examples; it is intentionally excluded from local `test-all`.
+normal suite and examples; it is included in `test-ci` and excluded from `test` and `test-extended`. `make test-docker`
+runs the broad local-normal `test-extended` target in the repo-owned Linux image; use `make docker CMD=test-ci` for the
+exhaustive L1 container path.
 
 ## Current Scope
 

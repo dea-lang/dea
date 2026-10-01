@@ -48,8 +48,8 @@ reserved.
 
 Before changing compiler sources:
 
-1. Revalidate the completed self-hosting baseline with `make test-all`, `make test-stage-parity`, and
-   `make triple-test`, run from `l1/`.
+1. Revalidate the completed self-hosting baseline with `make test-ci`, run from `l1/`. This includes the complete normal
+   suites, parity, trace suites, child fixtures, and triple bootstrap.
 2. Record the selected native compiler executable, version, configuration, and validation results. Follow the
    supported-toolchain requirements in [l1/AGENTS.md][guidance].
 3. Inventory all committed production modules, including modules added during the review.
@@ -198,9 +198,7 @@ remove unexplained material regressions; broad optimization work remains separat
 From `l1/`, run:
 
 ```bash
-make test-all
-make test-stage-parity
-make triple-test
+make test-ci
 ```
 
 Use targeted regression cases for changed boundaries, especially numeric conversions, slice lifetimes, cleanup paths,

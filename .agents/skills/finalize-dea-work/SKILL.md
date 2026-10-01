@@ -86,8 +86,9 @@ says "ok commit", record and reuse that result if the validated inputs have not 
 
 Treat validation as reusable when all of these are true:
 
-- The completed command covered the current code/build/test scope. A passing `test-all` satisfies `test`; a passing
-  `test` does not by itself satisfy `test-all`.
+- The completed command covered the current code/build/test scope. `test-ci` includes `test-extended`, which includes
+  `test`; a passing higher tier satisfies its included lower tier for the same inputs. A focused test does not by itself
+  satisfy an aggregate tier.
 - No code, tests, build configuration, dependencies, generated source, or compiler/toolchain selection covered by the
   result changed after the run. Any branch or `HEAD` change preserved the exact validated tree.
 - No user, external process, or other agent modified an input covered by the result after the run.
@@ -99,17 +100,18 @@ staging unchanged content does not invalidate validation. Plan closure, document
 formatting after the suite also do not invalidate code-test results; run the applicable docs checks plus the mandatory
 staged whitespace and pre-commit checks instead.
 
-When there is no clean-build or artifact-validity reason to rerun normal validation, unchanged inputs already passed
-`test`, and the final classification requires `test-all`, reuse the normal-suite result and run only the missing
-dedicated trace target for each affected level: `make -C l0 test-stage2-trace` and/or `make -C l1 test-stage1-trace`.
-"Affected level" means every level selected by the scope matrix, including all registered levels for root/cross-cutting
-validation. The unchanged passing `test` plus the applicable passing trace target(s) jointly satisfy full validation; do
-not invoke `test-all` merely to repeat the normal work.
+When unchanged inputs already passed `test-extended` and exhaustive L1 validation is required, reuse the local-normal
+result and run only the missing `test-ci` categories: explicitly select the cases listed in
+`CI_ONLY_NORMAL_STAGE1_TESTS` and `CI_ONLY_NORMAL_STAGE2_TESTS`, then run environment/bootstrap integration, Stage 1 and
+Stage 2 trace suites, child trace fixtures, and triple bootstrap as required by the change. Do not invoke `test-ci`
+merely to repeat the covered local-normal work. For L0, `test-extended` includes its Stage 2 trace sweep; if unchanged
+`test` has passed and only that sweep remains, run `make -C l0 test-stage2-trace` instead of repeating the normal suite.
+Scope reused validation to the same affected levels and inputs.
 
-Do not upgrade a just-passed applicable `test` or `test-all` run to its `clean` form solely because the scope matrix
-names the clean command. The `clean` prefix is how to obtain fresh validation when validation is needed, not a reason to
-discard a passing result for unchanged inputs. Rerun from clean only when the work concerns clean-build behavior,
-dependency or artifact invalidation, or there is concrete reason to distrust the prior artifacts.
+Do not upgrade a just-passed applicable `test`, `test-extended`, or `test-ci` run to its `clean` form solely because the
+scope matrix names the clean command. The `clean` prefix is how to obtain fresh validation when validation is needed,
+not a reason to discard a passing result for unchanged inputs. Rerun from clean only when the work concerns clean-build
+behavior, dependency or artifact invalidation, or there is concrete reason to distrust the prior artifacts.
 
 If an input covered by the prior suite changed, the suite did not cover the current scope, an external modification
 affected a covered input, or the evidence is uncertain, run the smallest applicable validation not already satisfied by
@@ -125,12 +127,20 @@ absence of intervening relevant or external modifications.
 Choose the validation tier from the complete intended commit diff before applying the level scope matrix. Scope and tier
 are independent decisions; reclassify if staging or pre-commit changes that diff:
 
-- `test` is the normal validation aggregate. It preserves the ordinary compiler, example, environment, workflow, and
-  distribution checks owned by the affected level while omitting only the dedicated broad `run_trace_tests.py` sweep.
-  Focused trace regressions already embedded in a normal suite remain included.
-- `test-all` is the full aggregate: `test` plus the affected level's dedicated ARC/memory trace sweep.
+- `test` is the normal development aggregate. In L1 it runs representative Stage 1 and Stage 2 smoke tests, examples,
+  parity, Stage 2 tooling, and Docker/Wine runner regressions. L0 keeps its normal validation composition.
+- `test-extended` is the broad local aggregate. In L1 it runs the Stage 1 and Stage 2 normal suites, excluding CI-only
+  normal cases, environment/bootstrap integration, dedicated trace sweeps, child fixtures, and triple bootstrap. L0
+  preserves the former extended behavior by adding its dedicated Stage 2 trace sweep to `test`.
+- L1 `test-ci` is the exhaustive hosted aggregate. It includes `test-extended`, CI-only normal cases,
+  environment/bootstrap integration, Stage 1 and Stage 2 trace suites, child trace fixtures, and triple bootstrap. It is
+  not a routine local default. Root `test-extended` delegates to each level's extended target and does not include L1's
+  `test-ci` additions.
 
-Require `test-all` when any functional change can affect trace health or the trace gate itself, including:
+Select aggregate tiers based on scope and expected coverage. Run focused expensive tests for trace-, bootstrap-,
+preparation-, and environment-sensitive changes; those changes do not automatically require the complete L1 `test-ci`
+suite. Use the affected direct target and selectors where possible. Require the relevant trace validation when a
+functional change can affect trace health or the trace gate itself, including:
 
 - runtime implementation or configuration, allocation tracking, quarantine behavior, pointer provenance/bounds/alignment
   validation, runtime variants, or compiler/runtime flags that select those behaviors
@@ -143,10 +153,10 @@ Require `test-all` when any functional change can affect trace health or the tra
   trace environment, or Make/CI wiring of dedicated trace targets
 - adding, changing, removing, or renaming a trace-eligible top-level `.l0` test under `l0/compiler/stage2_l0/tests/` or
   `l1/compiler/stage1_l0/tests/`, or a fixture/dependency whose execution can affect that trace result; when the changed
-  case is intentionally excluded from the default sweep, also run its documented focused trace command because
-  `test-all` will not execute it
+  case is intentionally excluded from the default sweep, also run its documented focused trace command
 
-`test` is sufficient only when every functional change is confidently trace-independent. Examples include:
+The fast `test` tier is generally sufficient for routine changes whose behavior is confidently scoped and
+trace-independent. Examples include:
 
 - diagnostics, source spans, help/version/output wording, AST/debug printing, and comparable presentation-only edits
 - lexer, parser, name-resolution, or type-analysis changes that do not alter ownership classification, accepted-program
@@ -157,8 +167,11 @@ Require `test-all` when any functional change can affect trace health or the tra
   environment, compiler/runtime flags, or artifacts
 
 These categories select the aggregate tier only. Continue to run every focused validation required by the affected
-subsystem. Do not require full validation solely because a path is compiler-, test-, CI-, or tooling-related. If the
-diff mixes trace-independent and trace-sensitive work, or the classification is uncertain, use `test-all`.
+subsystem. Do not require `test-ci` solely because a path is compiler-, test-, CI-, or tooling-related. Use
+`test-extended` when broad local coverage is warranted. For L1, run the relevant explicit trace and other focused
+targets for expensive subsystem changes; choose `test-ci` when hosted-equivalent exhaustive coverage is warranted. If
+the classification is uncertain, use focused validation plus `test-extended`, and include the relevant expensive
+categories explicitly.
 
 ### Validation scope matrix
 
@@ -185,32 +198,40 @@ For history-only rewrites such as squash, reword, or reorder operations:
   tree matches the recorded pre-rewrite tree.
 
 - Example-only exception: When the complete intended diff is confined to example programs and example-local supporting
-  files, do not run aggregate `test`, `test-all`, trace, or other extensive suites. Run `make check-examples` from each
-  affected level directory, then manually run every added or modified example through its intended execution workflow
-  and inspect its output and behavior. Changes to shared compiler, runtime, build, test, or tooling behavior do not
-  qualify for this exception. Still run the required staged whitespace and pre-commit checks.
+  files, do not run aggregate `test`, `test-extended`, `test-ci`, trace, or other extensive suites. Run
+  `make check-examples` from each affected level directory, then manually run every added or modified example through
+  its intended execution workflow and inspect its output and behavior. Changes to shared compiler, runtime, build, test,
+  or tooling behavior do not qualify for this exception. Still run the required staged whitespace and pre-commit checks.
 
-- For trace-independent non-documentation functional changes confined to `l0/`: run `make -C l0 clean test`.
+- For routine trace-independent non-documentation functional changes confined to `l0/`: run `make -C l0 clean test`.
 
-- For trace-sensitive non-documentation functional changes confined to `l0/`: run `make -C l0 clean test-all`.
+- For trace-sensitive non-documentation functional changes confined to `l0/`: run `make -C l0 clean test-extended`.
 
-- For trace-independent non-documentation functional changes confined to `l1/`: run `make -C l1 clean test`.
+- For routine trace-independent non-documentation functional changes confined to `l1/`: run `make -C l1 clean test`.
 
-- For trace-sensitive non-documentation functional changes confined to `l1/`: run `make -C l1 clean test-all`.
+- For broad trace-independent non-documentation functional changes confined to `l1/`: run
+  `make -C l1 clean test-extended`.
 
-- For trace-independent cross-cutting non-documentation functional changes (touching more than one level, or touching
-  shared/root paths such as `scripts/`, `tools/`, root `pyproject.toml`, `uv.lock`, root config, or the root
+- For trace-sensitive non-documentation functional changes confined to `l1/`: run the affected normal and trace targets
+  with focused selectors. Use `make -C l1 clean test-ci` only when exhaustive hosted-equivalent coverage is warranted.
+
+- For routine trace-independent cross-cutting non-documentation functional changes (touching more than one level, or
+  touching shared/root paths such as `scripts/`, `tools/`, root `pyproject.toml`, `uv.lock`, root config, or the root
   `Makefile`): run the repo-root `make clean test` (executes in all `lN` directories).
 
-- For trace-sensitive cross-cutting non-documentation functional changes: run the repo-root `make clean test-all`
-  (executes in all `lN` directories).
+- For broad trace-independent cross-cutting changes where extended coverage is warranted: run repo-root
+  `make clean test-extended`.
+
+- For broad cross-cutting changes where extended coverage is warranted: run repo-root `make clean test-extended` and add
+  the affected L1 focused trace, bootstrap, preparation, or environment targets. Root `test-extended` covers L0's
+  dedicated Stage 2 trace sweep but does not add L1 `test-ci` categories.
 
 - Support-script exception: Do not classify a change as cross-cutting solely because it adds a new auxiliary utility
   under root `scripts/`, plus its focused test and test-target wiring, when it does not change compiler behavior or
   build behavior. Run the utility's focused regression and any affected lightweight workflow target instead; do not run
-  root `make clean test-all` only because of that root-level script path. This exception does not apply when the change
-  affects compiler source or runtime behavior, compiler source generation, build scripts or flags, artifact layout,
-  bootstrap or launcher behavior, or existing test behavior beyond adding the utility's own coverage.
+  root `make clean test-extended` only because of that root-level script path. This exception does not apply when the
+  change affects compiler source or runtime behavior, compiler source generation, build scripts or flags, artifact
+  layout, bootstrap or launcher behavior, or existing test behavior beyond adding the utility's own coverage.
 
 - For docs-only changes: run `git diff --check`; run docs tooling when the edited docs have a generator/check target
 

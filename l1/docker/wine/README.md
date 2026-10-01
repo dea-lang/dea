@@ -11,7 +11,7 @@ make docker-wine-toolchain                 # expensive first setup; independentl
 make docker-wine-image                     # adds the cached Windows workspace venv
 make docker-wine CMD=help                  # automatically prepares missing images
 make docker-wine CMD=test-stage1 TESTS=preparation_support_test
-make docker-wine CMD='clean test-all' L1_TEST_JOBS=2 L1_TRACE_TEST_JOBS=1
+make docker-wine CMD='clean test-ci' L1_TEST_JOBS=2 L1_TRACE_TEST_JOBS=1
 make docker-wine CMD=test-stage1-trace TESTS=string_vector_test L1_TRACE_ARTIFACT_DIR="$PWD/build/wine-traces"
 ```
 

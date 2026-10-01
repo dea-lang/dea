@@ -56,7 +56,7 @@ L0_COMPILER_RT_QUARANTINE_MAX_COUNT ?= 256
 	refresh-goldens \
 	list-installed \
 	bench-runtime \
-	test-all \
+	test-extended \
 	print-dea-build-dir \
 	docs \
 	docs-pdf \
@@ -78,7 +78,7 @@ help:
 		'  use-dev-stage2     Build and switch the repo-local `l0c` alias to Stage 2.' \
 		'  install-dev-stages Prepare both Stage 1 and Stage 2 launchers under DEA_BUILD_DIR.' \
 		'  test               Run Stage 1, Stage 2, example, workflow, and distribution validation without the dedicated trace sweep.' \
-		'  test-all           Run the full validation suite, including the dedicated Stage 2 trace sweep.' \
+		'  test-extended      Run the full validation suite, including the dedicated Stage 2 trace sweep.' \
 		'  test-stage1        Validate the Stage 1 Python compiler test suite.' \
 		'  test-stage2        Validate the Stage 2 compiler test suite; pass TESTS="name1 name2" to run selected cases.' \
 		'  test-stage2-trace  Validate Stage 2 ARC and memory tracing behavior; pass TESTS="name1 name2" to run selected cases.' \
@@ -103,7 +103,7 @@ help:
 		'  docs-pdf           Generate the project documentation, including the PDF manual.' \
 		'' \
 		'Other targets:' \
-		'  bench-runtime      Benchmark the checked runtime allocation tracker across C compilers and quarantine settings (informational; not part of `test-all`). Variables: `BENCH_CC="tcc clang gcc-16"`, `BENCH_SCALE=<n>`, `BENCH_RUNS=<n>`.' \
+		'  bench-runtime      Benchmark the checked runtime allocation tracker across C compilers and quarantine settings (informational; not part of `test-extended`). Variables: `BENCH_CC="tcc clang gcc-16"`, `BENCH_SCALE=<n>`, `BENCH_RUNS=<n>`.' \
 		'  refresh-goldens    Regenerate Stage 2 backend golden C fixtures from Stage 1.' \
 		'  list-installed     List files installed by `make install` under PREFIX.' \
 		'  help               Show this help text.' \
@@ -254,7 +254,7 @@ test-workflows: test-compiler-runtime-flags test-dist test-dea-build test-dist-f
 
 test: test-stage1 test-stage2 check-examples test-workflows
 
-test-all: test test-stage2-trace
+test-extended: test test-stage2-trace
 
 refresh-goldens: venv
 	"$(VENV_PYTHON)" ./scripts/refresh_stage2_backend_goldens.py
@@ -280,12 +280,12 @@ clean-dea-build:
 clean-all: clean clean-dea-build
 
 test-docker:
-	$(MAKE) docker CMD=test-all
+	$(MAKE) docker CMD=test-extended
 
 docker:
 	@if [ -z "$(CMD)" ]; then \
 		echo "Usage: make docker CMD=<target>"; \
-		echo "Example: make docker CMD=test-all"; \
+		echo "Example: make docker CMD=test-extended"; \
 		exit 2; \
 	else \
 		docker build -f Dockerfile -t "$(DOCKER_IMAGE)" .. && docker run --rm $(if $(strip $(DOCKER_L0_CC)),-e L0_CC=$(DOCKER_L0_CC)) "$(DOCKER_IMAGE)" make $(CMD); \

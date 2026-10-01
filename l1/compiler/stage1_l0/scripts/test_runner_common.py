@@ -39,12 +39,24 @@ DEFAULT_L1_BUILD_DIR = "build/dea"
 L1_BOOTSTRAP_L0C_ENV = "L1_BOOTSTRAP_L0C"
 TRACE_EXCLUDED_STAGE1_TESTS: set[str] = set()
 TRACE_SLOW_STAGE1_TESTS: set[str] = {"math_runtime_compile_test"}
+CI_ONLY_NORMAL_STAGE1_TESTS = frozenset(
+    {
+        "l1c_stage1_arc_trace_regression_test.py",
+        "l1c_stage1_installed_preparation_test.py",
+        "l1c_stage1_preparation_test.py",
+        "preparation_ownership_test.py",
+        "slice_trace_test",
+        "math_runtime_compile_test",
+        "mul_runtime_compile_test",
+        "preparation_identity_test.py",
+    }
+)
 MATH_RUNTIME_FIXTURE_DIR = TESTS_DIR / "fixtures" / "math_runtime"
 # Tests whose imported implementation modules require the preparation C ABI.
 # A new dependency must be listed here; omitting one fails at native linking.
 PREPARATION_SUPPORT_TESTS = frozenset({
     "l1c_lib_test", "link_driver_test", "math_runtime_compile_test",
-    "mul_runtime_test", "preparation_test", "slice_trace_test",
+    "mul_runtime_compile_test", "preparation_test", "slice_trace_test",
 })
 
 

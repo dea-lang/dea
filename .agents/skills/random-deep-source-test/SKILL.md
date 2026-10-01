@@ -104,8 +104,9 @@ explain the correctness impact. Exclude routine style preferences, unsupported s
 4. Use controlled inputs only. Do not probe arbitrary filesystem locations, network behavior, or process launching. Run
    focused workflows sequentially when they share bootstrap or build outputs.
 
-5. Do not run `clean` or full `test-all` for this review. Do not auto-fix code, persist a test, commit, or push. Request
-   separate authority before adding a durable regression test or changing production behavior.
+5. Do not run `clean` or aggregate `test`, `test-extended`, or `test-ci` for this review. Do not auto-fix code, persist
+   a test, commit, or push. Request separate authority before adding a durable regression test or changing production
+   behavior.
 
 6. Treat a passing probe as evidence that the tested case was not disproved, not proof of correctness. Treat a failure
    as a reproducible counterexample. If no safe or supported probe can run, report that limitation plainly instead of

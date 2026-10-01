@@ -1,0 +1,71 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module mul_runtime_compile_test;
+
+import std.assert;
+import std.io;
+import std.vector;
+import l1c_lib;
+import support.driver_inputs;
+
+/**
+ * Return the fixture root used for overflow child modules.
+ *
+ * Fixtures live under a subdirectory so the top-level Stage 2 test runners do
+ * not discover them as standalone tests.
+ *
+ * @return Repo-local fixture directory.
+ */
+func mrt_overflow_fixture_root() -> string {
+    return "compiler/stage1_l0/tests/fixtures/mul_runtime";
+}
+
+/**
+ * Compile and run one child fixture that must fail with multiplication overflow.
+ *
+ * @param module_name Temporary module name.
+ * @param label Human-readable case label.
+ */
+func mrt_expect_overflow(module_name: string, label: string) {
+    with (let argv = dti_native_argv(8) => sv_free(argv)) {
+        sv_push(argv, "--run");
+        sv_push(argv, "--project-root");
+        sv_push(argv, mrt_overflow_fixture_root());
+        sv_push(argv, module_name);
+
+        let rc = run_with_argv(argv);
+        assert(rc != 0, "expected runtime overflow failure: " + label);
+    }
+
+    printl_ss("[PASS]", label);
+}
+
+/**
+ * Tests positive overflow cases in child processes.
+ */
+func test_overflow_positive() {
+    printl_s("== Positive overflow cases ==");
+    mrt_expect_overflow("mul_overflow_positive", "46341 * 46341 should overflow");
+    mrt_expect_overflow("mul_overflow_max_times_two", "INT32_MAX * 2 should overflow");
+    mrt_expect_overflow("mul_overflow_large", "100000 * 100000 should overflow");
+}
+
+/**
+ * Tests negative and mixed-sign overflow cases in child processes.
+ */
+func test_overflow_negative() {
+    printl_s("== Negative overflow cases ==");
+    mrt_expect_overflow("mul_overflow_negative", "-46341 * -46341 should overflow");
+    mrt_expect_overflow("mul_underflow_mixed", "46341 * -46341 should overflow");
+    mrt_expect_overflow("mul_int32_min_times_minus_one", "INT32_MIN * -1 should overflow");
+}
+
+/** Preserve embedded-driver overflow compilation and ownership coverage in CI. */
+func main() {
+    test_overflow_positive();
+    test_overflow_negative();
+    printl_s("mul_runtime_compile_test: all tests passed");
+}

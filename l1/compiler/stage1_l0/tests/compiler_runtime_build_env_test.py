@@ -239,7 +239,7 @@ def require_docker_compiler_propagation() -> None:
         env.pop("DOCKER_CC", None)
         env.pop("DOCKER_L0_CC", None)
         completed = subprocess.run(
-            ["make", "--dry-run", "docker", "CMD=test-all", *assignments],
+            ["make", "--dry-run", "docker", "CMD=test-extended", *assignments],
             cwd=L1_ROOT,
             env=env,
             text=True,

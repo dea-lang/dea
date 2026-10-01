@@ -19,7 +19,7 @@ on:
       make_target:
         description: Make target to run
         required: false
-        default: test-all
+        default: test-extended
         type: string
   workflow_dispatch:
     inputs:
@@ -47,7 +47,7 @@ on:
       make_target:
         description: Make target to run
         required: true
-        default: test-all
+        default: test-extended
         type: string
 
 permissions:
@@ -151,9 +151,9 @@ jobs:
               handle.write(f"matrix={json.dumps({'include': selected}, separators=(',', ':'))}\n")
           PY
 
-  test-all:
+  test-extended:
     needs: select-matrix
-    name: test-all (${{ matrix.runner }}, ${{ matrix.os }}, ${{ matrix.arch }}, ${{ (matrix.os == 'linux' || matrix.os == 'windows') && inputs.c_compiler || matrix.c_compiler }}, ${{ matrix.platform }})
+    name: test-extended (${{ matrix.runner }}, ${{ matrix.os }}, ${{ matrix.arch }}, ${{ (matrix.os == 'linux' || matrix.os == 'windows') && inputs.c_compiler || matrix.c_compiler }}, ${{ matrix.platform }})
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.select-matrix.outputs.matrix) }}

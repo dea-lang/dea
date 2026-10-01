@@ -24,7 +24,7 @@ PIP_DEPS_CMD = import tomllib,pathlib;\
 	g=tomllib.loads(pathlib.Path('pyproject.toml').read_text()).get('dependency-groups',{});\
 	print(' '.join(d for d in g.get('dev',[])+g.get('docs',[]) if isinstance(d,str)))
 
-.PHONY: help venv clean clean-all test test-all _check-level-dirs _check-python _clean-root-paths
+.PHONY: help venv clean clean-all test test-extended _check-level-dirs _check-python _clean-root-paths
 
 help:
 	@printf '%s\n' \
@@ -34,7 +34,7 @@ help:
 		'  help               Show this help text.' \
 		'  venv               Create or sync the shared monorepo `./.venv` (prefer `uv`, fall back to `python -m venv` + `pip`).' \
 		'  test               Run `make test` in each registered level without dedicated trace sweeps.' \
-		'  test-all           Run full validation, including dedicated trace sweeps, in each registered level.' \
+		'  test-extended      Run the extended gate for each level; use L1 `test-ci` for exhaustive L1 validation.' \
 		'  clean              Run `make clean` in each registered level, then remove root caches/artifacts.' \
 		'  clean-all          Run `make clean-all` in each registered level, then remove root caches/artifacts.' \
 		'' \
@@ -42,7 +42,7 @@ help:
 		'  DEA_LEVEL_DIRS=$(DEA_LEVEL_DIRS)' \
 		'' \
 		'Level-specific development commands still run inside a level directory.' \
-		'Example: `cd l0 && make test-all`'
+		'Example: `cd l0 && make test-extended`'
 
 _check-level-dirs:
 	@for level in $(DEA_LEVEL_DIRS); do \
@@ -126,8 +126,8 @@ test: _check-level-dirs
 		$(MAKE) -C "$$level" test || exit $$?; \
 	done
 
-test-all: _check-level-dirs
+test-extended: _check-level-dirs
 	@for level in $(DEA_LEVEL_DIRS); do \
-		printf '==> %s: make test-all\n' "$$level"; \
-		$(MAKE) -C "$$level" test-all || exit $$?; \
+		printf '==> %s: make test-extended\n' "$$level"; \
+		$(MAKE) -C "$$level" test-extended || exit $$?; \
 	done

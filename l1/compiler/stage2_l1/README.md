@@ -46,7 +46,7 @@ preserved.
 inventory and match each other's bytes, applies the established native normalization policy (native identity is skipped
 for TinyCC and Windows), and runs the full Stage 2 normal suite and examples through C. Failure artifacts remain under
 the selected build root; `KEEP_ARTIFACTS=1` also retains successful evidence. `test-ci` includes this gate; local
-`test-all` leaves it explicit.
+`test-extended` leaves it explicit.
 
 The initial port and supported-host validation were completed under
 [work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md][port-plan]. Future semantic fixes

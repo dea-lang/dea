@@ -28,6 +28,7 @@ from test_runner_common import (
     TRACE_EXCLUDED_STAGE2_TESTS,
     TRACE_SLOW_STAGE2_TESTS,
     ChildTraceFixture,
+    TestCase,
     discover_trace_l1_tests,
     first_lines,
     repo_stage2_command,
@@ -119,6 +120,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Parent test names, or declared .l1 fixture names with --children; extensions are optional.",
     )
     return parser.parse_args(argv)
+
+
+def select_trace_cases(requested: list[str], *, include_slow: bool = False) -> list[TestCase]:
+    """Select trace cases independently of normal-suite cost classification.
+
+    Args:
+        requested: Explicit test selectors, which also permit slow trace cases.
+        include_slow: Include slow cases during aggregate discovery.
+
+    Returns:
+        Trace-eligible cases including any classified as CI-only normal tests.
+
+    Raises:
+        ValueError: If a selector is unknown or ambiguous.
+    """
+
+    return select_cases(
+        discover_trace_l1_tests(include_slow=include_slow or bool(requested)),
+        requested, include_ci_only=True,
+    )
 
 
 def resolve_artifact_dir(args: argparse.Namespace) -> tuple[Path, bool]:
@@ -492,7 +513,7 @@ def main() -> int:
             cases = []
         else:
             include_slow = args.include_slow or bool(args.tests)
-            cases = select_cases(discover_trace_l1_tests(include_slow=include_slow), args.tests)
+            cases = select_trace_cases(args.tests, include_slow=include_slow)
     except ValueError as exc:
         print(f"run_trace_tests.py: {exc}", file=sys.stderr, flush=True)
         return 2

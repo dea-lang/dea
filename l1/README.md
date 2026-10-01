@@ -49,10 +49,18 @@ latest-stage `--check` coverage for `examples/*.l1`. Exact generated-C golden-fi
 Stage 1 contract.
 
 Stage 2 compiles and runs its own `.l1` implementation tests and shares compiler-facing Python integration coverage.
-`make test` exercises both stages; `make test-all` adds both default trace suites and their child fixtures.
-`make triple-test` checks the strict retained-C and native fixed point and tests the final self-built compiler. Hosted
-`make test-ci` includes that fixed-point gate. `make use-dev-stage1` switches back to the bootstrap compiler; ordinary
+`make test` is the fast local gate built from representative compiler checks, examples, parity, and inexpensive tooling
+regressions. `make test-extended` runs the Stage 1 and Stage 2 normal suites, parity, examples, and tooling while
+excluding CI-only normal cases and environment/trace/bootstrap integration. Hosted `make test-ci` adds those CI-only
+cases, environment/bootstrap checks, both default trace suites, child fixtures, and triple bootstrap. `make triple-test`
+also runs that fixed-point check directly. `make use-dev-stage1` switches back to the bootstrap compiler; ordinary
 builds and tests preserve the selected alias.
+
+Local normal suites retain multiplication arithmetic and all six overflow checks without rebuilding a compiler inside
+their harness, plus representative cold/warm managed preparation. Installed read-only inputs and the preparation
+recovery/concurrency matrix run in CI, as does embedded-driver overflow compilation in `mul_runtime_compile_test`. These
+checks remain selectable by name through `test-stage1` and `test-stage2`. Dedicated trace discovery includes CI-only
+normal cases; only the independent slow-trace policy filters its default set.
 
 Minimal local workflow:
 

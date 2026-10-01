@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-09-28
+Version: 2026-09-30
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -257,7 +257,7 @@ make test-stage1-trace
 make test-stage1-trace-smoke
 make test-stage1-trace-all
 make test-stage1-trace-children
-make test-all
+make test-extended
 make test-ci
 ```
 
@@ -271,35 +271,40 @@ tcc object set used by the build driver for tcc links is controlled by `L1_TCC_O
 skips the specialized tcc object build. `make test-stage1-trace` runs the default ARC/memory trace suite and skips
 intentionally slow trace cases such as `math_runtime_compile_test`; pass the test name explicitly or use
 `make test-stage1-trace-all` when that slow trace coverage is needed. `make check-examples` adds warning-free
-latest-stage `--check` coverage for `examples/*.l1`. `make test` combines the implementation tests,
-environment-stackability checks, and example checks without the dedicated broad trace sweep; `make test-all` adds the
-default ARC/memory trace checks and both declared child trace fixtures. Linux portability is exercised via
-`make test-docker`, which runs `test-all` inside the repo-owned Docker image with GCC selected for `L0_CC`, `L1_CC`, and
-`L1_RUNTIME_CC`. Full L1 support with upstream Clang currently requires Clang 16 or newer; the repo-owned Bookworm image
-supplies unsupported Clang 14. Use `DOCKER_CC=clang` to switch all three roles together only in a separately verified
-environment providing supported Clang. Clang 14/15 compatibility remains planned in
+latest-stage `--check` coverage for `examples/*.l1`. `make test` runs selected Stage 1 and Stage 2 smoke suites, parity,
+examples, Stage 2 tooling, and Docker/Wine runner regressions. `make test-extended` runs the Stage 1 and Stage 2 normal
+suites, parity, examples, and tooling while excluding CI-only normal tests, environment reconstruction, dedicated trace
+sweeps, child fixtures, and triple bootstrap. `make test-ci` adds those CI-only normal tests, environment/bootstrap
+integration, the default ARC/memory trace suites, both child-fixture suites, and triple bootstrap. Linux portability is
+exercised via `make test-docker`, which runs `test-extended` inside the repo-owned Docker image with GCC selected for
+`L0_CC`, `L1_CC`, and `L1_RUNTIME_CC`. Full L1 support with upstream Clang currently requires Clang 16 or newer; the
+repo-owned Bookworm image supplies unsupported Clang 14. Use `DOCKER_CC=clang` to switch all three roles together only
+in a separately verified environment providing supported Clang. Clang 14/15 compatibility remains planned in
 [l1/work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md][legacy-clang-plan].
-`make test-stage1-trace-smoke` retains a focused ARC/memory subset for quick developer diagnostics. `make test-ci` runs
-`make test-all` and `make triple-test` on every supported host, so Windows, Linux, and macOS validate both stages, their
-traces, and the strict fixed point. The legacy `DOCKER_L0_CC` selector remains a compatibility fallback when `DOCKER_CC`
-is unset. Run the Docker lane after runtime, Makefile, or build-driver changes.
+`make test-stage1-trace-smoke` retains a focused ARC/memory subset for quick developer diagnostics. Hosted
+`make test-ci` runs the complete local-normal suites with CI-only cases, environment/bootstrap integration, both default
+trace suites, child fixtures, and the strict fixed point on Windows, Linux, and macOS. The legacy `DOCKER_L0_CC`
+selector remains a compatibility fallback when `DOCKER_CC` is unset. Run the Docker lane after runtime, Makefile, or
+build-driver changes.
 
 `make test-stage1-trace-children` builds the declared successful math runtime fixtures with ARC and memory tracing, runs
 each executable directly, and analyzes each child stderr file independently. `TESTS="wide_math_main"` selects one
-fixture. `make test-all` always runs both children for each compiler stage, independently of parent `TESTS` selectors.
+fixture. `make test-ci` always runs both children for each compiler stage, independently of parent `TESTS` selectors.
 The child suite retains its build, output, trace, and report files when a fixture fails.
 
 Stage 2 provides the same trace-target suffixes and selectors as Stage 1. `make triple-test` compares complete
 retained-C inventories and bytes, applies the native platform policy, and exercises the complete normal suite and
-examples through the final self-built compiler. It is required by `test-ci`, and stays separate from local `test-all`.
+examples through the final self-built compiler. It is required by `test-ci`, and stays separate from local
+`test-extended`.
 
 Validation is currently centered on:
 
 - automated CI via `.github/workflows/ci.yml`, which routes L1-relevant `push`/`pull_request` changes into the reusable
   `l1-ci.yml` workflow; `workflow_dispatch` remains available for platform selection, manual C compiler selection, and
-  explicit Make-target selection. Hosted CI defaults to `make test-ci`, which runs both full normal and default trace
-  suites plus strict triple bootstrap on Linux, macOS, and Windows. Each selected compiler is applied to `L0_CC`,
-  `L1_CC`, and `L1_RUNTIME_CC`, and the resolved executable plus version is logged before the Make target runs.
+  explicit Make-target selection. Hosted CI defaults to `make test-ci`, which runs full normal suites with CI-only
+  cases, environment/bootstrap integration, default trace suites, child fixtures, and triple bootstrap on Linux, macOS,
+  and Windows. Each selected compiler is applied to `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC`, and the resolved executable
+  plus version is logged before the Make target runs.
 
 - `make test-stage1` and the `.l0` implementation tests under `compiler/stage1_l0/tests/`
 
@@ -311,18 +316,19 @@ Validation is currently centered on:
   `math_runtime_compile_test`
 
 - `make test-stage1-trace-children` for focused, isolated trace checks of successful L1 runtime fixtures, also included
-  in `test-all`
+  in `test-ci`
 
 - `make check-examples` for warning-free latest-stage `--check` coverage across `examples/*.l1`
 
 - `make test-env` for generated launcher and environment-stackability coverage
 
-- `make test` as the normal local two-stage, environment, and example validation entry point without the dedicated broad
-  trace sweep
+- `make test` as the fast local gate with representative compiler checks, parity, examples, and inexpensive tooling
+  regressions
 
-- `make test-all` as the combined local two-stage, trace, environment, and example validation entry point
+- `make test-extended` as the broad local-normal gate with both stage normal suites, parity, examples, and tooling
 
-- `make test-ci` as the full trace-inclusive and fixed-point hosted-CI entry point on every supported platform
+- `make test-ci` as the exhaustive hosted gate with CI-only normal cases, environment/bootstrap, trace suites, child
+  fixtures, and triple bootstrap
 
 - `make test-docker` as the Linux container reference path for runtime/build-driver portability
 
