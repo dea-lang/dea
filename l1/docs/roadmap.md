@@ -310,8 +310,9 @@ triple bootstrap.
 
 - Refactor [2026-09-28-stage2-native-source-review-noref][stage2-native-review] reviews every Stage 2 production module
   for appropriate use of implemented L1 facilities while preserving Stage 1 behavioral and diagnostic parity and the
-  strict self-hosting fixed point. Phase 1 is complete: all 16 shared utility/model modules are reviewed, with full
-  validation and paired performance evidence. Phases 2 through 5 remain pending.
+  strict self-hosting fixed point. Phases 1 and 2 are complete: all 16 shared utility/model modules and 56
+  frontend/analysis modules are reviewed, with per-tranche validation and paired performance evidence. Phases 3 through
+  5 remain pending.
 - Bug Fix [2026-09-27-legacy-clang-preparation-compatibility-noref][legacy-clang-preparation] drafts Clang 14/15
   preparation compatibility, with persistent reuse gated on configuration isolation, discovery, identity, and
   invalidation validation, and private fallback when reuse cannot be authorized.

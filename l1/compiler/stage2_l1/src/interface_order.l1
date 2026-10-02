@@ -6,7 +6,6 @@
 module interface_order;
 
 import std.vector;
-import sys.rt;
 
 import ast;
 import module_interface;
@@ -62,7 +61,7 @@ func io_ref_before_or_equal(left: InterfaceDeclRef*, right: InterfaceDeclRef*) -
     if (left_kind != right_kind) {
         return left_kind < right_kind;
     }
-    return rt_string_compare(left.name, right.name) <= 0;
+    return left.name <= right.name;
 }
 
 /**

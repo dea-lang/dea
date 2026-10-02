@@ -895,8 +895,25 @@ func test_interface_fingerprint_clone_reemit() {
     ipr_free(parsed);
 }
 
+/** Compare complete byte strings, including prefixes and embedded NUL bytes. */
+func test_interface_order_string_boundaries() {
+    let names: string[6] = ["", "A", "a", "a\000", "aa", "\u00e9"];
+    with (let marker = type_new_builtin("int") => type_free(marker),
+          let refs = ptr_vec_create(6) => io_free_declarations(refs)) {
+        for (let i = len(names) - 1; i >= 0; i = i - 1) {
+            io_push_ref(refs, IDK_ALIAS, names[i], marker as void*);
+        }
+        io_sort_refs(refs);
+        for (let i = 0; i < len(names); i = i + 1) {
+            let ref = ptr_vec_get(refs, i) as InterfaceDeclRef*;
+            assert(ref.name == names[i], "Declaration-name byte ordering changed");
+        }
+    }
+}
+
 /** Run interface fingerprint unit tests. */
 func main() {
+    test_interface_order_string_boundaries();
     test_interface_fingerprint_exact_canonical_bytes();
     test_interface_fingerprint_leading_zero_digest();
     test_interface_fingerprint_order_and_exclusions();

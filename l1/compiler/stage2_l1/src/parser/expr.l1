@@ -331,7 +331,7 @@ func ps_parse_equality_expr(self: ParserState*) -> ExprId? {
     let expr = ps_parse_rel_expr(self)?;
 
     let current = expr;
-    while (ps_match_any2(self, ord(TT_EQEQ), ord(TT_NE))) {
+    while (ps_match_any(self, ord(TT_EQEQ), ord(TT_NE))) {
         let op_tok = ps_last(self);
         let right = ps_parse_rel_expr(self)?;
 
@@ -355,7 +355,7 @@ func ps_parse_rel_expr(self: ParserState*) -> ExprId? {
     let expr = ps_parse_shift_expr(self)?;
 
     let current = expr;
-    while (ps_match_any4(self, ord(TT_LT), ord(TT_GT), ord(TT_LE), ord(TT_GE))) {
+    while (ps_match_any(self, ord(TT_LT), ord(TT_GT), ord(TT_LE), ord(TT_GE))) {
         let op_tok = ps_last(self);
         let right = ps_parse_shift_expr(self)?;
 
@@ -379,7 +379,7 @@ func ps_parse_shift_expr(self: ParserState*) -> ExprId? {
     let expr = ps_parse_add_expr(self)?;
 
     let current = expr;
-    while (ps_match_any2(self, ord(TT_LSHIFT), ord(TT_RSHIFT))) {
+    while (ps_match_any(self, ord(TT_LSHIFT), ord(TT_RSHIFT))) {
         let op_tok = ps_last(self);
         let right = ps_parse_add_expr(self)?;
 
@@ -403,7 +403,7 @@ func ps_parse_add_expr(self: ParserState*) -> ExprId? {
     let expr = ps_parse_mul_expr(self)?;
 
     let current = expr;
-    while (ps_match_any2(self, ord(TT_PLUS), ord(TT_MINUS))) {
+    while (ps_match_any(self, ord(TT_PLUS), ord(TT_MINUS))) {
         let op_tok = ps_last(self);
         let right = ps_parse_mul_expr(self)?;
 
@@ -427,7 +427,7 @@ func ps_parse_mul_expr(self: ParserState*) -> ExprId? {
     let expr = ps_parse_unary_expr(self)?;
 
     let current = expr;
-    while (ps_match_any3(self, ord(TT_STAR), ord(TT_SLASH), ord(TT_MODULO))) {
+    while (ps_match_any(self, ord(TT_STAR), ord(TT_SLASH), ord(TT_MODULO))) {
         let op_tok = ps_last(self);
         let right = ps_parse_unary_expr(self)?;
 
@@ -449,35 +449,7 @@ func ps_parse_mul_expr(self: ParserState*) -> ExprId? {
 func ps_parse_unary_expr(self: ParserState*) -> ExprId? {
     let start = ps_span_start(self);
 
-    if (ps_match(self, ord(TT_BANG))) {
-        let op_tok = ps_last(self);
-        let operand = ps_parse_unary_expr(self)?;
-
-        let node = expr_node_create(EX_UNARY, ps_extend_span(self, start));
-        node.text_value = token_to_string(op_tok);
-        node.expr_a = operand;
-        return expr_arena_add(self.expr_arena, node);
-    }
-    if (ps_match(self, ord(TT_MINUS))) {
-        let op_tok = ps_last(self);
-        let operand = ps_parse_unary_expr(self)?;
-
-        let node = expr_node_create(EX_UNARY, ps_extend_span(self, start));
-        node.text_value = token_to_string(op_tok);
-        node.expr_a = operand;
-        return expr_arena_add(self.expr_arena, node);
-    }
-    if (ps_match(self, ord(TT_STAR))) {
-        let op_tok = ps_last(self);
-        let operand = ps_parse_unary_expr(self)?;
-
-        let node = expr_node_create(EX_UNARY, ps_extend_span(self, start));
-        node.text_value = token_to_string(op_tok);
-        node.expr_a = operand;
-        return expr_arena_add(self.expr_arena, node);
-    }
-
-    if (ps_match(self, ord(TT_TILDE))) {
+    if (ps_match_any(self, ord(TT_BANG), ord(TT_MINUS), ord(TT_STAR), ord(TT_TILDE))) {
         let op_tok = ps_last(self);
         let operand = ps_parse_unary_expr(self)?;
 

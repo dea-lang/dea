@@ -179,67 +179,25 @@ func ps_match(self: ParserState*, kind_ord: int) -> bool {
 }
 
 /**
- * Consume the current token if it matches either of two kinds.
+ * Consume the current token if it matches any requested kind.
+ *
+ * The variadic slice is borrowed for this call. Inspect the logical token once;
+ * recovery and deferred diagnostics happen before matching a nonempty list.
  *
  * @param self Parser state to advance.
- * @param k1 First acceptable token kind ordinal.
- * @param k2 Second acceptable token kind ordinal.
+ * @param kinds Acceptable token kind ordinals.
  * @return `true` if one of the requested token kinds was consumed.
  */
-func ps_match_any2(self: ParserState*, k1: int, k2: int) -> bool {
-    if (ps_match(self, k1)) {
-        return true;
+func ps_match_any(self: ParserState*, kinds: int...) -> bool {
+    if (len(kinds) == 0) {
+        return false;
     }
-    if (ps_match(self, k2)) {
-        return true;
-    }
-    return false;
-}
-
-/**
- * Consume the current token if it matches any of three kinds.
- *
- * @param self Parser state to advance.
- * @param k1 First acceptable token kind ordinal.
- * @param k2 Second acceptable token kind ordinal.
- * @param k3 Third acceptable token kind ordinal.
- * @return `true` if one of the requested token kinds was consumed.
- */
-func ps_match_any3(self: ParserState*, k1: int, k2: int, k3: int) -> bool {
-    if (ps_match(self, k1)) {
-        return true;
-    }
-    if (ps_match(self, k2)) {
-        return true;
-    }
-    if (ps_match(self, k3)) {
-        return true;
-    }
-    return false;
-}
-
-/**
- * Consume the current token if it matches any of four kinds.
- *
- * @param self Parser state to advance.
- * @param k1 First acceptable token kind ordinal.
- * @param k2 Second acceptable token kind ordinal.
- * @param k3 Third acceptable token kind ordinal.
- * @param k4 Fourth acceptable token kind ordinal.
- * @return `true` if one of the requested token kinds was consumed.
- */
-func ps_match_any4(self: ParserState*, k1: int, k2: int, k3: int, k4: int) -> bool {
-    if (ps_match(self, k1)) {
-        return true;
-    }
-    if (ps_match(self, k2)) {
-        return true;
-    }
-    if (ps_match(self, k3)) {
-        return true;
-    }
-    if (ps_match(self, k4)) {
-        return true;
+    let current_kind = ord(ps_peek(self).token_type);
+    for (let i = 0; i < len(kinds); i = i + 1) {
+        if (current_kind == kinds[i]) {
+            ps_advance(self);
+            return true;
+        }
     }
     return false;
 }

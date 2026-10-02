@@ -33,8 +33,10 @@ it as `l1c`; `use-dev-stage1` selects the bootstrap compiler. Ordinary builds an
 port reuses common compiler support and native preparation support; the runtime supplies fingerprint bridge symbols.
 
 Stage 2's shared utility/model review uses typed scalar constants, existing unsigned text conversion, and named AST
-constructor fields without changing the pass structure or ownership model. The current tree has 119 production modules
-after removing an unused path-wrapper module. The ledger in
+constructor fields without changing the pass structure or ownership model. The frontend/semantic review adds native
+token matching, guarded constant operations and typed cleanup flow while preserving diagnostic order, owned semantic
+models, interface bytes and fingerprints. The current tree has 119 production modules after removing an unused
+path-wrapper module. The ledger in
 [l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/review.md][native-review] preserves the
 original 120-module inventory, phase assignments, ownership rationale, and validation evidence. Subsystem-specific
 models remain with their frontend, backend, or CLI review phases.

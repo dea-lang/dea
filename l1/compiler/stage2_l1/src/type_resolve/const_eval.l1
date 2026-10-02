@@ -128,23 +128,9 @@ func tr_const_eval_interface_symbol(ctx: ConstEvalContext*, sym: Symbol*, key: s
     return value;
 }
 
-/**
- * Return the Dea 32-bit `int` minimum used by Stage 1 const folding.
- *
- * @return Minimum representable `int` payload.
- */
-func tr_const_int_min_value() -> int {
-    return -2147483648;
-}
-
-/**
- * Return the Dea 32-bit `int` maximum used by Stage 1 const folding.
- *
- * @return Maximum representable `int` payload.
- */
-func tr_const_int_max_value() -> int {
-    return 2147483647;
-}
+/** Signed payload bounds shared with Stage 1 constant folding. */
+const TR_CONST_INT_MIN: int = -2147483648;
+const TR_CONST_INT_MAX: int = 2147483647;
 
 /**
  * Safely negate one const integer payload.
@@ -153,7 +139,7 @@ func tr_const_int_max_value() -> int {
  * @return Negated payload, or `null` on overflow.
  */
 func tr_const_safe_negate(value: int) -> int? {
-    if (value == tr_const_int_min_value()) {
+    if (value == TR_CONST_INT_MIN) {
         return null;
     }
     return -value;
@@ -166,10 +152,7 @@ func tr_const_safe_negate(value: int) -> int? {
  * @return Folded payload.
  */
 func tr_const_safe_bitwise_not(value: int) -> int? {
-    if (value == tr_const_int_max_value()) {
-        return tr_const_int_min_value();
-    }
-    return -(value + 1);
+    return ~value;
 }
 
 /**
@@ -180,8 +163,8 @@ func tr_const_safe_bitwise_not(value: int) -> int? {
  * @return Sum, or `null` on overflow.
  */
 func tr_const_safe_add(lhs: int, rhs: int) -> int? {
-    let max = tr_const_int_max_value();
-    let min = tr_const_int_min_value();
+    let max = TR_CONST_INT_MAX;
+    let min = TR_CONST_INT_MIN;
     if (lhs > 0 && rhs > max - lhs) {
         return null;
     }
@@ -199,8 +182,8 @@ func tr_const_safe_add(lhs: int, rhs: int) -> int? {
  * @return Difference, or `null` on overflow.
  */
 func tr_const_safe_subtract(lhs: int, rhs: int) -> int? {
-    let max = tr_const_int_max_value();
-    let min = tr_const_int_min_value();
+    let max = TR_CONST_INT_MAX;
+    let min = TR_CONST_INT_MIN;
     if (rhs > 0 && lhs < min + rhs) {
         return null;
     }
@@ -221,8 +204,8 @@ func tr_const_safe_multiply(lhs: int, rhs: int) -> int? {
     if (lhs == 0 || rhs == 0) {
         return 0;
     }
-    let max = tr_const_int_max_value();
-    let min = tr_const_int_min_value();
+    let max = TR_CONST_INT_MAX;
+    let min = TR_CONST_INT_MIN;
     if (lhs > 0) {
         if (rhs > 0) {
             if (lhs > max / rhs) return null;
@@ -250,7 +233,7 @@ func tr_const_safe_divide(lhs: int, rhs: int) -> int? {
     if (rhs == 0) {
         return null;
     }
-    if (lhs == tr_const_int_min_value() && rhs == -1) {
+    if (lhs == TR_CONST_INT_MIN && rhs == -1) {
         return null;
     }
     return lhs / rhs;
@@ -267,7 +250,7 @@ func tr_const_safe_modulo(lhs: int, rhs: int) -> int? {
     if (rhs == 0) {
         return null;
     }
-    if (lhs == tr_const_int_min_value() && rhs == -1) {
+    if (lhs == TR_CONST_INT_MIN && rhs == -1) {
         return null;
     }
     return lhs % rhs;
@@ -283,20 +266,14 @@ func tr_const_eval_pow2(shift: int) -> int? {
     if (shift < 0 || shift > 30) {
         return null;
     }
-    let result = 1;
-    for (let i = 0; i < shift; i = i + 1) {
-        let next = tr_const_safe_multiply(result, 2);
-        if (next == null) return null;
-        result = next as int;
-    }
-    return result;
+    return 1 << shift;
 }
 
 /**
  * Safely fold a bitwise operator for non-negative 32-bit `int` payloads.
  *
- * L0 reserves bitwise operators, so the bootstrap evaluator computes these
- * with arithmetic over positive integer payloads.
+ * Native operators preserve the Stage 1 evaluator's non-negative domain.
+ * The zero/zero fallback also preserves its result before operator dispatch.
  *
  * @param op Operator spelling.
  * @param lhs Left integer payload.
@@ -307,43 +284,11 @@ func tr_const_safe_positive_bitwise(op: string, lhs: int, rhs: int) -> int? {
     if (lhs < 0 || rhs < 0) {
         return null;
     }
-    let left = lhs;
-    let right = rhs;
-    let place = 1;
-    let result = 0;
-    while (left > 0 || right > 0) {
-        let left_bit = left % 2;
-        let right_bit = right % 2;
-        let out_bit = 0;
-        if (op == "&") {
-            if (left_bit == 1 && right_bit == 1) {
-                out_bit = 1;
-            }
-        } else if (op == "|") {
-            if (left_bit == 1 || right_bit == 1) {
-                out_bit = 1;
-            }
-        } else if (op == "^") {
-            if (left_bit != right_bit) {
-                out_bit = 1;
-            }
-        } else {
-            return null;
-        }
-        if (out_bit == 1) {
-            let next_result = tr_const_safe_add(result, place);
-            if (next_result == null) return null;
-            result = next_result as int;
-        }
-        left = left / 2;
-        right = right / 2;
-        if (left > 0 || right > 0) {
-            let next_place = tr_const_safe_multiply(place, 2);
-            if (next_place == null) return null;
-            place = next_place as int;
-        }
-    }
-    return result;
+    if (lhs == 0 && rhs == 0) return 0;
+    if (op == "&") return lhs & rhs;
+    if (op == "|") return lhs | rhs;
+    if (op == "^") return lhs ^ rhs;
+    return null;
 }
 
 /**

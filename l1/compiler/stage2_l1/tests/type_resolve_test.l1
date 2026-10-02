@@ -543,10 +543,56 @@ func test_tr_const_eval_interface_string_bytes() {
     }
 }
 
+/** Assert an accepted constant payload without unwrapping a failure. */
+func expect_const_payload(actual: int?, expected: int) {
+    assert(actual != null, "Expected a folded integer payload");
+    assert((actual as int) == expected, "Folded integer payload changed");
+}
+
+/** Check native operations at the existing signed constant-evaluation boundaries. */
+func test_const_bitwise_boundaries() {
+    expect_const_payload(tr_const_safe_bitwise_not(-2147483648), 2147483647);
+    expect_const_payload(tr_const_safe_bitwise_not(2147483647), -2147483648);
+    expect_const_payload(tr_const_safe_bitwise_not(0), -1);
+    expect_const_payload(tr_const_safe_bitwise_not(-1), 0);
+    expect_const_payload(tr_const_safe_positive_bitwise("&", 2147483647, 1073741824), 1073741824);
+    expect_const_payload(tr_const_safe_positive_bitwise("|", 1073741824, 1073741823), 2147483647);
+    expect_const_payload(tr_const_safe_positive_bitwise("^", 2147483647, 1073741824), 1073741823);
+    expect_const_payload(tr_const_safe_positive_bitwise("&", 1431655765, 715827882), 0);
+    expect_const_payload(tr_const_safe_positive_bitwise("|", 1431655765, 715827882), 2147483647);
+    expect_const_payload(tr_const_safe_positive_bitwise("^", 1431655765, 1431655765), 0);
+    expect_const_payload(tr_const_safe_positive_bitwise("?", 0, 0), 0);
+    assert(tr_const_safe_positive_bitwise("?", 1, 0) == null, "Unsupported operator must fail");
+    assert(tr_const_safe_positive_bitwise("&", -1, 0) == null, "Negative left operand must fail");
+    assert(tr_const_safe_positive_bitwise("|", 0, -1) == null, "Negative right operand must fail");
+    assert(tr_const_safe_positive_bitwise("^", -1, -1) == null, "Negative pair must fail");
+    expect_const_payload(tr_const_eval_pow2(0), 1);
+    expect_const_payload(tr_const_eval_pow2(30), 1073741824);
+    assert(tr_const_eval_pow2(-1) == null && tr_const_eval_pow2(31) == null, "Shift-count bounds changed");
+    expect_const_payload(tr_const_safe_shift_left(1, 30), 1073741824);
+    expect_const_payload(tr_const_safe_shift_left(2147483647, 0), 2147483647);
+    expect_const_payload(tr_const_safe_shift_right(2147483647, 30), 1);
+    expect_const_payload(tr_const_safe_shift_right(0, 30), 0);
+    assert(tr_const_safe_shift_left(2, 30) == null, "Left-shift overflow must fail");
+    assert(tr_const_safe_shift_left(0, 31) == null, "Zero does not permit an excessive shift");
+    assert(tr_const_safe_shift_right(0, 31) == null, "Right-shift bound must stay restricted");
+    assert(tr_const_safe_shift_left(-1, 0) == null && tr_const_safe_shift_right(-1, 0) == null,
+        "Negative shift operands must fail");
+    assert(tr_const_safe_negate(-2147483648) == null, "Negation overflow must fail");
+    assert(tr_const_safe_add(2147483647, 1) == null, "Addition overflow must fail");
+    assert(tr_const_safe_subtract(-2147483648, 1) == null, "Subtraction overflow must fail");
+    assert(tr_const_safe_multiply(-2147483648, -1) == null, "Multiplication overflow must fail");
+    assert(tr_const_safe_divide(-2147483648, -1) == null, "Division overflow must fail");
+    assert(tr_const_safe_modulo(-2147483648, -1) == null, "Remainder overflow must fail");
+    expect_const_payload(tr_const_safe_add(-2147483648, 1), -2147483647);
+    expect_const_payload(tr_const_safe_subtract(2147483647, 1), 2147483646);
+}
+
 /**
  * Main entry point for the module.
  */
 func main() {
+    test_const_bitwise_boundaries();
     test_tr_symbol_lookup();
     test_tr_resolve_type_ref();
     test_tr_resolve_ordered_suffix_constructors();

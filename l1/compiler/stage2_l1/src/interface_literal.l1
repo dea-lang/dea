@@ -373,17 +373,6 @@ func il_canonicalize_literal(text: string, owner_module: string) -> string? {
 }
 
 /**
- * Compare two borrowed plain literal strings.
- *
- * @param left First literal string.
- * @param right Second literal string.
- * @return `true` when the strings are byte-for-byte equal.
- */
-func il_plain_equals(left: string, right: string) -> bool {
-    return left == right;
-}
-
-/**
  * Compare one stored literal with its canonical folded spelling.
  *
  * @param text Stored literal spelling to validate.
@@ -395,5 +384,5 @@ func il_literal_is_canonical(text: string, owner_module: string) -> bool {
     if (canonical == null) {
         return false;
     }
-    return il_plain_equals(canonical as string, text);
+    return (canonical as string) == text;
 }

@@ -1,0 +1,26 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module parser_benchmark;
+
+import std.assert;
+import std.io;
+import std.system;
+import std.text;
+import parser;
+
+/** Parse operator-heavy source repeatedly, releasing every result. */
+func main() {
+    let iterations = 2000;
+    if (argc() > 1) iterations = string_to_int(argv(1)) as int;
+    let source = "module bench; func f(a: int, b: int) -> int { let n = a != b >= a >> b - a / b % a; return !- *~a[0] as int | 2 ^ 3 & 4 == 5 < 6 << 1 + 2 * 3; }";
+    let checksum = 0;
+    for (let i = 0; i < iterations; i = i + 1) {
+        let result = parse_module_source(source, "<bench>");
+        assert(!parse_has_errors(result), "Parser benchmark must accept the source");
+        checksum = checksum + 1;
+        parse_result_free(result);
+    }
+    printl_i(checksum);
+}
