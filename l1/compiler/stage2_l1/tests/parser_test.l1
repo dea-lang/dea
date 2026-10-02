@@ -12,6 +12,11 @@ import std.vector;
 
 import ast;
 import parser;
+import parser.cursor;
+import parser.state;
+import lexer;
+import tokens;
+import util.diag;
 import std.text;
 
 /**
@@ -1596,9 +1601,61 @@ func test_single_unterminated_block_reports_par0091_once() {
 }
 
 /**
+ * Exercise variadic cursor matching across deferred lexer errors and backtracking.
+ */
+func test_match_any_cursor_recovery() {
+    let ls = ls_create("@ + -", "<test>");
+    let toks = tokenize(ls) as TokenVector;
+    ls_free(ls);
+    let p = ps_create(toks, "<test>");
+    assert(!ps_match_any(p), "Empty candidate list must not inspect the cursor");
+    assert(p.index == 0 && diag_count(p.diags) == 0, "Empty match must not emit a deferred diagnostic");
+    assert(!ps_match_any(p, ord(TT_STAR), ord(TT_SLASH)), "Nonmatching candidates must fail");
+    assert(diag_count(p.diags) == 1, "Recovery must emit one diagnostic");
+    let recovered_index = p.index;
+    assert(ps_match_any(p, ord(TT_STAR), ord(TT_SLASH), ord(TT_PLUS), ord(TT_PLUS)),
+        "Later candidate must match once");
+    assert(p.index == recovered_index + 1, "Duplicate candidates must not consume twice");
+    p.index = 0;
+    assert(ps_match_any(p, ord(TT_PLUS)), "Backtracking must preserve recovered token");
+    assert(diag_count(p.diags) == 1, "Backtracking must not duplicate lexer diagnostics");
+    assert(ps_match_any(p, ord(TT_MINUS)), "Single candidate must match");
+    assert(ps_check(p, ord(TT_EOF)), "All logical tokens consumed");
+    tv_free(p.tokens);
+    expr_arena_free(p.expr_arena);
+    stmt_arena_free(p.stmt_arena);
+    pattern_arena_free(p.pattern_arena);
+    diag_free(p.diags);
+    ps_destroy(p);
+}
+
+/** Check right-associated unary nesting and the tighter cast/postfix boundary. */
+func test_mixed_unary_shape() {
+    let result = parse_module_source("module main; func main() { return !- *~value[0] as int; }", "<test>");
+    assert(!parse_has_errors(result), "Mixed unary chain should parse");
+    let root = result.root_module as Module*;
+    let decl = (ptr_vec_get(root.decls, 0) as TopLevelDecl*).data as FuncDecl*;
+    let body = stmt_arena_get(result.stmt_arena, decl.body);
+    let ret = stmt_arena_get(result.stmt_arena, id_vec_get(body.ids as VectorBase*, 0));
+    let current = expr_arena_get(result.expr_arena, ret.expr_a);
+    let operators: string[4] = ["!", "-", "*", "~"];
+    for (let i = 0; i < len(operators); i = i + 1) {
+        assert(ord(current.kind) == ord(EX_UNARY) && current.text_value == operators[i],
+            "Unary nesting order changed");
+        current = expr_arena_get(result.expr_arena, current.expr_a);
+    }
+    assert(ord(current.kind) == ord(EX_CAST), "Cast must bind inside unary operators");
+    current = expr_arena_get(result.expr_arena, current.expr_a);
+    assert(ord(current.kind) == ord(EX_INDEX), "Postfix must bind inside cast");
+    parse_result_free(result);
+}
+
+/**
  * Main entry point for the module.
  */
 func main() {
+    test_match_any_cursor_recovery();
+    test_mixed_unary_shape();
     test_parser_message_omits_embedded_code();
     test_array_type_syntax_message();
     test_slice_type_syntax_ok();

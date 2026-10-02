@@ -7,8 +7,10 @@ identity string. Existing source comments describing Stage 1 algorithms retain t
 The current tree contains 119 production modules. The first shared-utility/model tranche uses typed scalar constants,
 unsigned stdlib conversion for canonical bigint decimals, and named fields in the large AST default constructors. It
 removes the unused `util.path` wrappers while retaining growable collections, explicit ownership cleanup, structural
-type comparison, and native filesystem/process bridges. Review findings and validation are recorded in
-[l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/review.md][native-review].
+type comparison, and native filesystem/process bridges. The frontend/semantic review covers 56 modules and adds native
+variadic token matching, guarded bitwise constant folding, typed cleanup flow, and native interface comparisons with a
+constant fingerprint domain. Diagnostic and interface contracts remain unchanged. Review findings and validation are
+recorded in [l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/review.md][native-review].
 
 Run these commands from `l1/`:
 

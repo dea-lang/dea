@@ -1,0 +1,28 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module const_benchmark;
+
+import std.assert;
+import std.io;
+import std.system;
+import std.text;
+import type_resolve.const_eval;
+
+/** Exercise checked constant operations with large non-negative operands. */
+func main() {
+    let iterations = 100000;
+    if (argc() > 1) iterations = string_to_int(argv(1)) as int;
+    let checksum = 0;
+    for (let i = 0; i < iterations; i = i + 1) {
+        assert((tr_const_safe_positive_bitwise("&", 2147483647, 1073741824) as int) == 1073741824, "and");
+        assert((tr_const_safe_positive_bitwise("|", 1073741824, 1073741823) as int) == 2147483647, "or");
+        assert((tr_const_safe_positive_bitwise("^", 2147483647, 1073741824) as int) == 1073741823, "xor");
+        assert((tr_const_safe_shift_left(1, 30) as int) == 1073741824, "left");
+        assert((tr_const_safe_shift_right(2147483647, 30) as int) == 1, "right");
+        assert((tr_const_safe_bitwise_not(2147483647) as int) == -2147483648, "not");
+        checksum = checksum + 1;
+    }
+    printl_i(checksum);
+}

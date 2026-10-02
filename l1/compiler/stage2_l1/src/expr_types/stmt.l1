@@ -1054,18 +1054,18 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                 }
             }
             let body_flow = etc_check_stmt(self, stmt.stmt_a);
-            let inline_override = 0; // 0=none, 1=return, 2=loop control
+            let inline_flow = FLOW_FALLTHROUGH;
             if (stmt.with_items != null && stmt.stmt_b < 0) {
                 let items2 = stmt.with_items as VectorBase*;
                 for (let j = vec_size(items2) - 1; j >= 0; j = j - 1) {
                     let cleanup_item = ptr_vec_get(items2, j) as WithItem*;
                     if (cleanup_item.has_cleanup && cleanup_item.cleanup_stmt >= 0) {
                         let cleanup_flow_item = etc_check_stmt(self, cleanup_item.cleanup_stmt);
-                        if (inline_override == 0) {
+                        if (ord(inline_flow) == ord(FLOW_FALLTHROUGH)) {
                             if (ord(cleanup_flow_item) == ord(FLOW_RETURNS)) {
-                                inline_override = 1;
+                                inline_flow = FLOW_RETURNS;
                             } else if (ord(cleanup_flow_item) == ord(FLOW_STOPS)) {
-                                inline_override = 2;
+                                inline_flow = FLOW_STOPS;
                             }
                         }
                     }
@@ -1088,11 +1088,11 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                 iset_free(node.guarded_decl_ids);
                 drop node;
             }
-            if (ord(cleanup_flow) == ord(FLOW_RETURNS) || inline_override == 1 ||
-                (inline_override == 0 &&
+            if (ord(cleanup_flow) == ord(FLOW_RETURNS) || ord(inline_flow) == ord(FLOW_RETURNS) ||
+                (ord(inline_flow) == ord(FLOW_FALLTHROUGH) &&
                  (header_returns || ord(body_flow) == ord(FLOW_RETURNS)))) {
                 flow = FLOW_RETURNS;
-            } else if (ord(cleanup_flow) == ord(FLOW_STOPS) || inline_override == 2) {
+            } else if (ord(cleanup_flow) == ord(FLOW_STOPS) || ord(inline_flow) == ord(FLOW_STOPS)) {
                 flow = FLOW_STOPS;
             }
         }

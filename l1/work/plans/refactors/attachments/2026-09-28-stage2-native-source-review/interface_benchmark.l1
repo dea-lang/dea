@@ -1,0 +1,45 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module interface_benchmark;
+
+import std.assert;
+import std.io;
+import std.string;
+import std.system;
+import std.text;
+import interface_fingerprint;
+import mi_utils;
+import module_interface;
+import parser.interface;
+import util.diag;
+
+/** Canonicalize a reverse-ordered interface, checking literal spelling and hashing. */
+func main() {
+    let iterations = 500;
+    if (argc() > 1) iterations = string_to_int(argv(1)) as int;
+    let source = "";
+    with (let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "module interface bench;\nfingerprint \"\";\n");
+        for (let i = 99; i >= 0; i = i - 1) {
+            sb_append(sb, "const value_" + int_to_string(i) + ": int = 7;\n");
+        }
+        source = sb_to_string(sb);
+    }
+    let parsed = pi_parse_interface(source, "<bench>");
+    assert(!ipr_has_errors(parsed), "Interface benchmark must parse");
+    let checksum = 0;
+    for (let i = 0; i < iterations; i = i + 1) {
+        with (let diags = diag_create() => diag_free(diags)) {
+            let canonical = ifp_canonicalize(parsed.interface as ModuleInterface*, diags, "<bench>");
+            assert(canonical != null && !diag_has_errors(diags), "Interface benchmark must canonicalize");
+            checksum = checksum + len_s(canonical as string);
+            if (i == iterations - 1) {
+                printl_s(ifp_hash_canonical_bytes(canonical as string));
+            }
+        }
+    }
+    ipr_free(parsed);
+    printl_i(checksum);
+}

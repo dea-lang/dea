@@ -97,6 +97,64 @@ def main() -> int:
                 left, right = invoke(oracle, args), invoke(subject, args)
                 assert left == right, (args, literal, left, right)
                 assert left[0] != 0 and left[2], (args, literal, left)
+    # Phase 2 frontend boundaries: token recovery, operator precedence, checked
+    # constants, cleanup flow, and canonical interface bytes use one source path.
+    with tempfile.TemporaryDirectory(prefix="l1-frontend-parity-") as directory:
+        source = Path(directory) / "phase2_frontend.l1"
+        for expression in (
+            "!- *~value[0] as int", "1 | 2 ^ 3 & 4 == 5 < 6 << 1 + 2 * 3",
+            "a != b >= c >> d - e / f % g", "1 + @ 2", "0x -5", "~@value",
+        ):
+            source.write_text(f"module phase2_frontend; func f() {{ return {expression}; }}\n")
+            for mode in ("--tok", "--ast"):
+                args = [mode, str(source)]
+                left, right = invoke(oracle, args), invoke(subject, args)
+                assert left == right, (expression, args, left, right)
+        for expression, accepted in (
+            ("~2147483647", True), ("~(-2147483648)", True),
+            ("2147483647 & 1073741824", True), ("1073741824 | 1073741823", True),
+            ("2147483647 ^ 1073741824", True), ("1 << 30", True),
+            ("2147483647 >> 30", True), ("0 << 30", True),
+            ("(-1) & 0", False), ("0 | (-1)", False), ("(-1) ^ (-1)", False),
+            ("2 << 30", False), ("0 << 31", False), ("0 >> 31", False),
+            ("1 << (-1)", False), ("(-1) >> 0", False),
+        ):
+            source.write_text(
+                "module phase2_frontend; export *;\n"
+                f"const value: int = {expression};\n"
+            )
+            for mode in ("--check", "--emit-interface"):
+                args = [mode, str(source)]
+                left, right = invoke(oracle, args), invoke(subject, args)
+                assert left == right, (expression, args, left, right)
+                assert (left[0] == 0) == accepted, (expression, left)
+        for first, last, warning in (
+            ("return 1", "break", b"TYP-0030"),
+            ("break", "return 1", b"TYP-0031"),
+            ("return 1", "continue", b"TYP-0030"),
+            ("continue", "return 1", b"TYP-0031"),
+        ):
+            source.write_text(
+                "module phase2_frontend; func f() -> int { while (true) {\n"
+                f"with (let a = 0 => {first}, let b = 0 => {last}) {{}}\n"
+                "return 2; } return 3; }\n"
+            )
+            args = ["--check", str(source)]
+            left, right = invoke(oracle, args), invoke(subject, args)
+            assert left == right, (first, last, left, right)
+            assert left[0] == 0 and warning in left[2], (first, last, left)
+        canonical = None
+        for names in (("z", "aa", "a", "A"), ("A", "a", "aa", "z")):
+            source.write_text(
+                "module phase2_frontend; export *;\n" +
+                "\n".join(f"const {name}: int = 7;" for name in names) + "\n"
+            )
+            args = ["--emit-interface", str(source)]
+            left, right = invoke(oracle, args), invoke(subject, args)
+            assert left == right and left[0] == 0 and left[1], (names, left, right)
+            if canonical is None:
+                canonical = left
+            assert left == canonical, (names, left, canonical)
     print("stage_parity_test: PASS")
     return 0
 

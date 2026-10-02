@@ -123,18 +123,22 @@ an already validated tree.
 - Completion: All 16 modules reviewed (five changed, eleven unchanged); full normal/trace validation, stage parity,
   strict triple bootstrap, and seven-pair performance/allocation evidence passed. The original 120-module inventory is
   preserved; 119 modules remain after removing unused `util.path`. See the review ledger for retained helpers, all 265
-  original function bodies, and exact results. Phases 2 through 5 remain pending.
+  original function bodies, and exact results. Later phase statuses are recorded below.
 - Exit gate: Every Phase 1 module has a completed disposition, and all source-changing tranches satisfy the common
   validation gate with required performance evidence.
 
 ### Phase 2: Frontend and semantic analysis
 
-- Status: Pending
+- Status: Complete
 - Review lexing, parsing, resolution, typing, constant evaluation, imports, interfaces, and diagnostic construction.
 - Prioritize representations, operators, constants, imports, and compatibility helpers while preserving diagnostic
   output and interface contracts.
 - Deliverable: Completed frontend and analysis review entries, justified source changes, and targeted regression
   coverage.
+- Completion: All 56 frontend/analysis modules reviewed (seven changed, 49 unchanged), covering 796 original function
+  bodies and the replacement variadic matcher. Four source-changing tranches passed focused tests, stage parity,
+  relevant traces and strict triple bootstrap. Repeated performance and allocation evidence is recorded in the review
+  ledger. Stage 1 remains unchanged; Phases 3 through 5 remain pending.
 - Exit gate: Every Phase 2 module has a completed disposition, and all source-changing tranches satisfy the common
   validation gate with required performance evidence.
 

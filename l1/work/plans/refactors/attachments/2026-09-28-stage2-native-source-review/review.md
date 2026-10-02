@@ -1,15 +1,15 @@
 # Stage 2 native-source review ledger
 
-- Review date: 2026-09-28
-- Status: Phase 1 complete; Phases 2 through 5 pending
+- Review dates: 2026-09-28 (Phase 1), 2026-10-02 (Phase 2)
+- Status: Phases 1 and 2 complete; Phases 3 through 5 pending
 - Source inventory: 120 original committed production modules; 119 current after removing unused `util.path`
 - Phase assignment: 1 = shared utilities/models; 2 = frontend/analysis; 3 = backend/build; 4 = remaining CLI/entrypoints
 - Parent plan: [l1/work/plans/refactors/2026-09-28-stage2-native-source-review-noref.md][plan]
 
 ## Method and scope
 
-Every Phase 1 function body and its data representation is reviewed with relevant callers, callees, failure paths,
-ownership and cleanup. The function lists below make coverage explicit; boundary notes identify the important
+Every Phase 1 and Phase 2 function body and its data representation is reviewed with relevant callers, callees, failure
+paths, ownership and cleanup. The function lists below make coverage explicit; boundary notes identify the important
 cross-module contracts. Reading a later-phase caller does not complete that module's own review. Review findings are
 recorded before edits; final dispositions require validation of the source-changing tranche.
 
@@ -71,6 +71,15 @@ L0_CC=/usr/bin/clang L1_CC=/usr/bin/clang L1_RUNTIME_CC=/usr/bin/clang \
     test-stage-parity triple-test
 ```
 
+## Phase 2 review
+
+The four frontend/semantic review tranches and their evidence are recorded in
+[l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/phase2-review.md][phase2-review].
+
+All 56 Phase 2 modules are reviewed: seven changed and 49 unchanged. All four tranches passed their functional,
+ownership and bootstrap gates, with performance evidence recorded in that attachment. The 48 modules assigned to Phases
+3 and 4 remain pending; the overall plan stays active.
+
 ## Module inventory
 
 Paths are relative to `l1/compiler/stage2_l1/src/`. Every original committed module has exactly one row. Removed modules
@@ -79,9 +88,9 @@ splits.
 
 | Module path                        | Phase | Disposition         |
 | ---------------------------------- | ----- | ------------------- |
-| `analysis.l1`                      | 2     | Pending             |
+| `analysis.l1`                      | 2     | Reviewed, unchanged |
 | `ast.l1`                           | 1     | Reviewed, changed   |
-| `ast_printer.l1`                   | 2     | Pending             |
+| `ast_printer.l1`                   | 2     | Reviewed, unchanged |
 | `backend.l1`                       | 3     | Pending             |
 | `backend/coerce.l1`                | 3     | Pending             |
 | `backend/expr.l1`                  | 3     | Pending             |
@@ -114,27 +123,27 @@ splits.
 | `compile_driver/toolchain.l1`      | 3     | Pending             |
 | `compile_driver/transaction.l1`    | 3     | Pending             |
 | `compiler_filesystem.l1`           | 1     | Reviewed, changed   |
-| `dea_prelude.l1`                   | 2     | Pending             |
+| `dea_prelude.l1`                   | 2     | Reviewed, unchanged |
 | `diag_print.l1`                    | 1     | Reviewed, unchanged |
-| `driver.l1`                        | 2     | Pending             |
-| `driver/resolve.l1`                | 2     | Pending             |
-| `driver/state.l1`                  | 2     | Pending             |
-| `expr_types.l1`                    | 2     | Pending             |
-| `expr_types/convert.l1`            | 2     | Pending             |
-| `expr_types/expr.l1`               | 2     | Pending             |
-| `expr_types/liveness.l1`           | 2     | Pending             |
-| `expr_types/lookup.l1`             | 2     | Pending             |
-| `expr_types/patterns.l1`           | 2     | Pending             |
-| `expr_types/state.l1`              | 2     | Pending             |
-| `expr_types/stmt.l1`               | 2     | Pending             |
-| `interface_emitter.l1`             | 2     | Pending             |
-| `interface_fingerprint.l1`         | 2     | Pending             |
-| `interface_literal.l1`             | 2     | Pending             |
-| `interface_order.l1`               | 2     | Pending             |
-| `interface_projection.l1`          | 2     | Pending             |
+| `driver.l1`                        | 2     | Reviewed, unchanged |
+| `driver/resolve.l1`                | 2     | Reviewed, unchanged |
+| `driver/state.l1`                  | 2     | Reviewed, unchanged |
+| `expr_types.l1`                    | 2     | Reviewed, unchanged |
+| `expr_types/convert.l1`            | 2     | Reviewed, unchanged |
+| `expr_types/expr.l1`               | 2     | Reviewed, unchanged |
+| `expr_types/liveness.l1`           | 2     | Reviewed, unchanged |
+| `expr_types/lookup.l1`             | 2     | Reviewed, unchanged |
+| `expr_types/patterns.l1`           | 2     | Reviewed, unchanged |
+| `expr_types/state.l1`              | 2     | Reviewed, unchanged |
+| `expr_types/stmt.l1`               | 2     | Reviewed, changed   |
+| `interface_emitter.l1`             | 2     | Reviewed, unchanged |
+| `interface_fingerprint.l1`         | 2     | Reviewed, changed   |
+| `interface_literal.l1`             | 2     | Reviewed, changed   |
+| `interface_order.l1`               | 2     | Reviewed, changed   |
+| `interface_projection.l1`          | 2     | Reviewed, unchanged |
 | `l1c.l1`                           | 4     | Pending             |
 | `l1c_lib.l1`                       | 4     | Pending             |
-| `lexer.l1`                         | 2     | Pending             |
+| `lexer.l1`                         | 2     | Reviewed, unchanged |
 | `link_driver.l1`                   | 3     | Pending             |
 | `link_driver/build.l1`             | 3     | Pending             |
 | `link_driver/inputs.l1`            | 3     | Pending             |
@@ -144,52 +153,52 @@ splits.
 | `link_driver/toolchain.l1`         | 3     | Pending             |
 | `link_driver/transaction.l1`       | 3     | Pending             |
 | `link_driver/workspace.l1`         | 3     | Pending             |
-| `locals.l1`                        | 2     | Pending             |
-| `mi_utils.l1`                      | 2     | Pending             |
+| `locals.l1`                        | 2     | Reviewed, unchanged |
+| `mi_utils.l1`                      | 2     | Reviewed, unchanged |
 | `module_graph.l1`                  | 3     | Pending             |
 | `module_graph/order.l1`            | 3     | Pending             |
-| `module_interface.l1`              | 2     | Pending             |
+| `module_interface.l1`              | 2     | Reviewed, unchanged |
 | `module_lifecycle.l1`              | 3     | Pending             |
-| `name_resolver.l1`                 | 2     | Pending             |
-| `name_resolver/collect.l1`         | 2     | Pending             |
-| `name_resolver/imports.l1`         | 2     | Pending             |
-| `name_resolver/interface.l1`       | 2     | Pending             |
-| `name_resolver/query.l1`           | 2     | Pending             |
-| `name_resolver/state.l1`           | 2     | Pending             |
-| `parser.l1`                        | 2     | Pending             |
-| `parser/cursor.l1`                 | 2     | Pending             |
-| `parser/decl.l1`                   | 2     | Pending             |
-| `parser/expr.l1`                   | 2     | Pending             |
-| `parser/interface.l1`              | 2     | Pending             |
-| `parser/interface/declarations.l1` | 2     | Pending             |
-| `parser/interface/header.l1`       | 2     | Pending             |
-| `parser/interface/normalize.l1`    | 2     | Pending             |
-| `parser/interface/types.l1`        | 2     | Pending             |
-| `parser/state.l1`                  | 2     | Pending             |
-| `parser/stmt.l1`                   | 2     | Pending             |
-| `parser/token_value.l1`            | 2     | Pending             |
-| `parser/type_ref.l1`               | 2     | Pending             |
+| `name_resolver.l1`                 | 2     | Reviewed, unchanged |
+| `name_resolver/collect.l1`         | 2     | Reviewed, unchanged |
+| `name_resolver/imports.l1`         | 2     | Reviewed, unchanged |
+| `name_resolver/interface.l1`       | 2     | Reviewed, unchanged |
+| `name_resolver/query.l1`           | 2     | Reviewed, unchanged |
+| `name_resolver/state.l1`           | 2     | Reviewed, unchanged |
+| `parser.l1`                        | 2     | Reviewed, unchanged |
+| `parser/cursor.l1`                 | 2     | Reviewed, changed   |
+| `parser/decl.l1`                   | 2     | Reviewed, unchanged |
+| `parser/expr.l1`                   | 2     | Reviewed, changed   |
+| `parser/interface.l1`              | 2     | Reviewed, unchanged |
+| `parser/interface/declarations.l1` | 2     | Reviewed, unchanged |
+| `parser/interface/header.l1`       | 2     | Reviewed, unchanged |
+| `parser/interface/normalize.l1`    | 2     | Reviewed, unchanged |
+| `parser/interface/types.l1`        | 2     | Reviewed, unchanged |
+| `parser/state.l1`                  | 2     | Reviewed, unchanged |
+| `parser/stmt.l1`                   | 2     | Reviewed, unchanged |
+| `parser/token_value.l1`            | 2     | Reviewed, unchanged |
+| `parser/type_ref.l1`               | 2     | Reviewed, unchanged |
 | `preparation.l1`                   | 3     | Pending             |
 | `preparation/consumer.l1`          | 3     | Pending             |
 | `preparation/frontend.l1`          | 3     | Pending             |
-| `scope_context.l1`                 | 2     | Pending             |
-| `sem_context.l1`                   | 2     | Pending             |
-| `signatures.l1`                    | 2     | Pending             |
-| `signatures/const_init.l1`         | 2     | Pending             |
-| `signatures/cycles.l1`             | 2     | Pending             |
-| `signatures/declarations.l1`       | 2     | Pending             |
-| `signatures/interface.l1`          | 2     | Pending             |
-| `signatures/tables.l1`             | 2     | Pending             |
-| `signatures/visibility.l1`         | 2     | Pending             |
+| `scope_context.l1`                 | 2     | Reviewed, unchanged |
+| `sem_context.l1`                   | 2     | Reviewed, unchanged |
+| `signatures.l1`                    | 2     | Reviewed, unchanged |
+| `signatures/const_init.l1`         | 2     | Reviewed, unchanged |
+| `signatures/cycles.l1`             | 2     | Reviewed, unchanged |
+| `signatures/declarations.l1`       | 2     | Reviewed, unchanged |
+| `signatures/interface.l1`          | 2     | Reviewed, unchanged |
+| `signatures/tables.l1`             | 2     | Reviewed, unchanged |
+| `signatures/visibility.l1`         | 2     | Reviewed, unchanged |
 | `source_paths.l1`                  | 1     | Reviewed, unchanged |
 | `string_escape.l1`                 | 1     | Reviewed, unchanged |
 | `symbols.l1`                       | 1     | Reviewed, unchanged |
 | `tokens.l1`                        | 1     | Reviewed, unchanged |
-| `type_resolve/const_eval.l1`       | 2     | Pending             |
-| `type_resolve/const_value.l1`      | 2     | Pending             |
-| `type_resolve/lookup.l1`           | 2     | Pending             |
-| `type_resolve/materialize.l1`      | 2     | Pending             |
-| `type_resolve/ref.l1`              | 2     | Pending             |
+| `type_resolve/const_eval.l1`       | 2     | Reviewed, changed   |
+| `type_resolve/const_value.l1`      | 2     | Reviewed, unchanged |
+| `type_resolve/lookup.l1`           | 2     | Reviewed, unchanged |
+| `type_resolve/materialize.l1`      | 2     | Reviewed, unchanged |
+| `type_resolve/ref.l1`              | 2     | Reviewed, unchanged |
 | `types.l1`                         | 1     | Reviewed, unchanged |
 | `util/demangler.l1`                | 1     | Reviewed, unchanged |
 | `util/diag.l1`                     | 1     | Reviewed, unchanged |
@@ -664,8 +673,8 @@ L0_CC=/usr/bin/clang L1_CC=/usr/bin/clang L1_RUNTIME_CC=/usr/bin/clang \
 
 All 16 assigned modules have completed reviews: five changed (including removal of `util.path`) and eleven unchanged.
 All 265 original function bodies are accounted for; the current Phase 1 sources contain 256 after the nine-function
-removal. The other 104 original modules retain Pending dispositions in their assigned later phases. No separately scoped
-compiler defect was discovered. The overall plan stays active with its existing ADR disposition.
+removal. Current later-phase dispositions are recorded in the inventory above. No separately scoped compiler defect was
+discovered. The overall plan stays active with its existing ADR disposition.
 
 The completed `make test-stage2 test-stage2-trace test-stage-parity test-all triple-test` result is reused after
 documentation-only finalization. Production/test input digests and the final diff confirm no intervening relevant
@@ -675,4 +684,5 @@ commit.
 [measurement-runner]: measure.py
 [measurements]: measurements.json
 [numeric-benchmark]: numeric_benchmark.l1
+[phase2-review]: phase2-review.md
 [plan]: ../../2026-09-28-stage2-native-source-review-noref.md

@@ -36,7 +36,7 @@ import types;
 extern func l1c_interface_fingerprint_sip13_hex_bytes(data: byte*, len: int, out_hex: byte*) -> void;
 
 /** Canonical serialization domain. */
-let IFP_DOMAIN: string = "l1-interface-fingerprint-v1\n";
+const IFP_DOMAIN: string = "l1-interface-fingerprint-v1\n";
 
 /**
  * Emit one interface-fingerprint diagnostic.
