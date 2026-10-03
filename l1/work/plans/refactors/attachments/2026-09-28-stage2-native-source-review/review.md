@@ -1,14 +1,14 @@
 # Stage 2 native-source review ledger
 
-- Review dates: 2026-09-28 (Phase 1), 2026-10-02 (Phase 2), 2026-10-03 (Phase 3)
-- Status: Phases 1 through 3 complete; Phases 4 and 5 pending
+- Review dates: 2026-09-28 (Phase 1), 2026-10-02 (Phase 2), 2026-10-03 (Phases 3 and 4)
+- Status: Phases 1 through 4 complete; Phase 5 pending
 - Source inventory: 120 original committed production modules; 119 current after removing unused `util.path`
 - Phase assignment: 1 = shared utilities/models; 2 = frontend/analysis; 3 = backend/build; 4 = remaining CLI/entrypoints
 - Parent plan: [l1/work/plans/refactors/2026-09-28-stage2-native-source-review-noref.md][plan]
 
 ## Method and scope
 
-Every Phase 1 through Phase 3 function body and its data representation is reviewed with relevant callers, callees,
+Every Phase 1 through Phase 4 function body and its data representation is reviewed with relevant callers, callees,
 failure paths, ownership and cleanup. Function lists here and in the phase attachments make coverage explicit; boundary
 notes identify the important cross-module contracts. Reading a later-phase caller does not complete that module's own
 review. Review findings are recorded before edits; final dispositions require validation of the source-changing tranche.
@@ -88,7 +88,16 @@ The backend/build review and its evidence are recorded in
 All 40 Phase 3 modules (631 original function bodies) are reviewed: four changed and 36 unchanged. Both source-changing
 tranches passed focused tests, parity, traces and strict triple bootstrap. Broad local validation and repeated
 performance/allocation evidence passed; the process-status simplification removes two allocations per call. The eight
-Phase 4 modules remain pending, and the overall plan stays active.
+Phase 4 modules are reviewed in the following attachment, and the overall plan stays active.
+
+## Phase 4 review
+
+The CLI/entrypoint review and cross-phase coverage audit are recorded in
+[l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/phase4-review.md][phase4-review]. It covers
+71 original function bodies in eight modules and four filesystem snapshot helpers added after Phase 1. The current tree
+has 1,749 production function bodies, all named in the review records. Six modules changed (three implementation changes
+and three comment-only changes); two remain unchanged. Focused tests, stage parity, zero-leak traces, strict triple
+bootstrap, and repeated C-generation measurements passed. No inventory rows remain Pending. Phase 5 remains pending.
 
 ## Module inventory
 
@@ -111,7 +120,7 @@ splits.
 | `backend/stmt.l1`                  | 3     | Reviewed, unchanged |
 | `backend/types.l1`                 | 3     | Reviewed, unchanged |
 | `build_driver.l1`                  | 3     | Reviewed, unchanged |
-| `build_info.l1`                    | 4     | Pending             |
+| `build_info.l1`                    | 4     | Reviewed, changed   |
 | `builtin_types.l1`                 | 1     | Reviewed, unchanged |
 | `c_emitter/abi.l1`                 | 3     | Reviewed, unchanged |
 | `c_emitter/declarations.l1`        | 3     | Reviewed, unchanged |
@@ -122,11 +131,11 @@ splits.
 | `c_emitter/type_names.l1`          | 3     | Reviewed, unchanged |
 | `c_emitter/types.l1`               | 3     | Reviewed, unchanged |
 | `c_emitter/wrappers.l1`            | 3     | Reviewed, unchanged |
-| `cli_args.l1`                      | 4     | Pending             |
-| `cli_args/help.l1`                 | 4     | Pending             |
-| `cli_args/link.l1`                 | 4     | Pending             |
-| `cli_args/model.l1`                | 4     | Pending             |
-| `cli_args/parse.l1`                | 4     | Pending             |
+| `cli_args.l1`                      | 4     | Reviewed, changed   |
+| `cli_args/help.l1`                 | 4     | Reviewed, changed   |
+| `cli_args/link.l1`                 | 4     | Reviewed, unchanged |
+| `cli_args/model.l1`                | 4     | Reviewed, changed   |
+| `cli_args/parse.l1`                | 4     | Reviewed, unchanged |
 | `codegen_options.l1`               | 3     | Reviewed, unchanged |
 | `compile_driver.l1`                | 3     | Reviewed, unchanged |
 | `compile_driver/compile.l1`        | 3     | Reviewed, unchanged |
@@ -151,8 +160,8 @@ splits.
 | `interface_literal.l1`             | 2     | Reviewed, changed   |
 | `interface_order.l1`               | 2     | Reviewed, changed   |
 | `interface_projection.l1`          | 2     | Reviewed, unchanged |
-| `l1c.l1`                           | 4     | Pending             |
-| `l1c_lib.l1`                       | 4     | Pending             |
+| `l1c.l1`                           | 4     | Reviewed, changed   |
+| `l1c_lib.l1`                       | 4     | Reviewed, changed   |
 | `lexer.l1`                         | 2     | Reviewed, unchanged |
 | `link_driver.l1`                   | 3     | Reviewed, unchanged |
 | `link_driver/build.l1`             | 3     | Reviewed, unchanged |
@@ -288,6 +297,10 @@ splits.
   `cfs_workspace_free`, `cfs_workspace_child`, `cfs_workspace_register_file`, `cfs_workspace_register_directory`,
   `cfs_workspace_create_for_identity`, `cfs_workspace_create`, `cfs_workspace_cleanup`, `cfs_apply_cleanup_status`,
   `cfs_run_process`.
+
+- Subsequent coverage: The October 3 shared temporary-trust diagnostic fix replaces repeated trusted-parent resolution
+  with one native snapshot. Phase 4 reviews its four added helpers and the updated resolver/workspace callers; see
+  [l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/phase4-review.md][phase4-review].
 
 - Validation references: `compiler_filesystem_test`, shared filesystem-support integration tests, and build/driver
   integration; normal/trace and aggregate results are recorded under
@@ -696,4 +709,5 @@ commit.
 [numeric-benchmark]: numeric_benchmark.l1
 [phase2-review]: phase2-review.md
 [phase3-review]: phase3-review.md
+[phase4-review]: phase4-review.md
 [plan]: ../../2026-09-28-stage2-native-source-review-noref.md

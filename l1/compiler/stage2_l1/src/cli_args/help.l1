@@ -45,7 +45,7 @@ func cli_print_blank_line(to_stderr: bool) {
 }
 
 /**
- * Print the short Stage 1 usage banner.
+ * Print the short Stage 2 usage banner.
  *
  * @param to_stderr Whether the banner should be written to standard error.
  */
@@ -70,7 +70,7 @@ func cli_print_usage(to_stderr: bool) {
 }
 
 /**
- * Print the full Stage 1 help text.
+ * Print the full Stage 2 help text.
  */
 func cli_print_help() {
     cli_print_usage(false);

@@ -1626,10 +1626,45 @@ func test_no_managed_stdlib_scope() {
     }
 }
 
-/**
- * Main entry point for the module.
- */
+/** Verify short-circuit precedence and logging state after options are released. */
+func test_parse_result_ownership_and_precedence() {
+    with (let argv = sv_create(6) => sv_free(argv)) {
+        sv_push(argv, "--version");
+        sv_push(argv, "--unknown");
+        sv_push(argv, "-vvv");
+        sv_push(argv, "-Vl");
+        sv_push(argv, "--help");
+        let parsed = cli_parse(argv);
+        assert(parsed.help_requested && !parsed.version_requested, "help must precede version and validation");
+        assert(parsed.options == null && diag_count(parsed.diags) == 0, "help must release options without errors");
+        assert(parsed.verbosity == 0 && !parsed.rich_log, "help must bypass logging option parsing");
+        cli_parse_result_free(parsed);
+    }
+
+    with (let argv = sv_create(4) => sv_free(argv)) {
+        sv_push(argv, "-vvv");
+        sv_push(argv, "-Vl");
+        sv_push(argv, "--output");
+        let parsed = cli_parse(argv);
+        assert(parsed.options == null, "missing value must release options");
+        assert(!parsed.help_requested && !parsed.version_requested, "error must not request help or version");
+        assert(parsed.verbosity == 3 && parsed.rich_log, "error must preserve parsed logging state");
+        assert(diag_count(parsed.diags) == 1, "missing value must suppress target validation");
+        assert(diag_get(parsed.diags, 0).code == "L1C-2003", "missing-value diagnostic must survive cleanup");
+        cli_parse_result_free(parsed);
+
+        sv_push(argv, "result");
+        let invalid = cli_parse(argv);
+        assert(invalid.options == null, "missing target must release options");
+        assert(invalid.verbosity == 3 && invalid.rich_log, "final validation must preserve logging state");
+        assert(cli_result_has_code(invalid, "L1C-2021"), "expected missing target after consuming output value");
+        cli_parse_result_free(invalid);
+    }
+}
+
+/** Run the CLI parser regressions. */
 func main() {
+    test_parse_result_ownership_and_precedence();
     test_default_mode_build();
     test_no_managed_stdlib_scope();
     test_run_accepts_program_args_after_separator();

@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-09-30
+Version: 2026-10-03
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -38,8 +38,10 @@ token matching, guarded constant operations and typed cleanup flow while preserv
 models, interface bytes and fingerprints. The current tree has 119 production modules after removing an unused
 path-wrapper module. The ledger in
 [l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/review.md][native-review] preserves the
-original 120-module inventory, phase assignments, ownership rationale, and validation evidence. Subsystem-specific
-models remain with their frontend, backend, or CLI review phases.
+original 120-module inventory, phase assignments, ownership rationale, and validation evidence. Backend/build modules
+use native byte arithmetic and scalar process-status storage. CLI option defaults and parse results use named fields
+while retaining ordered validation and explicit ownership transfer. The audit records retained compatibility helpers and
+the temporary-parent snapshot bridge added during the review.
 
 `make test` is the fast development gate: selected Stage 1 and Stage 2 smoke tests, parity, examples, Stage 2 tooling,
 and Docker/Wine runner regressions. `make test-extended` runs the Stage 1 and Stage 2 normal suites with CI-only cases

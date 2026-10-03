@@ -1,0 +1,377 @@
+{
+  "toolchain": "x86_64-linux-gnu-gcc-14 (Debian 14.2.0-19) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+  "samples": 7,
+  "warmups": 1,
+  "reverse_pairs": false,
+  "iterations": 10000,
+  "commands": [
+    [
+      "/tmp/dea-phase4-review/l1c-stage2-baseline.native",
+      "--gen",
+      "--project-root",
+      "/workspace/dea/l1/compiler/stage2_l1/src",
+      "l1c"
+    ],
+    [
+      "/tmp/dea-phase4-review/l1c-stage2-candidate.native",
+      "--gen",
+      "--project-root",
+      "/workspace/dea/l1/compiler/stage2_l1/src",
+      "l1c"
+    ],
+    [
+      "/tmp/dea-phase4-review/l1c-stage2-candidate.native",
+      "--gen",
+      "--project-root",
+      "/workspace/dea/l1/compiler/stage2_l1/src",
+      "l1c"
+    ],
+    [
+      "/tmp/dea-phase4-review/l1c-stage2-baseline.native",
+      "--gen",
+      "--project-root",
+      "/workspace/dea/l1/compiler/stage2_l1/src",
+      "l1c"
+    ],
+    [
+      "/tmp/dea-phase4-review/l1c-stage2-baseline.native",
+      "--gen",
+      "--project-root",
+      "/workspace/dea/l1/compiler/stage2_l1/src",
+      "l1c"
+    ],
+    [
+      "/tmp/dea-phase4-review/l1c-stage2-candidate.native",
+      "--gen",
+      "--project-root",
+      "/workspace/dea/l1/compiler/stage2_l1/src",
+      "l1c"
+    ],
+    [
+      "/tmp/dea-phase4-review/l1c-stage2-candidate.native",
+      "--gen",
+      "--project-root",
+      "/workspace/dea/l1/compiler/stage2_l1/src",
+      "l1c"
+    ],
+    [
+      "/tmp/dea-phase4-review/l1c-stage2-baseline.native",
+      "--gen",
+      "--project-root",
+      "/workspace/dea/l1/compiler/stage2_l1/src",
+      "l1c"
+    ],
+    [
+      "/tmp/dea-phase4-review/l1c-stage2-baseline.native",
+      "--gen",
+      "--project-root",
+      "/workspace/dea/l1/compiler/stage2_l1/src",
+      "l1c"
+    ],
+    [
+      "/tmp/dea-phase4-review/l1c-stage2-candidate.native",
+      "--gen",
+      "--project-root",
+      "/workspace/dea/l1/compiler/stage2_l1/src",
+      "l1c"
+    ],
+    [
+      "/tmp/dea-phase4-review/l1c-stage2-candidate.native",
+      "--gen",
+      "--project-root",
+      "/workspace/dea/l1/compiler/stage2_l1/src",
+      "l1c"
+    ],
+    [
+      "/tmp/dea-phase4-review/l1c-stage2-baseline.native",
+      "--gen",
+      "--project-root",
+      "/workspace/dea/l1/compiler/stage2_l1/src",
+      "l1c"
+    ],
+    [
+      "/tmp/dea-phase4-review/l1c-stage2-baseline.native",
+      "--gen",
+      "--project-root",
+      "/workspace/dea/l1/compiler/stage2_l1/src",
+      "l1c"
+    ],
+    [
+      "/tmp/dea-phase4-review/l1c-stage2-candidate.native",
+      "--gen",
+      "--project-root",
+      "/workspace/dea/l1/compiler/stage2_l1/src",
+      "l1c"
+    ],
+    [
+      "/tmp/dea-phase4-review/l1c-stage2-candidate.native",
+      "--gen",
+      "--project-root",
+      "/workspace/dea/l1/compiler/stage2_l1/src",
+      "l1c"
+    ],
+    [
+      "/tmp/dea-phase4-review/l1c-stage2-baseline.native",
+      "--gen",
+      "--project-root",
+      "/workspace/dea/l1/compiler/stage2_l1/src",
+      "l1c"
+    ]
+  ],
+  "builds": {},
+  "workloads": {
+    "compiler_gen": {
+      "baseline": {
+        "seconds": [
+          25.65583737499992,
+          24.55941059099996,
+          25.974597324000115,
+          23.42956984700004,
+          26.031082212,
+          23.682255932000317,
+          22.338617387999875
+        ],
+        "median": 24.55941059099996,
+        "min": 22.338617387999875,
+        "max": 26.031082212
+      },
+      "candidate": {
+        "seconds": [
+          23.159969749000084,
+          25.469562261999727,
+          24.501884811999844,
+          25.713136518999818,
+          23.62580089899984,
+          32.69446305600013,
+          23.202535318000173
+        ],
+        "median": 24.501884811999844,
+        "min": 23.159969749000084,
+        "max": 32.69446305600013
+      },
+      "paired_change_percent": [
+        -9.728264135443531,
+        3.705918216674542,
+        -5.669818452351938,
+        9.746515565210734,
+        -9.240035790334355,
+        38.05468174094933,
+        3.867374220144826
+      ],
+      "median_paired_change_percent": 3.705918216674542,
+      "median_change_percent": -0.23423110577904804
+    }
+  },
+  "trace_events": {},
+  "compiler_bytes": {
+    "baseline": 5041680,
+    "candidate": 5041304
+  },
+  "measurement_scope": "compiler_gen only; iterations is unused without a harness",
+  "constructor_c_comparison": {
+    "cli_args.model": {
+      "identical_c": true,
+      "bytes": [
+        33542,
+        33542
+      ]
+    },
+    "cli_args": {
+      "identical_c": true,
+      "bytes": [
+        196597,
+        196597
+      ]
+    }
+  },
+  "confirmation": {
+    "toolchain": "x86_64-linux-gnu-gcc-14 (Debian 14.2.0-19) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+    "samples": 7,
+    "warmups": 1,
+    "reverse_pairs": true,
+    "iterations": 10000,
+    "commands": [
+      [
+        "/tmp/dea-phase4-review/l1c-stage2-candidate.native",
+        "--gen",
+        "--project-root",
+        "/workspace/dea/l1/compiler/stage2_l1/src",
+        "l1c"
+      ],
+      [
+        "/tmp/dea-phase4-review/l1c-stage2-baseline.native",
+        "--gen",
+        "--project-root",
+        "/workspace/dea/l1/compiler/stage2_l1/src",
+        "l1c"
+      ],
+      [
+        "/tmp/dea-phase4-review/l1c-stage2-baseline.native",
+        "--gen",
+        "--project-root",
+        "/workspace/dea/l1/compiler/stage2_l1/src",
+        "l1c"
+      ],
+      [
+        "/tmp/dea-phase4-review/l1c-stage2-candidate.native",
+        "--gen",
+        "--project-root",
+        "/workspace/dea/l1/compiler/stage2_l1/src",
+        "l1c"
+      ],
+      [
+        "/tmp/dea-phase4-review/l1c-stage2-candidate.native",
+        "--gen",
+        "--project-root",
+        "/workspace/dea/l1/compiler/stage2_l1/src",
+        "l1c"
+      ],
+      [
+        "/tmp/dea-phase4-review/l1c-stage2-baseline.native",
+        "--gen",
+        "--project-root",
+        "/workspace/dea/l1/compiler/stage2_l1/src",
+        "l1c"
+      ],
+      [
+        "/tmp/dea-phase4-review/l1c-stage2-baseline.native",
+        "--gen",
+        "--project-root",
+        "/workspace/dea/l1/compiler/stage2_l1/src",
+        "l1c"
+      ],
+      [
+        "/tmp/dea-phase4-review/l1c-stage2-candidate.native",
+        "--gen",
+        "--project-root",
+        "/workspace/dea/l1/compiler/stage2_l1/src",
+        "l1c"
+      ],
+      [
+        "/tmp/dea-phase4-review/l1c-stage2-candidate.native",
+        "--gen",
+        "--project-root",
+        "/workspace/dea/l1/compiler/stage2_l1/src",
+        "l1c"
+      ],
+      [
+        "/tmp/dea-phase4-review/l1c-stage2-baseline.native",
+        "--gen",
+        "--project-root",
+        "/workspace/dea/l1/compiler/stage2_l1/src",
+        "l1c"
+      ],
+      [
+        "/tmp/dea-phase4-review/l1c-stage2-baseline.native",
+        "--gen",
+        "--project-root",
+        "/workspace/dea/l1/compiler/stage2_l1/src",
+        "l1c"
+      ],
+      [
+        "/tmp/dea-phase4-review/l1c-stage2-candidate.native",
+        "--gen",
+        "--project-root",
+        "/workspace/dea/l1/compiler/stage2_l1/src",
+        "l1c"
+      ],
+      [
+        "/tmp/dea-phase4-review/l1c-stage2-candidate.native",
+        "--gen",
+        "--project-root",
+        "/workspace/dea/l1/compiler/stage2_l1/src",
+        "l1c"
+      ],
+      [
+        "/tmp/dea-phase4-review/l1c-stage2-baseline.native",
+        "--gen",
+        "--project-root",
+        "/workspace/dea/l1/compiler/stage2_l1/src",
+        "l1c"
+      ],
+      [
+        "/tmp/dea-phase4-review/l1c-stage2-baseline.native",
+        "--gen",
+        "--project-root",
+        "/workspace/dea/l1/compiler/stage2_l1/src",
+        "l1c"
+      ],
+      [
+        "/tmp/dea-phase4-review/l1c-stage2-candidate.native",
+        "--gen",
+        "--project-root",
+        "/workspace/dea/l1/compiler/stage2_l1/src",
+        "l1c"
+      ]
+    ],
+    "builds": {},
+    "workloads": {
+      "compiler_gen": {
+        "baseline": {
+          "seconds": [
+            33.42386696599988,
+            38.94080645000031,
+            29.291034312000193,
+            29.267204141000093,
+            26.2711485599998,
+            32.03345603400021,
+            47.16277571699993
+          ],
+          "median": 32.03345603400021,
+          "min": 26.2711485599998,
+          "max": 47.16277571699993
+        },
+        "candidate": {
+          "seconds": [
+            36.12623440900006,
+            33.661570743000084,
+            34.558632577000026,
+            29.46752785999979,
+            28.165018601000156,
+            32.6474548049996,
+            45.324547158000314
+          ],
+          "median": 33.661570743000084,
+          "min": 28.165018601000156,
+          "max": 45.324547158000314
+        },
+        "paired_change_percent": [
+          8.085143007986307,
+          -13.557078520648314,
+          17.98365400446702,
+          0.6844648297616773,
+          7.2089350668281815,
+          1.916742203362909,
+          -3.897625894688428
+        ],
+        "median_paired_change_percent": 1.916742203362909,
+        "median_change_percent": 5.082544659782573
+      }
+    },
+    "trace_events": {},
+    "compiler_bytes": {
+      "baseline": 5041680,
+      "candidate": 5041304
+    }
+  },
+  "combined": {
+    "paired_change_percent": [
+      -9.728264135443531,
+      3.705918216674542,
+      -5.669818452351938,
+      9.746515565210734,
+      -9.240035790334355,
+      38.05468174094933,
+      3.867374220144826,
+      8.085143007986307,
+      -13.557078520648314,
+      17.98365400446702,
+      0.6844648297616773,
+      7.2089350668281815,
+      1.916742203362909,
+      -3.897625894688428
+    ],
+    "median_paired_change_percent": 2.8113302100187254,
+    "note": "Compare matched pairs: absolute times drift between series, so pooled unpaired medians are not a throughput estimate."
+  }
+}

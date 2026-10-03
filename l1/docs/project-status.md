@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-09-30
+Version: 2026-10-03
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -352,8 +352,8 @@ bootstrap path:
 These remain true today:
 
 1. The Stage 2 port and supported-host validation are complete. Its native-source review remains active, with Phases 1
-   and 2 complete (16 shared utility/model modules and 56 frontend/analysis modules) and Phases 3 through 5 pending;
-   Stage 1 is still the semantic and diagnostic oracle.
+   through 4 complete and all 119 current production modules reviewed. Phase 5 consolidated validation and closure
+   remain pending; Stage 1 is still the semantic and diagnostic oracle.
 2. Standalone linking consumes explicit object paths plus derived sibling interfaces; it does not discover implicit Dea
    objects, compile sources, or infer external-library dependencies from modules or manifests.
 3. Fixed-size arrays `T[N]` and escape-restricted non-owning slices `T[]` are implemented; owning dynamic buffers,

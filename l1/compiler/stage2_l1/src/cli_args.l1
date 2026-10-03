@@ -40,12 +40,12 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
             opts = null;
 
             let help_result = new CliParseResult(
-                null,
-                diags as DiagCollector*,
-                true,
-                false,
-                parsed_verbosity,
-                parsed_log
+                options: null,
+                diags: diags as DiagCollector*,
+                help_requested: true,
+                version_requested: false,
+                verbosity: parsed_verbosity,
+                rich_log: parsed_log
             );
             diags = null;
             return help_result;
@@ -58,12 +58,12 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
             opts = null;
 
             let version_result = new CliParseResult(
-                null,
-                diags as DiagCollector*,
-                false,
-                true,
-                parsed_verbosity2,
-                parsed_log2
+                options: null,
+                diags: diags as DiagCollector*,
+                help_requested: false,
+                version_requested: true,
+                verbosity: parsed_verbosity2,
+                rich_log: parsed_log2
             );
             diags = null;
             return version_result;
@@ -692,12 +692,12 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
             opts = null;
 
             let missing_value_result = new CliParseResult(
-                null,
-                diags as DiagCollector*,
-                false,
-                false,
-                missing_value_verbosity,
-                missing_value_log
+                options: null,
+                diags: diags as DiagCollector*,
+                help_requested: false,
+                version_requested: false,
+                verbosity: missing_value_verbosity,
+                rich_log: missing_value_log
             );
             diags = null;
             return missing_value_result;
@@ -779,12 +779,12 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
         }
 
         let result = new CliParseResult(
-            opts,
-            diags as DiagCollector*,
-            false,
-            false,
-            parsed_verbosity3,
-            parsed_log3
+            options: opts,
+            diags: diags as DiagCollector*,
+            help_requested: false,
+            version_requested: false,
+            verbosity: parsed_verbosity3,
+            rich_log: parsed_log3
         );
         diags = null;
         opts = null;
