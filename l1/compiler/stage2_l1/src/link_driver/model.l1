@@ -13,13 +13,20 @@ import cli_args.model;
 import mi_utils;
 import module_interface;
 
+/** State of one input in the dependency-first lifecycle walk. */
+enum LinkVisitState {
+    LVS_UNVISITED;
+    LVS_VISITING;
+    LVS_COMPLETE;
+}
+
 /** One typed standalone-link input with optional verified Dea authority. */
 struct LinkInput {
     kind: LinkOperandKind;
     value: string;
     interface_path: string?;
     interface: ModuleInterface*?;
-    visit_state: int;
+    visit_state: LinkVisitState;
     discovered: bool;
 }
 
@@ -81,7 +88,7 @@ func ld_input_create(
     interface_path: string?,
     interface: ModuleInterface*?
 ) -> LinkInput* {
-    return new LinkInput(kind, value, interface_path, interface, 0, false);
+    return new LinkInput(kind, value, interface_path, interface, LVS_UNVISITED, false);
 }
 
 /** Create one opaque foreign input. */

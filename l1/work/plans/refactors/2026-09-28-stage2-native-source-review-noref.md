@@ -138,19 +138,22 @@ an already validated tree.
 - Completion: All 56 frontend/analysis modules reviewed (seven changed, 49 unchanged), covering 796 original function
   bodies and the replacement variadic matcher. Four source-changing tranches passed focused tests, stage parity,
   relevant traces and strict triple bootstrap. Repeated performance and allocation evidence is recorded in the review
-  ledger. Stage 1 remains unchanged; Phases 3 through 5 remain pending.
+  ledger. Stage 1 remains unchanged; later phase statuses are recorded below.
 - Exit gate: Every Phase 2 module has a completed disposition, and all source-changing tranches satisfy the common
   validation gate with required performance evidence.
 
 ### Phase 3: Backend and build orchestration
 
-- Status: Pending
+- Status: Complete
 - Review lowering, C emission, lifecycle planning, artifact management, native invocation, preparation integration, and
   linking.
 - Prioritize ownership and unsafe boundaries, value widths, dispatch, and compatibility scaffolding without reopening
   preparation or separate-compilation architecture.
 - Deliverable: Completed backend/orchestration review entries, justified source changes, and targeted regression
   coverage.
+- Completion: All 40 modules reviewed (four changed, 36 unchanged), covering 631 original function bodies. Both
+  source-changing tranches passed focused tests, stage parity, relevant traces and strict triple bootstrap. Broad local
+  validation and repeated performance/allocation evidence passed; see the review ledger. Phases 4 and 5 remain pending.
 - Exit gate: Every Phase 3 module has a completed disposition, and all source-changing tranches satisfy the common
   validation gate with required performance evidence.
 

@@ -1,0 +1,56 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module link_benchmark;
+
+import std.assert;
+import std.hashmap;
+import std.io;
+import std.system;
+import std.text;
+import std.vector;
+import cli_args.model;
+import link_driver.model;
+import link_driver.plan;
+import link_driver.workspace;
+import module_interface;
+import util.diag;
+import util.log;
+
+/** Exercise a deep lifecycle walk and scoped process-status failure cleanup. */
+func main() {
+    let iterations = 1000;
+    if (argc() > 1) iterations = string_to_int(argv(1)) as int;
+    with (let diags = diag_create() => diag_free(diags),
+          let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+          let args = sv_create(0) => sv_free(args)) {
+        assert(ld_run_built_program("dea-missing-phase3-executable/no-program", args, cfg, diags) == 1,
+            "launch failure");
+        assert(diag_count(diags) == 1 && diag_get(diags, 0).code == "L1C-2133", "launch diagnostic");
+        for (let iteration = 0; iteration < iterations; iteration = iteration + 1) {
+            with (let plan = new LinkPlan(ld_ptr_vec_create(100), spm_create(), sv_create(100), "m0") =>
+                      ld_plan_free(plan)) {
+                for (let i = 0; i < 100; i = i + 1) {
+                    let name = "m" + int_to_string(i);
+                    let interface = new ModuleInterface(name, "", i == 0,
+                        ld_ptr_vec_create(1), ld_ptr_vec_create(0), ld_ptr_vec_create(0),
+                        ld_ptr_vec_create(0), ld_ptr_vec_create(0), ld_ptr_vec_create(0),
+                        ld_ptr_vec_create(0), ld_ptr_vec_create(0));
+                    if (i < 99) {
+                        ld_ptr_vec_push(interface.module_imports,
+                            new InterfaceModuleImport("m" + int_to_string(i + 1), "") as void*);
+                    }
+                    let input = ld_input_create(LOK_DEA_OBJECT, name + ".o", name + ".l1m", interface);
+                    ld_ptr_vec_push(plan.inputs, input as void*);
+                    spm_put(plan.modules_by_name, name, input as void*);
+                }
+                assert(ld_compute_lifecycle_order(plan, diags), "lifecycle order");
+                assert(sv_size(plan.lifecycle_order) == 100 &&
+                    sv_get(plan.lifecycle_order, 0) == "m99" &&
+                    sv_get(plan.lifecycle_order, 99) == "m0", "dependency-first order");
+            }
+        }
+    }
+    printl_i(iterations);
+}

@@ -256,12 +256,12 @@ func ld_visit_module(
     stack: StringVector*,
     diags: DiagCollector*
 ) -> bool {
-    if (input.visit_state == 2) {
+    if (ord(input.visit_state) == ord(LVS_COMPLETE)) {
         return true;
     }
 
     let interface = ld_input_interface(input);
-    if (input.visit_state == 1) {
+    if (ord(input.visit_state) == ord(LVS_VISITING)) {
         ld_error(
             diags,
             "L1C-2103",
@@ -274,7 +274,7 @@ func ld_visit_module(
 
     with (let frames = ld_ptr_vec_create(8) =>
               ld_visit_frames_free(frames)) {
-        input.visit_state = 1;
+        input.visit_state = LVS_VISITING;
         sv_push(stack, interface.module_name);
         ld_ptr_vec_push(
             frames, new LinkVisitFrame(input, 0) as void*);
@@ -297,11 +297,11 @@ func ld_visit_module(
                 ) as LinkInput*;
                 frame.next_import = frame.next_import + 1;
 
-                if (provider.visit_state == 2) {
+                if (ord(provider.visit_state) == ord(LVS_COMPLETE)) {
                     continue;
                 }
                 let provider_interface = ld_input_interface(provider);
-                if (provider.visit_state == 1) {
+                if (ord(provider.visit_state) == ord(LVS_VISITING)) {
                     ld_error(
                         diags,
                         "L1C-2103",
@@ -313,7 +313,7 @@ func ld_visit_module(
                     return false;
                 }
 
-                provider.visit_state = 1;
+                provider.visit_state = LVS_VISITING;
                 sv_push(stack, provider_interface.module_name);
                 ld_ptr_vec_push(
                     frames, new LinkVisitFrame(provider, 0) as void*);
@@ -321,7 +321,7 @@ func ld_visit_module(
             }
 
             ld_string_vector_pop(stack);
-            frame.input.visit_state = 2;
+            frame.input.visit_state = LVS_COMPLETE;
             sv_push(
                 plan.lifecycle_order,
                 frame_interface.module_name
@@ -346,7 +346,7 @@ func ld_compute_lifecycle_order(plan: LinkPlan*, diags: DiagCollector*) -> bool 
             let input = ld_plan_input_get(plan, i);
             if (ord(input.kind) == ord(LOK_DEA_OBJECT) &&
                 !input.discovered &&
-                input.visit_state == 0 &&
+                ord(input.visit_state) == ord(LVS_UNVISITED) &&
                 !ld_visit_module(plan, input, stack, diags)) {
                 return false;
             }
