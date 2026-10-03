@@ -372,6 +372,337 @@ int main(int argc, char **argv) {
 '''
 
 
+
+def test_portable_snapshot(compiler: str, temp_dir: Path) -> None:
+    """Check real paths, bounded fields, and snapshot lifetime on every host.
+
+    Args:
+        compiler: Selected host C compiler executable.
+        temp_dir: Owned directory for the harness and its fixtures.
+
+    Raises:
+        AssertionError: If compilation or the snapshot contract fails.
+    """
+    directory = temp_dir / "snapshot-parent"
+    directory.mkdir()
+    regular = temp_dir / "snapshot-file"
+    regular.write_bytes(b"marker")
+    source = temp_dir / "portable_snapshot.c"
+    source.write_text(r'''#define _XOPEN_SOURCE 700
+#define _POSIX_C_SOURCE 200809L
+#include <assert.h>
+#include "SUPPORT_PATH"
+static void check_field(uint8_t *report, int field, const char *expected) {
+    uint8_t bytes[4096];
+    int32_t length = l0c_fs_temp_parent_field(report, field, NULL, 0);
+    assert(length == (int32_t)strlen(expected));
+    assert(length < (int32_t)sizeof(bytes));
+    memset(bytes, 0x5a, sizeof(bytes));
+    if (length > 0) {
+        assert(l0c_fs_temp_parent_field(report, field, bytes, length - 1) == length);
+        assert(bytes[0] == 0x5a);
+    }
+    assert(l0c_fs_temp_parent_field(report, field, bytes, length) == length);
+    assert(memcmp(bytes, expected, (size_t)length) == 0);
+    assert(bytes[length] == 0x5a);
+    assert(l0c_fs_temp_parent_field(report, field, NULL, 1) == -1);
+    assert(l0c_fs_temp_parent_field(report, field, bytes, -1) == -1);
+}
+int main(int argc, char **argv) {
+    uint8_t *report;
+    uint8_t canonical[4096];
+    int32_t length;
+    int field;
+    assert(argc == 4);
+    report = l0c_fs_inspect_temp_parent((const uint8_t *)argv[1], (int32_t)strlen(argv[1]));
+    assert(report != NULL && l0c_fs_temp_parent_status(report) == 0);
+    length = l0c_fs_resolve_trusted_temp_parent((const uint8_t *)argv[1],
+        (int32_t)strlen(argv[1]), canonical, sizeof(canonical) - 1);
+    assert(length > 0 && length < (int32_t)sizeof(canonical));
+    canonical[length] = 0;
+    /* Query after removal proves the snapshot does not inspect again. */
+    assert(l0c_fs_remove_empty_dir((const uint8_t *)argv[1], (int32_t)strlen(argv[1])) == 1);
+    check_field(report, 0, (const char *)canonical);
+    for (field = 1; field <= 4; ++field) check_field(report, field, "");
+    assert(l0c_fs_temp_parent_field(report, -1, NULL, 0) == -1);
+    assert(l0c_fs_temp_parent_field(report, 5, NULL, 0) == -1);
+    l0c_fs_temp_parent_free(report);
+    for (field = 2; field <= 3; ++field) {
+        report = l0c_fs_inspect_temp_parent((const uint8_t *)argv[field], (int32_t)strlen(argv[field]));
+        assert(report != NULL && l0c_fs_temp_parent_status(report) != 0);
+#if defined(_WIN32)
+        if (field == 2) {
+            assert(l0c_fs_temp_parent_status(report) == 3);
+            check_field(report, 3, "");
+            check_field(report, 4, "");
+        } else {
+            assert(l0c_fs_temp_parent_status(report) == 2);
+            check_field(report, 3, "CreateFileA");
+            assert(l0c_fs_temp_parent_field(report, 4, NULL, 0) > 0);
+        }
+#endif
+        l0c_fs_temp_parent_free(report);
+    }
+    assert(l0c_fs_inspect_temp_parent(NULL, 0) == NULL);
+    assert(l0c_fs_inspect_temp_parent((const uint8_t *)"a\0b", 3) == NULL);
+    assert(l0c_fs_temp_parent_status(NULL) == 6);
+    assert(l0c_fs_temp_parent_field(NULL, 0, NULL, 0) == -1);
+    l0c_fs_temp_parent_free(NULL);
+    return 0;
+}
+'''.replace("SUPPORT_PATH", STAGE2_SUPPORT.as_posix()), encoding="utf-8")
+    compile_snapshot_harness(compiler, source, [str(directory), str(regular), str(temp_dir / "missing" / "child")])
+
+
+def test_windows_snapshot(compiler: str, temp_dir: Path) -> None:
+    """Inject Win32 failures and prove cleanup cannot replace their evidence.
+
+    Args:
+        compiler: Selected host C compiler executable.
+        temp_dir: Owned directory for the harness and executable.
+
+    Raises:
+        AssertionError: If compilation or captured failure details differ.
+    """
+    if os.name != "nt":
+        return
+    source = temp_dir / "windows_snapshot.c"
+    source.write_text(r'''#include <assert.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <windows.h>
+static int scenario;
+static int closes;
+static HANDLE WINAPI fake_CreateFileA(LPCSTR name, DWORD access, DWORD share,
+    LPSECURITY_ATTRIBUTES security, DWORD disposition, DWORD flags, HANDLE template_file) {
+    (void)name; (void)access; (void)share; (void)security;
+    (void)disposition; (void)flags; (void)template_file;
+    if (scenario == 1 || scenario == 9) {
+        SetLastError(scenario == 1 ? ERROR_ACCESS_DENIED : ERROR_PATH_NOT_FOUND);
+        return INVALID_HANDLE_VALUE;
+    }
+    return (HANDLE)(uintptr_t)42;
+}
+static BOOL WINAPI fake_GetFileInformationByHandle(HANDLE handle, LPBY_HANDLE_FILE_INFORMATION info) {
+    (void)handle;
+    if (scenario == 2) { SetLastError(ERROR_ACCESS_DENIED); return FALSE; }
+    memset(info, 0, sizeof(*info));
+    info->dwFileAttributes = scenario == 3 ? FILE_ATTRIBUTE_NORMAL : FILE_ATTRIBUTE_DIRECTORY;
+    return TRUE;
+}
+static DWORD WINAPI fake_GetFinalPathNameByHandleA(HANDLE handle, LPSTR path, DWORD capacity, DWORD flags) {
+    (void)handle; (void)flags;
+    if (scenario == 4 || scenario == 8) { SetLastError((DWORD)0xffffffffu); return 0; }
+    if (scenario == 7) return capacity + 1;
+    strcpy(path, "C:\\trusted");
+    return (DWORD)strlen(path);
+}
+static BOOL WINAPI fake_CloseHandle(HANDLE handle) {
+    (void)handle;
+    ++closes;
+    /* Even successful cleanup may overwrite the thread's last error. */
+    SetLastError(ERROR_INVALID_HANDLE);
+    return scenario != 5 && scenario != 8 && scenario != 3 && scenario != 2;
+}
+static void *fake_malloc(size_t size) {
+    if (scenario == 6 && size == MAX_PATH) return NULL;
+    return malloc(size);
+}
+#define CreateFileA fake_CreateFileA
+#define GetFileInformationByHandle fake_GetFileInformationByHandle
+#define GetFinalPathNameByHandleA fake_GetFinalPathNameByHandleA
+#define CloseHandle fake_CloseHandle
+#define malloc fake_malloc
+#include "SUPPORT_PATH"
+#undef CreateFileA
+#undef GetFileInformationByHandle
+#undef GetFinalPathNameByHandleA
+#undef CloseHandle
+#undef malloc
+static void check_field(uint8_t *report, int field, const char *expected) {
+    uint8_t bytes[128];
+    int32_t length = l0c_fs_temp_parent_field(report, field, NULL, 0);
+    assert(length == (int32_t)strlen(expected));
+    memset(bytes, 0x5a, sizeof(bytes));
+    if (length > 0) {
+        assert(l0c_fs_temp_parent_field(report, field, bytes, length - 1) == length);
+        assert(bytes[0] == 0x5a);
+    }
+    assert(l0c_fs_temp_parent_field(report, field, bytes, length) == length);
+    assert(memcmp(bytes, expected, (size_t)length) == 0 && bytes[length] == 0x5a);
+}
+int main(void) {
+    const int statuses[] = {0, 2, 2, 3, 1, 7, 6, 8, 1, 2};
+    const char *operations[] = {"", "CreateFileA", "GetFileInformationByHandle", "",
+        "GetFinalPathNameByHandleA", "CloseHandle", "", "", "GetFinalPathNameByHandleA", "CreateFileA"};
+    const char *errors[] = {"", "5", "5", "", "4294967295", "6", "", "", "4294967295", "3"};
+    for (scenario = 0; scenario < 10; ++scenario) {
+        uint8_t *report;
+        closes = 0;
+        report = l0c_fs_inspect_temp_parent((const uint8_t *)"C:\\selected", 11);
+        assert(report != NULL);
+        assert(l0c_fs_temp_parent_status(report) == statuses[scenario]);
+        assert(closes == (scenario == 1 || scenario == 9 ? 0 : 1));
+        check_field(report, 0, scenario == 0 ? "C:\\trusted" : "C:\\selected");
+        check_field(report, 3, operations[scenario]);
+        check_field(report, 4, errors[scenario]);
+        l0c_fs_temp_parent_free(report);
+    }
+    return 0;
+}
+'''.replace("SUPPORT_PATH", STAGE2_SUPPORT.as_posix()), encoding="utf-8")
+    compile_snapshot_harness(compiler, source, [])
+
+
+def compile_snapshot_harness(compiler: str, source: Path, arguments: list[str]) -> None:
+    """Build and run a harness that includes the native support implementation.
+
+    Args:
+        compiler: Selected host C compiler executable.
+        source: Generated harness source path.
+        arguments: Fixture paths passed to the executable.
+
+    Raises:
+        AssertionError: If compilation or execution fails.
+    """
+    executable = source.with_suffix(".exe" if os.name == "nt" else "")
+    built = subprocess.run(
+        [compiler, "-std=c99", "-Wall", "-Wextra", "-Werror", "-pedantic",
+         str(source), "-o", str(executable)],
+        capture_output=True, text=True, check=False,
+    )
+    assert built.returncode == 0, built.stdout + built.stderr
+    executed = subprocess.run([str(executable), *arguments], capture_output=True, text=True, check=False)
+    assert executed.returncode == 0, f"{source.name}: {executed.returncode}\n{executed.stdout}{executed.stderr}"
+
+
+def test_posix_trust_snapshot(compiler: str, temp_dir: Path) -> None:
+    """Exercise synthetic ownership and stable bounded fields without host chown.
+
+    Args:
+        compiler: Selected host C compiler executable.
+        temp_dir: Owned directory for the harness and executable.
+
+    Raises:
+        AssertionError: If the native snapshot contract fails.
+    """
+    if os.name == "nt":
+        return
+    source = temp_dir / "trust_snapshot.c"
+    executable = temp_dir / "trust_snapshot"
+    harness = r'''#define _XOPEN_SOURCE 700
+#define _POSIX_C_SOURCE 200809L
+#include <assert.h>
+#include <errno.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+static int scenario;
+static int inspections;
+static const char *rejected = "/";
+static uid_t fake_geteuid(void) { return 1000; }
+static char *fake_realpath(const char *path, char *output) {
+    char *result;
+    (void)output;
+    if (scenario == 1) { errno = EACCES; return NULL; }
+    result = (char *)malloc(strlen(path) + 1);
+    assert(result != NULL);
+    strcpy(result, path);
+    return result;
+}
+static int fake_stat(const char *path, struct stat *info) {
+    ++inspections;
+    memset(info, 0, sizeof(*info));
+    info->st_mode = S_IFDIR | 0755;
+    info->st_uid = 0;
+    if (strcmp(path, rejected) != 0) return 0;
+    if (scenario == 2) { errno = EACCES; return -1; }
+    if (scenario == 3) info->st_mode = S_IFREG | 0644;
+    if (scenario == 4) info->st_uid = 65534;
+    if (scenario == 5) info->st_mode = S_IFDIR | 0777;
+    if (scenario == 7) info->st_uid = 1000;
+    if (scenario == 8) info->st_mode = S_IFDIR | 01777;
+    if (scenario == 9) info->st_uid = (uid_t)UINT32_MAX;
+    return 0;
+}
+#define stat(...) fake_stat(__VA_ARGS__)
+#define geteuid fake_geteuid
+#define realpath fake_realpath
+#include "SUPPORT_PATH"
+#undef stat
+#undef geteuid
+#undef realpath
+int main(void) {
+    const char *components[] = {"/", "/trusted", "/trusted/parent"};
+    const uint8_t path[] = "/trusted/parent";
+    int index;
+    for (index = 0; index < 3; ++index) {
+        rejected = components[index];
+        for (scenario = 0; scenario <= 9; ++scenario) {
+            uint8_t *report = l0c_fs_inspect_temp_parent(path, sizeof(path) - 1);
+            uint8_t bytes[128];
+            const char *expected = scenario >= 2 && scenario <= 5 ? rejected : (const char *)path;
+            int saved_inspections = inspections;
+            int32_t length;
+            assert(report != NULL);
+            if (scenario == 9) expected = rejected;
+            assert(l0c_fs_temp_parent_status(report) ==
+                (scenario == 9 ? 4 : (scenario <= 5 ? scenario : 0)));
+            length = l0c_fs_temp_parent_field(report, 0, NULL, 0);
+            assert(length == (int32_t)strlen(expected));
+            memset(bytes, 0x5a, sizeof(bytes));
+            assert(l0c_fs_temp_parent_field(report, 0, bytes, length - 1) == length);
+            assert(bytes[0] == 0x5a);
+            assert(l0c_fs_temp_parent_field(report, 0, bytes, length) == length);
+            assert(memcmp(bytes, expected, (size_t)length) == 0);
+            assert(bytes[length] == 0x5a);
+            assert(l0c_fs_temp_parent_field(report, 0, NULL, 1) == -1);
+            assert(l0c_fs_temp_parent_field(report, 0, bytes, -1) == -1);
+            assert(l0c_fs_temp_parent_field(report, 5, bytes, 128) == -1);
+            if (scenario == 4 || scenario == 9) {
+                const char *uid = scenario == 4 ? "65534" : "4294967295";
+                length = l0c_fs_temp_parent_field(report, 1, bytes, 128);
+                assert(length == (int32_t)strlen(uid));
+                assert(memcmp(bytes, uid, (size_t)length) == 0);
+                assert(l0c_fs_temp_parent_field(report, 2, bytes, 128) == 4);
+                assert(memcmp(bytes, "1000", 4) == 0);
+            }
+            assert(inspections == saved_inspections);
+            l0c_fs_temp_parent_free(report);
+        }
+    }
+    assert(l0c_fs_inspect_temp_parent(NULL, 0) == NULL);
+    assert(l0c_fs_temp_parent_field(NULL, 0, NULL, 0) == -1);
+    l0c_fs_temp_parent_free(NULL);
+    return 0;
+}
+'''
+    source.write_text(harness.replace("SUPPORT_PATH", STAGE2_SUPPORT.as_posix()), encoding="utf-8")
+    built = subprocess.run(
+        [compiler, "-std=c99", "-Wall", "-Wextra", "-Werror", "-pedantic",
+         str(source), "-o", str(executable)],
+        capture_output=True, text=True, check=False,
+    )
+    assert built.returncode == 0, built.stdout + built.stderr
+    executed = subprocess.run([str(executable)], capture_output=True, text=True, check=False)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def native_spelling(path: Path) -> str:
+    """Return host separators, including when MSYS2 Python uses POSIX spelling.
+
+    Args:
+        path: Fixture path to compare with native canonicalization.
+
+    Returns:
+        Path text using the host filesystem API's separators.
+    """
+    return str(path).replace("/", "\\") if os.name == "nt" else str(path)
+
+
 def main() -> int:
     """Compile and execute the direct filesystem ABI harness."""
 
@@ -380,6 +711,9 @@ def main() -> int:
         prefix="l0_compiler_filesystem_support_test."
     ) as raw_temp:
         temp_dir = Path(raw_temp)
+        test_portable_snapshot(compiler, temp_dir)
+        test_windows_snapshot(compiler, temp_dir)
+        test_posix_trust_snapshot(compiler, temp_dir)
         harness = temp_dir / "filesystem_harness.c"
         harness.write_text(harness_source(), encoding="utf-8")
         executable = temp_dir / (
@@ -457,7 +791,7 @@ def main() -> int:
                 [
                     str(executable),
                     str(selected_parent),
-                    str(trusted_parent.resolve()),
+                    native_spelling(trusted_parent.resolve()),
                     link_argument,
                     *trust_arguments,
                 ],

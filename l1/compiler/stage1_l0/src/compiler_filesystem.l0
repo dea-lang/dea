@@ -44,6 +44,17 @@ extern func l1c_fs_join_child(
     output: byte*?,
     output_capacity: int
 ) -> int;
+/** Inspect once; the caller must release the returned native snapshot. */
+extern func l1c_fs_inspect_temp_parent(path: byte*, path_len: int) -> byte*?;
+/** Status: trusted, resolution, inspection, type, owner, sticky bit, internal, close, retries. */
+extern func l1c_fs_temp_parent_status(report: byte*) -> int;
+/** Read path (0), owner/effective UID (1/2), or Windows operation/error (3/4). */
+extern func l1c_fs_temp_parent_field(
+    report: byte*, field: int, output: byte*?, capacity: int
+) -> int;
+/** Release a native inspection snapshot. */
+extern func l1c_fs_temp_parent_free(report: byte*);
+
 extern func l1c_fs_resolve_trusted_temp_parent(
     path: byte*,
     path_len: int,
@@ -209,32 +220,84 @@ func cfs_join_child(parent: string, child: string) -> string {
  * @return Canonical trusted path, or `null` on failure.
  */
 func cfs_resolve_trusted_temp_parent(path: string) -> string? {
-    let required = l1c_fs_resolve_trusted_temp_parent(
-        rt_string_bytes_ptr(path), len_s(path), null, 0);
+    return cfs_inspect_temp_parent(path, null);
+}
+
+/** Copy a stable native snapshot field without repeating filesystem inspection. */
+func cfs_temp_parent_field(report: byte*, field: int) -> string {
+    let required = l1c_fs_temp_parent_field(report, field, null, 0);
     if (required <= 0) {
+        return "";
+    }
+    let buffer = ba_create(required);
+    let actual = l1c_fs_temp_parent_field(
+        report, field, buffer.storage.data as byte*, required);
+    let result = "";
+    if (actual == required) {
+        result = bytes_to_s(buffer.storage.data as byte*, actual);
+    }
+    ba_free(buffer);
+    return result;
+}
+
+/** Format captured validation evidence without touching the filesystem. */
+func cfs_temp_parent_failure_message(
+    status: int, component: string, owner: string, effective: string
+) -> string {
+    let message = "cannot resolve compiler temporary parent: " + component;
+    if (status == 2) {
+        message = "cannot inspect temporary hierarchy directory: " + component;
+    } else if (status == 3) {
+        message = "temporary hierarchy component is not a directory: " + component;
+    } else if (status == 4) {
+        message = "temporary hierarchy directory '" + component + "' has owner UID " +
+            owner + "; expected UID 0 or effective UID " +
+            effective;
+    } else if (status == 5) {
+        message = "temporary hierarchy directory '" + component +
+            "' is group- or other-writable; the sticky bit is required";
+    } else if (status == 6) {
+        message = "cannot initialize compiler temporary-parent inspection: " + component;
+    } else if (status == 7) {
+        message = "cannot close compiler temporary-parent handle: " + component;
+    } else if (status == 8) {
+        message = "compiler temporary-parent canonical path exceeded size retries: " + component;
+    }
+    return message;
+}
+
+/** Append captured Win32 evidence without querying mutable host error state. */
+func cfs_temp_parent_windows_detail(message: string, operation: string, error: string) -> string {
+    if (len_s(operation) == 0) {
+        return message;
+    }
+    return message + "; " + operation + " failed (Windows error " + error + ")";
+}
+
+/** Resolve a trusted path, optionally reporting the captured failure requirement. */
+func cfs_inspect_temp_parent(path: string, diags: DiagCollector*?) -> string? {
+    let snapshot = l1c_fs_inspect_temp_parent(rt_string_bytes_ptr(path), len_s(path));
+    if (snapshot == null) {
+        if (diags != null) {
+            cfs_error(diags as DiagCollector*, "L1C-9513",
+                "cannot initialize compiler temporary-parent inspection: " + path, path);
+        }
         return null;
     }
-
-    for (let attempt = 0; attempt < 4; attempt = attempt + 1) {
-        let buffer = ba_create(required);
-        let actual = l1c_fs_resolve_trusted_temp_parent(
-            rt_string_bytes_ptr(path),
-            len_s(path),
-            buffer.storage.data as byte*,
-            required
-        );
-        if (actual < 0) {
-            ba_free(buffer);
-            return null;
-        }
-        if (actual <= required) {
-            let resolved = bytes_to_s(
-                buffer.storage.data as byte*, actual);
-            ba_free(buffer);
-            return resolved;
-        }
-        ba_free(buffer);
-        required = actual;
+    let report = snapshot as byte*;
+    let status = l1c_fs_temp_parent_status(report);
+    let component = cfs_temp_parent_field(report, 0);
+    if (status == 0) {
+        l1c_fs_temp_parent_free(report);
+        return component;
+    }
+    let message = cfs_temp_parent_failure_message(status, component,
+        cfs_temp_parent_field(report, 1), cfs_temp_parent_field(report, 2));
+    message = cfs_temp_parent_windows_detail(message,
+        cfs_temp_parent_field(report, 3), cfs_temp_parent_field(report, 4));
+    l1c_fs_temp_parent_free(report);
+    if (diags != null) {
+        cfs_error(diags as DiagCollector*, "L1C-9513", message, component);
     }
     return null;
 }
@@ -563,14 +626,8 @@ func cfs_workspace_create(
         return null;
     }
     let selected = selected_opt as string;
-    let resolved = cfs_resolve_trusted_temp_parent(selected);
+    let resolved = cfs_inspect_temp_parent(selected, diags);
     if (resolved == null) {
-        cfs_error(
-            diags,
-            "L1C-9513",
-            "cannot resolve or trust compiler temporary parent: " + selected,
-            selected
-        );
         return null;
     }
 

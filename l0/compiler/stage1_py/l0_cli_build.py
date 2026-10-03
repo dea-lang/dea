@@ -119,6 +119,10 @@ class _TemporarySourceWriteError(OSError):
         self.retained_path = retained_path
 
 
+class _TemporaryDirectoryError(OSError):
+    """Preserve the failed temporary-directory validation requirement."""
+
+
 def _validated_temporary_directory() -> Path:
     """Resolve and validate the host temporary directory.
 
@@ -134,24 +138,41 @@ def _validated_temporary_directory() -> Path:
         OSError: If the directory cannot be resolved or its POSIX hierarchy is
             not trusted.
     """
-    temp_dir = Path(tempfile.gettempdir()).resolve(strict=True)
+    try:
+        selected = Path(tempfile.gettempdir())
+    except OSError as error:
+        raise _TemporaryDirectoryError(
+            f"cannot select compiler temporary directory: {error}"
+        ) from error
+    try:
+        temp_dir = selected.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        raise _TemporaryDirectoryError(
+            f"cannot resolve compiler temporary parent '{selected}': {error}"
+        ) from error
     if _is_windows_host():
         return temp_dir
 
     effective_uid = os.geteuid()
     for component in (temp_dir, *temp_dir.parents):
-        component_stat = component.stat()
+        try:
+            component_stat = component.stat()
+        except OSError as error:
+            raise _TemporaryDirectoryError(
+                f"cannot inspect temporary hierarchy directory '{component}': {error}"
+            ) from error
         if not stat.S_ISDIR(component_stat.st_mode):
-            raise OSError(f"temporary hierarchy component is not a directory: {component}")
+            raise _TemporaryDirectoryError(f"temporary hierarchy component is not a directory: {component}")
         if component_stat.st_uid not in {0, effective_uid}:
-            raise OSError(
-                f"temporary hierarchy component has an unsafe owner: {component}"
+            raise _TemporaryDirectoryError(
+                f"temporary hierarchy directory '{component}' has owner UID "
+                f"{component_stat.st_uid}; expected UID 0 or effective UID {effective_uid}"
             )
         writable_by_others = component_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
         if writable_by_others and not component_stat.st_mode & stat.S_ISVTX:
-            raise OSError(
-                "temporary hierarchy component is writable without sticky bit: "
-                f"{component}"
+            raise _TemporaryDirectoryError(
+                f"temporary hierarchy directory '{component}' is group- or "
+                "other-writable; the sticky bit is required"
             )
 
     return temp_dir
@@ -492,6 +513,9 @@ def cmd_build(args: argparse.Namespace) -> int:
         _emit_diagnostic("error: [L0C-9511] cannot write compiler temporary source")
         _emit_temporary_source_cleanup_failure(error.retained_path)
         return 1
+    except _TemporaryDirectoryError as error:
+        _emit_diagnostic(f"error: [L0C-9511] {error}")
+        return 1
     except OSError:
         _emit_diagnostic("error: [L0C-9511] cannot write compiler temporary source")
         return 1
@@ -520,6 +544,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     context = build_compilation_context(args)
     try:
         temp_dir = _validated_temporary_directory()
+    except _TemporaryDirectoryError as error:
+        _emit_diagnostic(f"error: [L0C-9511] {error}")
+        return 1
     except OSError:
         _emit_diagnostic("error: [L0C-9511] cannot write compiler temporary source")
         return 1
@@ -534,6 +561,9 @@ def cmd_run(args: argparse.Namespace) -> int:
             dir=str(temp_dir),
         ) as stream:
             temp_exe = stream.name
+    except _TemporaryDirectoryError as error:
+        _emit_diagnostic(f"error: [L0C-9511] {error}")
+        return 1
     except OSError:
         _emit_diagnostic("error: [L0C-9511] cannot write compiler temporary source")
         return 1
