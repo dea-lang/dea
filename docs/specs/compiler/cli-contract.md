@@ -1,6 +1,6 @@
 # Dea Compiler CLI Contract
 
-Version: 2026-09-27
+Version: 2026-10-03
 
 This document defines the shared command-line contract for Dea compilers. It covers behavior common to the current L0
 Stage 1, L0 Stage 2, L1 Stage 1, and L1 Stage 2 implementations. A level may add a documented mode or option without
@@ -221,6 +221,17 @@ another build/run workspace.
   incompletely cleaned workspace is retained for inspection.
 - Temporary-parent inspection, workspace setup, parent-trust validation, and exclusive-reservation failures report
   `L0C-9513` or `L1C-9513`. Cleanup failures report `L0C-9514` or `L1C-9514` together with the retained workspace path.
+- Trust diagnostics identify the rejected canonical directory and the failed requirement. Ownership rejection includes
+  the observed unsigned owner UID and effective UID; writable-directory rejection explains the sticky-bit requirement.
+  Canonicalization and hierarchy-inspection failures are distinguished from trust rejection. On Windows, failures while
+  opening, inspecting, or canonicalizing the selected temporary parent retain the failing operation and unsigned Windows
+  error code, captured before handle cleanup. An earlier inspection or canonicalization failure takes precedence over a
+  cleanup failure. Non-directories, allocation failure, canonical-path retry exhaustion, and close-only failures have
+  distinct reasons; non-API failures do not report a stale Windows error. The trusted-ACL assumption is unchanged.
+- Ownership remapping can make a secure sandbox or container fail these conservative checks: an unmapped owner may be
+  reported as an overflow UID instead of root. That value does not establish trusted ownership. Every ancestor remains
+  subject to validation, so changing `TMPDIR` cannot repair rejection of `/`. No ownership exception or trust bypass is
+  provided.
 - Cleanup failure changes a successful primary result to status 1. An existing compilation or launch failure, or a
   nonzero child-program status, remains the command result. A successfully produced retained output remains available in
   either case.

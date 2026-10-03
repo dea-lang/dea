@@ -576,7 +576,8 @@ def test_build_rejects_nonsticky_writable_temporary_directory(
     assert not compiler_invoked
     assert (
         capsys.readouterr().err
-        == "error: [L0C-9511] cannot write compiler temporary source\n"
+        == f"error: [L0C-9511] temporary hierarchy directory '{unsafe_temp.resolve()}' is group- or "
+        "other-writable; the sticky bit is required\n"
     )
 
 
@@ -613,7 +614,8 @@ def test_build_rejects_nonsticky_writable_temporary_ancestor(
     assert not compiler_invoked
     assert (
         capsys.readouterr().err
-        == "error: [L0C-9511] cannot write compiler temporary source\n"
+        == f"error: [L0C-9511] temporary hierarchy directory '{unsafe_ancestor.resolve()}' is group- or "
+        "other-writable; the sticky bit is required\n"
     )
 
 
@@ -660,7 +662,8 @@ def test_build_rejects_temporary_directory_owned_by_untrusted_uid(
     assert not compiler_invoked
     assert (
         capsys.readouterr().err
-        == "error: [L0C-9511] cannot write compiler temporary source\n"
+        == f"error: [L0C-9511] temporary hierarchy directory '{resolved_temp}' has owner UID "
+        f"{untrusted_uid}; expected UID 0 or effective UID {os.geteuid()}\n"
     )
 
 
@@ -1513,3 +1516,68 @@ def test_tok_single_module_reports_resolve_error(tmp_path, capsys):
 
     assert rc == 1
     assert "[L0C-0070]" in capsys.readouterr().err
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX trust rules only")
+@pytest.mark.parametrize("mode", ["build", "run", "run-keep-c"])
+@pytest.mark.parametrize("component_kind", ["root", "ancestor", "parent"])
+@pytest.mark.parametrize("failure", ["owner", "sticky", "inspection", "type"])
+def test_temporary_trust_failure_details(
+    tmp_path, monkeypatch, capsys, mode, component_kind, failure
+):
+    """Reject a simulated hierarchy before allocating scratch or invoking C."""
+    _write_module(tmp_path, "main", "module main; func main() -> int { return 0; }")
+    parent = tmp_path / "compiler-temp"
+    parent.mkdir()
+    parent = parent.resolve()
+    component = {"root": Path("/"), "ancestor": parent.parent, "parent": parent}[component_kind]
+    real_stat = Path.stat
+
+    def simulated_stat(path, *args, **kwargs):
+        if path == component:
+            if failure == "inspection":
+                raise PermissionError("simulated inspection denial")
+            return SimpleNamespace(
+                st_mode=(stat.S_IFREG if failure == "type" else stat.S_IFDIR)
+                | (0o777 if failure == "sticky" else 0o755),
+                st_uid=65534 if failure == "owner" else 0,
+            )
+        result = real_stat(path, *args, **kwargs)
+        if path == parent or path in parent.parents:
+            return SimpleNamespace(st_mode=stat.S_IFDIR | 0o755, st_uid=0)
+        return result
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("trust failure must precede scratch creation and C invocation")
+
+    monkeypatch.setattr(l0_cli_build.tempfile, "gettempdir", lambda: str(parent))
+    # Resolution is tested separately; inject metadata only into trust inspection.
+    monkeypatch.setattr(Path, "resolve", lambda self, **kwargs: self)
+    monkeypatch.setattr(Path, "stat", simulated_stat)
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(l0_cli_build.tempfile, "mkstemp", forbidden)
+    monkeypatch.setattr(l0_cli_build.tempfile, "NamedTemporaryFile", forbidden)
+    monkeypatch.setattr(l0_cli_build.subprocess, "run", forbidden)
+    args = _build_args(tmp_path, "main", keep_c=mode == "run-keep-c", args=[])
+    assert (cmd_build(args) if mode == "build" else cmd_run(args)) == 1
+    diagnostic = capsys.readouterr().err
+    assert "[L0C-9511]" in diagnostic
+    assert str(component) in diagnostic
+    if failure == "owner":
+        assert "owner UID 65534; expected UID 0 or effective UID 1000" in diagnostic
+    elif failure == "sticky":
+        assert "group- or other-writable; the sticky bit is required" in diagnostic
+    elif failure == "inspection":
+        assert "cannot inspect" in diagnostic
+    else:
+        assert "not a directory" in diagnostic
+
+
+def test_temporary_parent_resolution_failure(tmp_path, monkeypatch, capsys):
+    """Retain canonicalization failures separately from trust rejection."""
+    missing = tmp_path / "missing-parent"
+    monkeypatch.setattr(l0_cli_build.tempfile, "gettempdir", lambda: str(missing))
+    assert cmd_run(_build_args(tmp_path, "main", args=[])) == 1
+    diagnostic = capsys.readouterr().err
+    assert "[L0C-9511] cannot resolve compiler temporary parent" in diagnostic
+    assert str(missing) in diagnostic

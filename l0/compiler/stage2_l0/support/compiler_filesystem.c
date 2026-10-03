@@ -24,6 +24,8 @@
 #include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <inttypes.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -64,6 +66,52 @@ enum {
     L0C_FS_DIRECTORY = 2,
     L0C_FS_OTHER = 3
 };
+
+/** Caller-owned snapshot; status: 0 trusted, 1 resolution, 2 inspection,
+ * 3 non-directory, 4 owner, 5 sticky bit, 6 allocation/invalid input,
+ * 7 handle cleanup, 8 canonical-path retry exhaustion.
+ * Fields are native byte strings; UIDs use unsigned decimal without narrowing.
+ */
+typedef struct {
+    int32_t status;
+    char *path;
+    char owner[32];
+    char effective[32];
+    const char *operation;
+    char windows_error[32];
+} l0c_fs_temp_report;
+
+#if defined(_WIN32)
+/** Store a previously captured Win32 error before cleanup can replace it. */
+static void l0c_fs_temp_windows_failure(
+    l0c_fs_temp_report *report, int32_t status, const char *operation, DWORD error
+) {
+    if (report == NULL) return;
+    report->status = status;
+    report->operation = operation;
+    snprintf(report->windows_error, sizeof(report->windows_error),
+        "%" PRIuMAX, (uintmax_t)error);
+}
+#endif
+
+#if !defined(_WIN32)
+/** Capture the failing component during validation, before restoring separators. */
+static void l0c_fs_temp_failure(l0c_fs_temp_report *report, int32_t status, const char *path) {
+    size_t length;
+    char *copy;
+    if (report == NULL) return;
+    report->status = status;
+    length = strlen(path);
+    copy = (char *)malloc(length + 1);
+    if (copy == NULL) {
+        report->status = 6;
+        return;
+    }
+    memcpy(copy, path, length + 1);
+    free(report->path);
+    report->path = copy;
+}
+#endif
 
 static int l0c_fs_raw_path_is_valid(
     const uint8_t *path,
@@ -198,7 +246,7 @@ static int32_t l0c_fs_path_kind_native(const char *path, int follow) {
     return L0C_FS_REGULAR;
 }
 
-static char *l0c_fs_resolve_temp_parent_native(const char *path) {
+static char *l0c_fs_resolve_temp_parent_native(const char *path, l0c_fs_temp_report *report) {
     DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
     HANDLE handle = CreateFileA(
         path,
@@ -215,16 +263,25 @@ static char *l0c_fs_resolve_temp_parent_native(const char *path) {
     DWORD length;
     int attempt;
     if (handle == INVALID_HANDLE_VALUE) {
+        DWORD error = GetLastError();
+        l0c_fs_temp_windows_failure(report, 2, "CreateFileA", error);
         return NULL;
     }
-    if (!GetFileInformationByHandle(handle, &info) ||
-        (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+    if (!GetFileInformationByHandle(handle, &info)) {
+        DWORD error = GetLastError();
+        l0c_fs_temp_windows_failure(report, 2, "GetFileInformationByHandle", error);
+        CloseHandle(handle);
+        return NULL;
+    }
+    if ((info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+        if (report != NULL) report->status = 3;
         CloseHandle(handle);
         return NULL;
     }
     for (attempt = 0; attempt < 4; ++attempt) {
         resolved = (char *)malloc((size_t)capacity);
         if (resolved == NULL) {
+            if (report != NULL) report->status = 6;
             break;
         }
         length = GetFinalPathNameByHandleA(
@@ -234,6 +291,8 @@ static char *l0c_fs_resolve_temp_parent_native(const char *path) {
             FILE_NAME_NORMALIZED | VOLUME_NAME_DOS
         );
         if (length == 0) {
+            DWORD error = GetLastError();
+            l0c_fs_temp_windows_failure(report, 1, "GetFinalPathNameByHandleA", error);
             free(resolved);
             resolved = NULL;
             break;
@@ -245,10 +304,17 @@ static char *l0c_fs_resolve_temp_parent_native(const char *path) {
         resolved = NULL;
         capacity = length;
     }
-    if (!CloseHandle(handle) || resolved == NULL) {
+    if (attempt == 4 && report != NULL) report->status = 8;
+    if (!CloseHandle(handle)) {
+        DWORD error = GetLastError();
+        /* A completed query has no earlier error; otherwise retain its cause. */
+        if (resolved != NULL) {
+            l0c_fs_temp_windows_failure(report, 7, "CloseHandle", error);
+        }
         free(resolved);
         return NULL;
     }
+    if (resolved == NULL) return NULL;
     if (length >= 8 && memcmp(resolved, "\\\\?\\UNC\\", 8) == 0) {
         memmove(resolved + 2, resolved + 8, (size_t)length - 7);
         resolved[0] = '\\';
@@ -281,23 +347,35 @@ static int32_t l0c_fs_path_kind_native(const char *path, int follow) {
 
 static int l0c_fs_posix_component_is_trusted(
     const char *path,
-    uid_t effective_uid
+    uid_t effective_uid,
+    l0c_fs_temp_report *report
 ) {
     struct stat info;
-    if (stat(path, &info) != 0 || !S_ISDIR(info.st_mode)) {
+    if (stat(path, &info) != 0) {
+        l0c_fs_temp_failure(report, 2, path);
+        return 0;
+    }
+    if (!S_ISDIR(info.st_mode)) {
+        l0c_fs_temp_failure(report, 3, path);
         return 0;
     }
     if (info.st_uid != (uid_t)0 && info.st_uid != effective_uid) {
+        l0c_fs_temp_failure(report, 4, path);
+        if (report != NULL) {
+            snprintf(report->owner, sizeof(report->owner), "%" PRIuMAX, (uintmax_t)info.st_uid);
+            snprintf(report->effective, sizeof(report->effective), "%" PRIuMAX, (uintmax_t)effective_uid);
+        }
         return 0;
     }
     if ((info.st_mode & (S_IWGRP | S_IWOTH)) != 0 &&
         (info.st_mode & S_ISVTX) == 0) {
+        l0c_fs_temp_failure(report, 5, path);
         return 0;
     }
     return 1;
 }
 
-static int l0c_fs_posix_trust_chain_is_valid(char *resolved) {
+static int l0c_fs_posix_trust_chain_is_valid(char *resolved, l0c_fs_temp_report *report) {
     size_t len = strlen(resolved);
     uid_t effective_uid = geteuid();
     size_t index;
@@ -305,7 +383,7 @@ static int l0c_fs_posix_trust_chain_is_valid(char *resolved) {
     if (len == 0 || resolved[0] != '/') {
         return 0;
     }
-    if (!l0c_fs_posix_component_is_trusted("/", effective_uid)) {
+    if (!l0c_fs_posix_component_is_trusted("/", effective_uid, report)) {
         return 0;
     }
     if (len == 1) {
@@ -321,7 +399,7 @@ static int l0c_fs_posix_trust_chain_is_valid(char *resolved) {
             char saved = resolved[index];
             resolved[index] = '\0';
             if (!l0c_fs_posix_component_is_trusted(
-                    resolved, effective_uid)) {
+                    resolved, effective_uid, report)) {
                 resolved[index] = saved;
                 return 0;
             }
@@ -331,12 +409,12 @@ static int l0c_fs_posix_trust_chain_is_valid(char *resolved) {
     return 1;
 }
 
-static char *l0c_fs_resolve_temp_parent_native(const char *path) {
+static char *l0c_fs_resolve_temp_parent_native(const char *path, l0c_fs_temp_report *report) {
     char *resolved = realpath(path, NULL);
     if (resolved == NULL) {
         return NULL;
     }
-    if (!l0c_fs_posix_trust_chain_is_valid(resolved)) {
+    if (!l0c_fs_posix_trust_chain_is_valid(resolved, report)) {
         free(resolved);
         return NULL;
     }
@@ -378,7 +456,7 @@ int32_t l0c_fs_resolve_trusted_temp_parent(
     if (native == NULL) {
         return L0C_FS_ERROR;
     }
-    resolved = l0c_fs_resolve_temp_parent_native(native);
+    resolved = l0c_fs_resolve_temp_parent_native(native, NULL);
     free(native);
     if (resolved == NULL) {
         return L0C_FS_ERROR;
@@ -395,6 +473,68 @@ int32_t l0c_fs_resolve_trusted_temp_parent(
     }
     free(resolved);
     return result;
+}
+
+/** Inspect once and return a caller-owned snapshot, or NULL on invalid input/allocation failure. */
+uint8_t *l0c_fs_inspect_temp_parent(const uint8_t *path, int32_t path_len) {
+    char *native = l0c_fs_native_path(path, path_len);
+    char *resolved;
+    l0c_fs_temp_report *report;
+    if (native == NULL) return NULL;
+    report = (l0c_fs_temp_report *)calloc(1, sizeof(*report));
+    if (report == NULL) {
+        free(native);
+        return NULL;
+    }
+    report->status = 1;
+    report->path = native;
+    resolved = l0c_fs_resolve_temp_parent_native(native, report);
+    if (resolved != NULL) {
+        free(report->path);
+        report->path = resolved;
+        report->status = 0;
+    }
+    return (uint8_t *)report;
+}
+
+/** Read status from a live snapshot; NULL denotes an internal failure. */
+int32_t l0c_fs_temp_parent_status(const uint8_t *raw) {
+    const l0c_fs_temp_report *report = (const l0c_fs_temp_report *)raw;
+    return report == NULL ? 6 : report->status;
+}
+
+/** Copy snapshot field 0 (path), 1 (owner UID), 2 (effective UID),
+ * 3 (failing Win32 operation), or 4 (unsigned Windows error code).
+ * Windows fields are empty unless a Windows API failure was captured.
+ * Return required byte length without NUL, or -1 for invalid arguments/overflow.
+ * NULL/zero queries and undersized buffers never write; no inspection is repeated.
+ */
+int32_t l0c_fs_temp_parent_field(
+    const uint8_t *raw, int32_t field, uint8_t *output, int32_t capacity
+) {
+    const l0c_fs_temp_report *report = (const l0c_fs_temp_report *)raw;
+    const char *value;
+    size_t length;
+    if (report == NULL || capacity < 0 || (output == NULL && capacity != 0)) return -1;
+    if (field == 0) value = report->path;
+    else if (field == 1) value = report->owner;
+    else if (field == 2) value = report->effective;
+    else if (field == 3) value = report->operation == NULL ? "" : report->operation;
+    else if (field == 4) value = report->windows_error;
+    else return -1;
+    length = strlen(value);
+    if (length > (size_t)INT32_MAX) return -1;
+    if (output != NULL && (size_t)capacity >= length) memcpy(output, value, length);
+    return (int32_t)length;
+}
+
+/** Release one caller-owned snapshot; NULL is accepted. */
+void l0c_fs_temp_parent_free(uint8_t *raw) {
+    l0c_fs_temp_report *report = (l0c_fs_temp_report *)raw;
+    if (report != NULL) {
+        free(report->path);
+        free(report);
+    }
 }
 
 /**

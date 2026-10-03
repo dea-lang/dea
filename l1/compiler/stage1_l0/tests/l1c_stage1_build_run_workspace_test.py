@@ -641,25 +641,28 @@ def test_posix_trust_uses_actual_host(
     output = root / "unsafe.out"
     env = compiler_env(unsafe_parent, fake_compiler, log_path, "success")
     env["L1_PLATFORM"] = "windows"
-    completed = run_compiler(
-        compiler,
-        root,
-        env,
-        fake_compiler,
-        "--build",
-        "ok_main",
-        output,
-    )
-    if completed.returncode != 1 or "[L1C-9513]" not in completed.stderr:
-        raise WorkspaceFailure(
-            "unsafe POSIX parent was not rejected with L1C-9513:\n"
-            + completed.stderr
+    for mode in ("--build", "--run"):
+        completed = run_compiler(
+            compiler,
+            root,
+            env,
+            fake_compiler,
+            mode,
+            "ok_main",
+            output,
         )
-    if log_path.exists():
-        raise WorkspaceFailure("unsafe parent reached the host compiler")
-    if output.exists():
-        raise WorkspaceFailure("unsafe parent produced caller output")
-    require_no_workspaces(unsafe_parent, "unsafe-parent rejection")
+        if completed.returncode != 1 or "[L1C-9513]" not in completed.stderr:
+            raise WorkspaceFailure(
+                "unsafe POSIX parent was not rejected with L1C-9513:\n"
+                + completed.stderr
+            )
+        if str(unsafe_parent.resolve()) not in completed.stderr or "the sticky bit is required" not in completed.stderr:
+            raise WorkspaceFailure("trust failure lost its directory or requirement")
+        if log_path.exists():
+            raise WorkspaceFailure("unsafe parent reached the host compiler")
+        if output.exists():
+            raise WorkspaceFailure("unsafe parent produced caller output")
+        require_no_workspaces(unsafe_parent, "unsafe-parent rejection")
 
 
 def main() -> int:

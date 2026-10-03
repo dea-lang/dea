@@ -500,10 +500,55 @@ func test_workspace_cleanup_retains_unexpected_contents() {
     }
 }
 
+/** Check ownership evidence and resolution errors through the diagnostic layer. */
+func test_temp_parent_failure_details() {
+    assert(cfs_temp_parent_windows_detail("cannot resolve parent", "GetFinalPathNameByHandleA", "4294967295") ==
+        "cannot resolve parent; GetFinalPathNameByHandleA failed (Windows error 4294967295)",
+        "Windows error evidence must retain the operation and unsigned code");
+    assert(cfs_temp_parent_windows_detail("not a directory", "", "") == "not a directory",
+        "non-API failures must not claim a Windows error");
+    assert(cfs_temp_parent_windows_detail(cfs_temp_parent_failure_message(7, "C:/parent", "", ""),
+        "CloseHandle", "6") ==
+        "cannot close compiler temporary-parent handle: C:/parent; CloseHandle failed (Windows error 6)",
+        "close-only failures must identify cleanup");
+    assert(cfs_temp_parent_failure_message(8, "C:/parent", "", "") ==
+        "compiler temporary-parent canonical path exceeded size retries: C:/parent",
+        "retry exhaustion must not use an unrelated last error");
+    assert(cfs_temp_parent_failure_message(4, "/", "65534", "1000") ==
+        "temporary hierarchy directory '/' has owner UID 65534; expected UID 0 or effective UID 1000",
+        "root rejection should retain both unsigned UIDs and the ownership rule");
+    assert(cfs_temp_parent_failure_message(4, "/ancestor", "4294967295", "1000") ==
+        "temporary hierarchy directory '/ancestor' has owner UID 4294967295; expected UID 0 or effective UID 1000",
+        "UID evidence must not narrow to a signed Dea integer");
+    assert(cfs_temp_parent_failure_message(5, "/ancestor", "", "") ==
+        "temporary hierarchy directory '/ancestor' is group- or other-writable; the sticky bit is required",
+        "permission rejection should identify the failed rule");
+    assert(cfs_temp_parent_failure_message(2, "/ancestor", "", "") ==
+        "cannot inspect temporary hierarchy directory: /ancestor",
+        "inspection failure must remain distinct from trust rejection");
+    with (let diags = diag_create() => diag_free(diags)) {
+        assert(cfs_inspect_temp_parent("", diags) == null,
+            "invalid input should fail before workspace creation");
+        assert(diag_count(diags) == 1, "failure should emit one diagnostic");
+        let missing = ".missing-temp-parent-" + int_to_string(get_pid()) + "/child";
+        assert(cfs_inspect_temp_parent(missing, diags) == null,
+            "missing parent should fail canonicalization and release its snapshot");
+        assert(diag_count(diags) == 2, "resolution failure should emit one diagnostic");
+        if (cfs_join_child("parent", "child") == "parent\\child") {
+            assert(contains_s(diag_get(diags, 1).message, "CreateFileA failed (Windows error "),
+                "the Windows snapshot must reach the compiler diagnostic");
+            assert(contains_s(diag_get(diags, 1).message, missing),
+                "the Windows diagnostic must retain the selected path");
+        }
+        assert(diag_get(diags, 0).code == "L0C-9513", "diagnostic code must remain stable");
+    }
+}
+
 /**
  * Main entry point for the module.
  */
 func main() {
+    test_temp_parent_failure_details();
     test_with_c_suffix_rewrites_existing_extension();
     test_shell_quote_posix_handles_spaces_and_quotes();
     test_shell_quote_windows_handles_spaces_and_quotes();

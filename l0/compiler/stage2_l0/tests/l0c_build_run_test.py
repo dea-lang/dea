@@ -532,6 +532,8 @@ def main() -> int:
                 work_dir / "unsafe_build.log",
                 "L0C-9513",
             )
+            assert str(unsafe_temp.resolve()) in unsafe_result.stderr
+            assert "group- or other-writable; the sticky bit is required" in unsafe_result.stderr
             assert_no_file(unsafe_build_bin)
             assert_no_workspaces(unsafe_temp, "build")
 
@@ -584,6 +586,19 @@ exit 97
 """,
             )
             inspection_compiler.chmod(0o755)
+            # Reuse the marker compiler to prove both trust failures stop before C.
+            unsafe_env["L0_INSPECTION_COMPILER_RECORD"] = str(inspection_record)
+            for mode in ("--build", "--run"):
+                rejected = run(
+                    [l0c, mode, "--c-compiler", str(inspection_compiler),
+                     "--project-root", native_path(fixture_root), "ok_main"],
+                    env=unsafe_env, expected_returncode=None,
+                )
+                if rejected.returncode != 1 or "L0C-9513" not in rejected.stderr:
+                    raise ToolTestFailure("trust rejection did not stop build/run")
+                assert_no_file(inspection_record)
+                assert_no_workspaces(unsafe_temp, mode[2:])
+
             inspection_ancestor.chmod(0)
             inspection_reliable = False
             try:

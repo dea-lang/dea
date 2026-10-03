@@ -1,6 +1,6 @@
 # L0 Stage 1 Compiler Contract
 
-Version: 2026-09-07
+Version: 2026-10-03
 
 This document is the compact Stage 1 contract and navigation index.
 
@@ -69,6 +69,12 @@ Stage 1-specific notes:
   `--run` executable. Every directory from the resolved temporary parent through the filesystem root must be owned by
   the effective user or root; a group- or other-writable component must have the sticky bit. Failure reports `L0C-9511`
   and the host compiler is not invoked.
+- Validation diagnostics preserve the rejected canonical directory and failed requirement. Ownership rejection reports
+  the observed unsigned owner UID and effective UID; writable-directory rejection explains the sticky-bit requirement.
+  Resolution and hierarchy-inspection failures are reported separately from trust rejection, retaining `L0C-9511`.
+- Ownership remapping in a sandbox or container can cause conservative rejection even when the environment is secure. An
+  overflow UID is not evidence of trusted ownership. Changing `TMPDIR` cannot repair rejection of `/`, because every
+  temporary parent shares that ancestor. The ownership and permission checks remain mandatory.
 - Windows retains the supported-host assumption that the selected temporary directory is protected by trusted ACLs.
 - Anonymous generated C is created with `tempfile.mkstemp()` in the explicitly validated directory, written as UTF-8
   through the returned descriptor, and closed before host compilation.
