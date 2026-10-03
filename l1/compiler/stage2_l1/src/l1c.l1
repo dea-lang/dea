@@ -11,7 +11,7 @@ import std.vector;
 import l1c_lib;
 
 /**
- * Run the Stage 1 `l1c` entry point with process arguments.
+ * Run the Stage 2 `l1c` entry point with process arguments.
  */
 func main() {
     with (let argv_vec = sv_create(argc()) => sv_free(argv_vec)) {

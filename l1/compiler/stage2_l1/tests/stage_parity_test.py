@@ -42,7 +42,13 @@ def main() -> int:
         )
         return result.returncode, result.stdout, stderr
 
-    for args in (["--help"], ["--version"], ["--unknown-stage-parity-option"]):
+    for args in (
+        ["--help"], ["--version"], ["--unknown-stage-parity-option"],
+        ["--version", "--unknown", "-vvv", "--help"],
+        ["-vvv", "--output"], ["-vvv", "--output", "result"],
+        ["--check", "--", "--help", "--version"],
+        ["--link", "app.o", "--output", "result", "--entry=bad..name"],
+    ):
         left, right = invoke(oracle, args), invoke(subject, args)
         left = tuple(v.replace(b"(Stage 1)", b"(Stage 2)") if isinstance(v, bytes) else v for v in left)
         assert left == right, (args, left, right)

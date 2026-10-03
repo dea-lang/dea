@@ -61,17 +61,6 @@ func prepared_input_free(self: PreparedInput*) {
 }
 
 /**
- * Free a nullable prepared input bundle when present.
- *
- * @param self Optional prepared input to free.
- */
-func prepared_input_free_opt(self: PreparedInput*?) {
-    if (self != null) {
-        prepared_input_free(self as PreparedInput*);
-    }
-}
-
-/**
  * Copy every diagnostic from one collector into another.
  *
  * @param dst Destination collector.
@@ -201,7 +190,7 @@ func l1c_dump_tokens_for_path(path: string, include_eof: bool, diags: DiagCollec
 }
 
 /**
- * Execute Stage 1 `--check` mode.
+ * Execute Stage 2 `--check` mode.
  *
  * @param opts Parsed CLI options.
  * @param cfg Logging configuration.
@@ -232,7 +221,7 @@ func l1c_cmd_check(opts: CliOptions*, cfg: LogConfig*) -> int {
 }
 
 /**
- * Execute Stage 1 `--tok` mode.
+ * Execute Stage 2 `--tok` mode.
  *
  * @param opts Parsed CLI options.
  * @param cfg Logging configuration.
@@ -310,7 +299,7 @@ func l1c_cmd_tok(opts: CliOptions*, cfg: LogConfig*) -> int {
 }
 
 /**
- * Execute Stage 1 `--gen` mode.
+ * Execute Stage 2 `--gen` mode.
  *
  * @param opts Parsed CLI options.
  * @param cfg Logging configuration.
@@ -379,7 +368,7 @@ func l1c_add_interface_projection_fallback(result: AnalysisResult*, fallback_dia
 }
 
 /**
- * Execute Stage 1 `--emit-interface` mode.
+ * Execute Stage 2 `--emit-interface` mode.
  *
  * @param opts Parsed CLI options.
  * @param cfg Logging configuration.
@@ -436,7 +425,7 @@ func l1c_cmd_emit_interface(opts: CliOptions*, cfg: LogConfig*) -> int {
 }
 
 /**
- * Execute Stage 1 `--sym` mode.
+ * Execute Stage 2 `--sym` mode.
  *
  * @param opts Parsed CLI options.
  * @param cfg Logging configuration.
@@ -566,7 +555,7 @@ func l1c_cmd_sym(opts: CliOptions*, cfg: LogConfig*) -> int {
 }
 
 /**
- * Execute Stage 1 `--type` mode.
+ * Execute Stage 2 `--type` mode.
  *
  * @param opts Parsed CLI options.
  * @param cfg Logging configuration.
@@ -676,16 +665,6 @@ func l1c_cmd_type(opts: CliOptions*, cfg: LogConfig*) -> int {
 }
 
 /**
- * Append whitespace-delimited C option words from one source string.
- *
- * @param dst Destination vector for parsed option words.
- * @param raw Raw options string, or `null`.
- */
-func l1c_append_c_option_words(dst: StringVector*, raw: string?) {
-    bd_append_c_option_words(dst, raw);
-}
-
-/**
  * Merge C option words from environment and CLI with CLI-last precedence.
  *
  * @param env_opts Options from `L1_CFLAGS`.
@@ -697,17 +676,7 @@ func l1c_merge_c_option_words(env_opts: string?, cli_opts: string?) -> StringVec
 }
 
 /**
- * Resolve merged C option words from `L1_CFLAGS` and parsed CLI options.
- *
- * @param opts Parsed CLI options.
- * @return Parsed option words in final order.
- */
-func l1c_collect_c_option_words(opts: CliOptions*) -> StringVector* {
-    return bd_collect_c_option_words(opts);
-}
-
-/**
- * Execute Stage 1 `--ast` mode.
+ * Execute Stage 2 `--ast` mode.
  *
  * Without `--all-modules`, prints the AST for the entry module only.
  * With `--all-modules`, prints all modules in the compilation unit in sorted
@@ -796,31 +765,6 @@ func l1c_cmd_ast(opts: CliOptions*, cfg: LogConfig*) -> int {
         ap_print_module(entry.parse_result.root_module as Module*, entry.parse_result);
         driver_state_free(result);
         return 0;
-    }
-}
-
-/**
- * Report that a requested CLI mode is not implemented in Stage 1 yet.
- *
- * @param mode Requested CLI mode.
- * @param cfg Logging configuration.
- * @return Process-style status code.
- */
-func l1c_cmd_nyi(mode: CliMode, cfg: LogConfig*) -> int {
-    with (let diags = diag_create() => diag_free(diags)) {
-        diag_error(
-            diags,
-            "l1c",
-            "L1C-9510",
-            "mode '" + cli_mode_flag(mode) + "' is not implemented in Stage 1 yet",
-            "",
-            0,
-            0,
-            0,
-            0
-        );
-        dp_print_collector(diags);
-        return 1;
     }
 }
 

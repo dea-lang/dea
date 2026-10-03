@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-10-01
+Version: 2026-10-03
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -310,9 +310,9 @@ triple bootstrap.
 
 - Refactor [2026-09-28-stage2-native-source-review-noref][stage2-native-review] reviews every Stage 2 production module
   for appropriate use of implemented L1 facilities while preserving Stage 1 behavioral and diagnostic parity and the
-  strict self-hosting fixed point. Phases 1 and 2 are complete: all 16 shared utility/model modules and 56
-  frontend/analysis modules are reviewed, with per-tranche validation and paired performance evidence. Phases 3 through
-  5 remain pending.
+  strict self-hosting fixed point. Phases 1 through 4 are complete: all 119 current production modules are reviewed,
+  with per-tranche validation and performance evidence. The coverage audit includes retained compatibility helpers and
+  subsequent filesystem snapshot additions. Phase 5 consolidated validation and closure remain pending.
 - Bug Fix [2026-09-27-legacy-clang-preparation-compatibility-noref][legacy-clang-preparation] drafts Clang 14/15
   preparation compatibility, with persistent reuse gated on configuration isolation, discovery, identity, and
   invalidation validation, and private fallback when reuse cannot be authorized.

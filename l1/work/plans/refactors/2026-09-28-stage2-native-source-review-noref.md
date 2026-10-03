@@ -153,19 +153,24 @@ an already validated tree.
   coverage.
 - Completion: All 40 modules reviewed (four changed, 36 unchanged), covering 631 original function bodies. Both
   source-changing tranches passed focused tests, stage parity, relevant traces and strict triple bootstrap. Broad local
-  validation and repeated performance/allocation evidence passed; see the review ledger. Phases 4 and 5 remain pending.
+  validation and repeated performance/allocation evidence passed; see the review ledger. Later phase statuses follow.
 - Exit gate: Every Phase 3 module has a completed disposition, and all source-changing tranches satisfy the common
   validation gate with required performance evidence.
 
 ### Phase 4: Remaining modules, tests, and coverage audit
 
-- Status: Pending
+- Status: Complete
 - Review every remaining production module and reconcile the ledger against the current source tree.
 - Adapt implementation tests only where source changes require it or materially improve their expression. Tests for
   earlier phases accompany those changes; they are not postponed until this phase.
 - Audit retained compatibility helpers and document their purposes. Record any external follow-ups and L2 observations.
 - Deliverable: A complete production review ledger with no Pending entries and explicit reasons for retained
   scaffolding.
+- Completion: All eight remaining modules reviewed (three implementation changes, three comment-only changes, two
+  unchanged), covering 71 original function bodies. The audit accounts for all 119 current modules and four filesystem
+  helpers added after Phase 1. Named CLI constructors, removal of four unused helpers, and focused regressions passed
+  normal tests, parity, zero-leak traces, strict triple bootstrap, and repeated performance checks. The ledger has no
+  Pending entries; retained helpers and L2 observations are recorded. Phase 5 remains pending.
 - Exit gate: The inventory has no omissions, no unfinished in-scope work is deferred, and all source-changing tranches
   satisfy the common validation gate with required performance evidence.
 
