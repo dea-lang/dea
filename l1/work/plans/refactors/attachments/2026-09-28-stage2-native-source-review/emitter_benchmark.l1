@@ -1,0 +1,32 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module emitter_benchmark;
+
+import std.assert;
+import std.io;
+import std.string;
+import std.system;
+import std.text;
+import c_emitter.expr;
+
+/** Exercise every byte and each supported long-minimum base. */
+func main() {
+    let iterations = 10000;
+    if (argc() > 1) iterations = string_to_int(argv(1)) as int;
+    let checksum = 0;
+    for (let i = 0; i < iterations; i = i + 1) {
+        for (let value = 0; value < 256; value = value + 1) {
+            let spelling = cem_encode_c_byte_literal(value as byte);
+            checksum = checksum + len_s(spelling);
+            if (iterations == 1) printl_s(spelling);
+        }
+        assert(cem_is_long_min_bigint("-9223372036854775808", 10), "decimal minimum");
+        assert(cem_is_long_min_bigint("-8000000000000000", 16), "hex minimum");
+        assert(cem_is_long_min_bigint("-1000000000000000000000", 8), "octal minimum");
+        assert(cem_is_long_min_bigint("-1000000000000000000000000000000000000000000000000000000000000000", 2), "binary minimum");
+        assert(!cem_is_long_min_bigint("-8000000000000000", 3), "unsupported base");
+    }
+    printl_i(checksum);
+}

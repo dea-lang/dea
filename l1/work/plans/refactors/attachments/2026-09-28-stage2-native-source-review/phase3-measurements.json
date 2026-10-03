@@ -1,0 +1,413 @@
+{
+  "tranche1": {
+    "toolchain": "x86_64-linux-gnu-gcc-14 (Debian 14.2.0-19) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+    "samples": 7,
+    "warmups": 1,
+    "reverse_pairs": false,
+    "iterations": 10000,
+    "commands": [
+      [
+        "/tmp/dea-phase3-review/l1c-stage2-baseline.native",
+        "--build",
+        "--foreign-object",
+        "/tmp/l1-stage2-test-support-nhucou9x/compiler_support.o",
+        "--project-root",
+        "/tmp/dea-phase3-review/baseline-src",
+        "-o",
+        "/tmp/dea-phase3-review/tranche1-perf/baseline",
+        "/workspace/dea/l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/emitter_benchmark.l1"
+      ],
+      [
+        "/tmp/dea-phase3-review/l1c-stage2-baseline.native",
+        "--build",
+        "--foreign-object",
+        "/tmp/l1-stage2-test-support-nhucou9x/compiler_support.o",
+        "--trace-arc",
+        "--trace-memory",
+        "--project-root",
+        "/tmp/dea-phase3-review/baseline-src",
+        "-o",
+        "/tmp/dea-phase3-review/tranche1-perf/baseline-trace",
+        "/workspace/dea/l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/emitter_benchmark.l1"
+      ],
+      [
+        "/tmp/dea-phase3-review/l1c-stage2-baseline.native",
+        "--build",
+        "--foreign-object",
+        "/tmp/l1-stage2-test-support-nhucou9x/compiler_support.o",
+        "--project-root",
+        "/tmp/dea-phase3-review/tranche1-src",
+        "-o",
+        "/tmp/dea-phase3-review/tranche1-perf/candidate",
+        "/workspace/dea/l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/emitter_benchmark.l1"
+      ],
+      [
+        "/tmp/dea-phase3-review/l1c-stage2-baseline.native",
+        "--build",
+        "--foreign-object",
+        "/tmp/l1-stage2-test-support-nhucou9x/compiler_support.o",
+        "--trace-arc",
+        "--trace-memory",
+        "--project-root",
+        "/tmp/dea-phase3-review/tranche1-src",
+        "-o",
+        "/tmp/dea-phase3-review/tranche1-perf/candidate-trace",
+        "/workspace/dea/l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/emitter_benchmark.l1"
+      ],
+      [
+        "/tmp/dea-phase3-review/tranche1-perf/baseline",
+        "10000"
+      ],
+      [
+        "/tmp/dea-phase3-review/tranche1-perf/candidate",
+        "10000"
+      ],
+      [
+        "/tmp/dea-phase3-review/l1c-stage2-baseline.native",
+        "--gen",
+        "--project-root",
+        "/tmp/dea-phase3-review/tranche1-src",
+        "l1c"
+      ],
+      [
+        "/tmp/dea-phase3-review/l1c-stage2-tranche1.native",
+        "--gen",
+        "--project-root",
+        "/tmp/dea-phase3-review/tranche1-src",
+        "l1c"
+      ],
+      [
+        "/tmp/dea-phase3-review/tranche1-perf/baseline-trace",
+        "1"
+      ],
+      [
+        "/workspace/dea/.venv/bin/python",
+        "/workspace/dea/l1/compiler/stage2_l1/scripts/check_trace_log.py",
+        "/tmp/dea-phase3-review/tranche1-perf/trace-baseline.stderr",
+        "--triage"
+      ],
+      [
+        "/tmp/dea-phase3-review/tranche1-perf/candidate-trace",
+        "1"
+      ],
+      [
+        "/workspace/dea/.venv/bin/python",
+        "/workspace/dea/l1/compiler/stage2_l1/scripts/check_trace_log.py",
+        "/tmp/dea-phase3-review/tranche1-perf/trace-candidate.stderr",
+        "--triage"
+      ]
+    ],
+    "builds": {
+      "baseline": {
+        "seconds": 30.43790147000027,
+        "bytes": 1905920
+      },
+      "baseline-trace": {
+        "seconds": 31.286535461999847,
+        "bytes": 2091176
+      },
+      "candidate": {
+        "seconds": 24.504746569999952,
+        "bytes": 1905936
+      },
+      "candidate-trace": {
+        "seconds": 25.019136286000048,
+        "bytes": 2091192
+      }
+    },
+    "workloads": {
+      "emitter": {
+        "baseline": {
+          "seconds": [
+            2.8368718689998786,
+            2.7924959840001975,
+            2.8151333880000493,
+            2.8079530360000717,
+            2.81575104500007,
+            2.7618604699996467,
+            2.80644860800021
+          ],
+          "median": 2.8079530360000717,
+          "min": 2.7618604699996467,
+          "max": 2.8368718689998786
+        },
+        "candidate": {
+          "seconds": [
+            2.784773406000113,
+            2.7968397940003342,
+            2.8686827830001675,
+            2.815885621000234,
+            2.8099797290001334,
+            2.8490602219999346,
+            2.780041167000036
+          ],
+          "median": 2.8099797290001334,
+          "min": 2.780041167000036,
+          "max": 2.8686827830001675
+        },
+        "paired_change_percent": [
+          -1.8364757171120516,
+          0.1555529542396794,
+          1.9021974315100332,
+          0.2825041907204451,
+          -0.20496542157676378,
+          3.1572830324878343,
+          -0.9409558017522746
+        ],
+        "median_paired_change_percent": 0.1555529542396794,
+        "median_change_percent": 0.0721768838038983
+      },
+      "compiler_gen": {
+        "baseline": {
+          "seconds": [
+            21.27150076299995,
+            21.114271648999875,
+            21.42159500100024,
+            21.2379712449997,
+            22.060482220999802,
+            21.389479740999832,
+            21.792803567000192
+          ],
+          "median": 21.389479740999832,
+          "min": 21.114271648999875,
+          "max": 22.060482220999802
+        },
+        "candidate": {
+          "seconds": [
+            21.430634007999743,
+            21.28823523200026,
+            21.614056065000113,
+            21.52850265899997,
+            21.436818184000003,
+            21.49281893899979,
+            21.427795851000155
+          ],
+          "median": 21.436818184000003,
+          "min": 21.28823523200026,
+          "max": 21.614056065000113
+        },
+        "paired_change_percent": [
+          0.7481053959135453,
+          0.8239146767282657,
+          0.898444135419818,
+          1.3679810121631775,
+          -2.8270643893999803,
+          0.48313095620495794,
+          -1.6749002251034373
+        ],
+        "median_paired_change_percent": 0.7481053959135453,
+        "median_change_percent": 0.22131647694745293
+      }
+    },
+    "trace_events": {
+      "baseline": {
+        "release": 410,
+        "alloc": 153,
+        "calloc": 459,
+        "new_alloc": 459,
+        "alloc_string": 399,
+        "free": 153,
+        "drop": 459,
+        "free_string": 399
+      },
+      "candidate": {
+        "release": 410,
+        "alloc": 153,
+        "calloc": 459,
+        "new_alloc": 459,
+        "alloc_string": 399,
+        "free": 153,
+        "drop": 459,
+        "free_string": 399
+      }
+    },
+    "compiler_bytes": {
+      "baseline": 5032720,
+      "candidate": 5032744
+    }
+  },
+  "tranche4": {
+    "toolchain": "x86_64-linux-gnu-gcc-14 (Debian 14.2.0-19) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+    "samples": 7,
+    "warmups": 1,
+    "reverse_pairs": false,
+    "iterations": 1000,
+    "commands": [
+      [
+        "/tmp/dea-phase3-review/l1c-stage2-tranche1.native",
+        "--build",
+        "--foreign-object",
+        "/tmp/l1-stage2-test-support-whkwvzb1/compiler_support.o",
+        "--foreign-object",
+        "/tmp/l1-stage2-test-support-whkwvzb1/preparation_support.o",
+        "--project-root",
+        "/tmp/dea-phase3-review/tranche1-src",
+        "-o",
+        "/tmp/dea-phase3-review/tranche4-perf/baseline",
+        "/workspace/dea/l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/link_benchmark.l1"
+      ],
+      [
+        "/tmp/dea-phase3-review/l1c-stage2-tranche1.native",
+        "--build",
+        "--foreign-object",
+        "/tmp/l1-stage2-test-support-whkwvzb1/compiler_support.o",
+        "--foreign-object",
+        "/tmp/l1-stage2-test-support-whkwvzb1/preparation_support.o",
+        "--trace-arc",
+        "--trace-memory",
+        "--project-root",
+        "/tmp/dea-phase3-review/tranche1-src",
+        "-o",
+        "/tmp/dea-phase3-review/tranche4-perf/baseline-trace",
+        "/workspace/dea/l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/link_benchmark.l1"
+      ],
+      [
+        "/tmp/dea-phase3-review/l1c-stage2-tranche1.native",
+        "--build",
+        "--foreign-object",
+        "/tmp/l1-stage2-test-support-whkwvzb1/compiler_support.o",
+        "--foreign-object",
+        "/tmp/l1-stage2-test-support-whkwvzb1/preparation_support.o",
+        "--project-root",
+        "/tmp/dea-phase3-review/tranche4-src",
+        "-o",
+        "/tmp/dea-phase3-review/tranche4-perf/candidate",
+        "/workspace/dea/l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/link_benchmark.l1"
+      ],
+      [
+        "/tmp/dea-phase3-review/l1c-stage2-tranche1.native",
+        "--build",
+        "--foreign-object",
+        "/tmp/l1-stage2-test-support-whkwvzb1/compiler_support.o",
+        "--foreign-object",
+        "/tmp/l1-stage2-test-support-whkwvzb1/preparation_support.o",
+        "--trace-arc",
+        "--trace-memory",
+        "--project-root",
+        "/tmp/dea-phase3-review/tranche4-src",
+        "-o",
+        "/tmp/dea-phase3-review/tranche4-perf/candidate-trace",
+        "/workspace/dea/l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/link_benchmark.l1"
+      ],
+      [
+        "/tmp/dea-phase3-review/tranche4-perf/baseline",
+        "1000"
+      ],
+      [
+        "/tmp/dea-phase3-review/tranche4-perf/candidate",
+        "1000"
+      ],
+      [
+        "/tmp/dea-phase3-review/tranche4-perf/baseline-trace",
+        "1"
+      ],
+      [
+        "/workspace/dea/.venv/bin/python",
+        "/workspace/dea/l1/compiler/stage2_l1/scripts/check_trace_log.py",
+        "/tmp/dea-phase3-review/tranche4-perf/trace-baseline.stderr",
+        "--triage"
+      ],
+      [
+        "/tmp/dea-phase3-review/tranche4-perf/candidate-trace",
+        "1"
+      ],
+      [
+        "/workspace/dea/.venv/bin/python",
+        "/workspace/dea/l1/compiler/stage2_l1/scripts/check_trace_log.py",
+        "/tmp/dea-phase3-review/tranche4-perf/trace-candidate.stderr",
+        "--triage"
+      ]
+    ],
+    "builds": {
+      "baseline": {
+        "seconds": 102.34918246199959,
+        "bytes": 4780192
+      },
+      "baseline-trace": {
+        "seconds": 103.55327026899977,
+        "bytes": 5096472
+      },
+      "candidate": {
+        "seconds": 96.12472249500024,
+        "bytes": 4780232
+      },
+      "candidate-trace": {
+        "seconds": 98.98915437999949,
+        "bytes": 5096512
+      }
+    },
+    "workloads": {
+      "link": {
+        "baseline": {
+          "seconds": [
+            2.2721189020003294,
+            2.2948190609995436,
+            2.268764156000543,
+            2.2215557279996574,
+            2.219632004000232,
+            2.2642071410000426,
+            2.246813017999557
+          ],
+          "median": 2.2642071410000426,
+          "min": 2.219632004000232,
+          "max": 2.2948190609995436
+        },
+        "candidate": {
+          "seconds": [
+            2.2813926509998055,
+            2.3053028379999887,
+            2.316844623000179,
+            2.2366247390000353,
+            2.2737601010003345,
+            2.2544652260003204,
+            2.269028242000786
+          ],
+          "median": 2.2737601010003345,
+          "min": 2.2366247390000353,
+          "max": 2.316844623000179
+        },
+        "paired_change_percent": [
+          0.4081542119697801,
+          0.45684547329316594,
+          2.119236011044623,
+          0.6783089350608673,
+          2.438606800701759,
+          -0.43025723324144893,
+          0.9887437816702871
+        ],
+        "median_paired_change_percent": 0.6783089350608673,
+        "median_change_percent": 0.42191192790217436
+      }
+    },
+    "trace_events": {
+      "baseline": {
+        "release": 1822,
+        "calloc": 2640,
+        "new_alloc": 2640,
+        "alloc": 1029,
+        "retain": 714,
+        "realloc": 9,
+        "alloc_string": 600,
+        "free": 1029,
+        "drop": 2640,
+        "free_string": 1304
+      },
+      "candidate": {
+        "release": 1822,
+        "calloc": 2639,
+        "new_alloc": 2639,
+        "alloc": 1028,
+        "retain": 714,
+        "realloc": 9,
+        "alloc_string": 600,
+        "free": 1028,
+        "drop": 2639,
+        "free_string": 1304
+      }
+    },
+    "compiler_bytes": {
+      "baseline": 5032744,
+      "candidate": 5032768
+    }
+  }
+}

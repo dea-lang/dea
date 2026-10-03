@@ -273,16 +273,14 @@ func ld_run_built_program(
     with (
         let words = sv_create(sv_size(program_args) + 1) =>
             sv_free(words),
-        let status_box = vec_create(sizeof(int), 1) =>
-            vec_free(status_box)
+        let program_status = new int(0) =>
+            drop program_status
     ) {
         sv_push(words, executable);
         for (let i = 0; i < sv_size(program_args); i = i + 1) {
             sv_push(words, sv_get(program_args, i));
         }
         log_info(cfg, "Running: " + bd_join_display_words(words));
-        vec_push_int(status_box, 0);
-        let program_status = vec_get(status_box, 0) as int*;
         let launch = cfs_run_process(words, program_status);
         if (launch != 1) {
             ld_error(

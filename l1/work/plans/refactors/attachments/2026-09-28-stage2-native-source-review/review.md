@@ -1,17 +1,17 @@
 # Stage 2 native-source review ledger
 
-- Review dates: 2026-09-28 (Phase 1), 2026-10-02 (Phase 2)
-- Status: Phases 1 and 2 complete; Phases 3 through 5 pending
+- Review dates: 2026-09-28 (Phase 1), 2026-10-02 (Phase 2), 2026-10-03 (Phase 3)
+- Status: Phases 1 through 3 complete; Phases 4 and 5 pending
 - Source inventory: 120 original committed production modules; 119 current after removing unused `util.path`
 - Phase assignment: 1 = shared utilities/models; 2 = frontend/analysis; 3 = backend/build; 4 = remaining CLI/entrypoints
 - Parent plan: [l1/work/plans/refactors/2026-09-28-stage2-native-source-review-noref.md][plan]
 
 ## Method and scope
 
-Every Phase 1 and Phase 2 function body and its data representation is reviewed with relevant callers, callees, failure
-paths, ownership and cleanup. The function lists below make coverage explicit; boundary notes identify the important
-cross-module contracts. Reading a later-phase caller does not complete that module's own review. Review findings are
-recorded before edits; final dispositions require validation of the source-changing tranche.
+Every Phase 1 through Phase 3 function body and its data representation is reviewed with relevant callers, callees,
+failure paths, ownership and cleanup. Function lists here and in the phase attachments make coverage explicit; boundary
+notes identify the important cross-module contracts. Reading a later-phase caller does not complete that module's own
+review. Review findings are recorded before edits; final dispositions require validation of the source-changing tranche.
 
 Subsystem-specific state and models stay with their owning later phases. No Stage 1 production changes, diagnostic code
 assignments, public language/CLI/ABI changes, or interface format/fingerprint rule changes are intended.
@@ -77,8 +77,18 @@ The four frontend/semantic review tranches and their evidence are recorded in
 [l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/phase2-review.md][phase2-review].
 
 All 56 Phase 2 modules are reviewed: seven changed and 49 unchanged. All four tranches passed their functional,
-ownership and bootstrap gates, with performance evidence recorded in that attachment. The 48 modules assigned to Phases
-3 and 4 remain pending; the overall plan stays active.
+ownership and bootstrap gates, with performance evidence recorded in that attachment. Phase 3 results follow; the
+overall plan stays active.
+
+## Phase 3 review
+
+The backend/build review and its evidence are recorded in
+[l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/phase3-review.md][phase3-review].
+
+All 40 Phase 3 modules (631 original function bodies) are reviewed: four changed and 36 unchanged. Both source-changing
+tranches passed focused tests, parity, traces and strict triple bootstrap. Broad local validation and repeated
+performance/allocation evidence passed; the process-status simplification removes two allocations per call. The eight
+Phase 4 modules remain pending, and the overall plan stays active.
 
 ## Module inventory
 
@@ -91,37 +101,37 @@ splits.
 | `analysis.l1`                      | 2     | Reviewed, unchanged |
 | `ast.l1`                           | 1     | Reviewed, changed   |
 | `ast_printer.l1`                   | 2     | Reviewed, unchanged |
-| `backend.l1`                       | 3     | Pending             |
-| `backend/coerce.l1`                | 3     | Pending             |
-| `backend/expr.l1`                  | 3     | Pending             |
-| `backend/lifetime.l1`              | 3     | Pending             |
-| `backend/lower.l1`                 | 3     | Pending             |
-| `backend/output.l1`                | 3     | Pending             |
-| `backend/state.l1`                 | 3     | Pending             |
-| `backend/stmt.l1`                  | 3     | Pending             |
-| `backend/types.l1`                 | 3     | Pending             |
-| `build_driver.l1`                  | 3     | Pending             |
+| `backend.l1`                       | 3     | Reviewed, unchanged |
+| `backend/coerce.l1`                | 3     | Reviewed, unchanged |
+| `backend/expr.l1`                  | 3     | Reviewed, unchanged |
+| `backend/lifetime.l1`              | 3     | Reviewed, unchanged |
+| `backend/lower.l1`                 | 3     | Reviewed, unchanged |
+| `backend/output.l1`                | 3     | Reviewed, unchanged |
+| `backend/state.l1`                 | 3     | Reviewed, unchanged |
+| `backend/stmt.l1`                  | 3     | Reviewed, unchanged |
+| `backend/types.l1`                 | 3     | Reviewed, unchanged |
+| `build_driver.l1`                  | 3     | Reviewed, unchanged |
 | `build_info.l1`                    | 4     | Pending             |
 | `builtin_types.l1`                 | 1     | Reviewed, unchanged |
-| `c_emitter/abi.l1`                 | 3     | Pending             |
-| `c_emitter/declarations.l1`        | 3     | Pending             |
-| `c_emitter/expr.l1`                | 3     | Pending             |
-| `c_emitter/lifetime.l1`            | 3     | Pending             |
-| `c_emitter/state.l1`               | 3     | Pending             |
-| `c_emitter/stmt.l1`                | 3     | Pending             |
-| `c_emitter/type_names.l1`          | 3     | Pending             |
-| `c_emitter/types.l1`               | 3     | Pending             |
-| `c_emitter/wrappers.l1`            | 3     | Pending             |
+| `c_emitter/abi.l1`                 | 3     | Reviewed, unchanged |
+| `c_emitter/declarations.l1`        | 3     | Reviewed, unchanged |
+| `c_emitter/expr.l1`                | 3     | Reviewed, changed   |
+| `c_emitter/lifetime.l1`            | 3     | Reviewed, unchanged |
+| `c_emitter/state.l1`               | 3     | Reviewed, unchanged |
+| `c_emitter/stmt.l1`                | 3     | Reviewed, unchanged |
+| `c_emitter/type_names.l1`          | 3     | Reviewed, unchanged |
+| `c_emitter/types.l1`               | 3     | Reviewed, unchanged |
+| `c_emitter/wrappers.l1`            | 3     | Reviewed, unchanged |
 | `cli_args.l1`                      | 4     | Pending             |
 | `cli_args/help.l1`                 | 4     | Pending             |
 | `cli_args/link.l1`                 | 4     | Pending             |
 | `cli_args/model.l1`                | 4     | Pending             |
 | `cli_args/parse.l1`                | 4     | Pending             |
-| `codegen_options.l1`               | 3     | Pending             |
-| `compile_driver.l1`                | 3     | Pending             |
-| `compile_driver/compile.l1`        | 3     | Pending             |
-| `compile_driver/toolchain.l1`      | 3     | Pending             |
-| `compile_driver/transaction.l1`    | 3     | Pending             |
+| `codegen_options.l1`               | 3     | Reviewed, unchanged |
+| `compile_driver.l1`                | 3     | Reviewed, unchanged |
+| `compile_driver/compile.l1`        | 3     | Reviewed, unchanged |
+| `compile_driver/toolchain.l1`      | 3     | Reviewed, unchanged |
+| `compile_driver/transaction.l1`    | 3     | Reviewed, unchanged |
 | `compiler_filesystem.l1`           | 1     | Reviewed, changed   |
 | `dea_prelude.l1`                   | 2     | Reviewed, unchanged |
 | `diag_print.l1`                    | 1     | Reviewed, unchanged |
@@ -144,21 +154,21 @@ splits.
 | `l1c.l1`                           | 4     | Pending             |
 | `l1c_lib.l1`                       | 4     | Pending             |
 | `lexer.l1`                         | 2     | Reviewed, unchanged |
-| `link_driver.l1`                   | 3     | Pending             |
-| `link_driver/build.l1`             | 3     | Pending             |
-| `link_driver/inputs.l1`            | 3     | Pending             |
-| `link_driver/model.l1`             | 3     | Pending             |
-| `link_driver/plan.l1`              | 3     | Pending             |
-| `link_driver/provenance.l1`        | 3     | Pending             |
-| `link_driver/toolchain.l1`         | 3     | Pending             |
-| `link_driver/transaction.l1`       | 3     | Pending             |
-| `link_driver/workspace.l1`         | 3     | Pending             |
+| `link_driver.l1`                   | 3     | Reviewed, unchanged |
+| `link_driver/build.l1`             | 3     | Reviewed, unchanged |
+| `link_driver/inputs.l1`            | 3     | Reviewed, unchanged |
+| `link_driver/model.l1`             | 3     | Reviewed, changed   |
+| `link_driver/plan.l1`              | 3     | Reviewed, changed   |
+| `link_driver/provenance.l1`        | 3     | Reviewed, unchanged |
+| `link_driver/toolchain.l1`         | 3     | Reviewed, unchanged |
+| `link_driver/transaction.l1`       | 3     | Reviewed, unchanged |
+| `link_driver/workspace.l1`         | 3     | Reviewed, changed   |
 | `locals.l1`                        | 2     | Reviewed, unchanged |
 | `mi_utils.l1`                      | 2     | Reviewed, unchanged |
-| `module_graph.l1`                  | 3     | Pending             |
-| `module_graph/order.l1`            | 3     | Pending             |
+| `module_graph.l1`                  | 3     | Reviewed, unchanged |
+| `module_graph/order.l1`            | 3     | Reviewed, unchanged |
 | `module_interface.l1`              | 2     | Reviewed, unchanged |
-| `module_lifecycle.l1`              | 3     | Pending             |
+| `module_lifecycle.l1`              | 3     | Reviewed, unchanged |
 | `name_resolver.l1`                 | 2     | Reviewed, unchanged |
 | `name_resolver/collect.l1`         | 2     | Reviewed, unchanged |
 | `name_resolver/imports.l1`         | 2     | Reviewed, unchanged |
@@ -178,9 +188,9 @@ splits.
 | `parser/stmt.l1`                   | 2     | Reviewed, unchanged |
 | `parser/token_value.l1`            | 2     | Reviewed, unchanged |
 | `parser/type_ref.l1`               | 2     | Reviewed, unchanged |
-| `preparation.l1`                   | 3     | Pending             |
-| `preparation/consumer.l1`          | 3     | Pending             |
-| `preparation/frontend.l1`          | 3     | Pending             |
+| `preparation.l1`                   | 3     | Reviewed, unchanged |
+| `preparation/consumer.l1`          | 3     | Reviewed, unchanged |
+| `preparation/frontend.l1`          | 3     | Reviewed, unchanged |
 | `scope_context.l1`                 | 2     | Reviewed, unchanged |
 | `sem_context.l1`                   | 2     | Reviewed, unchanged |
 | `signatures.l1`                    | 2     | Reviewed, unchanged |
@@ -207,7 +217,7 @@ splits.
 | `util/numbers.l1`                  | 1     | Reviewed, changed   |
 | `util/path.l1`                     | 1     | Reviewed, changed   |
 | `util/strings.l1`                  | 1     | Reviewed, unchanged |
-| `wrapper_emitter.l1`               | 3     | Pending             |
+| `wrapper_emitter.l1`               | 3     | Reviewed, unchanged |
 
 ## Phase 1 function review
 
@@ -685,4 +695,5 @@ commit.
 [measurements]: measurements.json
 [numeric-benchmark]: numeric_benchmark.l1
 [phase2-review]: phase2-review.md
+[phase3-review]: phase3-review.md
 [plan]: ../../2026-09-28-stage2-native-source-review-noref.md

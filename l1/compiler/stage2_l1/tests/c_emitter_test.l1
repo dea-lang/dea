@@ -299,6 +299,15 @@ func test_emitter_large_integer_helpers() {
         "typed uint bigint literal mismatch");
     assert(cem_emit_typed_bigint_literal("-8000000000000000", 16, long_ty) == "INT64_MIN",
         "typed long bigint literal mismatch");
+    assert(cem_emit_typed_bigint_literal("-9223372036854775808", 10, long_ty) == "INT64_MIN",
+        "decimal long minimum mismatch");
+    assert(cem_emit_typed_bigint_literal("-1000000000000000000000", 8, long_ty) == "INT64_MIN",
+        "octal long minimum mismatch");
+    assert(cem_emit_typed_bigint_literal("-1000000000000000000000000000000000000000000000000000000000000000", 2, long_ty) == "INT64_MIN",
+        "binary long minimum mismatch");
+    assert(!cem_is_long_min_bigint("-9223372036854775807", 10), "adjacent value is not the minimum");
+    assert(!cem_is_long_min_bigint("-8000000000000000", 10), "minimum recognition must respect the base");
+    assert(!cem_is_long_min_bigint("-9223372036854775808", 3), "unsupported base is not a minimum");
     assert(cem_emit_typed_bigint_literal("ffffffffffffffff", 16, ulong_ty) == "0xffffffffffffffffULL",
         "typed ulong bigint literal mismatch");
     assert(cem_emit_typed_bigint_literal("11111111", 2, uint_ty) == "0xffU",
@@ -1068,10 +1077,29 @@ func test_emitter_module_filters_handle_composed_keys() {
     ss_free(type_keys);
 }
 
-/**
- * Main entry point for the module.
- */
+/** Check C byte spelling at escape and printable-range boundaries. */
+func test_emitter_byte_literal_boundaries() {
+    assert(cem_encode_c_byte_literal('\\') == "\\\\", "backslash escape mismatch");
+    assert(cem_encode_c_byte_literal('\'') == "\\'", "quote escape mismatch");
+    assert(cem_encode_c_byte_literal('\n') == "\\n", "newline escape mismatch");
+    assert(cem_encode_c_byte_literal('\r') == "\\r", "return escape mismatch");
+    assert(cem_encode_c_byte_literal('\t') == "\\t", "tab escape mismatch");
+    assert(cem_encode_c_byte_literal('\0') == "\\0", "NUL escape mismatch");
+    assert(cem_encode_c_byte_literal('\a') == "\\a", "bell escape mismatch");
+    assert(cem_encode_c_byte_literal('\b') == "\\b", "backspace escape mismatch");
+    assert(cem_encode_c_byte_literal('\f') == "\\f", "form feed escape mismatch");
+    assert(cem_encode_c_byte_literal('\v') == "\\v", "vertical tab escape mismatch");
+    assert(cem_encode_c_byte_literal(1 as byte) == "\\x01", "hex padding mismatch");
+    assert(cem_encode_c_byte_literal(31 as byte) == "\\x1f", "last control byte mismatch");
+    assert(cem_encode_c_byte_literal(' ') == " ", "first printable byte mismatch");
+    assert(cem_encode_c_byte_literal('~') == "~", "last printable byte mismatch");
+    assert(cem_encode_c_byte_literal(127 as byte) == "\\x7f", "DEL escape mismatch");
+    assert(cem_encode_c_byte_literal(255 as byte) == "\\xff", "high byte escape mismatch");
+}
+
+/** Main entry point for the module. */
 func main() {
+    test_emitter_byte_literal_boundaries();
     test_string_escape_encodes_control_and_quote_bytes();
     test_code_builder_tracks_indentation();
     test_emitter_name_mangling();

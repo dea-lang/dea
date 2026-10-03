@@ -24,10 +24,12 @@ import link_driver.model;
 import link_driver.plan;
 import link_driver.toolchain;
 import link_driver.transaction;
+import link_driver.workspace;
 import mi_utils;
 import module_graph;
 import module_interface;
 import util.diag;
+import util.log;
 
 /** Return whether one diagnostic collector contains a requested code. */
 func ldt_has_code(diags: DiagCollector*, code: string) -> bool {
@@ -1335,8 +1337,22 @@ func test_discovery_semantic_validation() {
     }
 }
 
+/** Verify that a missing executable reports launch failure and releases status storage. */
+func test_run_launch_failure() {
+    with (let args = sv_create(0) => sv_free(args),
+          let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+          let diags = diag_create() => diag_free(diags)) {
+        assert(ld_run_built_program(
+            "dea-missing-phase3-executable/no-program", args, cfg, diags) == 1,
+            "missing executable must return launch failure");
+        assert(diag_count(diags) == 1 && ldt_has_code(diags, "L1C-2133"),
+            "launch failure must retain its diagnostic");
+    }
+}
+
 /** Main entry point. */
 func main() {
+    test_run_launch_failure();
     test_ordered_interface_roots();
     test_discovery_semantic_validation();
     test_discovered_provider_ordering();
