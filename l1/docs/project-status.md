@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-10-03
+Version: 2026-10-04
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -188,7 +188,7 @@ Semantic-only commands do not probe a C compiler or access native cache state. R
 read-only payload of semantic interfaces and rebuild inputs with an empty user cache. Installation/distribution tooling
 remains future productization work. See [l1/docs/reference/stdlib-preparation.md](reference/stdlib-preparation.md).
 
-This gives the subtree a complete bootstrap environment without claiming a self-hosted L1 compiler yet.
+These shared assets support both the bootstrap compiler and the self-hosted L1 compiler.
 
 ## Language and Library Coverage
 
@@ -351,9 +351,11 @@ bootstrap path:
 
 These remain true today:
 
-1. The Stage 2 port and supported-host validation are complete. Its native-source review remains active, with Phases 1
-   through 4 complete and all 119 current production modules reviewed. Phase 5 consolidated validation and closure
-   remain pending; Stage 1 is still the semantic and diagnostic oracle.
+1. The Stage 2 port, supported-host validation, and native-source review are complete. All 119 current production
+   modules and 1,749 function bodies are reviewed; consolidated normal, parity, trace, child-fixture, environment, and
+   strict triple-bootstrap validation passed. Stage 1 remains the semantic and diagnostic oracle. Review outcomes and
+   retained constraints are recorded in
+   [l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/review.md][native-review].
 2. Standalone linking consumes explicit object paths plus derived sibling interfaces; it does not discover implicit Dea
    objects, compile sources, or infer external-library dependencies from modules or manifests.
 3. Fixed-size arrays `T[N]` and escape-restricted non-owning slices `T[]` are implemented; owning dynamic buffers,
@@ -361,3 +363,4 @@ These remain true today:
 4. Address-of (`&`) and generics are not part of the current active language surface.
 
 [legacy-clang-plan]: ../work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md
+[native-review]: ../work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/review.md

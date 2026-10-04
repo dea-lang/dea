@@ -3,7 +3,8 @@
 ## Review and idiomatize the self-hosted L1 compiler source
 
 - Date: 2026-09-28
-- Status: In Progress
+- Status: Completed
+- Completed: 2026-10-04
 - Title: Review and idiomatize the self-hosted L1 compiler source
 - Kind: Refactor
 - Severity: Medium
@@ -22,6 +23,9 @@
 - Repro: From `l1/`, run `make test-stage2 test-stage-parity` and `make triple-test`.
 
 ## Summary
+
+All five review phases are complete. The consolidated implementation passed exhaustive validation, and the plan is
+closed with its completed review ledger.
 
 The mechanical L1 Stage 2 port is complete. The review inventory contains 120 original production modules; Phase 1
 removes one unused path-wrapper module, leaving 119. The repository provides Stage 2 normal and trace tests, behavioral
@@ -170,17 +174,22 @@ an already validated tree.
   unchanged), covering 71 original function bodies. The audit accounts for all 119 current modules and four filesystem
   helpers added after Phase 1. Named CLI constructors, removal of four unused helpers, and focused regressions passed
   normal tests, parity, zero-leak traces, strict triple bootstrap, and repeated performance checks. The ledger has no
-  Pending entries; retained helpers and L2 observations are recorded. Phase 5 remains pending.
+  Pending entries; retained helpers and L2 observations are recorded. Phase 5 final validation and closure are complete.
 - Exit gate: The inventory has no omissions, no unfinished in-scope work is deferred, and all source-changing tranches
   satisfy the common validation gate with required performance evidence.
 
 ### Phase 5: Final validation, documentation, and closure
 
-- Status: Pending
+- Status: Complete
 - Run the complete validation commands and completion checks below against the consolidated implementation.
 - Update implementation documentation and summarize review outcomes, retained constraints, and external follow-ups.
 - Archive the plan and update its roadmap entry and links only after every completion criterion passes.
 - Deliverable: Final validation evidence, accurate current documentation, and the closed plan with its completed ledger.
+- Completion: Consolidated `make test-ci` passed on Linux x86_64 with GCC 14.2.0: 87 Stage 1 and 71 Stage 2 normal
+  tests, parity, examples, tooling, environment integration, 47 traces per stage, both stages' child fixtures, and
+  strict triple bootstrap. The self-built compiler passed 65 tests, four examples, and hello; 137 C translation units
+  and normalized B/C native bytes match. All 119 current modules and 1,749 functions are accounted for; no in-scope work
+  is deferred. Final evidence is in the review ledger and its Phase 5 attachment.
 - Exit gate: All verification criteria pass, every earlier phase is Complete, and documentation and lifecycle checks
   pass.
 
@@ -238,12 +247,12 @@ At implementation closure, update [l1/compiler/stage2_l1/README.md][stage2-readm
 Validate the document with `python3 scripts/check_adr_impact.py --all-active`, link checks, and Markdown checks. No
 compiler suite is required merely to create the planning document.
 
-[architecture]: ../../../docs/reference/architecture.md
-[decomposition]: closed/2026-07-08-stage1-source-decomposition-noref.md
-[guidance]: ../../../AGENTS.md
-[project-status]: ../../../docs/project-status.md
-[review-ledger]: attachments/2026-09-28-stage2-native-source-review/review.md
-[roadmap]: ../../../docs/roadmap.md
-[self-hosting]: ../../../../work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md
-[stage2-readme]: ../../../compiler/stage2_l1/README.md
-[two-stage]: ../../../../docs/decisions/0001-two-stage-architecture.md
+[architecture]: ../../../../docs/reference/architecture.md
+[decomposition]: 2026-07-08-stage1-source-decomposition-noref.md
+[guidance]: ../../../../AGENTS.md
+[project-status]: ../../../../docs/project-status.md
+[review-ledger]: ../attachments/2026-09-28-stage2-native-source-review/review.md
+[roadmap]: ../../../../docs/roadmap.md
+[self-hosting]: ../../../../../work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md
+[stage2-readme]: ../../../../compiler/stage2_l1/README.md
+[two-stage]: ../../../../../docs/decisions/0001-two-stage-architecture.md

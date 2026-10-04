@@ -1,10 +1,10 @@
 # Stage 2 native-source review ledger
 
-- Review dates: 2026-09-28 (Phase 1), 2026-10-02 (Phase 2), 2026-10-03 (Phases 3 and 4)
-- Status: Phases 1 through 4 complete; Phase 5 pending
+- Review dates: 2026-09-28 (Phase 1), 2026-10-02 (Phase 2), 2026-10-03 (Phases 3 and 4), 2026-10-04 (Phase 5)
+- Status: Complete; all five phases validated
 - Source inventory: 120 original committed production modules; 119 current after removing unused `util.path`
 - Phase assignment: 1 = shared utilities/models; 2 = frontend/analysis; 3 = backend/build; 4 = remaining CLI/entrypoints
-- Parent plan: [l1/work/plans/refactors/2026-09-28-stage2-native-source-review-noref.md][plan]
+- Parent plan: [l1/work/plans/refactors/closed/2026-09-28-stage2-native-source-review-noref.md][plan]
 
 ## Method and scope
 
@@ -97,7 +97,15 @@ The CLI/entrypoint review and cross-phase coverage audit are recorded in
 71 original function bodies in eight modules and four filesystem snapshot helpers added after Phase 1. The current tree
 has 1,749 production function bodies, all named in the review records. Six modules changed (three implementation changes
 and three comment-only changes); two remain unchanged. Focused tests, stage parity, zero-leak traces, strict triple
-bootstrap, and repeated C-generation measurements passed. No inventory rows remain Pending. Phase 5 remains pending.
+bootstrap, and repeated C-generation measurements passed. No inventory rows remain Pending.
+
+## Phase 5 validation
+
+The consolidated inventory audit, exhaustive validation, retained constraints, and closure evidence are recorded in
+[l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/phase5-validation.md][phase5-validation].
+The complete `make test-ci` gate passed on Linux x86_64 with GCC 14.2.0. Both normal and trace suites, parity, child
+fixtures, environment/tooling checks, and strict triple bootstrap passed. All current modules and function names remain
+accounted for. Documentation and lifecycle records are finalized; no in-scope work or external follow-up remains.
 
 ## Module inventory
 
@@ -710,4 +718,5 @@ commit.
 [phase2-review]: phase2-review.md
 [phase3-review]: phase3-review.md
 [phase4-review]: phase4-review.md
-[plan]: ../../2026-09-28-stage2-native-source-review-noref.md
+[phase5-validation]: phase5-validation.md
+[plan]: ../../closed/2026-09-28-stage2-native-source-review-noref.md
