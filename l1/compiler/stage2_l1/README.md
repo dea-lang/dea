@@ -2,7 +2,8 @@
 
 This is the self-hosted L1 compiler, mechanically seeded from the 120-module Stage 1 source graph. Stage 1 remains the
 semantic and diagnostic oracle. The initial production snapshot changed only `.l0` filenames to `.l1` and the compiler
-identity string. The native-source review updates inherited implementation comments where needed.
+identity string. All 119 current production modules have since been reviewed for appropriate use of implemented L1
+facilities, including their ownership boundaries and retained compatibility helpers.
 
 The current tree contains 119 production modules. The first shared-utility/model tranche uses typed scalar constants,
 unsigned stdlib conversion for canonical bigint decimals, and named fields in the large AST default constructors. It
@@ -12,7 +13,9 @@ variadic token matching, guarded bitwise constant folding, typed cleanup flow, a
 constant fingerprint domain. Backend/build review uses native byte arithmetic and a caller-owned process-status scalar.
 CLI defaults and parse results use named fields; unused entrypoint helpers have been removed. Growable operand vectors,
 ordered validation, native bridges, and the tested C-option merge boundary remain intentional. Diagnostic and interface
-contracts remain unchanged. Review findings and validation are recorded in
+contracts remain unchanged. The completed review passed consolidated `make test-ci` validation, including both stages'
+normal and trace suites, parity, child fixtures, environment/tooling checks, and strict triple bootstrap. Review
+findings, retained constraints, performance evidence, and final validation are recorded in
 [l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/review.md][native-review].
 
 Run these commands from `l1/`:

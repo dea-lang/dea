@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-10-03
+Version: 2026-10-04
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -41,7 +41,10 @@ path-wrapper module. The ledger in
 original 120-module inventory, phase assignments, ownership rationale, and validation evidence. Backend/build modules
 use native byte arithmetic and scalar process-status storage. CLI option defaults and parse results use named fields
 while retaining ordered validation and explicit ownership transfer. The audit records retained compatibility helpers and
-the temporary-parent snapshot bridge added during the review.
+the temporary-parent snapshot bridge added during the review. All 119 current production modules and 1,749 function
+bodies are accounted for. Typed growable containers, explicit recursive teardown, owned string copies, and native
+filesystem/process/preparation bridges retain their ownership and portability contracts. The review identified no
+separate semantic defect or unfinished in-scope follow-up; its L2 observations are not accepted language proposals.
 
 `make test` is the fast development gate: selected Stage 1 and Stage 2 smoke tests, parity, examples, Stage 2 tooling,
 and Docker/Wine runner regressions. `make test-extended` runs the Stage 1 and Stage 2 normal suites with CI-only cases

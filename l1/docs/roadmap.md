@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-10-03
+Version: 2026-10-04
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -51,11 +51,12 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 ## Stage 2 Source Review
 
 The mechanical Stage 2 port and supported-host validation are complete under the
-[work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md][stage2-self-hosting]. The active
-[l1/work/plans/refactors/2026-09-28-stage2-native-source-review-noref.md][stage2-native-review] applies existing L1
-facilities while preserving Stage 1 parity and the strict self-hosting fixed point. New stdlib APIs and delivery
-workflows remain separate work. Select Stage 2 with `make use-dev-stage2`; `make test-ci` runs both stages and strict
-triple bootstrap.
+[work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md][stage2-self-hosting]. The completed
+[l1/work/plans/refactors/closed/2026-09-28-stage2-native-source-review-noref.md][stage2-native-review] reviewed all 119
+current production modules and adopted existing L1 facilities while preserving Stage 1 parity and the strict
+self-hosting fixed point. Consolidated exhaustive validation passed, including both stages' normal and trace suites and
+triple bootstrap. New stdlib APIs and delivery workflows remain separate work. Select Stage 2 with
+`make use-dev-stage2`; `make test-ci` runs both stages and strict triple bootstrap.
 
 ## Roadmap assumptions
 
@@ -306,13 +307,13 @@ triple bootstrap.
 - Feature [2026-07-11-shared-l1-stage2-self-hosting-port-noref][stage2-self-hosting] ported the settled Stage 1 compiler
   to `.l1`, added the Stage 2 build and test workflow, and established strict triple-bootstrap validation.
 
+- Refactor [2026-09-28-stage2-native-source-review-noref][stage2-native-review] completed the review of all 119 current
+  Stage 2 production modules and 1,749 function bodies. Native L1 idioms, retained-helper rationale, focused
+  regressions, and performance evidence are recorded in its ledger. The consolidated `make test-ci` gate passed with
+  Stage 1 behavioral/diagnostic parity and the strict self-hosting fixed point preserved.
+
 ## Active standalone plans
 
-- Refactor [2026-09-28-stage2-native-source-review-noref][stage2-native-review] reviews every Stage 2 production module
-  for appropriate use of implemented L1 facilities while preserving Stage 1 behavioral and diagnostic parity and the
-  strict self-hosting fixed point. Phases 1 through 4 are complete: all 119 current production modules are reviewed,
-  with per-tranche validation and performance evidence. The coverage audit includes retained compatibility helpers and
-  subsequent filesystem snapshot additions. Phase 5 consolidated validation and closure remain pending.
 - Bug Fix [2026-09-27-legacy-clang-preparation-compatibility-noref][legacy-clang-preparation] drafts Clang 14/15
   preparation compatibility, with persistent reuse gated on configuration isolation, discovery, identity, and
   invalidation validation, and private fallback when reuse cannot be authorized.
@@ -482,7 +483,7 @@ update to be promoted to an initiative or plan:
 [small-int]: ../work/plans/features/closed/2026-04-04-l1-small-int-builtins-on-dea-abi-noref.md
 [stage1-slices]: ../work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md
 [stage1-source-decomposition]: ../work/plans/refactors/closed/2026-07-08-stage1-source-decomposition-noref.md
-[stage2-native-review]: ../work/plans/refactors/2026-09-28-stage2-native-source-review-noref.md
+[stage2-native-review]: ../work/plans/refactors/closed/2026-09-28-stage2-native-source-review-noref.md
 [stage2-self-hosting]: ../../work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md
 [stdlib-coverage]: ../work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md
 [stdlib-preparation]: ../work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
