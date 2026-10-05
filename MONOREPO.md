@@ -63,18 +63,45 @@ Bare `v*` tags are therefore a closed pre-monorepo namespace. New monorepo relea
 L0 stable releases (`l0-v*`) and L0 snapshots (`l0-snapshot-*`) are the only currently active release workflows. L1
 release namespaces (`l1-v*` and `l1-snapshot-*`) remain reserved but are not yet active.
 
-The following conditions must be met before the first L1 release or snapshot workflow is added:
+The following prerequisites must be met before the first L1 release or snapshot workflow is added:
 
-1. The L1 install/dist artifact contract must be defined and stable through the L1 bootstrap productization plan
-   (`l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md`) or a successor.
-2. The artifact must be smoke-testable from a clean install prefix, producing a working `l1c` launcher.
-3. Release notes, tag gating, and smoke-test flow must be documented and reproducible in CI.
+1. L1 `make install` and `make dist` must be implemented with a stable artifact contract through
+   [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md](l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md)
+   or a successor.
+2. The exact archive-path output and reusable installed/archive smoke command must be documented and validated from a
+   clean, relocated prefix on Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64. The installed `l1c` must work
+   without source-worktree dependencies, preparing native support in a separate writable cache. Distribution archives
+   must include verified Stage 2 HTML/PDF from
+   [l1/work/plans/tools/2026-10-05-l1-stage-separated-autodocs-noref.md](l1/work/plans/tools/2026-10-05-l1-stage-separated-autodocs-noref.md),
+   built from the same source/version; Stage 1 autodocs remain separate developer outputs.
+3. Tag validation, conversion to `DEA_DIST_VERSION`, release-note baselines, publication behavior, and the smoke-test
+   flow must be documented and reproducible in CI. These contracts are specified in
+   [work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md](work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md).
 4. The existing `l1-v*` and `l1-snapshot-*` tag namespaces must not be used for any other purpose before the first
-   deliberately prepared L1 release or snapshot.
+   deliberately prepared L1 release or snapshot. Check the authoritative remote tag state before activation; historical
+   checks and local tag lists are insufficient.
 
 An `l1-release.yml` or `l1-snapshot.yml` workflow that does not meet these conditions is not valid to add. L1 CI
 validation (via `l1-ci.yml`) covers both compiler stages and the strict self-hosting fixed point independently of these
 release prerequisites.
+
+Workflow review, local syntax/policy validation, and hosted acceptance follow implementation. A successful manual
+dispatch is not a prerequisite for writing the workflow. GitHub manual dispatch requires the workflow to exist on the
+default branch before the first hosted check. Local validation does not establish successful hosted publication.
+
+Hosted acceptance requires one deliberately prepared snapshot and one versioned release, each building and smoke-testing
+all four archives before publication. Follow the separate tag-creation, tag-push, and remote-write authorization gates
+in [AGENTS.md](AGENTS.md); implementing the plan does not authorize those actions. Snapshot dispatch with
+`publish_release=false` still creates/pushes a tag and uploads a draft release, so it also requires authorization. If
+hosted acceptance is deferred, record implementation and pending acceptance separately and leave the workflow plan open.
+Do not create a dummy stable tag to close it.
+
+Delivery documentation must distinguish workflow availability, verified publication, and product maturity. Initial L1
+archives contain only the self-built Stage 2 compiler, its toolchain assets, and Stage 2 HTML/PDF documentation,
+including `VERSION` and the install manifest. Release assets also include the Stage 2 docs bundle, matching PDF, and
+checksums. Stage 1 remains a bootstrap/development tool. Both GitHub release types retain Stage 2 development
+identification and set `make_latest=false`, preserving L0's latest-release selection. Publishing an L1 GitHub Release
+does not by itself declare language or toolchain stability.
 
 ## Working In `l0/`
 
