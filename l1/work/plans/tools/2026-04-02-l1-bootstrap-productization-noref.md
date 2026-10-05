@@ -4,13 +4,14 @@
 
 - Date: 2026-04-02
 - Last reviewed: 2026-10-05
-- Status: Draft
+- Status: In progress
 - Title: Define the self-hosted L1 Stage 2 install and distribution workflow
 - Kind: Tooling
 - Severity: Medium
 - Stage: L1
 - Target status:
-  - Prefix installer, inventory, and launcher adaptation: Pending
+  - Prefix installer, inventory, and launcher adaptation: In progress (inventory/recovery and launcher helpers
+    implemented; curated package assembly pending)
   - Native installed-state guard and package provenance: Pending
   - Distribution archive and reusable artifact smoke command: Pending
   - Stage 2 HTML/PDF inclusion: Blocked on documentation-generation artifact implementation
@@ -19,6 +20,8 @@
 - Modules:
   - `l1/Makefile`
   - `l1/scripts/`
+  - `l1/scripts/productization_inventory.py`
+  - `l1/scripts/productization_launchers.py`
   - `l1/scripts/build_stage2_l1c.py`
   - `l1/scripts/triple_bootstrap.py` (reuse fixed-point validation)
   - `l1/compiler/stage1_l0/src/build_info.l0`
@@ -31,6 +34,7 @@
   - `l1/compiler/stage2_l1/src/` (packaged compiler, build-info overlay, and installed startup)
   - `l1/compiler/shared/`
   - `l1/docs/`
+  - `l1/docs/reference/productization-inventory.md`
   - `scripts/dea_tooling/`
   - `docs/specs/compiler/cli-contract.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
@@ -87,18 +91,50 @@ Reviewed on 2026-10-05 against the local checkout:
 06. Bootstrap supplies public headers and verified bundled semantic interfaces independently of native program runtime.
     `make runtime` remains the developer archive/raw-object workflow; stdlib sources live under
     `compiler/shared/l1/stdlib/`.
-07. Shared tooling has separate repo and prefix launcher/environment renderers. L1 currently uses the repo renderers;
+07. Shared tooling has separate repo and prefix launcher/environment renderers. L1 development uses the repo renderers;
     its build-layout validator deliberately rejects output directories outside the L1 source tree. Prefix renderers
     currently preserve inherited home variables, do not clear `L1_BUILD_DIR`, leave an existing PATH entry in place, and
-    do not scope Windows compiler-wrapper variables with `setlocal`; they require explicit L1 adaptation.
+    do not scope Windows compiler-wrapper variables with `setlocal`. L1-owned installed-context adapters now override
+    inherited roots, deduplicate/move PATH entries, and scope Windows wrapper state without changing shared L0 defaults.
 08. Automatic stdlib/runtime preparation and standalone-link discovery are implemented by the related preparation plan.
     Read-only installed fixtures contain semantic interfaces and rebuild inputs with no native profile requirement. They
     select context using `L1_HOME` and do not provide the proposed inventory or installed-state startup guard.
 09. Both stages' `build_info` modules still supply fallback metadata. Package provenance is not embedded by the Stage 2
     builder, and `--help` / `--version` currently return before any installation validation. Both require explicit
     implementation.
-10. No install/dist or reusable artifact smoke target exists. Preparation identity and storage internals have evolved
-    since the original preparation plan; the current reference docs and ADR-0038 govern their consumption.
+10. No install/dist or reusable artifact smoke target exists. Prefix/inventory/recovery primitives and the fixture-based
+    `test-productization` target are implemented. Preparation identity and storage internals have evolved since the
+    original preparation plan; the current reference docs and ADR-0038 govern their consumption.
+
+## Implementation Progress
+
+The first Phase 1 milestone implements independent prefix resolution, schema 1 ownership validation, full payload
+digest/mode verification, and preflighted reinstalls. Incomplete/complete metadata uses closed temporary files and
+atomic replacement; retries retain previous and intended ownership, including intermediate files from interrupted
+attempts. Unrelated files survive, and unsafe paths, aliases, substituted parents/hard links, malformed metadata, and
+unowned collisions fail before payload mutation.
+
+L1-owned adapters reuse shared prefix launchers while selecting their own `L1_HOME`, clearing inherited `L1_BUILD_DIR`,
+retaining explicit selectors, moving/deduplicating activation PATH entries, and scoping native Windows wrapper state.
+The focused fixture suite is wired into `test` and `test-extended`. Its implementation contract is recorded in
+[l1/docs/reference/productization-inventory.md][inventory-contract].
+
+Remaining Phase 1 work: native installed-state reader and `L1C-9515`, package build-info/provenance overlay, curated
+payload construction, standalone packaged instructions, and actual compiler fixtures. Public install/dist targets remain
+unavailable until these prerequisites are implemented. Native Windows execution and four-platform artifact acceptance
+remain pending; local shell/inventory fixture success is not installed-compiler acceptance.
+
+Verification on macOS Intel with `/usr/bin/clang`, Apple Clang 17.0.0 (`clang-1700.6.4.2`):
+
+- `make clean test L0_CC=/usr/bin/clang L1_CC=/usr/bin/clang L1_RUNTIME_CC=/usr/bin/clang`: passed Stage 1/Stage 2 smoke
+  checks, parity, all four examples, Docker/Wine runner regressions, existing tooling, and productization fixtures.
+  Managed preparation succeeded with this compiler's supported configuration controls.
+- `../.venv/bin/python -m pytest -q -n 0 tests/test_bootstrap_productization.py`: final helper revision passed 52 cases;
+  three native Windows cases skipped. Compiler-stage inputs remain unchanged from the normal gate.
+- `make test-productization test-env L0_CC=/usr/bin/clang L1_CC=/usr/bin/clang L1_RUNTIME_CC=/usr/bin/clang`: passed the
+  fixture suite and existing L0/L1 bash/zsh activation/bootstrap integration. The final helper revision is covered
+  separately above.
+- `python3 scripts/check_adr_impact.py --all-active` from the monorepo root: passed.
 
 ## Defaults Chosen
 
@@ -516,6 +552,7 @@ installer edit.
 [autodocs]: 2026-10-05-l1-stage-separated-autodocs-noref.md
 [diagnostic-catalog]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
 [installed-inputs]: ../../../docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md
+[inventory-contract]: ../../../docs/reference/productization-inventory.md
 [l0-delivery]: ../../../../l0/docs/decisions/0023-toolchain-installation-and-distribution-layout.md
 [l1-guidance]: ../../../AGENTS.md
 [monorepo]: ../../../../MONOREPO.md

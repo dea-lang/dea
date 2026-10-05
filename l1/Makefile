@@ -70,7 +70,7 @@ RUNTIME_CFLAGS ?= -O2 -std=c99
 RUNTIME_TUNING_CFLAGS := $(if $(strip $(L1_RT_QUARANTINE_MAX_BYTES)),-D_RT_QUARANTINE_MAX_BYTES=$(L1_RT_QUARANTINE_MAX_BYTES)) $(if $(strip $(L1_RT_QUARANTINE_MAX_COUNT)),-D_RT_QUARANTINE_MAX_COUNT=$(L1_RT_QUARANTINE_MAX_COUNT))
 RUNTIME_INCLUDE_FLAGS := -I$(RUNTIME_ROOT)/include -I$(RUNTIME_ROOT)/internal
 
-.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test test-ci test-stage1 test-stage1-smoke test-stage2 test-stage2-smoke test-stage1-trace test-stage1-trace-smoke test-stage1-trace-all test-stage1-trace-children test-env check-examples bench-runtime bench-link-provenance test-extended test-docker print-l1-build-dir clean docker docker-wine docker-wine-toolchain docker-wine-image test-docker-wine-runner FORCE
+.PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test test-ci test-stage1 test-stage1-smoke test-stage2 test-stage2-smoke test-stage1-trace test-stage1-trace-smoke test-stage1-trace-all test-stage1-trace-children test-env test-productization check-examples bench-runtime bench-link-provenance test-extended test-docker print-l1-build-dir clean docker docker-wine docker-wine-toolchain docker-wine-image test-docker-wine-runner FORCE
 
 help:
 	@printf '%s\n' \
@@ -96,6 +96,7 @@ help:
 		'  test-stage1-trace-children' \
 		'                     Build, run, and analyze L1 child runtime fixtures independently; TESTS selects fixture names.' \
 		'  test-env           Validate stackable L0/L1 repo-local env script activation.' \
+		'  test-productization  Run fixture-based prefix inventory, recovery, and installed launcher regressions.' \
 		'  check-examples     Validate all `examples/*.l1` sources with the repo-local Stage 2 compiler; fail on warnings or errors.' \
 		'  bench-runtime      Benchmark the checked runtime allocation tracker across C compilers and quarantine settings (informational; not part of `test-extended`). Variables: `BENCH_CC="tcc clang gcc-16"`, `BENCH_SCALE=<n>`, `BENCH_RUNS=<n>`.' \
 		'  bench-link-provenance' \
@@ -457,15 +458,18 @@ test-stage-parity: build-stage2
 test-stage2-tooling: venv
 	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_stage2_tooling.py tests/test_bootstrap_identity.py
 
+test-productization: venv
+	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_bootstrap_productization.py
+
 triple-test: build-stage1 runtime
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" scripts/triple_bootstrap.py
 
 check-examples: build-stage2
 	"$(PYTHON)" ../scripts/check_examples.py --compiler "$(L1_BUILD_DIR)/bin/l1c-stage2" --examples-dir examples --extension .l1 --label "L1 Stage 2"
 
-test: test-stage1-smoke test-stage2-smoke test-stage-parity check-examples test-docker-wine-runner test-stage2-tooling
+test: test-stage1-smoke test-stage2-smoke test-stage-parity check-examples test-docker-wine-runner test-stage2-tooling test-productization
 
-test-extended: test-stage1 test-stage2 test-stage-parity check-examples test-docker-wine-runner test-stage2-tooling
+test-extended: test-stage1 test-stage2 test-stage-parity check-examples test-docker-wine-runner test-stage2-tooling test-productization
 
 # Hosted CI is the exhaustive union: full local-normal suites with CI-only cases, environment/bootstrap integration,
 # dedicated Stage 1/2 trace sweeps, child trace fixtures, and triple bootstrap. The normal runners list their

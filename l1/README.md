@@ -14,6 +14,7 @@ Useful local documents:
 - [l1/docs/roadmap.md][roadmap] for the live L1 direction document
 - [l1/docs/user/linking.md][linking] for external native-library and foreign-object linking
 - [l1/docs/reference/stdlib-preparation.md][preparation] for bundled interfaces and on-demand native support
+- [l1/docs/reference/productization-inventory.md][productization] for prefix ownership/recovery and launcher helpers
 - [l1/docker/wine/README.md][docker-wine] for the experimental cached Windows toolchain runner
 - [l1/AGENTS.md][agents] for repo-local AI guidance
 
@@ -27,6 +28,10 @@ linking with ordered interface discovery, and multi-compilation-unit build/run a
 Link-involving modes also accept one ordered stream of explicit foreign objects, external libraries, search paths,
 rpaths, and raw host-driver words. Stage 2 is the mechanical L1 port of the Stage 1 oracle. L1 has no
 install/dist/release workflow yet.
+
+`make test-productization` validates the internal prefix/inventory/recovery helpers and installed-context launcher
+templates. It is included in the normal test gates; package construction and native installed-state validation remain
+pending.
 
 `make build-stage1` supplies public runtime headers and the complete verified bundled interface set under
 `$L1_BUILD_DIR/interfaces/`. Build/run/link prepare matching native stdlib/runtime support on demand in one local cache.
@@ -82,6 +87,7 @@ running `make build-stage1`.
 [legacy-clang-plan]: work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md
 [linking]: docs/user/linking.md
 [preparation]: docs/reference/stdlib-preparation.md
+[productization]: docs/reference/productization-inventory.md
 [project-status]: docs/project-status.md
 [roadmap]: docs/roadmap.md
 [root-readme]: ../README.md

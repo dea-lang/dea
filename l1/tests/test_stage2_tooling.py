@@ -44,7 +44,7 @@ class Stage2ToolingTests(unittest.TestCase):
         self.assertIn("L1_TEST_STAGE2_SMOKE_TESTS := array_test parser_test", text)
         self.assertIn(
             "test: test-stage1-smoke test-stage2-smoke test-stage-parity check-examples "
-            "test-docker-wine-runner test-stage2-tooling",
+            "test-docker-wine-runner test-stage2-tooling test-productization",
             text,
         )
         self.assertNotIn("test: test-stage1-smoke test-stage2-smoke test-stage-parity check-examples test-env", text)
@@ -68,7 +68,7 @@ class Stage2ToolingTests(unittest.TestCase):
         )
         self.assertIn(
             "test-extended: test-stage1 test-stage2 test-stage-parity check-examples "
-            "test-docker-wine-runner test-stage2-tooling",
+            "test-docker-wine-runner test-stage2-tooling test-productization",
             text,
         )
         extended_section = text.split("test-extended:", 1)[1].split("# Hosted CI", 1)[0]

@@ -55,6 +55,7 @@ make test-stage2
 make test-stage2-trace
 make triple-test
 make test
+make test-productization
 make test-stage1-trace
 make test-stage1-trace-smoke
 make test-stage1-trace-all
@@ -64,7 +65,9 @@ make test-ci
 ```
 
 `make test` is the fast local development gate. It runs representative Stage 1 and Stage 2 smoke tests, parity,
-examples, Stage 2 tooling, and Docker/Wine runner regressions. Use it after ordinary implementation work.
+examples, Stage 2 tooling, and Docker/Wine runner regressions. Use it after ordinary implementation work. It also
+includes fixture-based prefix inventory/recovery and installed-context launcher checks through
+`make test-productization`; these helpers do not yet expose a public install/dist workflow.
 
 `make test-extended` is the broad local-normal gate for subsystem work and refactors. It runs both Stage 1 and Stage 2
 normal suites, parity, examples, Stage 2 tooling, and Docker/Wine runner regressions. Normal runner discovery excludes
