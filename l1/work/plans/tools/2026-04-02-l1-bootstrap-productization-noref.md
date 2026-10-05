@@ -1,78 +1,119 @@
 # Tool Plan
 
-## Define the first L1 install/dist/bootstrap-product workflow
+## Define the self-hosted L1 Stage 2 install and distribution workflow
 
 - Date: 2026-04-02
-- Last reviewed: 2026-09-11
+- Last reviewed: 2026-10-05
 - Status: Draft
-- Title: Define the first L1 install/dist/bootstrap-product workflow
+- Title: Define the self-hosted L1 Stage 2 install and distribution workflow
 - Kind: Tooling
 - Severity: Medium
 - Stage: L1
+- Target status:
+  - Prefix installer, inventory, and launcher adaptation: Pending
+  - Native installed-state guard and package provenance: Pending
+  - Distribution archive and reusable artifact smoke command: Pending
+  - Stage 2 HTML/PDF inclusion: Blocked on documentation-generation artifact implementation
+  - Four-platform acceptance and documentation: Pending
 - Subsystem: Build workflow / install layout / distribution packaging / bootstrap docs
 - Modules:
   - `l1/Makefile`
   - `l1/scripts/`
+  - `l1/scripts/build_stage2_l1c.py`
+  - `l1/scripts/triple_bootstrap.py` (reuse fixed-point validation)
+  - `l1/compiler/stage1_l0/src/build_info.l0`
   - `l1/compiler/stage1_l0/src/l1c_lib.l0`
   - `l1/compiler/stage1_l0/src/source_paths.l0`
   - `l1/compiler/stage1_l0/src/build_driver.l0`
   - `l1/compiler/stage1_l0/src/compile_driver/compile.l0`
   - `l1/compiler/stage1_l0/src/link_driver/toolchain.l0`
+  - `l1/compiler/stage1_l0/support/` (native prefix/state support)
+  - `l1/compiler/stage2_l1/src/` (packaged compiler, build-info overlay, and installed startup)
   - `l1/compiler/shared/`
   - `l1/docs/`
   - `scripts/dea_tooling/`
+  - `docs/specs/compiler/cli-contract.md`
+  - `docs/specs/compiler/diagnostic-code-catalog.md`
 - Test modules:
   - `l1/tests/test_bootstrap_productization.py` (new install/dist regression suite)
   - `l1/tests/test_env_stackability.py`
+  - `l1/tests/test_stage2_tooling.py`
+  - `l1/tests/test_bootstrap_identity.py`
   - `l1/compiler/stage1_l0/tests/compiler_runtime_build_env_test.py`
   - `l1/compiler/stage1_l0/tests/runtime_build_config_test.py`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_compile_only_test.py`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_link_set_test.py`
+  - `l1/compiler/stage1_l0/tests/l1c_stage1_installed_preparation_test.py`
+  - `l1/compiler/stage1_l0/tests/l1c_stage1_bootstrap_interfaces_test.py`
+  - `l1/compiler/stage2_l1/tests/stage_parity_test.py`
+  - Stage 1 and Stage 2 shared installed-state diagnostic cases
 - Related:
   - `work/plans/refactors/closed/2026-04-02-l1-bootstrap-scaffold-noref.md`
   - [l1/work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][stdlib-preparation]
   - [work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md][release-workflows]
   - [MONOREPO.md][monorepo]
+  - [l1/docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md][installed-inputs]
+  - [l1/docs/reference/stdlib-preparation.md][preparation-contract]
+  - [l1/AGENTS.md][l1-guidance]
+  - [l0/docs/decisions/0023-toolchain-installation-and-distribution-layout.md][l0-delivery]
+  - [l1/work/plans/tools/2026-10-05-l1-stage-separated-autodocs-noref.md][autodocs]
 
 ## Summary
 
-The `l1/` subtree currently supports repo-local bootstrap development through `make build-stage1`, shell activation via
-`build/dea/bin/l1-env.sh`, and `make test-stage1`. This plan adds a relocatable install-prefix workflow and a curated
-distribution archive for that Stage 1 toolchain, with the semantic interfaces and stdlib/runtime rebuild inputs defined
-below.
+The `l1/` subtree supports repo-local Stage 1 and self-hosted Stage 2 development. This plan adds a relocatable
+install-prefix workflow and a curated distribution archive for the self-hosted Stage 2 toolchain, with the semantic
+interfaces and stdlib/runtime rebuild inputs defined below.
 
-This plan defines that missing productization layer without changing the current scope claim: L1 remains a bootstrap
-toolchain seed, not a release-bearing product. The goal is to make the Stage 1 compiler installable, runnable from an
-installed prefix, and packageable as a curated bootstrap archive with explicit upstream-compiler provenance.
+Follow L0's delivery model: Stage 1 remains the bootstrap and development oracle, while installation and distribution
+ship only the self-hosted Stage 2 compiler. The installed `l1c` selects Stage 2. Local packaging does not establish an
+active release line or stable language/toolchain maturity. Hosted publication remains owned by the separate
+release-workflow plan.
 
 ## Current State
 
-1. `l1/` is bootstrap-only.
-2. `make build-stage1` builds a repo-local `l1c-stage1` wrapper and native binary under `build/dea/bin/`, or the
-   explicitly selected repo-local `L1_BUILD_DIR`.
-3. `make test-stage1` validates the copied Stage 1 implementation tests using the upstream L0 compiler.
-4. There is no `make install`, `make list-installed`, `make dist`, or release-artifact layout for L1.
-5. Bootstrap correctness depends on the explicit upstream compiler contract:
-   - local development defaults to `../l0/build/dea/bin/l0c-stage2`
-   - reproducible overrides must use `L1_BOOTSTRAP_L0C`
-   - the workflow must not rely on whichever `l0c` happens to be on `PATH`
-6. Bootstrap supplies public headers and verified bundled semantic interfaces independently of native program runtime.
-   `make runtime` remains the developer archive/raw-object workflow; stdlib sources live under
-   `compiler/shared/l1/stdlib/`.
-7. Shared tooling already has separate repo and prefix launcher/environment renderers. L1 currently uses the repo
-   renderers; its build-layout validator deliberately rejects output directories outside the L1 source tree.
-8. Automatic stdlib/runtime preparation and standalone-link discovery are implemented by the related preparation plan.
-   Read-only installed fixtures contain semantic interfaces and rebuild inputs with no native profile requirement.
+Reviewed on 2026-10-05 against the local checkout:
+
+01. `l1/` supports both compiler stages, observable stage parity, and strict triple bootstrap. `make test` exercises
+    representative suites in both stages; full hosted validation uses `make test-ci`.
+02. `make build-stage1` builds a repo-local `l1c-stage1` wrapper and native binary under `build/dea/bin/`, or the
+    explicitly selected repo-local `L1_BUILD_DIR`.
+03. `make test-stage1` runs the complete local-normal Stage 1 suite. Installed preparation and recovery fixtures are
+    CI-only unless selected explicitly. Stage 2 reuses the installed preparation Python test against its own compiler.
+04. There is no `make install`, `make list-installed`, `make dist`, or release-artifact layout for L1.
+05. Bootstrap correctness depends on the explicit upstream compiler contract:
+    - local development defaults to `../l0/build/dea/bin/l0c-stage2`
+    - reproducible overrides must use `L1_BOOTSTRAP_L0C`
+    - the workflow must not rely on whichever `l0c` happens to be on `PATH`
+06. Bootstrap supplies public headers and verified bundled semantic interfaces independently of native program runtime.
+    `make runtime` remains the developer archive/raw-object workflow; stdlib sources live under
+    `compiler/shared/l1/stdlib/`.
+07. Shared tooling has separate repo and prefix launcher/environment renderers. L1 currently uses the repo renderers;
+    its build-layout validator deliberately rejects output directories outside the L1 source tree. Prefix renderers
+    currently preserve inherited home variables, do not clear `L1_BUILD_DIR`, leave an existing PATH entry in place, and
+    do not scope Windows compiler-wrapper variables with `setlocal`; they require explicit L1 adaptation.
+08. Automatic stdlib/runtime preparation and standalone-link discovery are implemented by the related preparation plan.
+    Read-only installed fixtures contain semantic interfaces and rebuild inputs with no native profile requirement. They
+    select context using `L1_HOME` and do not provide the proposed inventory or installed-state startup guard.
+09. Both stages' `build_info` modules still supply fallback metadata. Package provenance is not embedded by the Stage 2
+    builder, and `--help` / `--version` currently return before any installation validation. Both require explicit
+    implementation.
+10. No install/dist or reusable artifact smoke target exists. Preparation identity and storage internals have evolved
+    since the original preparation plan; the current reference docs and ADR-0038 govern their consumption.
 
 ## Defaults Chosen
 
-1. L1 remains bootstrap-only after this work; productization here does not imply stable-release readiness.
+1. The first package is a self-hosted Stage 2 development toolchain; productization does not imply stable-release
+   readiness. Follow the delivery-stage choice in
+   [l0/docs/decisions/0023-toolchain-installation-and-distribution-layout.md][l0-delivery] while retaining L1's own
+   semantic/input-cache contract.
 2. The default local upstream compiler remains repo-local `../l0/build/dea/bin/l0c-stage2`.
-3. `L1_BOOTSTRAP_L0C` selects the compiler used to build the Stage 1 executable during install/dist preparation. The
-   installed native `l1c` does not invoke L0, Python, `uv`, or Make to run or prepare bundled support. Native output and
-   native cache preparation still require a compatible host C compiler/linker and the preparation service's host tools.
-4. Ship Stage 1 explicitly, even if Stage 2 lands before implementation. Stage 2 packaging is a later scope change; this
-   plan does not silently follow the active repo-local `l1c` alias.
+3. `L1_BOOTSTRAP_L0C` selects the upstream L0 compiler used to construct L1 Stage 1. Stage 1 builds a Stage 2 seed,
+   which then builds the delivered Stage 2 executable. The installed native `l1c` does not invoke L0, L1 Stage 1,
+   Python, `uv`, or Make to run or prepare bundled support. Native output and native cache preparation still require a
+   compatible host C compiler/linker and the preparation service's host tools.
+4. Ship Stage 2 only, independently of the active repo-local `l1c` alias. Do not install Stage 1 launchers, binaries, or
+   compiler implementation sources. Preserve both stages' development workflows and shared startup/diagnostic behavior;
+   build and install targets must not change the selected development alias.
 5. Reuse shared prefix launcher/env rendering, bootstrap selection, and narrow file/archive helpers where applicable.
    Keep L1 payload selection and build policy under `l1/scripts/`; do not import the L0 distribution builder wholesale.
 6. The first payload contains the compiler, verified bundled interfaces, public headers, stdlib/runtime rebuild sources,
@@ -93,6 +134,42 @@ inputs. Installation metadata identifies those shipped inputs, including `D` if 
 key, completed native-profile export/import format, or installed-profile lookup. Packaging must not introduce a second
 identity algorithm or advertise copied native cache state as portable.
 
+Treat [l1/docs/reference/stdlib-preparation.md][preparation-contract] and
+[l1/docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md][installed-inputs] as the live contract.
+Keep exact interface bytes and their ordered provider authority, bundled-directory identity checks, explicit
+`--no-managed-stdlib` behavior, selected-cache ownership, and corruption/private-fallback behavior. Cache manifests and
+the install inventory are separate formats; neither is a replacement for the other. If the compiler does not expose a
+stable preparation-input identity to packaging, record the inventory digests and provenance without inventing `D`.
+
+Current GCC and supported Clang toolchains suffice to begin implementation; pending preparation optimizations and legacy
+Clang compatibility are not prerequisites. Follow [l1/AGENTS.md][l1-guidance]: use GCC or upstream Clang 16+ for
+ordinary validation, verify Apple Clang's required capabilities separately, and record actual selected compiler
+versions. Do not infer Clang 14/15 support from a successful direct C build.
+
+Stage 2 documentation is a required distribution input under
+[l1/work/plans/tools/2026-10-05-l1-stage-separated-autodocs-noref.md][autodocs]. That plan defines and implements
+separate Stage 1/Stage 2 HTML/PDF generation and a verified docs bundle. Installer/compiler work can proceed in
+parallel, but complete `make dist` acceptance waits for its Stage 2 bundle. Documentation generation requires source
+files and documentation tools, not an installed compiler, so this introduces no dependency cycle.
+
+### Self-hosted package construction
+
+Use the explicit chain `L0 Stage 2 -> L1 Stage 1 -> L1 Stage 2 seed -> delivered L1 Stage 2`. Reuse
+`build_stage1_l1c.py` and the compiler-selection/build-support helpers in `build_stage2_l1c.py`; extend the latter to
+accept a private build-info overlay without modifying checked-in sources. Build in private scratch, using explicit
+compiler paths rather than the selected `l1c` alias. Keep host compiler flags and compiler-runtime controls recorded and
+consistent across the Stage 2 seed and final construction. Ignore inherited installation roots during bootstrap.
+
+The Stage 2 seed runs in repository mode and builds the final executable with the installed-mode/provenance overlay.
+This order permits self-building before a complete installed prefix exists. Generate and verify the bundled semantic set
+through the repository-mode Stage 2 seed, require exact agreement with Stage 1's canonical interface bytes, and copy
+that verified set unchanged. The final installed compiler must consume it successfully in the archive smoke checks.
+Private build runtime objects and preparation caches are inputs to construction, never distribution payload.
+
+`make triple-test` remains the existing strict fixed-point gate. Run it when implementing changes to Stage 2
+construction, overlays, or native support; do not turn every `install` or `dist` invocation into a full triple-bootstrap
+test run. Packaging a Stage 1-built Stage 2 seed alone does not meet the self-built delivery requirement.
+
 ## Installed Layout
 
 `PREFIX` is required. Resolve a relative prefix against the L1 working directory and use a separate prefix-layout
@@ -103,16 +180,17 @@ The selected layout is:
 
 | Prefix-relative path                                   | Contents                                                                                                                                                         |
 | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bin/l1c`, `bin/l1c-stage1`, `bin/l1c-stage1.native`   | Selected Stage 1 alias, prefix-relative launcher, and host native executable. Use the current native-artifact naming convention.                                 |
+| `bin/l1c`, `bin/l1c-stage2`, `bin/l1c-stage2.native`   | Selected Stage 2 alias, prefix-relative launcher, and self-built host native executable. Use the current native-artifact naming convention.                      |
 | `bin/l1-env.sh`                                        | Sourceable bash/zsh activation, including MSYS2 bash.                                                                                                            |
-| `bin/l1c.cmd`, `bin/l1c-stage1.cmd`, `bin/l1-env.cmd`  | Windows launcher/activation counterparts; Windows aliases use copies as in the current workflow.                                                                 |
+| `bin/l1c.cmd`, `bin/l1c-stage2.cmd`, `bin/l1-env.cmd`  | Windows launcher/activation counterparts; Windows aliases use copies as in the current workflow.                                                                 |
 | `shared/l1/stdlib/`                                    | Bundled `std.*` and `sys.*` `.l1` sources with their module-relative paths.                                                                                      |
 | `shared/runtime/`                                      | Runtime `src/`, `include/`, `internal/`, and symbol manifests needed by the preparation service.                                                                 |
 | `interfaces/`                                          | Complete verified bundled semantic `.l1m` set, copied exactly from bootstrap using module-relative paths.                                                        |
 | `include/`                                             | Public `dea_rt.h` and `l1_real.h`; rebuild-only internal headers remain under `shared/runtime/internal/`.                                                        |
-| `VERSION`                                              | Human-readable package identity, bootstrap status, host target, and build provenance.                                                                            |
+| `VERSION`                                              | Human-readable Stage 2 package identity, development status, host target, and bootstrap/build provenance.                                                        |
 | `share/dea/l1/install-manifest.json`                   | Versioned inventory of payload files, file modes, relative alias targets, content digests, and compiler-owned input-set identity (including `D` where supplied). |
-| `README.md`, `share/doc/dea/l1/bootstrap-toolchain.md` | Self-contained bootstrap installation/use/cache instructions with working payload or canonical repository links.                                                 |
+| `README.md`, `share/doc/dea/l1/toolchain.md`           | Self-contained Stage 2 installation/use/cache instructions with working payload or canonical repository links.                                                   |
+| `share/doc/dea/l1/autodocs/stage2/`                    | Verified Stage 2 `html/`, `pdf/dea_l1_stage2_api_reference.pdf`, and docs `manifest.json`; required for distributions, optional for direct installs.             |
 | `share/dea/l1/smoke/hello.l1`                          | Small bundled smoke program importing a stdlib module and producing deterministic output.                                                                        |
 | `LICENSE-MIT`, `LICENSE-APACHE`, `THIRD_PARTY_NOTICES` | Repository license and attribution files, plus any notices required by the shipped payload.                                                                      |
 
@@ -149,10 +227,40 @@ invalid metadata must not downgrade installed invocation to repository mode. Val
 structure, and complete state without hashing the whole payload on every launch. This requires no new public CLI mode or
 external interpreter; repository invocations retain their existing startup behavior.
 
+### Native startup and inventory handoff
+
+Create a package-only `.l1` build-info overlay that identifies the native executable as an installed Stage 2 artifact
+and embeds its package provenance. Keep the checked-in fallback and ordinary repository builds in repository mode.
+Derive the installed prefix from the running executable's physical `bin/` location using native platform support;
+wrappers and a valid inventory must not be prerequisites for direct native invocation. An installed marker compiled into
+the package prevents a missing inventory from silently selecting repository mode. Generate the overlay in private build
+scratch and never edit checked-in compiler sources during packaging.
+
+Perform the native state check before help/version short-circuits and ordinary command dispatch. In installed mode,
+select the physical prefix over stale inherited `L1_HOME` / `L1_BUILD_DIR`, while retaining explicit system, runtime,
+and cache selectors. Reuse or factor the native executable-path and JSON support already available in compiler support;
+do not invoke a shell parser or Python from the installed compiler. Keep shared Stage 1 startup/diagnostic behavior in
+parity while leaving ordinary builds of both stages in repository mode. Extend test support-link declarations if the new
+hook changes native ABI dependencies.
+
+Define one versioned inventory schema shared by the Python installer and native reader. Its required fields describe
+schema version, language level and packaged stage, `complete` or `incomplete` state, package provenance, and owned
+prefix-relative entries. File entries record content digests and portable mode information; aliases record relative
+targets. Incomplete records retain both previous and intended ownership for retry. Reject duplicate, absolute, escaping,
+or unsupported entries before mutation. Native startup validates required structure and complete state; installer and
+artifact verification own full content-digest checks. Missing/damaged payload binaries may still fail at host launch.
+
+Adapt installed preparation fixtures explicitly to the new startup contract and keep their tests of semantic/native
+separation. Fixtures using a repository executable and explicit `L1_HOME` remain useful preparation-unit coverage, but
+only a packaged executable and complete inventory establish installed-entrypoint acceptance.
+
 ## Install and Archive Defaults
 
-1. `make install PREFIX=...` builds the explicit Stage 1 artifact and verified semantic set, then copies the curated
-   compiler-owned input payload through one install helper. Do not copy the worktree's entire build/cache directory.
+1. `make install PREFIX=...` executes the self-hosted construction chain and builds the verified semantic set, then
+   copies the curated compiler-owned input payload through one install helper. The Stage 2 seed builds the package
+   executable with the installed marker and provenance overlay. Keep this artifact separate from repo-local Stage
+   1/Stage 2 executables and preserve the active development alias. Do not copy the worktree's entire build/cache
+   directory.
 2. Install into an empty prefix or a prefix whose unrelated files do not collide with the selected payload.
    Reinstallation uses the existing L1 inventory: replace owned files and remove obsolete owned files, preserve
    unrelated files, and reject unowned collisions. Preflight inventory paths, alias targets, and destination parents
@@ -174,37 +282,83 @@ external interpreter; repository invocations retain their existing startup behav
    executable missing or damaged, a host launch failure is acceptable; the retained inventory must still support
    installer retry.
 4. `make dist` creates the same install tree under a private staging directory and archives it with exactly one
-   top-level `dea-l1/` directory. Archive names are `dea-l1-bootstrap_<version>_<os>-<arch>_<YYYYMMDD-HHMMSS>` plus
-   `.tar.gz` on Linux/macOS or `.zip` on Windows. Build time is UTC; target tokens are normalized for filenames. Emit
-   the final archive path for later workflow consumption.
-5. Take version metadata from an explicit `DEA_DIST_VERSION` or the repository's L1 version source; if neither exists,
-   use `bootstrap-dev`. Validate filename components, retain the bootstrap status label for every version, and never
-   infer version from L0 release tags. `VERSION` and the install manifest record source/build provenance, upstream L0
-   compiler identity, Stage 1 compiler build options, host target, and shipped preparation-input identity. Provenance
-   paths are informational and never used for runtime lookup. All public repository links use
-   `https://github.com/dea-lang/dea`.
+   top-level `dea-l1/` directory. Archive names are `dea-l1-lang_<version>_<os>-<arch>_<YYYYMMDD-HHMMSS>` plus `.tar.gz`
+   on Linux/macOS or `.zip` on Windows. Build time is UTC; target tokens are normalized for filenames. Emit the final
+   archive path through the machine-readable handoff below. Use staging disjoint from compiler inputs and payload
+   sources, even when both live beneath the repository's build directory. Publish the finished archive only after
+   payload and inventory verification; a failed build must not report an earlier archive as its result.
+5. Take version metadata from a nonempty explicit `DEA_DIST_VERSION`; otherwise use `dev`. The workspace Python
+   package's development version is not an established L1 release-version source. Validate filename components, retain
+   Stage 2 identity and development maturity labeling for every version, and never infer version from L0 release tags.
+   `VERSION`, the package's native `--version` report, and the install manifest agree on package identity and record
+   source/build provenance, the upstream L0 and L1 bootstrap compiler identities, Stage 2 self-build/compiler options,
+   host target, and shipped preparation-input identity. Provenance paths are informational and never used for runtime
+   lookup. All public repository links use `https://github.com/dea-lang/dea`.
 6. Include only the table's payload and needed notices. Exclude compiler implementation/test trees, unrelated examples,
    plans, repository metadata, virtual environments, tools, build scratch, user caches, retained generated C, docs
-   generators, generated API sites, and PDFs. Check packaged documentation links rather than copying source docs with
-   dangling repository-relative links.
+   generators, intermediate XML/LaTeX, and Stage 1 autodocs. Include verified Stage 2 HTML/PDF only through the explicit
+   docs-bundle handoff below. Check packaged documentation links rather than copying source docs with dangling
+   repository-relative links.
 7. The first supported native artifact matrix follows current L1 CI: Linux x86_64, macOS Intel and ARM, and Windows
    UCRT64. The artifact targets its build host family/architecture; portable archive layout does not imply native
    cross-platform compatibility or eliminate host C/system-library requirements.
 
+### Release-workflow interface
+
+Provide these commands from `l1/` and document their exact behavior before closing this plan:
+
+- `make dist DEA_DIST_VERSION=<version> DOCS_ARTIFACT=<absolute-stage2-bundle-path> DIST_RESULT=<absolute-json-path>`
+  consumes the verified docs bundle and writes a versioned result record only after successful archive publication.
+  Require schema version 1, absolute `archive_path`, `package_version`, `stage=2`, normalized `os` / `arch`, and source
+  provenance matching the payload. `DIST_RESULT` is optional for local builds; always print the resulting archive path
+  for interactive use. Reject a result destination overlapping payload inputs or the archive, invalidate a prior result
+  at invocation start, and replace the new record atomically. Workflows use a unique result destination and check
+  command success before reading it; they must not glob old archives or parse build log prose.
+- `make smoke-dist ARCHIVE=<absolute-archive-path>` invokes one reusable L1-owned smoke helper against that exact
+  archive. It validates safe extraction, the single `dea-l1/` root, complete inventory and all listed payload digests,
+  metadata agreement, and absence of excluded build/cache files. Reject archive traversal and escaping aliases before
+  extraction. Then relocate to a path containing spaces, run installed commands from an unrelated directory with
+  controlled environment/cache selection, and exercise the smoke cases in this plan. This command consumes the archive
+  without rebuilding the compiler or relying on repo-local payload files. A Python/Make test harness is allowed;
+  compiler child processes must demonstrate independence from those tools and the source checkout.
+
+`DOCS_ARTIFACT` is required for distributions. Validate its level `l1`, `stage=2`, version, source revision/dirty
+evidence, selected-source inventory digest, complete HTML/PDF flags, and file digests against the packaging checkout.
+Extract safely and copy its `html/`, `pdf/`, and `manifest.json` beneath the payload's Stage 2 autodocs directory;
+record those files in the install inventory and the docs-bundle digest in the dist result. Reject Stage 1, incomplete,
+preview-only, or stale documentation before publishing an archive. Missing docs report the `make docs-artifacts`
+command. The dist builder never invokes Doxygen or TeX implicitly.
+
+Direct `make install PREFIX=...` may omit autodocs or accept the same `DOCS_ARTIFACT`. Record its actual payload in the
+inventory so reinstalling with or without docs handles owned files predictably. Compiler-only installed prefixes remain
+valid. Distribution smoke checks always require the offline HTML entrypoint, full PDF, matching docs manifest, and
+absence of Stage 1 autodocs, without fetching network assets or generating documentation on the target host.
+
+Use `DEA_DIST_VERSION=X.Y.Z` for the release plan's version tags and `snapshot-...` for its snapshot tags; both retain
+the Stage 2 development-toolchain identification. Keep `VERSION` inside each archive. The workflow plan owns
+four-platform aggregation, tag creation, notes, and publication; this plan supplies one verifiable host archive and
+reusable validation command.
+
 ## Goal
 
-1. Define the first install-prefix layout for the L1 Stage 1 compiler.
+1. Define the first install-prefix layout for the self-hosted L1 Stage 2 compiler.
 2. Add install workflows that make the built compiler usable outside the repo-local build tree.
-3. Add a minimal distribution archive workflow for the bootstrap-stage L1 toolchain.
+3. Add a minimal distribution archive workflow containing only the self-hosted Stage 2 toolchain and its required
+   assets.
 4. Update L1-local docs so the install/dist/bootstrap workflow is documented consistently.
 
 ## Implementation Phases
 
 ### Phase 1: Implement prefix and payload helpers
 
-Implement the selected layout, inventory, path validation, prefix launcher/env adaptation, and standalone packaged docs.
-Keep these helpers testable with the existing read-only semantic/source payload fixtures. Do not expose a successful
-install/dist command that omits their required artifacts.
+Implement the selected layout, inventory schema, path validation, prefix launcher/env adaptation, and standalone
+packaged docs. Add explicit options or L1-owned adapters to the shared renderers; preserve existing L0 callers and test
+their output when changing shared helpers. Implement the package build-info overlay and native startup/state check,
+including direct native execution, before exposing an installed compiler.
+
+Keep payload/inventory helpers testable with small fixtures. Use actual compiler fixtures for startup, diagnostic,
+semantic-provider, and cache behavior. Register any new native support dependency in both stages' build/test helpers. Do
+not expose a successful install/dist command that omits required artifacts or the installed-state guard.
 
 ### Phase 2: Add install workflows
 
@@ -215,15 +369,19 @@ Add the first L1 install-target surface, including:
 - installed launcher generation
 - installed env activation scripts for the same shells already supported by the repo-local workflow
 
-Use the implemented preparation service's input contract, build Stage 1 with the explicit upstream contract, copy its
-verified semantic set and rebuild inputs, and mark the inventory complete only after the complete payload is installed.
-Test relocated, read-only prefixes and controlled reinstall behavior.
+Use the implemented preparation service's input contract and the explicit self-hosted construction chain to produce the
+separate Stage 2 package executable with embedded installed mode and matching provenance. Copy the verified semantic set
+and rebuild inputs, and mark the inventory complete only after the complete payload is installed. Test relocated,
+read-only prefixes, direct native entrypoints, and controlled reinstall/interruption behavior.
 
 ### Phase 3: Add distribution packaging
 
 Add `make dist` using the same payload builder, selected archive naming, version metadata, and exclusion rules. Extract
-each archive to an unrelated directory and run the installed smoke workflow there. Keep archive creation local; this
-phase creates no release tags, workflows, or published assets.
+each archive to an unrelated directory and run the installed smoke workflow there. Implement the `DIST_RESULT` record
+and `make smoke-dist ARCHIVE=...` interface, including stale-result failure checks. Integrate the completed Stage 2
+docs-bundle contract and require its HTML/PDF contents in each distribution. Validate actual host archives on Linux
+x86_64, macOS Intel/ARM, and Windows UCRT64. Keep archive creation local; this phase creates no release tags, workflows,
+or published assets.
 
 ### Phase 4: Update documentation and contributor guidance
 
@@ -233,44 +391,54 @@ Update the L1-local docs and contributor guidance so they describe:
 - install-prefix workflow
 - dist archive workflow
 - explicit upstream compiler override behavior via `L1_BOOTSTRAP_L0C`
-- the distinction between building Stage 1 and running the packaged native compiler
+- the upstream L0/Stage 1/Stage 2 seed construction chain and the installed Stage 2 compiler's independent operation
 - shipped read-only support, writable cache selection, configuration misses, and manual preparation controls
+- the native installed-state diagnostic, package identity, exact result-record schema, and archive smoke command
+- explicit Stage 2 HTML/PDF bundle input, offline docs location, and Stage 1 autodoc exclusion
 
-Add the new packaging regression suite to L1's normal validation with lightweight fixture tests and the relevant
-installed/artifact smoke checks. Update roadmap/status docs only when implementation lands, then create/amend the
-specified ADRs in the same change as plan closure.
+Add a focused `test-productization` target for lightweight installer/inventory/launcher tests and include it in L1's
+normal `test` and `test-extended` gates. Keep actual archive acceptance available through `smoke-dist`, and include the
+relevant installed/compiler integration cases in the existing test runners without bypassing their CI-only
+classification. Update roadmap/status docs only when implementation lands, then create/amend the specified ADRs in the
+same change as plan closure. Update the release-workflow plan's dependency link and handoff to the landed commands.
+
+If a host lane is unavailable, record it as pending and leave the plan open. Linux fixture success alone does not
+establish four-platform productization readiness; no tag push or public dispatch is required to complete local artifact
+validation.
 
 ## Diagnostic Planning
 
 Install, list, and archive script failures use actionable tooling errors and nonzero exit status. The native installed
-state guard uses the existing driver filesystem/environment diagnostic area: provisionally reserve nearby unused
-`L1C-9515` for missing, unreadable, malformed, or incomplete installation metadata, with the prefix/inventory path,
-reason, repair/retry guidance, and exit status 1. Re-check this reservation against
-[docs/specs/compiler/diagnostic-code-catalog.md][diagnostic-catalog] and active plans at implementation time, then
-update the shared catalog and CLI contract. Preparation/configuration failures retain the companion preparation plan's
-diagnostics; do not reuse its reserved numbers for installation state.
+state guard uses the existing driver filesystem/environment diagnostic area: `L1C-9515` is still unused in the live
+catalog and unclaimed by another active plan as of 2026-10-05. Provisionally reserve it for missing, unreadable,
+malformed, or incomplete installation metadata, with the prefix/inventory path, reason, repair/retry guidance, and exit
+status 1. Re-check this reservation against [docs/specs/compiler/diagnostic-code-catalog.md][diagnostic-catalog] and
+active plans at implementation time, then update the shared catalog and CLI contract. Apply the same diagnostic and
+status in both compiler stages wherever the installed-state hook is present. Existing preparation failures retain
+`L1C-2150` through `L1C-2159`, including `L1C-2158` for missing semantic/preparation inputs after valid
+installation-state selection; do not assign those codes to the new startup inventory failure.
 
 ## ADR Impact
 
-- Decision: Define a minimal install-prefix and distribution-artifact contract for the bootstrap-stage L1 compiler.
+- Decision: Ship the self-hosted L1 Stage 2 compiler through one relocatable install-prefix and distribution contract.
   - Scope: L1
   - Disposition: New ADR
   - ADR: `l1/docs/decisions/`
-  - Rationale: The relocatable prefix, curated semantic/source payload, inventory, archive naming, and read-only versus
-    writable ownership become toolchain interfaces consumed by later release workflows. Cache algorithms remain owned by
-    the preparation plan.
+  - Rationale: The relocatable prefix, curated semantic/source payload, inventory, native installed-state boundary,
+    archive/result schema, Stage 2-only payload, self-built delivery requirement, and smoke command become toolchain
+    interfaces consumed by later release workflows. Cache algorithms remain governed by the existing preparation ADRs.
 - Decision: Choose the L1 bootstrap compiler from repo-local L0 Stage 2 or `L1_BOOTSTRAP_L0C`, never ambient `PATH`.
   - Scope: L1
   - Disposition: Amend ADR
   - ADR: `l1/docs/decisions/0001-bootstrap-adaptation-strategy.md`
   - Rationale: ADR-0001 owns bootstrap adaptation and must distinguish the explicit upstream compiler used to construct
-    Stage 1 from the self-contained native compiler used after installation.
+    Stage 1 and the Stage 2 seed from the self-built Stage 2 compiler used after installation.
 
 ## Non-Goals
 
 - GitHub Release publishing for L1
-- docs publishing or Pages deployment for L1
-- any L1 Stage 2 / self-hosted compiler work
+- generating autodocs, docs hosting, or Pages deployment for L1; consuming the Stage 2 HTML/PDF bundle is in scope
+- Stage 1 install/distribution packages, bundled bootstrap compilers, or changes to language/self-hosting semantics
 - a broad rewrite of the root `README.md`
 - automatic inference of the upstream compiler from whichever `l0c` is active on `PATH`
 - copying L0 release/docs machinery, adding an installer service, or bundling host compilers and SDKs
@@ -280,7 +448,10 @@ diagnostics; do not reuse its reserved numbers for installation state.
 ## Verification Criteria
 
 01. Install/dist construction honors an explicit `L1_BOOTSTRAP_L0C` and rejects an invalid override instead of using
-    ambient `l0c`. Stage 1 identity is retained regardless of the active development alias.
+    ambient `l0c`. The delivered executable is built by the explicit Stage 2 seed, reports Stage 2 identity, and is
+    selected by installed `l1c` regardless of the active development alias. The prefix/archive contains no Stage 1
+    executable, launcher, or compiler sources. Package construction preserves that alias and repository compiler
+    artifacts. The package marker/provenance overlay does not modify checked-in sources.
 02. A fresh install and a controlled reinstall produce exactly the curated owned payload; unrelated files survive, and
     unowned collisions, malformed inventories, substituted parents, and unsafe source/destination overlap fail before
     destructive copying. Inject interruption during initial inventory publication, payload copying/deletion, and final
@@ -294,9 +465,12 @@ diagnostics; do not reuse its reserved numbers for installation state.
     inventory.
 03. Move both an installed tree and an extracted archive to paths containing spaces. Run `--version`, `--help`,
     `--check`, and `--gen` from an unrelated working directory without activation and without source-worktree access.
+    Cover direct native invocation with home/build variables unset and with stale inherited values. Package identity
+    agrees across native `--version`, `VERSION`, inventory, archive name, and result metadata.
 04. Compile the bundled stdlib-using smoke program, then standalone-link its object without `-I` and run the result.
     Exercise `--build` and `--run` too. No upstream L0, Python, or Make is needed by the installed compiler; the host
-    C/linker/preparation tools remain available for native operations.
+    C/linker/preparation tools remain available for native operations. L1 Stage 1 and the intermediate Stage 2 seed are
+    also unavailable to the installed compiler. The packaged semantic set agrees with both stages' verified output.
 05. A read-only prefix containing no native stdlib/runtime support compiles the smoke module against its shipped
     semantic set. With an empty cache, `--no-auto-prepare` fails with guidance; ordinary build/run/link prepare matching
     support into the selected cache. Warm no-auto reuse succeeds, changing native configuration selects a new profile,
@@ -314,18 +488,37 @@ diagnostics; do not reuse its reserved numbers for installation state.
     intentionally changes that parent environment.
 08. `list-installed` is deterministic and does not invoke build tools or include writable-cache artifacts. Archive
     contents match the manifest, include one `dea-l1/` root, preserve executable/alias behavior, and contain no
-    build-worktree dependencies or dangling documentation links.
+    build-worktree dependencies or dangling documentation links. The result record identifies only the successful
+    archive from this invocation; failure cannot expose stale success. `smoke-dist` rejects incomplete/tampered payloads
+    and unsafe archive members before invoking the compiler, then tests that exact archive without rebuilding it. Every
+    distribution contains verified Stage 2 HTML/PDF and its matching docs manifest, with no Stage 1 autodocs.
 09. Smoke-test the curated artifact on the supported host matrix and checking/trace selections relevant to prepared
     support. Missing or incompatible native support produces an actionable preparation/toolchain failure.
 10. Local install/dist success closes only this plan's delivery contract. Release/snapshot workflows remain owned by
     their separate plan and publication authorization gates.
 
 During implementation, run the new packaging regression suite, installed/extracted smoke workflows, relevant environment
-and cache/driver tests, and L1's normal validation. Add full trace validation when changes affect runtime selection,
-derived native configuration flags/artifacts, or compiler ownership, following the repository's scope rules; reuse
-applicable just-completed checks. This Draft-plan refresh requires documentation checks only.
+and cache/driver tests, and L1's normal validation. Use these focused commands from `l1/` after the new targets exist:
 
+- `make test-productization`
+- `make smoke-dist ARCHIVE=<archive-from-DIST_RESULT>` on each supported host
+- `make test-env`
+- `make test-stage1 TESTS="l1c_stage1_installed_preparation_test l1c_stage1_preparation_test"`
+- `make test-stage2 TESTS="l1c_stage1_installed_preparation_test l1c_stage1_preparation_test"`
+- `make test` for the normal validation gate, including stage parity
+- `make triple-test` for the changed Stage 2 construction/overlay/native-support path
+
+Explicit selectors include the installed/preparation CI-only cases; `test` and `test-extended` alone do not. Add direct
+new native startup diagnostic cases to both stage selectors. Run broader or trace checks when changed compiler behavior
+requires them under `l1/AGENTS.md`; do not repeat preparation benchmarks or run exhaustive `test-ci` solely for an
+installer edit.
+
+[autodocs]: 2026-10-05-l1-stage-separated-autodocs-noref.md
 [diagnostic-catalog]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
+[installed-inputs]: ../../../docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md
+[l0-delivery]: ../../../../l0/docs/decisions/0023-toolchain-installation-and-distribution-layout.md
+[l1-guidance]: ../../../AGENTS.md
 [monorepo]: ../../../../MONOREPO.md
+[preparation-contract]: ../../../docs/reference/stdlib-preparation.md
 [release-workflows]: ../../../../work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md
 [stdlib-preparation]: ../features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
