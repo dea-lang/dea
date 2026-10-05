@@ -262,12 +262,12 @@ def test_mcss_template_uses_show_undocumented_setting() -> None:
     assert "SHOW_UNDOCUMENTED = True" in template
     assert "M_SHOW_UNDOCUMENTED" not in template
     assert "annotated.html" not in template
-    assert '<a href="pdf/dea_l0_api_reference.pdf">PDF</a>' in template
+    assert '<a href="pdf/dea_l0_{{ stage }}_api_reference.pdf">PDF</a>' in template
 
 
 def test_mainpage_html_template_links_to_pdf_reference() -> None:
     template = (repo_root() / "scripts/docs/templates/mainpage_html.md.j2").read_text(encoding="utf-8")
-    assert "[Reference Manual (pdf)](pdf/dea_l0_api_reference.pdf)" in template
+    assert "[Reference Manual (pdf)](pdf/dea_l0_{{ stage }}_api_reference.pdf)" in template
 
 
 def test_doxyfile_template_supports_project_number() -> None:

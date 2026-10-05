@@ -19,6 +19,10 @@ import tempfile
 import zipfile
 
 
+from docs_fixture import docs_fixture
+from docs_artifacts import package_version, source_identity, verify_tree
+
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BUILD_TESTS_ROOT = REPO_ROOT / "build" / "tests"
 
@@ -261,6 +265,7 @@ def main() -> int:
     try:
         build_env = os.environ.copy()
         build_env.pop("L0_CFLAGS", None)
+        build_env["DOCS_ARTIFACT"] = str(docs_fixture(extract_root / "docs-fixture"))
         output = run_checked(["make", "dist"], env=build_env)
         dist_match = re.search(r"created distribution directory at (.+)", output)
         archive_match = re.search(r"created distribution archive at (.+)", output)
@@ -290,6 +295,8 @@ def main() -> int:
         if is_windows_host():
             assert_exists(dist_dir / "bin" / "l0-env.cmd")
         assert_exists(dist_dir / "VERSION")
+        verify_tree(dist_dir / "share/doc/dea/l0/autodocs/stage2", stage="stage2",
+                    version=package_version(REPO_ROOT), source=source_identity(REPO_ROOT, "stage2"))
         assert_exists(dist_dir / "README.md")
         assert_exists(dist_dir / "README-WINDOWS.md")
         assert_exists(dist_dir / "shared" / "l0" / "stdlib" / "std" / "io.l0")
@@ -322,6 +329,8 @@ def main() -> int:
         assert_not_contains(dist_dir / "README.md", "cd` into `l0/")
 
         extract_archive(archive_path, extract_root)
+        verify_tree(extract_root / "dea-l0/share/doc/dea/l0/autodocs/stage2", stage="stage2",
+                    version=package_version(REPO_ROOT), source=source_identity(REPO_ROOT, "stage2"))
         unpacked_dist = extract_root / "dea-l0"
         assert_exists(unpacked_dist / "bin" / "l0c-stage2")
         assert_exists(unpacked_dist / "bin" / "l0c-stage2.native")

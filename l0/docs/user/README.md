@@ -14,6 +14,7 @@ bundled `VERSION` file.
 - `bin/` for the `l0c` launchers and environment helpers
 - `examples/` for runnable example programs
 - `docs/reference/` for the shipped language and compiler reference
+- `share/doc/dea/l0/autodocs/stage2/` for the offline Stage 2 HTML and PDF API reference
 - `shared/` for the bundled standard library and runtime assets
 
 ## Quick start
@@ -43,7 +44,9 @@ setups.
 
 ## Reference docs
 
-The bundled reference set is under `docs/reference/`.
+The bundled language reference is under `docs/reference/`. Open `share/doc/dea/l0/autodocs/stage2/html/index.html` for
+the generated Stage 2 API reference, or `share/doc/dea/l0/autodocs/stage2/pdf/dea_l0_stage2_api_reference.pdf` for the
+complete PDF. Stage 1 compiler autodocs are separate developer artifacts.
 
 Useful starting points:
 

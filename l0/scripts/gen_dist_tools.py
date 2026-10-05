@@ -18,6 +18,8 @@ import subprocess
 import sys
 import tempfile
 
+from docs_artifacts import package_version, source_identity, unpack_bundle
+
 from build_stage2_l0c import (
     STAGE2_COMPILER_SUPPORT_SOURCE,
     build_stage2_artifact,
@@ -206,6 +208,9 @@ def main() -> int:
             build_root.mkdir(parents=True, exist_ok=True)
             temp_root = Path(tempfile.mkdtemp(prefix="stage2_dist.", dir=build_root))
             try:
+                docs_bundle = Path(os.environ.get("DOCS_ARTIFACT", ""))
+                unpack_bundle(docs_bundle, temp_root / "docs-preflight", stage="stage2",
+                              version=package_version(REPO_ROOT), source=source_identity(REPO_ROOT, "stage2"))
                 bootstrap_layout = normalize_dea_build_dir(str(temp_root / "bootstrap"))
                 with stage2_build_info_overlay(REPO_ROOT, os.environ.copy(), temp_parent=build_root) as overlay:
                     compiler_build_env = compiler_runtime_build_env(overlay.build_env)
@@ -256,6 +261,7 @@ def main() -> int:
                             overlay.provenance.host,
                         ),
                         overlay.provenance,
+                        docs_artifact=docs_bundle,
                     )
                     print_progress(f"stage 4/4: wrote distribution archive at {render_display_path(distribution.archive_path)}")
                     print_progress(f"created distribution directory at {render_display_path(distribution.dist_dir)}")

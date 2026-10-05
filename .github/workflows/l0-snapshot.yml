@@ -61,7 +61,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   build-dist:
-    needs: prepare-snapshot
+    needs: [prepare-snapshot, build-docs]
     strategy:
       fail-fast: false
       matrix:
@@ -87,11 +87,23 @@ jobs:
       run:
         working-directory: l0
     steps:
+      - name: Preserve source bytes for documentation provenance
+        if: matrix.os == 'windows'
+        shell: pwsh
+        working-directory: .
+        run: git config --global core.autocrlf false
+
       - name: Check out repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
           ref: ${{ needs.prepare-snapshot.outputs.snapshot_ref }}
+
+      - name: Download verified Stage 2 documentation
+        uses: actions/download-artifact@v8
+        with:
+          name: l0-docs-stage2-autodocs
+          path: l0/build/docs-artifact
 
       - name: Set up Python
         if: matrix.os != 'windows'
@@ -163,6 +175,8 @@ jobs:
         run: |
           mkdir -p build
           export DEA_DIST_VERSION="${SNAPSHOT_VERSION#l0-}"
+          echo "DEA_DIST_VERSION=$DEA_DIST_VERSION" >> "$GITHUB_ENV"
+          export DOCS_ARTIFACT="$PWD/build/docs-artifact/dea_l0_stage2_autodocs.tar.gz"
           make dist | tee build/dist.log
 
       - name: Build distribution archive
@@ -176,6 +190,8 @@ jobs:
         run: |
           mkdir -p build
           export DEA_DIST_VERSION="${SNAPSHOT_VERSION#l0-}"
+          echo "DEA_DIST_VERSION=$DEA_DIST_VERSION" >> "$GITHUB_ENV"
+          export DOCS_ARTIFACT="$PWD/build/docs-artifact/dea_l0_stage2_autodocs.tar.gz"
           make dist | tee build/dist.log
 
       - name: Resolve distribution archive path
@@ -247,6 +263,11 @@ jobs:
                       archive.extractall(smoke_root)
 
               dist_root = smoke_root / "dea-l0"
+              import sys
+              sys.path.insert(0, str(Path("scripts").resolve()))
+              from docs_artifacts import package_version, source_identity, verify_tree
+              verify_tree(dist_root / "share/doc/dea/l0/autodocs/stage2", stage="stage2",
+                          version=package_version(Path.cwd()), source=source_identity(Path.cwd(), "stage2"))
               version_path = dist_root / "VERSION"
               if not version_path.is_file():
                   raise SystemExit(f"missing VERSION file in {dist_root}")
@@ -326,6 +347,11 @@ jobs:
                       archive.extractall(smoke_root)
 
               dist_root = smoke_root / "dea-l0"
+              import sys
+              sys.path.insert(0, str(Path("scripts").resolve()))
+              from docs_artifacts import package_version, source_identity, verify_tree
+              verify_tree(dist_root / "share/doc/dea/l0/autodocs/stage2", stage="stage2",
+                          version=package_version(Path.cwd()), source=source_identity(Path.cwd(), "stage2"))
               version_path = dist_root / "VERSION"
               if not version_path.is_file():
                   raise SystemExit(f"missing VERSION file in {dist_root}")
@@ -388,6 +414,7 @@ jobs:
     needs: prepare-snapshot
     uses: ./.github/workflows/l0-docs-build.yml
     with:
+      stage: stage2
       source_ref: ${{ needs.prepare-snapshot.outputs.snapshot_ref }}
       release_tag: ${{ needs.prepare-snapshot.outputs.snapshot_tag }}
       build_pdf: true
@@ -417,17 +444,23 @@ jobs:
           merge-multiple: true
           path: l0/build/release-assets
 
+      - name: Download verified offline bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: l0-docs-stage2-autodocs
+          path: l0/build/release-assets
+
       - name: Download PDF artifact
         uses: actions/download-artifact@v8
         with:
-          name: docs-pdf
+          name: l0-docs-stage2-pdf
           path: l0/build/release-assets
 
       - name: Download generated Markdown
         uses: actions/download-artifact@v8
         with:
-          name: docs-markdown
-          path: l0/build/docs/markdown
+          name: l0-docs-stage2-markdown
+          path: l0/build/docs/stage2/markdown
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -438,8 +471,9 @@ jobs:
         env:
           CURRENT_TAG: ${{ needs.prepare-snapshot.outputs.snapshot_tag }}
         run: |
-          pdf_name="dea_l0_api_reference-$CURRENT_TAG.pdf"
-          mv "build/release-assets/dea_l0_api_reference.pdf" "build/release-assets/$pdf_name"
+          mv "build/release-assets/dea_l0_stage2_autodocs.tar.gz" "build/release-assets/dea_l0_stage2_autodocs-$CURRENT_TAG.tar.gz"
+          pdf_name="dea_l0_stage2_api_reference-$CURRENT_TAG.pdf"
+          mv "build/release-assets/dea_l0_stage2_api_reference.pdf" "build/release-assets/$pdf_name"
 
       - name: Build Dea/L0 API reference export archive
         env:
@@ -459,9 +493,9 @@ jobs:
           else
             html_site_url="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}"
           fi
-          pdf_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${CURRENT_TAG}/dea_l0_api_reference-${CURRENT_TAG}.pdf"
-          python -m compiler.docgen.l0_docgen_blog \
-            --input build/docs/markdown \
+          pdf_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${CURRENT_TAG}/dea_l0_stage2_api_reference-${CURRENT_TAG}.pdf"
+          python -m compiler.docgen.l0_docgen_blog --stage stage2 \
+            --input build/docs/stage2/markdown \
             --output build/docs/api-reference \
             --docs-prefix "$docs_prefix" \
             --tab-title "$tab_title" \
@@ -470,7 +504,7 @@ jobs:
             --html-site-url "$html_site_url" \
             --pdf-url "$pdf_url" \
             --release-tag "$CURRENT_TAG"
-          tar -czf "build/release-assets/dea_l0_api_reference-${CURRENT_TAG}.tar.gz" -C build/docs/api-reference .
+          tar -czf "build/release-assets/dea_l0_stage2_api_reference-${CURRENT_TAG}.tar.gz" -C build/docs/api-reference .
 
       - name: Generate checksums
         run: |
@@ -483,9 +517,15 @@ jobs:
               path for path in assets_dir.iterdir() if path.is_file() and path.name != "SHA256SUMS"
           )
           required_assets = {
-              "dea_l0_api_reference-${{ needs.prepare-snapshot.outputs.snapshot_tag }}.tar.gz",
-              "dea_l0_api_reference-${{ needs.prepare-snapshot.outputs.snapshot_tag }}.pdf",
+              "dea_l0_stage2_autodocs-${{ needs.prepare-snapshot.outputs.snapshot_tag }}.tar.gz",
+              "dea_l0_stage2_api_reference-${{ needs.prepare-snapshot.outputs.snapshot_tag }}.tar.gz",
+              "dea_l0_stage2_api_reference-${{ needs.prepare-snapshot.outputs.snapshot_tag }}.pdf",
           }
+          for target in ("linux-x86_64", "darwin-x86_64", "darwin-arm64", "windows-x86_64"):
+              suffix = ".zip" if target.startswith("windows") else ".tar.gz"
+              matches = list(assets_dir.glob(f"dea-l0-lang_{target}_*{suffix}"))
+              if len(matches) != 1:
+                  raise SystemExit(f"expected one compiler archive for {target}")
           missing = sorted(name for name in required_assets if not (assets_dir / name).is_file())
           if missing:
               raise SystemExit(f"missing release assets before checksum generation: {missing}")

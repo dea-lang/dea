@@ -28,7 +28,7 @@
 - Related:
   - [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization]
   - [work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md][release-workflows]
-  - [l0/work/plans/tools/2026-10-05-l0-stage-separated-autodocs-noref.md][l0-split]
+  - [l0/work/plans/tools/closed/2026-10-05-l0-stage-separated-autodocs-noref.md][l0-split]
   - [docs/decisions/0017-documentation-publication-ownership-and-cross-repository-boundary.md][publication-adr]
 
 ## Summary
@@ -188,7 +188,7 @@ selected stage's outputs after success. Building Stage 1 must not remove or over
 6. Lightweight docgen tests and real strict Stage 1/2 HTML/PDF builds pass. Record commands, tool versions, and
    outcomes; do not infer publication success from local generation. Create/index the ADR and repair links at closure.
 
-[l0-split]: ../../../../l0/work/plans/tools/2026-10-05-l0-stage-separated-autodocs-noref.md
+[l0-split]: ../../../../l0/work/plans/tools/closed/2026-10-05-l0-stage-separated-autodocs-noref.md
 [productization]: 2026-04-02-l1-bootstrap-productization-noref.md
 [publication-adr]: ../../../../docs/decisions/0017-documentation-publication-ownership-and-cross-repository-boundary.md
 [release-workflows]: ../../../../work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md

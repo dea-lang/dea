@@ -11,6 +11,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import subprocess
+import shlex
+import sys
 import tempfile
 
 
@@ -206,8 +208,8 @@ def check_release_workflow() -> None:
     assert_contains(text, "RELEASE_VERSION#l0-v", context="l0-release.yml")
     # Per-platform dist artifacts and the API reference assets are produced.
     assert_contains(text, "dea-l0-dist-", context="l0-release.yml")
-    assert_contains(text, "docs-markdown", context="l0-release.yml")
-    assert_contains(text, "dea_l0_api_reference-", context="l0-release.yml")
+    assert_contains(text, "l0-docs-stage2-markdown", context="l0-release.yml")
+    assert_contains(text, "dea_l0_stage2_api_reference-", context="l0-release.yml")
     assert_contains(text, "SHA256SUMS", context="l0-release.yml")
     # Immutable draft-then-publish lifecycle: never republish, never edit a
     # published release, create as draft, upload, then flip to published.
@@ -251,7 +253,7 @@ def check_snapshot_workflow() -> None:
     assert_contains(text, "SNAPSHOT_VERSION#l0-", context="l0-snapshot.yml")
     # Per-platform dist artifacts and the API reference assets are produced.
     assert_contains(text, "dea-l0-dist-", context="l0-snapshot.yml")
-    assert_contains(text, "dea_l0_api_reference-", context="l0-snapshot.yml")
+    assert_contains(text, "dea_l0_stage2_api_reference-", context="l0-snapshot.yml")
     assert_contains(text, "SHA256SUMS", context="l0-snapshot.yml")
     # Immutable draft-then-publish lifecycle.
     assert_contains(text, "immutable-release violation", context="l0-snapshot.yml")
@@ -293,7 +295,7 @@ def check_docs_publish_workflow() -> None:
     assert_contains(text, "releases/tags/$release_tag", context="l0-docs-publish.yml")
     # Immutable-release guard and the API reference asset upload.
     assert_contains(text, "immutable-release violation", context="l0-docs-publish.yml")
-    assert_contains(text, "dea_l0_api_reference-", context="l0-docs-publish.yml")
+    assert_contains(text, "dea_l0_stage2_api_reference-", context="l0-docs-publish.yml")
     assert_contains(text, "upload_url", context="l0-docs-publish.yml")
     # Negative guards against reintroducing superseded behavior.
     if "release_tag is required when attach_release_assets_to_draft=true" in text:
@@ -337,6 +339,113 @@ def check_docs() -> None:
         assert_contains(readme, needle, context="README.md")
 
 
+
+def check_stage_docs_contract() -> None:
+    """Validate docs-first release DAGs, isolated artifacts, and checksum coverage."""
+    import yaml
+    for name, prerequisite in (("l0-release.yml", "validate-release"), ("l0-snapshot.yml", "prepare-snapshot")):
+        workflow = yaml.safe_load(read_text(f".github/workflows/{name}"))
+        jobs = workflow["jobs"]
+        if set(jobs["build-dist"]["needs"]) != {prerequisite, "build-docs"}:
+            fail(f"{name}: distributions must wait for verified documentation")
+        if jobs["build-docs"]["with"].get("stage") != "stage2":
+            fail(f"{name}: release docs must select Stage 2")
+        steps = jobs["build-dist"]["steps"]
+        checkout_index = next(i for i, s in enumerate(steps) if s.get("uses", "").startswith("actions/checkout@"))
+        newline_steps = [s for s in steps[:checkout_index] if s.get("run") == "git config --global core.autocrlf false"]
+        if len(newline_steps) != 1 or newline_steps[0].get("if") != "matrix.os == 'windows'" or newline_steps[0].get("working-directory") != ".":
+            fail(f"{name}: Windows checkout must preserve documentation input bytes")
+        downloads = [s for s in steps if s.get("with", {}).get("name") == "l0-docs-stage2-autodocs"]
+        if len(downloads) != 1:
+            fail(f"{name}: missing shared Stage 2 bundle download")
+        build_steps = [s for s in steps if s["name"] == "Build distribution archive"]
+        if len(build_steps) != 2 or any("DOCS_ARTIFACT=" not in s["run"] for s in build_steps):
+            fail(f"{name}: both POSIX and Windows must consume the same explicit bundle")
+        publish = next(job for key, job in jobs.items() if key.startswith("publish-"))
+        checksum = next(s["run"] for s in publish["steps"] if s["name"] == "Generate checksums")
+        for required in ("dea_l0_stage2_autodocs-", "dea_l0_stage2_api_reference-", "linux-x86_64", "darwin-x86_64", "darwin-arm64", "windows-x86_64"):
+            assert_contains(checksum, required, context=f"{name} checksums")
+    build = yaml.safe_load(read_text(".github/workflows/l0-docs-build.yml"))
+    if build.get("permissions") != {"contents": "read"}:
+        fail("documentation generation must remain read-only")
+    validate = read_text(".github/workflows/l0-docs-validate.yml")
+    assert_contains(validate, "--stage all --strict --pdf --artifacts", context="independent stage validation")
+    for stage in ("stage1", "stage2"):
+        assert_contains(validate, f"name: l0-docs-validation-{stage}-autodocs", context="stage-qualified validation artifact")
+    publish = yaml.safe_load(read_text(".github/workflows/l0-docs-publish.yml"))
+    if publish["jobs"]["build-docs"]["with"].get("stage") != "stage2":
+        fail("manual publication must select Stage 2")
+
+
+
+def check_docs_checksums_and_immutable_guards() -> None:
+    """Execute checksum and publication rejection paths without remote operations."""
+    if os.name == "nt":
+        return  # These production shell fragments run on Ubuntu.
+    for name in ("l0-release.yml", "l0-snapshot.yml"):
+        text = read_text(f".github/workflows/{name}")
+        script = extract_named_run_script(text, "Generate checksums")
+        script = script.replace("${{ github.ref_name }}", "l0-v9.9.9")
+        script = script.replace("${{ needs.prepare-snapshot.outputs.snapshot_tag }}", "l0-v9.9.9")
+        script = script.replace("python -", shlex.quote(sys.executable) + " -")
+        with tempfile.TemporaryDirectory(prefix="docs-checksums.") as work:
+            root = Path(work)
+            assets = root / "build/release-assets"
+            assets.mkdir(parents=True)
+            filenames = [f"dea-l0-lang_{target}_stamp" + (".zip" if target.startswith("windows") else ".tar.gz")
+                         for target in ("linux-x86_64", "darwin-x86_64", "darwin-arm64", "windows-x86_64")]
+            filenames += ["dea_l0_stage2_api_reference-l0-v9.9.9.pdf", "dea_l0_stage2_api_reference-l0-v9.9.9.tar.gz", "dea_l0_stage2_autodocs-l0-v9.9.9.tar.gz"]
+            for filename in filenames:
+                (assets / filename).write_bytes(b"checksum fixture")
+            proc = subprocess.run(["bash", "-e", "-c", script], cwd=root, capture_output=True, text=True)
+            if proc.returncode or len((assets / "SHA256SUMS").read_text().splitlines()) != 7:
+                fail(f"{name}: complete release checksum script failed: {proc.stderr}")
+            for filename in (filenames[-1], filenames[0]):
+                (assets / filename).unlink()
+                proc = subprocess.run(["bash", "-e", "-c", script], cwd=root, capture_output=True, text=True)
+                if proc.returncode == 0:
+                    fail(f"{name}: incomplete assets accepted: {filename}")
+                (assets / filename).write_bytes(b"checksum fixture")
+
+    for name, step in (("l0-release.yml", "Ensure draft GitHub release"),
+                       ("l0-snapshot.yml", "Ensure draft GitHub pre-release"),
+                       ("l0-docs-publish.yml", "Validate target draft release")):
+        text = read_text(f".github/workflows/{name}")
+        script = extract_named_run_script(text, step)
+        with tempfile.TemporaryDirectory(prefix="immutable-docs.") as work:
+            root = Path(work)
+            gh = root / "gh"
+            gh.write_text("#!/bin/sh\ncase \"$*\" in *POST*|*PATCH*|*DELETE*|*upload*) exit 88;; *.draft*) echo false;; *.id*) echo 123;; esac\n")
+            gh.chmod(0o755)
+            env = {"PATH": str(root) + os.pathsep + os.environ["PATH"], "CURRENT_TAG": "l0-v9.9.9",
+                   "GITHUB_REPOSITORY": "dea-lang/dea", "RESOLVED_RELEASE_ID": "123", "GITHUB_OUTPUT": str(root / "out")}
+            proc = subprocess.run(["bash", "-e", "-c", script], cwd=root, env=env, capture_output=True, text=True)
+            if proc.returncode == 0 or "immutable-release violation" not in proc.stderr:
+                fail(f"{name}: published-release guard failed under mocked gh: {proc.stderr}")
+
+
+
+def check_docs_helper_routing() -> None:
+    """Execute Unified CI routing with mocked Git diff inputs."""
+    if os.name == "nt":
+        return
+    script = extract_named_run_script(read_text(".github/workflows/ci.yml"), "Decide level routing")
+    with tempfile.TemporaryDirectory(prefix="docs-routing.") as work:
+        root = Path(work)
+        git = root / "git"
+        git.write_text('#!/bin/sh\nif [ "$1" = diff ]; then printf "%s\\n" "$MOCK_CHANGED_PATH"; fi\n')
+        git.chmod(0o755)
+        for helper in ("gen_docs", "docs_artifacts", "stage_docs_pages", "gen_dist_tools", "dist_tools_lib"):
+            output = root / "output"
+            output.unlink(missing_ok=True)
+            env = {"PATH": str(root) + os.pathsep + os.environ["PATH"], "EVENT_NAME": "pull_request",
+                   "PR_BASE_SHA": "base", "PR_HEAD_SHA": "head", "GITHUB_OUTPUT": str(output),
+                   "MOCK_CHANGED_PATH": f"l0/scripts/{helper}.py"}
+            proc = subprocess.run(["bash", "-eu", "-c", script], cwd=root, env=env, capture_output=True, text=True)
+            if proc.returncode or "run_docs=true" not in output.read_text():
+                fail(f"documentation helper {helper} did not route to full docs validation: {proc.stderr}")
+
+
 def main() -> int:
     if WORKFLOW_ROOT is None:
         print("test_release_tag_policy: SKIP (workflow files unavailable in this checkout)")
@@ -348,6 +457,9 @@ def main() -> int:
     check_docs_build_workflow()
     check_docs_validate_workflow()
     check_docs()
+    check_stage_docs_contract()
+    check_docs_checksums_and_immutable_guards()
+    check_docs_helper_routing()
     print("test_release_tag_policy: PASS")
     return 0
 

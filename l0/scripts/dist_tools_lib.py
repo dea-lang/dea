@@ -26,6 +26,8 @@ SCRIPTS_ROOT = Path(__file__).resolve().parents[2] / "scripts"
 if str(SCRIPTS_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_ROOT))
 
+from docs_artifacts import package_version, source_identity, unpack_bundle, verify_tree
+
 from dea_tooling.launchers import (
     render_prefix_env_cmd_script as shared_render_prefix_env_cmd_script,
     render_prefix_env_script as shared_render_prefix_env_script,
@@ -949,9 +951,19 @@ def create_stage2_distribution(
     stage2_native_source: Path,
     archive_base_name: str,
     provenance: Stage2BuildProvenance,
+    docs_artifact: Path | None = None,
 ) -> DistributionArchive:
     """Create one relocatable distribution tree plus a host-native archive."""
 
+    bundle = docs_artifact or Path(os.environ.get("DOCS_ARTIFACT", ""))
+    identity = source_identity(layout.repo_root, "stage2")
+    if identity["revision"] != provenance.commit_full or identity["tree_state"] != provenance.tree_state:
+        raise ValueError("compiler/documentation source provenance mismatch")
+    with tempfile.TemporaryDirectory(prefix="stage2-docs-") as work:
+        unpack_bundle(bundle, Path(work), stage="stage2", version=provenance.release_version, source=identity)
+        target = layout.prefix_dir / "share/doc/dea/l0/autodocs/stage2"
+        copy_tree(Path(work) / "dea-l0-stage2-autodocs", target)
+        verify_tree(target, stage="stage2", version=provenance.release_version, source=identity)
     install_prefix_stage2(layout, stage2_native_source)
     write_distribution_version_file(layout, provenance)
     copy_distribution_extras(layout)

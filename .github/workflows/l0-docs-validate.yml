@@ -34,7 +34,7 @@ jobs:
       - name: Install docs toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y doxygen graphviz make
+          sudo apt-get install -y doxygen graphviz make texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended
 
       - name: Show Doxygen version
         run: doxygen --version
@@ -44,20 +44,32 @@ jobs:
         run: uv sync --group docs
 
       - name: Build docs strictly
-        run: python3 scripts/gen_docs.py --strict
+        run: python3 scripts/gen_docs.py --stage all --strict --pdf --artifacts
 
       - name: Show undocumented functions report
         if: always()
         run: |
-          report_path="build/docs/undocumented-functions.txt"
-          if [ -f "$report_path" ]; then
-            cat "$report_path"
-          else
-            echo "No undocumented functions report was generated."
-          fi
+          for stage in stage1 stage2; do
+            report_path="build/docs/$stage/undocumented-functions.txt"
+            if [ -f "$report_path" ]; then cat "$report_path"; fi
+          done
 
       - name: Export Chirpy Markdown
         run: |
-          python -m compiler.docgen.l0_docgen_blog \
-            --input build/docs/markdown \
+          python -m compiler.docgen.l0_docgen_blog --stage stage2 \
+            --input build/docs/stage2/markdown \
             --output build/docs/api-reference
+
+      - name: Upload Stage 1 developer reference
+        uses: actions/upload-artifact@v6
+        with:
+          name: l0-docs-validation-stage1-autodocs
+          path: l0/build/docs/artifacts/dea_l0_stage1_autodocs.tar.gz
+          if-no-files-found: error
+
+      - name: Upload Stage 2 validation reference
+        uses: actions/upload-artifact@v6
+        with:
+          name: l0-docs-validation-stage2-autodocs
+          path: l0/build/docs/artifacts/dea_l0_stage2_autodocs.tar.gz
+          if-no-files-found: error

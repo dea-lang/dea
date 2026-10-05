@@ -14,13 +14,28 @@ on:
         required: false
         type: string
         default: ""
+      stage:
+        required: false
+        type: string
+        default: stage2
+      package_version:
+        required: false
+        type: string
+        default: ""
       build_pdf:
         required: false
         type: boolean
         default: true
 
+permissions:
+  contents: read
+
 jobs:
   build-docs:
+    strategy:
+      fail-fast: false
+      matrix:
+        stage: ${{ fromJSON(inputs.stage == 'all' && '["stage1", "stage2"]' || format('["{0}"]', inputs.stage)) }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -73,22 +88,22 @@ jobs:
 
       - name: Build HTML, Markdown, LaTeX, and PDF
         env:
+          DOC_STAGE: ${{ matrix.stage }}
           L0_DOCS_RELEASE_TAG: ${{ inputs.release_tag }}
-        run: python3 scripts/gen_docs.py ${{ inputs.build_pdf && '--pdf' || '' }} --strict
+          DEA_DIST_VERSION: ${{ inputs.package_version }}
+        run: |
+          if [ -z "$DEA_DIST_VERSION" ] && [ -n "$L0_DOCS_RELEASE_TAG" ]; then
+            export DEA_DIST_VERSION="${L0_DOCS_RELEASE_TAG#l0-}"
+            export DEA_DIST_VERSION="${DEA_DIST_VERSION#v}"
+          fi
+          python3 scripts/gen_docs.py --stage "$DOC_STAGE" ${{ inputs.build_pdf && '--pdf --artifacts' || '' }} --strict
 
       - name: Stage Pages site
-        run: |
-          pdf_name="dea_l0_api_reference.pdf"
-          rm -rf build/docs/pages-site
-          mkdir -p build/docs/pages-site
-          cp -R build/docs/html/. build/docs/pages-site/
-          if [ -f "build/docs/pdf/$pdf_name" ]; then
-            mkdir -p build/docs/pages-site/pdf
-            cp "build/docs/pdf/$pdf_name" "build/docs/pages-site/pdf/$pdf_name"
-          fi
-          touch build/docs/pages-site/.nojekyll
+        if: matrix.stage == 'stage2'
+        run: python3 scripts/stage_docs_pages.py
 
       - name: Upload Pages artifact
+        if: matrix.stage == 'stage2'
         uses: actions/upload-pages-artifact@v5
         with:
           path: l0/build/docs/pages-site
@@ -96,12 +111,20 @@ jobs:
       - name: Upload generated Markdown artifact
         uses: actions/upload-artifact@v6
         with:
-          name: docs-markdown
-          path: l0/build/docs/markdown
+          name: l0-docs-${{ matrix.stage }}-markdown
+          path: l0/build/docs/${{ matrix.stage }}/markdown
 
       - name: Upload generated PDF artifact
         if: inputs.build_pdf
         uses: actions/upload-artifact@v6
         with:
-          name: docs-pdf
-          path: l0/build/docs/pdf/dea_l0_api_reference.pdf
+          name: l0-docs-${{ matrix.stage }}-pdf
+          path: l0/build/docs/${{ matrix.stage }}/pdf/dea_l0_${{ matrix.stage }}_api_reference.pdf
+
+      - name: Upload verified offline bundle
+        if: inputs.build_pdf
+        uses: actions/upload-artifact@v6
+        with:
+          name: l0-docs-${{ matrix.stage }}-autodocs
+          path: l0/build/docs/artifacts/dea_l0_${{ matrix.stage }}_autodocs.tar.gz
+          if-no-files-found: error

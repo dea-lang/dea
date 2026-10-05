@@ -135,7 +135,7 @@ tooling, and Stage 1-focused testing:
 ./scripts/l0c -Rp examples --sym hello     # dump symbols
 ./scripts/l0c -Rp examples --type hello    # dump resolved top-level types
 python scripts/gen_docs.py --strict    # generate docs; fail on warnings and synthetic __padN__ regressions
-python scripts/gen_docs.py --pdf       # also build/copy build/docs/pdf/dea_l0_api_reference.pdf
+python scripts/gen_docs.py --pdf       # independently build both stage-qualified PDFs
 python scripts/gen_docs.py --pdf-fast  # faster preview PDF build (single pdflatex pass)
 make help                         # show the repo-local developer workflow targets
 make venv                         # create or reuse the shared ../.venv
@@ -168,15 +168,18 @@ make triple-test # run the strict triple-bootstrap regression
 
 Stage 2 currently implements analysis/dump modes plus `--gen`, `--build`, and `--run`.
 
-Generated API documentation is written under `build/docs/` and is not part of the hand-authored `docs/` tree. Native
-Doxygen LaTeX output is generated under `build/docs/doxygen/latex/`; use `python scripts/gen_docs.py --pdf` to build
-`refman.pdf` and copy it into `build/docs/pdf/dea_l0_api_reference.pdf` if a local TeX toolchain is installed. For
-faster local previews, `python scripts/gen_docs.py --pdf-fast --latex-only` performs a single-pass PDF build. After each
-successful docs run, generated artifacts are mirrored to a stable preview tree under `build/preview/` (`html/`,
-`markdown/`, `pdf/`), which is overwritten by the next successful run. Use `-v` / `--verbose` with `scripts/gen_docs.py`
-to show m.css warnings and LaTeX build output directly. Release/manual publishing is handled by
-`.github/workflows/l0-docs-publish.yml`; Unified CI routes PR validation through the callable
-`.github/workflows/l0-docs-validate.yml`, which also remains manually dispatchable.
+Generated API documentation is written under `build/docs/stage1/` and `build/docs/stage2/`, outside the hand-authored
+`docs/` tree. `python scripts/gen_docs.py --stage stage1|stage2|all` and `DOC_STAGE` for Make select stages; local
+generation defaults to independent builds of both. LaTeX lives under each stage's `doxygen/latex/`; `--pdf` builds
+complete `pdf/dea_l0_stageS_api_reference.pdf` files when TeX is installed. `--pdf-fast --latex-only` is preview-only.
+Successful previews live under `build/preview/stageS/{html,markdown,pdf}/`; one stage cannot replace the other.
+
+`make docs-artifacts DOC_STAGE=stage2 DEA_DIST_VERSION=<version>` creates the verified offline bundle. `make dist`
+requires `DOCS_ARTIFACT=<absolute-bundle-path>` with the same source/version, and embeds Stage 2 HTML/PDF under
+`share/doc/dea/l0/autodocs/stage2/`. Generate documentation before packaging; dist never invokes TeX. `make install`
+remains compiler-only. `-v` / `--verbose` shows renderer warnings and LaTeX output. Release/manual publishing uses
+`.github/workflows/l0-docs-publish.yml`; CI validation independently builds both stages through
+`.github/workflows/l0-docs-validate.yml`. Publication consumers select Stage 2; authorization remains separate.
 
 ### Testing
 

@@ -801,7 +801,7 @@ def _build_scope_compound_id_targets(compounds: dict[str, ET.Element], scope_pre
     return {key: next(iter(values)) for key, values in candidates.items() if len(values) == 1}
 
 
-def render_markdown_site(xml_dir: Path, output_dir: Path, templates_dir: Path) -> None:
+def render_markdown_site(xml_dir: Path, output_dir: Path, templates_dir: Path, *, stage: str = "all") -> None:
     """Render a Markdown API site from Doxygen XML."""
     env = Environment(loader=FileSystemLoader(str(templates_dir)))
     file_template = env.get_template("markdown_file.md.j2")
@@ -910,6 +910,7 @@ def render_markdown_site(xml_dir: Path, output_dir: Path, templates_dir: Path) -
     index_path = output_dir / "index.md"
     index_path.write_text(
         index_template.render(
+            stage=stage,
             stage1=sorted(stage1_pages, key=lambda page: page["href"]),
             stage2=sorted(stage2_pages, key=lambda page: page["href"]),
             shared=sorted(shared_pages, key=lambda page: page["href"]),
@@ -1437,9 +1438,10 @@ def normalize_search_result_urls(html_root: Path) -> None:
         search_js_path.write_text(updated, encoding="utf-8")
 
 
-def render_curated_html_site(xml_dir: Path, markdown_root: Path, html_root: Path, templates_dir: Path) -> None:
+def render_curated_html_site(xml_dir: Path, markdown_root: Path, html_root: Path, templates_dir: Path, *, stage: str = "all") -> None:
     """Render curated HTML browse pages and HTML equivalents of generated Markdown."""
     env = Environment(loader=FileSystemLoader(str(templates_dir)))
+    env.globals.update(stage=stage)
     page_template = env.get_template("html_api_page.j2")
     group_template = env.get_template("html_api_group.j2")
     page_refs = _collect_reference_pages(xml_dir, markdown_root, html_root)
@@ -1485,6 +1487,8 @@ def render_curated_html_site(xml_dir: Path, markdown_root: Path, html_root: Path
     groups = _collect_browse_entries(markdown_root, html_root, page_refs)
     page_titles = {"stage1": "Stage 1", "stage2": "Stage 2", "shared": "Shared"}
     for group_name, entries in groups.items():
+        if stage != "all" and group_name not in {stage, "shared"}:
+            continue
         page_path = html_root / f"{group_name}.html"
         page_path.write_text(
             group_template.render(

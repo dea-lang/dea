@@ -3,20 +3,21 @@
 
 DOXYFILE = r'{{ doxygen_path }}'
 OUTPUT = r'{{ html_output }}'
-PROJECT_TITLE = 'Dea/L0 API'
+PROJECT_TITLE = 'Dea/L0 Stage {{ stage[-1] }} API'
 THEME_COLOR = '#385170'
 FAVICON = ''
 
 LINKS_NAVBAR1 = [
     ('<a href="index.html">Home</a>', []),
-    ('<a href="stage1.html">Stage 1</a>', []),
-    ('<a href="stage2.html">Stage 2</a>', []),
+    ('<a href="{{ stage }}.html">Stage {{ stage[-1] }}</a>', []),
     ('<a href="shared.html">Shared</a>', []),
 ]
 
 LINKS_NAVBAR2 = [
-    ('<a href="pdf/dea_l0_api_reference.pdf">PDF</a>', []),
+    ('<a href="pdf/dea_l0_{{ stage }}_api_reference.pdf">PDF</a>', []),
     ('<a href="https://github.com/dea-lang/dea">GitHub</a>', []),
 ]
 
 SHOW_UNDOCUMENTED = True
+
+STYLESHEETS = ['../css/m-dark+documentation.compiled.css']

@@ -1,7 +1,7 @@
 # ADR-0017: Documentation Publication Ownership and Cross-Repository Boundary
 
 - Decision date: 2026-07-13
-- Last edited: 2026-09-03
+- Last edited: 2026-10-05
 - Status: Accepted
 
 ## Context
@@ -72,14 +72,21 @@ policy.
 
 ## Related Plans
 
+- [l0/work/plans/tools/closed/2026-10-05-l0-stage-separated-autodocs-noref.md](../../l0/work/plans/tools/closed/2026-10-05-l0-stage-separated-autodocs-noref.md):
+  separates local stage artifacts while retaining destination-owned publication and explicit remote authorization
+
 - [l0/work/plans/tools/closed/2026-03-04-release-oriented-docs-publishing-automation-noref.md](../../l0/work/plans/tools/closed/2026-03-04-release-oriented-docs-publishing-automation-noref.md):
   introduced generated HTML, PDF, and blog export publication surfaces
+
 - [l0/work/plans/bug-fixes/closed/2026-03-21-chirpy-blog-export-link-target-parity-noref.md](../../l0/work/plans/bug-fixes/closed/2026-03-21-chirpy-blog-export-link-target-parity-noref.md):
   made blog publication opt-in and confined Chirpy compatibility fixes to the exporter
+
 - [l0/work/plans/tools/closed/2026-03-23-decouple-chirpy-blog-publishing-noref.md](../../l0/work/plans/tools/closed/2026-03-23-decouple-chirpy-blog-publishing-noref.md):
   replaced direct destination writes with artifact exchange and optional notification
+
 - [work/plans/tools/closed/2026-07-13-remote-publication-authorization-guardrails-noref.md](../../work/plans/tools/closed/2026-07-13-remote-publication-authorization-guardrails-noref.md):
   established the explicit authorization boundary for cross-repository and deployment-triggering writes
+
 - [work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md](../../work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md):
   promoted the historical decision into the ADR catalog
 

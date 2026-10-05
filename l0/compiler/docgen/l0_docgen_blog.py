@@ -32,6 +32,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, required=True, help="Input Markdown root produced by l0_docgen.")
     parser.add_argument("--output", type=Path, required=True, help="Output root for the blog export.")
+    parser.add_argument("--stage", choices=("all", "stage1", "stage2"), default="all", help="Select stage; all accepts historical mixed references.")
     parser.add_argument("--docs-prefix", default="api/reference", help="Destination prefix inside the blog repo.")
     parser.add_argument("--tab-title", default="API", help="Title for the generated Chirpy tab page.")
     parser.add_argument("--tab-icon", default="fas fa-book", help="Icon class for the generated Chirpy tab page.")
@@ -152,6 +153,7 @@ def export_markdown_tree(
     html_site_url: str = "",
     pdf_url: str = "",
     release_tag: str = "",
+    stage: str = "all",
 ) -> None:
     """Export generated Markdown into a Chirpy-friendly directory tree."""
     docs_prefix = _normalize_docs_prefix(docs_prefix)
@@ -173,6 +175,10 @@ def export_markdown_tree(
             continue
         raw_text = markdown_path.read_text(encoding="utf-8")
         source_path = _source_path_from_markdown(raw_text, rel_path)
+        if stage == "stage2" and source_path.startswith("compiler/stage1_py/"):
+            continue
+        if stage == "stage1" and source_path.startswith("compiler/stage2_l0/"):
+            continue
         title = Path(source_path).name
         permalink = _jekyll_target_for_markdown_target(rel_path, docs_prefix)
         export_entries[rel_path] = ExportEntry(rel_path, source_path, title, permalink)
@@ -229,8 +235,9 @@ def export_markdown_tree(
         tab_lines.append(f"- [PDF reference]({pdf_url})")
     if html_site_url or pdf_url:
         tab_lines.append("")
-    tab_lines.extend(render_group("Stage 1", "stage1"))
-    tab_lines.extend(render_group("Stage 2", "stage2"))
+    for key, title in (("stage1", "Stage 1"), ("stage2", "Stage 2")):
+        if grouped_entries[key] and stage in {"all", key}:
+            tab_lines.extend(render_group(title, key))
     tab_lines.extend(render_group("Shared", "shared"))
 
     tabs_dir = output_dir / "_tabs"
@@ -251,6 +258,7 @@ def main(argv: list[str] | None = None) -> int:
         html_site_url=args.html_site_url,
         pdf_url=args.pdf_url,
         release_tag=args.release_tag,
+        stage=args.stage,
     )
     return 0
 

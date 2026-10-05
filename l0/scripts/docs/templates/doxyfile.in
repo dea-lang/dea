@@ -1,13 +1,7 @@
-PROJECT_NAME           = "Dea/L0 API"
+PROJECT_NAME           = "Dea/L0 Stage {{ stage[-1] }} API"
 PROJECT_NUMBER         = "{{ project_number }}"
 OUTPUT_DIRECTORY       = "{{ output_directory }}"
-INPUT                  = \
-    "{{ mainpage }}" \
-    "{{ stage1_dir }}" \
-    "{{ stage2_src_dir }}" \
-    "{{ stage2_cli_file }}" \
-    "{{ shared_stdlib_dir }}" \
-    "{{ shared_runtime_dir }}"
+INPUT                  = "{{ mainpage }}" {% for path in input_files %}"{{ path }}" {% endfor %}
 RECURSIVE              = YES
 FILE_PATTERNS          = *.py *.l0 *.h *.md
 FULL_PATH_NAMES        = YES

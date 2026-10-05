@@ -1,7 +1,7 @@
 # ADR-0023: Toolchain Installation and Distribution Layout
 
 - Decision date: 2026-03-10
-- Last edited: 2026-07-27
+- Last edited: 2026-10-05
 - Status: Accepted
 
 ## Context
@@ -36,9 +36,16 @@ The L0 toolchain uses these layout rules:
 08. The distribution contains a `VERSION` metadata file recording its L0 identity, version, build, source revision,
     host, architecture, license, and canonical source location. Release and snapshot workflows supply their release
     identity to this metadata.
-09. Distributions bundle user-facing READMEs, examples, and stable user/reference documentation. They omit work plans,
-    proposals, internal specifications, attic material, and contributor-only documentation.
-10. Internal self-hosting during installation ignores inherited prefix-specific `L0_SYSTEM`, `L0_RUNTIME_INCLUDE`, and
+09. Distributions bundle standalone user-facing READMEs, examples, and the level documentation tree. Work plans and
+    proposals remain outside that tree; root contributor documentation is omitted.
+10. Source references are generated independently for Stage 1 and Stage 2. Distributions require a complete strict Stage
+    2 HTML/PDF bundle from the same source and package version, embedded at `share/doc/dea/l0/autodocs/stage2/`. A
+    schema-versioned manifest records source/input provenance, tool versions, strict/full-PDF success, and file digests;
+    consumers reject unsafe or mismatched bundles and verify extracted bytes.
+11. Compiler-only installation remains available without TeX. Documentation generation is explicit and precedes
+    packaging; release/snapshot platforms consume one common verified bundle. Stage 1 references remain developer
+    outputs.
+12. Internal self-hosting during installation ignores inherited prefix-specific `L0_SYSTEM`, `L0_RUNTIME_INCLUDE`, and
     `L0_RUNTIME_LIB` values so the build cannot accidentally consume assets from a different installation.
 
 ## Rationale
@@ -52,6 +59,8 @@ The L0 toolchain uses these layout rules:
   `cmd.exe` workflows.
 - A predictable root and filename make local archives identifiable without opening them, while `VERSION` carries richer
   machine-readable provenance after extraction.
+- Independent stage references avoid linking duplicate compiler symbols across stages; shared APIs are present in both.
+- Bundling the exact Stage 2 source reference makes the distributed self-hosted toolchain complete offline.
 - Bundling stable user material makes the toolchain usable offline without shipping internal lifecycle history.
 - Scrubbing inherited roots makes installation reproducible even when the caller has another toolchain activated.
 
@@ -67,24 +76,37 @@ The L0 toolchain uses these layout rules:
 
 ## Related Plans
 
+- [l0/work/plans/tools/closed/2026-10-05-l0-stage-separated-autodocs-noref.md](../../work/plans/tools/closed/2026-10-05-l0-stage-separated-autodocs-noref.md):
+  independent stage references and verified Stage 2 distribution/release documentation
+
 - [l0/work/plans/tools/closed/2026-03-09-stage2-bootstrap-compiler-artifact-noref.md](../../work/plans/tools/closed/2026-03-09-stage2-bootstrap-compiler-artifact-noref.md):
   defined explicit repo-local stage selection and the relocatable Stage 2 install prefix
+
 - [l0/work/plans/tools/closed/2026-03-11-windows-build-support.md](../../work/plans/tools/closed/2026-03-11-windows-build-support.md):
   introduced Windows-native launcher forms
+
 - [l0/work/plans/tools/closed/2026-03-13-windows-dev-install-and-prefix-workflow.md](../../work/plans/tools/closed/2026-03-13-windows-dev-install-and-prefix-workflow.md):
   aligned repo-local and prefix activation with native Windows shells
+
 - [l0/work/plans/tools/closed/2026-03-15-stage2-dist-target.md](../../work/plans/tools/closed/2026-03-15-stage2-dist-target.md):
   made distribution archives reuse the relocatable install layout
+
 - [l0/work/plans/tools/closed/2026-03-16-github-release-workflow-noref.md](../../work/plans/tools/closed/2026-03-16-github-release-workflow-noref.md):
   added versioned, platform-native release archives and bundled user material
+
 - [work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md](../../../work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md):
   promoted the toolchain layout contract into this ADR
 
 ## Current Docs
 
+- [l0/docs/README.md](../README.md): stage outputs, offline manifests, and Pages/export migration
+
 - [l0/docs/specs/compiler/stage2-contract.md](../specs/compiler/stage2-contract.md): installed Stage 2 identity and
   provenance
+
 - [l0/docs/reference/architecture.md](../reference/architecture.md): repo-local, install-prefix, and distribution
   architecture
+
 - [l0/docs/user/README.md](../user/README.md): packaged toolchain quick start
+
 - [l0/docs/user/README-WINDOWS.md](../user/README-WINDOWS.md): Windows launch and activation forms

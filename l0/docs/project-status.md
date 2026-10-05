@@ -1,6 +1,6 @@
 # L0 Project Status
 
-Version: 2026-09-23
+Version: 2026-10-05
 
 This document summarizes what is implemented in this repository today. The latest Dea/L0 release is `2.1.1`.
 
@@ -81,7 +81,9 @@ At a high level, it provides:
 - repo-local, install-prefix, and distribution delivery paths,
 - strict triple-bootstrap validation via `make triple-test`,
 - embedded provenance in artifact-producing Stage 2 binaries via `--version`,
-- release packaging plus docs/PDF publishing automation through the repository workflows,
+- independent Stage 1 and Stage 2 HTML/PDF references, with verified offline Stage 2 autodocs required in distributions,
+- release packaging plus stage-qualified documentation assets and publishing automation through the repository
+  workflows,
 - current parity fixes for Stage 2 diagnostics, drop-liveness checks, string comparisons, bare enum variants in
   top-level bindings, ARC borrowed-parameter reassignment, unwrap-cast ARC cleanup, optional-wrapper typedef ordering,
   and Windows trace-runner behavior,

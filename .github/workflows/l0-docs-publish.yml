@@ -189,6 +189,7 @@ jobs:
     needs: resolve-targets
     uses: ./.github/workflows/l0-docs-build.yml
     with:
+      stage: stage2
       source_ref: ${{ needs.resolve-targets.outputs.source_ref }}
       release_tag: ${{ needs.resolve-targets.outputs.target_release_tag }}
       build_pdf: >-
@@ -263,11 +264,26 @@ jobs:
             exit 1
           fi
 
+      - name: Download verified offline bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: l0-docs-stage2-autodocs
+          path: l0/build/docs/artifacts
+
+      - name: Upload offline bundle to draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESOLVED_RELEASE_TAG: ${{ needs.resolve-draft-release.outputs.resolved_release_tag }}
+        run: |
+          bundle="build/docs/artifacts/dea_l0_stage2_autodocs-$RESOLVED_RELEASE_TAG.tar.gz"
+          cp build/docs/artifacts/dea_l0_stage2_autodocs.tar.gz "$bundle"
+          gh release upload "$RESOLVED_RELEASE_TAG" "$bundle" --clobber --repo "$GITHUB_REPOSITORY"
+
       - name: Download PDF artifact
         uses: actions/download-artifact@v8
         with:
-          name: docs-pdf
-          path: l0/build/docs/pdf
+          name: l0-docs-stage2-pdf
+          path: l0/build/docs/stage2/pdf
 
       - name: Upload PDF to draft release
         env:
@@ -275,8 +291,8 @@ jobs:
           RESOLVED_RELEASE_ID: ${{ needs.resolve-draft-release.outputs.resolved_release_id }}
           RESOLVED_RELEASE_TAG: ${{ needs.resolve-draft-release.outputs.resolved_release_tag }}
         run: |
-          stable_pdf="build/docs/pdf/dea_l0_api_reference.pdf"
-          release_pdf="build/docs/pdf/dea_l0_api_reference-$RESOLVED_RELEASE_TAG.pdf"
+          stable_pdf="build/docs/stage2/pdf/dea_l0_stage2_api_reference.pdf"
+          release_pdf="build/docs/stage2/pdf/dea_l0_stage2_api_reference-$RESOLVED_RELEASE_TAG.pdf"
           asset_name="$(basename "$release_pdf")"
           cp "$stable_pdf" "$release_pdf"
           release_api="repos/$GITHUB_REPOSITORY/releases/$RESOLVED_RELEASE_ID"
@@ -295,8 +311,8 @@ jobs:
         if: inputs.publish_blog
         uses: actions/download-artifact@v8
         with:
-          name: docs-markdown
-          path: l0/build/docs/markdown
+          name: l0-docs-stage2-markdown
+          path: l0/build/docs/stage2/markdown
 
       - name: Set up Python
         if: inputs.publish_blog
@@ -327,12 +343,12 @@ jobs:
             html_site_url="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}"
           fi
           if [ -n "$TARGET_RELEASE_TAG" ]; then
-            pdf_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TARGET_RELEASE_TAG}/dea_l0_api_reference-${TARGET_RELEASE_TAG}.pdf"
+            pdf_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TARGET_RELEASE_TAG}/dea_l0_stage2_api_reference-${TARGET_RELEASE_TAG}.pdf"
           else
-            pdf_url="${html_site_url%/}/pdf/dea_l0_api_reference.pdf"
+            pdf_url="${html_site_url%/}/pdf/dea_l0_stage2_api_reference.pdf"
           fi
-          python -m compiler.docgen.l0_docgen_blog \
-            --input build/docs/markdown \
+          python -m compiler.docgen.l0_docgen_blog --stage stage2 \
+            --input build/docs/stage2/markdown \
             --output build/docs/api-reference \
             --docs-prefix "$docs_prefix" \
             --tab-title "$tab_title" \
@@ -346,14 +362,14 @@ jobs:
         if: inputs.publish_blog
         env:
           RESOLVED_RELEASE_TAG: ${{ needs.resolve-draft-release.outputs.resolved_release_tag }}
-        run: tar -czf "dea_l0_api_reference-${RESOLVED_RELEASE_TAG}.tar.gz" -C build/docs/api-reference .
+        run: tar -czf "dea_l0_stage2_api_reference-${RESOLVED_RELEASE_TAG}.tar.gz" -C build/docs/api-reference .
 
       - name: Upload Dea/L0 API reference export artifact
         if: inputs.publish_blog
         uses: actions/upload-artifact@v6
         with:
           name: blog-export
-          path: l0/dea_l0_api_reference-${{ needs.resolve-draft-release.outputs.resolved_release_tag }}.tar.gz
+          path: l0/dea_l0_stage2_api_reference-${{ needs.resolve-draft-release.outputs.resolved_release_tag }}.tar.gz
 
       - name: Upload Dea/L0 API reference export to draft release
         if: inputs.publish_blog
@@ -362,7 +378,7 @@ jobs:
           RESOLVED_RELEASE_ID: ${{ needs.resolve-draft-release.outputs.resolved_release_id }}
           RESOLVED_RELEASE_TAG: ${{ needs.resolve-draft-release.outputs.resolved_release_tag }}
         run: |
-          archive_name="dea_l0_api_reference-${RESOLVED_RELEASE_TAG}.tar.gz"
+          archive_name="dea_l0_stage2_api_reference-${RESOLVED_RELEASE_TAG}.tar.gz"
           release_api="repos/$GITHUB_REPOSITORY/releases/$RESOLVED_RELEASE_ID"
           upload_url="$(gh api "$release_api" --jq '.upload_url' | sed 's/{?name,label}//')"
           existing_asset_ids="$(gh api "$release_api/assets" --paginate --jq ".[] | select(.name == \"$archive_name\") | .id")"
@@ -413,8 +429,8 @@ jobs:
       - name: Download generated Markdown
         uses: actions/download-artifact@v8
         with:
-          name: docs-markdown
-          path: l0/build/docs/markdown
+          name: l0-docs-stage2-markdown
+          path: l0/build/docs/stage2/markdown
 
       - name: Export Chirpy API pages
         run: |
@@ -430,12 +446,12 @@ jobs:
             html_site_url="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}"
           fi
           if [ -n "$TARGET_RELEASE_TAG" ]; then
-            pdf_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TARGET_RELEASE_TAG}/dea_l0_api_reference-${TARGET_RELEASE_TAG}.pdf"
+            pdf_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TARGET_RELEASE_TAG}/dea_l0_stage2_api_reference-${TARGET_RELEASE_TAG}.pdf"
           else
-            pdf_url="${html_site_url%/}/pdf/dea_l0_api_reference.pdf"
+            pdf_url="${html_site_url%/}/pdf/dea_l0_stage2_api_reference.pdf"
           fi
-          python -m compiler.docgen.l0_docgen_blog \
-            --input build/docs/markdown \
+          python -m compiler.docgen.l0_docgen_blog --stage stage2 \
+            --input build/docs/stage2/markdown \
             --output build/docs/api-reference \
             --docs-prefix "$docs_prefix" \
             --tab-title "$tab_title" \
@@ -448,7 +464,7 @@ jobs:
       - name: Create Dea/L0 API reference export archive
         id: archive
         run: |
-          archive_name="dea_l0_api_reference${TARGET_RELEASE_TAG:+-$TARGET_RELEASE_TAG}.tar.gz"
+          archive_name="dea_l0_stage2_api_reference${TARGET_RELEASE_TAG:+-$TARGET_RELEASE_TAG}.tar.gz"
           tar -czf "$archive_name" -C build/docs/api-reference .
           echo "archive_name=$archive_name" >> "$GITHUB_OUTPUT"
 

@@ -3,18 +3,21 @@
 ## Split L0 Stage 1 and Stage 2 autodocs and distribute the Stage 2 reference
 
 - Date: 2026-10-05
-- Status: Draft
+- Status: Completed
+- Completed: 2026-10-05
 - Title: Split L0 Stage 1 and Stage 2 autodocs and distribute the Stage 2 reference
 - Kind: Tooling
 - Severity: Medium
 - Stage: L0
 - Subsystem: Doxygen / HTML and PDF generation / distribution and release documentation
 - Targets:
-  - Independent Stage 1 and Stage 2 HTML/PDF: Pending
-  - Stage 2 documentation in compiler archives and release assets: Pending
-  - Existing Pages/blog/export consumer migration: Pending
+  - Independent Stage 1 and Stage 2 HTML/PDF: Complete
+  - Stage 2 documentation in compiler archives and release assets: Complete
+  - Existing Pages/blog/export consumer migration: Complete
 - Modules:
   - `l0/scripts/gen_docs.py`
+  - `l0/scripts/docs_artifacts.py`
+  - `l0/scripts/stage_docs_pages.py`
   - `l0/compiler/docgen/`
   - `l0/scripts/docs/templates/`
   - `l0/scripts/gen_dist_tools.py`
@@ -22,6 +25,7 @@
   - `l0/Makefile`
   - `l0/docs/README.md`
   - `l0/docs/project-status.md`
+  - `.github/workflows/ci.yml`
   - `.github/workflows/l0-docs-build.yml`
   - `.github/workflows/l0-docs-validate.yml`
   - `.github/workflows/l0-docs-publish.yml`
@@ -35,7 +39,10 @@
   - `l0/compiler/stage1_py/tests/cli/test_docgen_markdown_renderer.py`
   - `l0/compiler/stage1_py/tests/cli/test_docgen_latex.py`
   - `l0/compiler/stage1_py/tests/cli/test_docgen_blog.py`
-  - Existing distribution/workflow regression suites, extended for Stage 2 docs
+  - `l0/compiler/stage1_py/tests/cli/test_docgen_stage_artifacts.py`
+  - `l0/tests/docs_fixture.py`
+  - `l0/tests/test_make_dist_workflow.py`
+  - `l0/tests/test_release_tag_policy.py`
 - Related:
   - [l1/work/plans/tools/2026-10-05-l1-stage-separated-autodocs-noref.md][l1-docs]
   - [l0/docs/decisions/0023-toolchain-installation-and-distribution-layout.md][distribution-adr]
@@ -49,20 +56,26 @@ available for development and oracle inspection; distribute only Stage 2 autodoc
 compiler. Preserve the current generator's rendering quality, provenance, strict validation, and publication
 authorization rules.
 
-## Current State
+## Implementation and Findings
 
-Reviewed on 2026-10-05:
+Implemented on 2026-10-05:
 
-- `build_source_manifest` includes Stage 1 Python, Stage 2 L0 sources, a Stage 2 trace tool, and shared stdlib/runtime
-  inputs in one manifest. HTML/Markdown renderer stage hubs still consume the same XML database.
-- The wrapper produces one `build/docs/{html,markdown,doxygen,pdf}` tree, one `dea_l0_api_reference.pdf`, and one
-  `build/preview/` tree. Another build replaces the common preview.
-- Documentation workflows upload generic `docs-markdown` and `docs-pdf` artifacts and stage one Pages site.
-- Stable/snapshot release workflows build docs alongside the four-platform dist matrix. They attach the combined PDF and
-  API-reference export separately; the export `.tar.gz` is a Chirpy-oriented Markdown artifact, not an offline HTML/PDF
-  bundle. Current distribution extras copy selected hand-authored docs and examples.
-- Installed and distributed compilers are already self-built Stage 2. The combined reference is the part that needs
-  stage separation, followed by explicit Stage 2 autodoc inclusion in distributions.
+- Stage selection precedes Doxygen. Each stage has its own source shadow tree, XML, navigation/search, Markdown, LaTeX,
+  HTML, PDF, reports, and preview. Renderer fallback maps remain valid against isolated XML.
+- Shared inputs are the stdlib plus `dea_rt.h`, `dea_siphash.h`, and `l0_runtime.h`. Stage 2 explicitly includes
+  `compiler/stage2_l0/scripts/check_trace_log.py`. A comment in that checker was reworded to prevent Doxygen from
+  linking an ordinary reference to a missing parser page; execution behavior is unchanged.
+- Successful outputs replace only their selected stage. Failed attempts preserve prior references and failure logs while
+  invalidating the selected consumer bundle. Fast PDF generation cannot create a success manifest.
+- Bundle verification rejects unsafe members, identity mismatches, missing strict/full-PDF success, partial payloads,
+  and digest changes before compiler building or archive creation. Distribution installation remains compiler-only.
+- Release/snapshot distributions wait for one shared Stage 2 bundle and verify extracted contents. Windows disables
+  checkout newline conversion before source extraction to preserve the exact input fingerprint across platforms.
+- Stage-qualified workflow artifacts, future eight-asset release sets, checksums, manual draft attachment, and Stage 2
+  Chirpy export are wired. Unified CI routes changes to the new helpers into complete docs validation.
+- Pages serves Stage 2, preserves the old PDF URL as an identical copy, and provides migration notices for retired Stage
+  1 source/symbol URLs plus a fallback 404 page. Historical mixed exports remain accepted and published assets remain
+  untouched.
 
 ## Source and Generation Contract
 
@@ -146,19 +159,38 @@ Test the export's legacy input compatibility for historical downloads separately
 Document the filename/URL migration and downstream import requirement before the first new publication. Destination
 repositories still own import and deployment; this plan does not authorize edits or messages to those repositories.
 
-## Implementation Phases
+## Verification Outcomes
 
-1. Parameterize source manifests and all renderer/template assumptions. Add stage boundary tests before changing output
-   paths. Preserve the current filters and explicitly inventory shared inputs.
-2. Introduce isolated output/preview paths and full HTML/PDF generation. Validate both stages' real source inventories;
-   inspect representative pages, PDF contents/indexes, and duplicate-name cross-references.
-3. Implement docs manifests/bundles, explicit dist consumption, extraction/digest checks, and stage-qualified workflow
-   artifacts. Wire docs before the four dist builds and update release/checksum completeness tests.
-4. Migrate Pages/export/draft-attachment paths and document compatibility behavior. Run local workflow and publication
-   tests with mocked remote operations. Exercise hosted behavior only under the repository's separate authorization.
-5. Update current docs, amend the specified ADRs and indexes/backlinks, and close after implementation and local
-   artifact verification. Record any deferred authorized hosted exercise explicitly; published historical assets stay
-   untouched.
+- Repo-root `make clean test`: passed both levels' normal suites, examples, tooling, bootstrap, distribution, workflow,
+  and release-policy checks. Reused normal compiler/build validation after unchanged runtime/compiler inputs; later
+  documentation bundle and workflow changes received focused validation. This work is trace-independent: it changes
+  generation, packaging, and CI routing, with no lifetime, ownership, trace invocation, or checker behavior changes.
+- `.venv/bin/python -m pytest l0/compiler/stage1_py/tests/cli/test_docgen* -q`: 126 passed, including isolated
+  inventories/outputs, failures and stale-bundle invalidation, schema/type checks, unsafe tar members, version/source
+  mismatches, historical export compatibility, Pages migration, and all four host archive layouts.
+- `.venv/bin/python l0/tests/test_release_tag_policy.py`: passed. Tests execute checksum fragments and mock immutable
+  publication rejection and CI routing. Missing documentation or platform assets fail; docs precede distributions;
+  generation remains read-only and Windows checkout preserves source bytes.
+- From `l0/`, `make docs-artifacts DOC_STAGE=all DEA_DIST_VERSION=dev`: strict HTML/Markdown/LaTeX and complete PDFs
+  passed with Doxygen 1.18.0. The final Stage 2 comment correction was verified with the same command selecting
+  `DOC_STAGE=stage2`. Stage 1 has 74 selected sources and 719 PDF pages; Stage 2 has 95 sources and 863 PDF pages. XML
+  source locations stay within their selected inventories. All generated HTML local links resolve, and neither reference
+  needs remote assets. Both PDFs' title, index, and representative symbol pages and Stage 2 HTML were visually
+  inspected.
+- From `l0/`, `make dist DOCS_ARTIFACT=<absolute-stage2-bundle-path> DEA_DIST_VERSION=dev`: passed on macOS x86_64 with
+  TCC 0.9.28rc. The extracted real archive's 325 documentation payload files match the manifest; its relocated compiler
+  reports the expected version and runs a standalone Hello World project successfully.
+- `stage_docs_pages.py` and `l0_docgen_blog.py --stage stage2` passed against real outputs. The legacy PDF alias is
+  byte-identical, retired Stage 1 URLs show the migration notice, and the 96-file Markdown export contains no Stage 1
+  compiler pages.
+- ADR Impact checks, staged whitespace, and root pre-commit checks passed. The amended indexed L0 ADRs and existing
+  publication-ownership ADR link back to this closed plan; the related L1 plan points to its new location.
+
+Native Linux, macOS arm64, and Windows hosted execution was not performed locally. Their archive layouts were tested
+with host fixtures; the workflows retain native extraction/compiler smoke checks. No push, tag, workflow dispatch,
+release edit, deployment, downstream message, or external repository write was performed. Local implementation and
+artifact verification complete this plan; hosted publication remains subject to the separate repository authorization
+boundary.
 
 ## ADR Impact
 
@@ -185,22 +217,7 @@ repositories still own import and deployment; this plan does not authorize edits
 - Rewriting published release assets or directly updating an external blog repository.
 - Implementing L1 documentation generation or requiring its plan to land first.
 
-## Verification Criteria
-
-1. Stage manifests, XML, HTML search/navigation, Markdown, LaTeX, PDFs, and reports are isolated; shared material is
-   explicitly included in both. Duplicate symbols resolve within the selected document.
-2. Real strict builds of both stages pass, with full PDF rendering checked and representative output reviewed. Stage 2
-   works offline with no Stage 1 files or network asset dependencies.
-3. Dist archives on all four hosts contain the same matching Stage 2 docs bundle contents and no Stage 1 autodocs.
-   Wrong-stage, mismatched-source/version, partial, unsafe, or stale bundles fail before archive publication.
-4. Workflow tests prove docs precede dist builds, failed docs block releases, and all new assets appear in checksums.
-   Generation/validation has no release or deployment permissions or side effects.
-5. Pages/PDF compatibility and new stage-qualified export URLs are verified locally. Historical release asset names
-   remain unchanged, and attempts to mutate published releases still fail.
-6. Existing docgen, relevant dist/workflow tests, new stage-isolation tests, and Markdown/ADR checks pass. Record
-   outcomes without specific workflow-run identifiers. Any remote verification follows `AGENTS.md` authorization gates.
-
-[distribution-adr]: ../../../docs/decisions/0023-toolchain-installation-and-distribution-layout.md
-[l1-docs]: ../../../../l1/work/plans/tools/2026-10-05-l1-stage-separated-autodocs-noref.md
-[publication-adr]: ../../../../docs/decisions/0017-documentation-publication-ownership-and-cross-repository-boundary.md
-[release-adr]: ../../../docs/decisions/0017-release-identity-integrity-and-immutable-publication.md
+[distribution-adr]: ../../../../docs/decisions/0023-toolchain-installation-and-distribution-layout.md
+[l1-docs]: ../../../../../l1/work/plans/tools/2026-10-05-l1-stage-separated-autodocs-noref.md
+[publication-adr]: ../../../../../docs/decisions/0017-documentation-publication-ownership-and-cross-repository-boundary.md
+[release-adr]: ../../../../docs/decisions/0017-release-identity-integrity-and-immutable-publication.md

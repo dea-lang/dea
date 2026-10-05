@@ -32,7 +32,8 @@ make use-dev-stage1
 make use-dev-stage2
 source build/dea/bin/l0-env.sh
 make PREFIX=/tmp/l0-install install
-make dist
+make docs-artifacts DOC_STAGE=stage2 DEA_DIST_VERSION=dev
+DOCS_ARTIFACT="$PWD/build/docs/artifacts/dea_l0_stage2_autodocs.tar.gz" DEA_DIST_VERSION=dev make dist
 ```
 
 Primary test entrypoints:

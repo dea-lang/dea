@@ -388,7 +388,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         Configured argument parser for the `check_trace_log.py` CLI.
 
     See Also:
-        `main`: Uses this parser to handle CLI arguments.
+        `main`: Uses the parsed options to configure trace checks.
     """
     parser = argparse.ArgumentParser(
         prog=Path(sys.argv[0]).name,

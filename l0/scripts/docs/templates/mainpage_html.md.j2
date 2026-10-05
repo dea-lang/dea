@@ -1,15 +1,19 @@
-# Dea/L0 API Documentation
+# Dea/L0{% if stage != "all" %} Stage {{ stage[-1] }}{% endif %} API Documentation
 
 Generated API documentation for the Dea/L0 codebase.
 
 This site is built from source comments and docstrings for:
 
+{% if stage in ["stage1", "all"] %}
 - Stage 1 Python compiler sources under `compiler/stage1_py/`
+{% endif %}
+{% if stage in ["stage2", "all"] %}
 - Stage 2 L0 compiler sources under `compiler/stage2_l0/src/`
+{% endif %}
 - Shared L0 standard library modules under `compiler/shared/l0/stdlib/`
-- Shared runtime headers under `compiler/shared/runtime/`
+- Shared runtime headers `dea_rt.h`, `dea_siphash.h`, and `l0_runtime.h` under `compiler/shared/runtime/`
 
-Design and reference documents are located in the repository’s `docs` directory and are not duplicated here.
+Design and reference documents are located in the repository's `docs` directory and are not duplicated here.
 
 ## About
 
@@ -24,10 +28,14 @@ Source-set hubs provide broad context, source pages and dedicated type pages pro
 
 ## Choose Where to Start
 
+{% if stage in ["stage1", "all"] %}
 - [Stage 1](stage1.html) - Browse generated pages for `compiler/stage1_py/`.
+{% endif %}
+{% if stage in ["stage2", "all"] %}
 - [Stage 2](stage2.html) - Browse generated pages for `compiler/stage2_l0/`.
+{% endif %}
 - [Shared](shared.html) - Browse generated pages for shared stdlib and runtime sources.
-- [Reference Manual (pdf)](pdf/dea_l0_api_reference.pdf) - Download the generated API reference as a single PDF.
+- [Reference Manual (pdf)](pdf/dea_l0_{{ stage }}_api_reference.pdf) - Download the generated API reference as a single PDF.
 
 ## Explore
 

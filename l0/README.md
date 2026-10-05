@@ -203,8 +203,13 @@ On Windows `cmd.exe`, the equivalent activation step is `call <PREFIX>\\bin\\l0-
 For a relocatable distribution archive under `build/`:
 
 ```shell
-make dist
+make docs-artifacts DOC_STAGE=stage2 DEA_DIST_VERSION=dev
+DOCS_ARTIFACT="$PWD/build/docs/artifacts/dea_l0_stage2_autodocs.tar.gz" DEA_DIST_VERSION=dev make dist
 ```
+
+`make dist` requires a verified full Stage 2 HTML/PDF bundle from the same source and package version. It embeds the
+offline reference under `share/doc/dea/l0/autodocs/stage2/`; packaging does not invoke TeX. Compiler-only installation
+remains available through `make install`.
 
 `make dist` creates one temporary `dea-l0/` tree under `build/` plus a host-native archive named
 `dea-l0-lang_<os>-<arch>_YYYYMMDD-HHMMSS.tar.gz` on POSIX or `dea-l0-lang_<os>-<arch>_YYYYMMDD-HHMMSS.zip` on Windows,

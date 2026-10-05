@@ -59,7 +59,7 @@ L0_COMPILER_RT_QUARANTINE_MAX_COUNT ?= 256
 	test-extended \
 	print-dea-build-dir \
 	docs \
-	docs-pdf \
+	docs-pdf docs-artifacts \
 	clean \
 	clean-all \
 	clean-dea-build
@@ -99,7 +99,8 @@ help:
 		'  docker             Explicitly run a target in the repo-owned Linux Docker container (CMD=<target>).' \
 		'' \
 		'Documentation targets:' \
-		'  docs               Generate the project documentation.' \
+		'  docs               Generate the project documentation (specify a stage with `DOC_STAGE`, see below).' \
+		'  docs-artifacts     Build verified HTML/full-PDF bundles.' \
 		'  docs-pdf           Generate the project documentation, including the PDF manual.' \
 		'' \
 		'Other targets:' \
@@ -121,6 +122,10 @@ help:
 		'                     Optional Stage 2 test names for `test-stage2` or `test-stage2-trace`; blank runs the full suite.' \
 		'                     Example: make test-stage2 TESTS="driver_test l0c_build_run_test"' \
 		'                     Example: make test-stage2-trace TESTS="l0c_lib_test type_resolve_test"' \
+		'  DOC_STAGE=all' \
+		'                     Documentation stages for `docs`, `docs-pdf`, and `docs-artifacts`: `all`, `stage1`, or `stage2`.' \
+		'                     The default `all` builds both stages independently.' \
+		'                     Example: make docs-pdf DOC_STAGE=stage2' \
 		'  DOCKER_IMAGE=l0-test' \
 		'                     Docker image tag used by `make docker`.' \
 		'  DOCKER_L0_CC=<compiler>' \
@@ -262,11 +267,16 @@ refresh-goldens: venv
 print-dea-build-dir:
 	@printf '%s\n' "$(DEA_BUILD_DIR)"
 
+DOC_STAGE ?= all
+
 docs:
-	$(PYTHON) ./scripts/gen_docs.py --strict
+	$(PYTHON) ./scripts/gen_docs.py --strict --stage $(DOC_STAGE)
 
 docs-pdf:
-	$(PYTHON) ./scripts/gen_docs.py --strict --pdf
+	$(PYTHON) ./scripts/gen_docs.py --strict --pdf --stage $(DOC_STAGE)
+
+docs-artifacts:
+	$(PYTHON) ./scripts/gen_docs.py --strict --pdf --artifacts --stage $(DOC_STAGE)
 
 clean:
 	rm -rf ./build/*

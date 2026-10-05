@@ -11,8 +11,8 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
@@ -28,15 +28,9 @@ from .l0_docgen_markdown import (
     rewrite_and_prune_raw_html_surface,
 )
 from .l0_docgen_python_filter import transform_python_for_doxygen
+from .l0_docgen_sources import SourceManifest, build_source_manifest
 
 _LATEX_FRONT_MATTER_BREAK = "l0docgenlinetwo"
-
-
-@dataclass(frozen=True)
-class SourceManifest:
-    """Manifest of sources included in API documentation."""
-
-    files: list[Path]
 
 
 def repo_root() -> Path:
@@ -103,30 +97,6 @@ def _project_number_for_latex() -> str:
     return f"Generated {build_date_text} {_LATEX_FRONT_MATTER_BREAK} {second_line}"
 
 
-def build_source_manifest(root: Path) -> SourceManifest:
-    """Return the exact list of sources included in generated API docs."""
-    files: list[Path] = []
-
-    for path in sorted((root / "compiler/stage1_py").rglob("*.py")):
-        rel = path.relative_to(root)
-        if "tests" in rel.parts or "__pycache__" in rel.parts:
-            continue
-        files.append(rel)
-
-    for path in sorted((root / "compiler/stage2_l0/src").rglob("*.l0")):
-        files.append(path.relative_to(root))
-
-    files.append(Path("compiler/stage2_l0/scripts/check_trace_log.py"))
-
-    for path in sorted((root / "compiler/shared/l0/stdlib").rglob("*.l0")):
-        files.append(path.relative_to(root))
-
-    for path in sorted((root / "compiler/shared/runtime").glob("*.h")):
-        files.append(path.relative_to(root))
-
-    return SourceManifest(files=sorted(set(files)))
-
-
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
@@ -136,6 +106,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "use python scripts/gen_docs.py --help."
         ),
     )
+    parser.add_argument("--stage", choices=("stage1", "stage2", "all"), default="all")
     parser.add_argument("--html-only", action="store_true", help="Generate only HTML output.")
     parser.add_argument("--markdown-only", action="store_true", help="Generate only Markdown output.")
     parser.add_argument("--latex-only", action="store_true", help="Generate only LaTeX output.")
@@ -354,9 +325,19 @@ def _normalize_html_output(doxygen_root: Path, html_dir: Path) -> None:
     shutil.copytree(generated_html_dir, html_dir)
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Run the docs pipeline."""
-    args = parse_args(argv)
+def _generate_stage(args: argparse.Namespace) -> int:
+    """Generate one isolated stage into its supplied working directory.
+
+    Args:
+        args: Parsed options with a concrete stage and temporary output directory.
+
+    Returns:
+        Zero after successful generation and strict validation.
+
+    Raises:
+        SystemExit: Required tools are missing or strict validation fails.
+        subprocess.CalledProcessError: An external generator fails.
+    """
     root = repo_root()
     html_enabled, markdown_enabled, latex_enabled = _resolve_output_modes(args)
     output_root = (root / args.output_dir).resolve() if not args.output_dir.is_absolute() else args.output_dir.resolve()
@@ -392,21 +373,18 @@ def main(argv: list[str] | None = None) -> int:
         markdown_dir.mkdir(parents=True)
     generated_root.mkdir(parents=True)
 
-    manifest = build_source_manifest(root)
+    manifest = build_source_manifest(root, args.stage)
     _build_shadow_tree(root, manifest, shadow_root)
     _patch_mcss_renderer(mcss_root)
 
-    _write_template("mainpage_html.md.j2", html_mainpage_path)
+    _write_template("mainpage_html.md.j2", html_mainpage_path, stage=args.stage)
     _write_template(
         "doxyfile.in",
         xml_doxygen_path,
+        stage=args.stage,
+        input_files=[(shadow_root / path).as_posix() for path in manifest.files],
         output_directory=doxygen_root.as_posix(),
         mainpage=html_mainpage_path.as_posix(),
-        stage1_dir=(shadow_root / "compiler/stage1_py").as_posix(),
-        stage2_src_dir=(shadow_root / "compiler/stage2_l0/src").as_posix(),
-        stage2_cli_file=(shadow_root / "compiler/stage2_l0/scripts/check_trace_log.py").as_posix(),
-        shared_stdlib_dir=(shadow_root / "compiler/shared/l0/stdlib").as_posix(),
-        shared_runtime_dir=(shadow_root / "compiler/shared/runtime").as_posix(),
         strip_from_path=shadow_root.as_posix(),
         warn_logfile=xml_warnings_log.as_posix(),
         project_number="",
@@ -416,6 +394,7 @@ def main(argv: list[str] | None = None) -> int:
     _write_template(
         "mcss_conf.py.in",
         mcss_conf_path,
+        stage=args.stage,
         doxygen_path=xml_doxygen_path.as_posix(),
         html_output=html_dir.as_posix(),
     )
@@ -423,17 +402,14 @@ def main(argv: list[str] | None = None) -> int:
     _run_command(["doxygen", str(xml_doxygen_path)], cwd=root)
 
     if latex_enabled:
-        _write_template("mainpage_latex.md.j2", latex_mainpage_path)
+        _write_template("mainpage_latex.md.j2", latex_mainpage_path, stage=args.stage)
         _write_template(
             "doxyfile.in",
             latex_doxygen_path,
+            stage=args.stage,
+            input_files=[(shadow_root / path).as_posix() for path in manifest.files],
             output_directory=doxygen_root.as_posix(),
             mainpage=latex_mainpage_path.as_posix(),
-            stage1_dir=(shadow_root / "compiler/stage1_py").as_posix(),
-            stage2_src_dir=(shadow_root / "compiler/stage2_l0/src").as_posix(),
-            stage2_cli_file=(shadow_root / "compiler/stage2_l0/scripts/check_trace_log.py").as_posix(),
-            shared_stdlib_dir=(shadow_root / "compiler/shared/l0/stdlib").as_posix(),
-            shared_runtime_dir=(shadow_root / "compiler/shared/runtime").as_posix(),
             strip_from_path=shadow_root.as_posix(),
             warn_logfile=latex_warnings_log.as_posix(),
             project_number=_project_number_for_latex(),
@@ -452,9 +428,9 @@ def main(argv: list[str] | None = None) -> int:
         _normalize_html_output(doxygen_root, html_dir)
         normalize_search_result_urls(html_dir)
     if markdown_render_root is not None:
-        render_markdown_site(xml_dir, markdown_render_root, templates_dir)
+        render_markdown_site(xml_dir, markdown_render_root, templates_dir, stage=args.stage)
     if html_enabled and markdown_render_root is not None:
-        render_curated_html_site(xml_dir, markdown_render_root, html_dir, templates_dir)
+        render_curated_html_site(xml_dir, markdown_render_root, html_dir, templates_dir, stage=args.stage)
         render_raw_reference_backlinks(xml_dir, markdown_render_root, html_dir)
         rewrite_and_prune_raw_html_surface(xml_dir, markdown_render_root, html_dir)
         render_compat_redirect_pages(xml_dir, markdown_render_root, html_dir, templates_dir)
@@ -479,6 +455,42 @@ def main(argv: list[str] | None = None) -> int:
             f"{warning_count} warning(s); see {xml_warnings_log} and {latex_warnings_log}"
         )
 
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run independent stage pipelines, replacing only successful stage outputs.
+
+    Args:
+        argv: Optional command-line arguments.
+
+    Returns:
+        Zero after every selected stage succeeds.
+
+    Raises:
+        SystemExit: Argument parsing or generation fails.
+        subprocess.CalledProcessError: An external generator fails.
+    """
+    args = parse_args(argv)
+    parent = (repo_root() / args.output_dir).resolve()
+    parent.mkdir(parents=True, exist_ok=True)
+    for stage in (("stage1", "stage2") if args.stage == "all" else (args.stage,)):
+        (parent / "artifacts" / f"dea_l0_{stage}_autodocs.tar.gz").unlink(missing_ok=True)
+        with tempfile.TemporaryDirectory(prefix=f".{stage}-", dir=parent) as work:
+            selected = argparse.Namespace(**vars(args))
+            selected.stage = stage
+            selected.output_dir = Path(work) / stage
+            try:
+                _generate_stage(selected)
+            except (SystemExit, OSError, subprocess.CalledProcessError):
+                failure = parent / f"{stage}-failure"
+                shutil.rmtree(failure, ignore_errors=True)
+                shutil.copytree(work, failure)
+                raise
+            destination = parent / stage
+            if destination.exists():
+                shutil.rmtree(destination)
+            shutil.move(str(selected.output_dir), destination)
     return 0
 
 

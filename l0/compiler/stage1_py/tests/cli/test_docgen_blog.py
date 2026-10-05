@@ -212,3 +212,21 @@ def test_export_markdown_tree_shows_release_tag(tmp_path: Path) -> None:
     tag_pos = tab.index("**Release v0.9.1**")
     link_pos = tab.index("[Standalone HTML reference]")
     assert tag_pos < link_pos
+
+
+def test_stage2_export_filters_historical_mixed_input(tmp_path: Path) -> None:
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    (input_dir / "index.md").write_text(
+        "## Stage 1\n- [`oracle`](compiler/stage1_py/oracle.md)\n## Stage 2\n- [`selfhost`](compiler/stage2_l0/src/selfhost.md)\n## Shared\n",
+        encoding="utf-8",
+    )
+    for path in ("compiler/stage1_py/oracle.md", "compiler/stage2_l0/src/selfhost.md"):
+        source = input_dir / path
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text(f"# {path}\n\nSource: `{path[:-3]}.l0`\n\nAPI.\n", encoding="utf-8")
+    output = tmp_path / "out"
+    export_markdown_tree(input_dir, output, docs_prefix="api/reference", tab_title="API", tab_icon="book", tab_order=5, stage="stage2")
+    assert not (output / "api/reference/compiler/stage1_py").exists()
+    assert (output / "api/reference/compiler/stage2_l0/src/selfhost.md").exists()
+    assert "## Stage 1" not in (output / "_tabs/api.md").read_text()
