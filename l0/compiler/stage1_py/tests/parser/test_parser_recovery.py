@@ -1,6 +1,8 @@
 #  SPDX-License-Identifier: MIT OR Apache-2.0
 #  Copyright (c) 2026 gwz
 
+import pytest
+
 from conftest import has_error_code
 from l0_parser import Parser
 
@@ -185,3 +187,33 @@ def test_case_recovery_preserves_stray_else_boundaries():
     assert not has_error_code(parser.diagnostics, "PAR-0020")
     assert diag_lines(parser.diagnostics, "PAR-0234") == [5]
     assert diag_lines(parser.diagnostics, "PAR-0123") == [6, 7]
+
+
+@pytest.mark.parametrize("broken, unclosed_body", [
+    ("func sum(values: int[]) -> int { let total = 0; "
+     "for (let i = 0; i < len(values); i = i + 1) { "
+     "total = total + values[i]; } return total; }", False),
+    ("func broken() -> int[] { { let inner = 0; } let outer = 1; return outer; }", False),
+    ("struct Broken { field: int[]; let hidden = 0; }", False),
+    ("extern func broken(values: int[]);", False),
+    ("func broken(values: int[]", False),
+    ("func broken(values: int[]) { let hidden = 0; { let nested = 1; }", True),
+])
+def test_declaration_recovery_preserves_scope(broken, unclosed_body):
+    parser = Parser.from_source("module slices; " + broken)
+    module = parser.parse_module()
+    assert len(parser.diagnostics) == 1
+    assert has_error_code(parser.diagnostics, "PAR-9401")
+    assert module.decls == []
+
+    if unclosed_body:
+        return  # An unclosed body has no subsequent top-level boundary.
+    parser = Parser.from_source(
+        "module slices; " + broken +
+        " let kept = 1; func later() -> int { else return 0; }"
+    )
+    module = parser.parse_module()
+    assert len(parser.diagnostics) == 2
+    assert has_error_code(parser.diagnostics, "PAR-9401")
+    assert has_error_code(parser.diagnostics, "PAR-0123")
+    assert [decl.name for decl in module.decls] == ["kept", "later"]

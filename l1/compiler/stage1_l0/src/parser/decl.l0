@@ -552,7 +552,7 @@ func ps_parse_module(self: ParserState*) -> Module*? {
                 continue;
             }
 
-            ps_sync_top_level(self);
+            ps_sync_top_level(self, before);
             if (self.index == before && !ps_at_end(self)) {
                 ps_advance(self);
             }

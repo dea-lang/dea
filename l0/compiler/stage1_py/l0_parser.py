@@ -348,22 +348,41 @@ class Parser:
 
         decls: list[TopLevelDecl] = []
         while not self._at_end() and not self.eof_aborted:
+            before = self.index
             try:
                 decl = self._parse_top_level_decl()
                 if decl is not None:
                     decls.append(decl)
             except _ParseSyncException:
-                self._sync_top_level()
+                self._sync_top_level(before)
 
         self._emit_remaining_lexer_errors()
         return Module(module_name, imports, decls, span=self._extend_span(start), filename=filename)
 
-    def _sync_top_level(self) -> None:
-        """Skip tokens until we find the start of a new top-level declaration or EOF."""
+    def _sync_top_level(self, declaration_start: int) -> None:
+        """Skip to a declaration outside the failed declaration's braces.
+
+        Args:
+            declaration_start: Token index before parsing the failed declaration.
+        """
+        brace_depth = 0
+        # Include braces already consumed before the declaration failed.
+        for token in self.tokens[declaration_start:self.index]:
+            if token.kind is TokenKind.LBRACE:
+                brace_depth += 1
+            elif token.kind is TokenKind.RBRACE and brace_depth > 0:
+                brace_depth -= 1
         while not self._at_end() and not self.eof_aborted:
             kind = self._peek().kind
-            if kind in (TokenKind.FUNC, TokenKind.STRUCT, TokenKind.ENUM, TokenKind.TYPE, TokenKind.EXTERN, TokenKind.LET):
+            if brace_depth == 0 and kind in (
+                TokenKind.FUNC, TokenKind.STRUCT, TokenKind.ENUM,
+                TokenKind.TYPE, TokenKind.EXTERN, TokenKind.LET,
+            ):
                 break
+            if kind is TokenKind.LBRACE:
+                brace_depth += 1
+            elif kind is TokenKind.RBRACE and brace_depth > 0:
+                brace_depth -= 1
             self._advance()
 
     # --- top-level declarations ---

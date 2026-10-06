@@ -363,21 +363,34 @@ func ps_is_top_level_start(self: ParserState*) -> bool {
 }
 
 /**
- * Recover after a parse error by advancing to the next top-level boundary.
+ * Recover at a declaration start outside the failed declaration's braces.
  *
  * @param self Parser state to resynchronize.
+ * @param declaration_start Token index before parsing the failed declaration.
  */
-func ps_sync_top_level(self: ParserState*) {
+func ps_sync_top_level(self: ParserState*, declaration_start: int) {
+    let brace_depth = 0;
+    /* Include braces already consumed before the declaration failed. */
+    let i = declaration_start;
+    while (i < self.index) {
+        let tok = tv_get(self.tokens, i);
+        if (tok_is(tok, ord(TT_LBRACE))) {
+            brace_depth = brace_depth + 1;
+        } else if (tok_is(tok, ord(TT_RBRACE)) && brace_depth > 0) {
+            brace_depth = brace_depth - 1;
+        }
+        i = i + 1;
+    }
     while (!ps_at_end(self) && !self.eof_aborted) {
-        if (ps_is_top_level_start(self)) {
+        if (brace_depth == 0 && ps_is_top_level_start(self)) {
             return;
         }
 
         let consumed = ps_advance(self);
-        if (tok_is(consumed, ord(TT_SEMI)) || tok_is(consumed, ord(TT_RBRACE))) {
-            if (ps_is_top_level_start(self) || ps_at_end(self)) {
-                return;
-            }
+        if (tok_is(consumed, ord(TT_LBRACE))) {
+            brace_depth = brace_depth + 1;
+        } else if (tok_is(consumed, ord(TT_RBRACE)) && brace_depth > 0) {
+            brace_depth = brace_depth - 1;
         }
     }
 }

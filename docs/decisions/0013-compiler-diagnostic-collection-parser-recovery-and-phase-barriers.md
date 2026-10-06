@@ -1,7 +1,7 @@
 # ADR-0013: Compiler Diagnostic Collection, Parser Recovery, and Phase Barriers
 
 - Decision date: 2026-06-09
-- Last edited: 2026-08-25
+- Last edited: 2026-10-06
 - Status: Accepted
 
 ## Context
@@ -29,6 +29,11 @@ The parser recovers at both top-level declaration boundaries and statement bound
 Statement synchronization preserves structural delimiters: it may stop at an opening brace or a recognized statement
 start, and it does not consume a closing brace that belongs to the current block. Recovery must either advance or stop,
 so malformed input cannot create a non-progress loop.
+
+Top-level synchronization tracks brace nesting from the beginning of the failed declaration, including braces consumed
+before the error. Declaration keywords inside a rejected body are skipped until its matching close; they must not create
+module declarations or spurious top-level diagnostics. Later declarations outside the body remain recovery boundaries,
+even when a malformed signature leaves parentheses or brackets unmatched.
 
 An unmatched statement-block close at end-of-file is terminal for parser recovery. The first failed close emits the
 existing block-close diagnostic and marks parsing aborted; nested block loops, statement synchronization, and the
@@ -70,18 +75,27 @@ downstream gates.
 
 ## Related Plans
 
+- [work/plans/bug-fixes/closed/2026-10-06-shared-declaration-recovery-noref.md](../../work/plans/bug-fixes/closed/2026-10-06-shared-declaration-recovery-noref.md):
+  preserved declaration scope after signature and declaration-body failures across all four L0/L1 frontends
+
 - [l0/work/plans/refactors/closed/2026-02-24-stage2-lexer-parser-diag-unification.md](../../l0/work/plans/refactors/closed/2026-02-24-stage2-lexer-parser-diag-unification.md):
   established the Stage 2 collector result and top-level recovery surface
+
 - [l0/work/plans/refactors/closed/2026-03-01-stage1-diagnostics.md](../../l0/work/plans/refactors/closed/2026-03-01-stage1-diagnostics.md):
   made diagnostics authoritative in Stage 1 and added declaration and statement recovery
+
 - [work/plans/bug-fixes/closed/2026-06-07-stray-keyword-diagnostics-and-stmt-recovery-noref.md](../../work/plans/bug-fixes/closed/2026-06-07-stray-keyword-diagnostics-and-stmt-recovery-noref.md):
   restored statement-level recovery parity in the self-hosted parsers
+
 - [work/plans/bug-fixes/closed/2026-06-08-shared-parser-recovery-noref.md](../../work/plans/bug-fixes/closed/2026-06-08-shared-parser-recovery-noref.md):
   preserved block structure during synchronization
+
 - [work/plans/bug-fixes/closed/2026-06-09-shared-stop-parsing-at-eof-block-close-noref.md](../../work/plans/bug-fixes/closed/2026-06-09-shared-stop-parsing-at-eof-block-close-noref.md):
   made end-of-file terminal after an unmatched statement-block close
+
 - [work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md](../../work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md):
   promoted the historical decision into the ADR catalog
+
 - [l1/work/plans/bug-fixes/closed/2026-08-25-stage1-case-stray-else-recovery-boundary-noref.md](../../l1/work/plans/bug-fixes/closed/2026-08-25-stage1-case-stray-else-recovery-boundary-noref.md):
   preserved rejected `else` tokens as L1 Stage 1 `case` recovery boundaries for dedicated diagnostics
 

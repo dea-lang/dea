@@ -928,6 +928,43 @@ func expect_diag_code_span(source: string, expected: string, occurrence: int,
 }
 
 /**
+ * Verify that rejected declarations do not expose their bodies at module scope,
+ * while subsequent declarations and independent diagnostics remain visible.
+ */
+func expect_declaration_recovery(broken: string, unclosed_body: bool) {
+    let result = parse_module_source("module slices; " + broken, "<test>");
+    assert(parse_diag_count(result) == 1, "Expected only the original type error");
+    assert(parse_diag_get(result, 0).code == "PAR-0620", "Expected array type diagnostic");
+    assert(result.root_module != null, "Expected partial module");
+    let mod = result.root_module as Module*;
+    assert(vec_size(mod.decls) == 0, "Rejected body must not become declarations");
+    parse_result_free(result);
+    if (unclosed_body) { return; }
+
+    result = parse_module_source("module slices; " + broken +
+        " let kept = 1; func later() -> int { else return 0; }", "<test>");
+    assert(parse_diag_count(result) == 2, "Expected original and later independent error");
+    assert(parse_diag_get(result, 0).code == "PAR-0620", "Expected original type error first");
+    assert(parse_diag_get(result, 1).code == "PAR-0123", "Expected later function diagnostic");
+    assert(result.root_module != null, "Expected recovered module");
+    mod = result.root_module as Module*;
+    assert(vec_size(mod.decls) == 2, "Expected later let and function declarations");
+    parse_result_free(result);
+}
+
+/** Tests brace-aware recovery before and inside a rejected declaration body. */
+func test_declaration_recovery_preserves_scope() {
+    expect_declaration_recovery("func sum(values: int[?]) -> int { let total = 0; " +
+        "for (let i = 0; i < len(values); i = i + 1) { " +
+        "total = total + values[i]; } return total; }", false);
+    expect_declaration_recovery("func broken() -> int[?] { { let inner = 0; } let outer = 1; return outer; }", false);
+    expect_declaration_recovery("struct Broken { field: int[?]; let hidden = 0; }", false);
+    expect_declaration_recovery("extern func broken(values: int[?]);", false);
+    expect_declaration_recovery("func broken(values: int[?]", false);
+    expect_declaration_recovery("func broken(values: int[?]) { let hidden = 0; { let nested = 1; }", true);
+}
+
+/**
  * Tests that an orphaned `else` is diagnosed as PAR-0123, not the generic error.
  */
 func test_stray_else_reports_par0123() {
@@ -1628,6 +1665,7 @@ func main() {
     test_local_const_rejected_err();
     test_bitwise_unary_precedence_shape();
     test_with_mixed_forms_error();
+    test_declaration_recovery_preserves_scope();
     test_stray_else_reports_par0123();
     test_stray_cleanup_reports_par0506();
     test_stray_else_does_not_cascade_to_top_level();
