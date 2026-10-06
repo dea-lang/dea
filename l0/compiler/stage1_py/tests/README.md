@@ -21,6 +21,9 @@ This directory is the canonical map for Stage 1 Python compiler tests.
 
 Shared fixtures and helpers stay in `conftest.py` at this directory root.
 
+The Doxygen compound-name compatibility tests load the vendored m.css renderer with isolated math-module substitutes.
+They require no Ghostscript, TeX, or `dvisvgm` installation; actual math rendering belongs to documentation validation.
+
 ## Where to put new tests
 
 - Prefer the narrowest single-phase directory that matches the behavior under test.
