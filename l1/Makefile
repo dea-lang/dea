@@ -89,6 +89,10 @@ help:
 		'  test-docker        Run the broad local-normal gate under the repo-owned Linux container (POSIX reference path).' \
 		'  test-stage1        Run the L1 Stage 1 `.l0` implementation tests with the built repo-local compiler.' \
 		'  test-stage2        Run the L1 Stage 2 `.l1` implementation tests and shared compiler integration tests.' \
+		'  docs              Generate separate stage references (DOC_STAGE=all, stage1, or stage2).' \
+		'  docs-pdf          Generate references with complete indexed PDFs.' \
+		'  docs-artifacts    Build strict offline HTML/PDF bundles (DEA_DIST_VERSION defaults to dev).' \
+		'  test-docgen       Run focused documentation generation and artifact checks.' \
 		'  test-stage1-smoke  Run array, parser, analysis, expression typing, interface, backend, C emitter, and driver tests.' \
 		'  test-stage2-smoke  Run the Stage 2 array and parser smoke tests.' \
 		'  test-stage-parity   Compare Stage 1 and Stage 2 observable behavior.' \
@@ -476,9 +480,9 @@ triple-test: build-stage1 runtime
 check-examples: build-stage2
 	"$(PYTHON)" ../scripts/check_examples.py --compiler "$(L1_BUILD_DIR)/bin/l1c-stage2" --examples-dir examples --extension .l1 --label "L1 Stage 2"
 
-test: test-stage1-smoke test-stage2-smoke test-stage-parity check-examples test-docker-wine-runner test-stage2-tooling test-productization
+test: test-docgen test-stage1-smoke test-stage2-smoke test-stage-parity check-examples test-docker-wine-runner test-stage2-tooling test-productization
 
-test-extended: test-stage1 test-stage2 test-stage-parity check-examples test-docker-wine-runner test-stage2-tooling test-productization
+test-extended: test-docgen test-stage1 test-stage2 test-stage-parity check-examples test-docker-wine-runner test-stage2-tooling test-productization
 
 # Hosted CI is the exhaustive union: full local-normal suites with CI-only cases, environment/bootstrap integration,
 # dedicated Stage 1/2 trace sweeps, child trace fixtures, and triple bootstrap. The normal runners list their
@@ -544,3 +548,18 @@ test-docker-wine-runner:
 	$(HOST_PYTHON) tests/test_docker_wine.py
 
 .PHONY: build-stage2 use-dev-stage2 test-stage2 test-stage2-trace test-stage2-trace-smoke test-stage2-trace-all test-stage2-trace-children test-stage-parity test-stage2-tooling test-productization-build triple-test
+
+# Source documentation is independent of compiler bootstrap.
+DOC_STAGE ?= all
+.PHONY: docs docs-pdf docs-artifacts test-docgen
+docs:
+	$(PYTHON) scripts/gen_docs.py --strict --stage $(DOC_STAGE)
+
+docs-pdf:
+	$(PYTHON) scripts/gen_docs.py --strict --pdf --stage $(DOC_STAGE)
+
+docs-artifacts:
+	DEA_DIST_VERSION="$(DEA_DIST_VERSION)" $(PYTHON) scripts/gen_docs.py --strict --pdf --artifacts --stage $(DOC_STAGE)
+
+test-docgen:
+	$(PYTHON) -m pytest -q -n 0 tests/test_docgen_*.py

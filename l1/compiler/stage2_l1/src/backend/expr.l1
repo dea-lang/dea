@@ -275,6 +275,8 @@ func be_is_borrowed_extraction(self: Backend*, expr_id: ExprId) -> bool {
  * @param base Lowered base expression.
  * @param index Lowered index expression.
  * @param base_ty Type of the base expression.
+ * @param raw_array_base Whether the base is a raw array.
+ * @param access_mode Requested bounds and access checking mode.
  * @return Lowered lvalue.
  */
 func be_emit_checked_index_lvalue(self: Backend*, base: string, index: string, base_ty: Type*, raw_array_base: bool, access_mode: string) -> string {

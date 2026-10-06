@@ -72,7 +72,7 @@ The following prerequisites must be met before the first L1 release or snapshot 
    clean, relocated prefix on Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64. The installed `l1c` must work
    without source-worktree dependencies, preparing native support in a separate writable cache. Distribution archives
    must include verified Stage 2 HTML/PDF from
-   [l1/work/plans/tools/2026-10-05-l1-stage-separated-autodocs-noref.md](l1/work/plans/tools/2026-10-05-l1-stage-separated-autodocs-noref.md),
+   [l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md](l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md),
    built from the same source/version; Stage 1 autodocs remain separate developer outputs.
 3. Tag validation, conversion to `DEA_DIST_VERSION`, release-note baselines, publication behavior, and the smoke-test
    flow must be documented and reproducible in CI. These contracts are specified in

@@ -44,7 +44,7 @@
   - `l0/tests/test_make_dist_workflow.py`
   - `l0/tests/test_release_tag_policy.py`
 - Related:
-  - [l1/work/plans/tools/2026-10-05-l1-stage-separated-autodocs-noref.md][l1-docs]
+  - [l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md][l1-docs]
   - [l0/docs/decisions/0023-toolchain-installation-and-distribution-layout.md][distribution-adr]
   - [l0/docs/decisions/0017-release-identity-integrity-and-immutable-publication.md][release-adr]
   - [docs/decisions/0017-documentation-publication-ownership-and-cross-repository-boundary.md][publication-adr]
@@ -218,6 +218,6 @@ boundary.
 - Implementing L1 documentation generation or requiring its plan to land first.
 
 [distribution-adr]: ../../../../docs/decisions/0023-toolchain-installation-and-distribution-layout.md
-[l1-docs]: ../../../../../l1/work/plans/tools/2026-10-05-l1-stage-separated-autodocs-noref.md
+[l1-docs]: ../../../../../l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md
 [publication-adr]: ../../../../../docs/decisions/0017-documentation-publication-ownership-and-cross-repository-boundary.md
 [release-adr]: ../../../../docs/decisions/0017-release-identity-integrity-and-immutable-publication.md

@@ -1,0 +1,29 @@
+# Dea/L1{% if stage != "all" %} Stage {{ stage[-1] }}{% endif %} API Reference
+
+Generated API reference for the Dea/L1 codebase.
+
+This document is built from source comments and docstrings for:
+
+{% if stage in ["stage1", "all"] %}
+- Stage 1 L0 compiler sources under `compiler/stage1_l0/`
+{% endif %}
+{% if stage in ["stage2", "all"] %}
+- Stage 2 L1 compiler sources under `compiler/stage2_l1/src/`
+{% endif %}
+- Shared L1 standard library modules under `compiler/shared/l1/stdlib/`
+- Shared runtime API headers under `compiler/shared/runtime/include/`
+- Shared native implementation support under `compiler/stage1_l0/support/`
+
+Design documents and project documentation are stored in the repository's `docs` directory and are not duplicated in
+this reference manual.
+
+## About
+
+- Project: Dea/L1, a small safe C-family systems language that compiles to C99.
+- Source repository: [github.com/dea-lang/dea](https://github.com/dea-lang/dea).
+- Created and maintained by `gwz` ([\@googlielmo](https://github.com/googlielmo)).
+
+## Overview
+
+This reference provides indexed access to the API by directory, namespace, class, and file. Detailed documentation for
+each entity is provided in the corresponding sections.

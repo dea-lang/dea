@@ -520,6 +520,8 @@ func pi_parse_alias_decl(self: ParserState*, mi: ModuleInterface*, seen: StringS
  * @param self Parser state.
  * @param mi ModuleInterface being built.
  * @param seen Module-level declaration names seen so far.
+ * @param is_unsafe Whether the declaration requires unsafe context.
+ * @param is_extern Whether the declaration is external.
  * @return `true` on success.
  */
 func pi_parse_func_decl(self: ParserState*, mi: ModuleInterface*, seen: StringSet*, is_unsafe: bool,

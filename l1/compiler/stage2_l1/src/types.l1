@@ -127,6 +127,7 @@ func type_param_vec_free(items: VectorBase*?) {
  * @param inner Owned inner type for pointer and nullable kinds.
  * @param params Owned parameter vector for function kinds.
  * @param result Owned result type for function kinds.
+ * @param is_unsafe Whether the declaration requires unsafe context.
  * @return New type descriptor.
  */
 func type_new(kind: TypeKind, module_name: string, name: string, inner: Type*?, params: VectorBase*?,
@@ -395,6 +396,7 @@ func type_array_to_slice_compatible(array_ty: Type*, slice_ty: Type*) -> bool {
  *
  * @param params Owned vector of parameter types.
  * @param result Result type.
+ * @param is_unsafe Whether the declaration requires unsafe context.
  * @return New function type.
  */
 func type_new_func(params: VectorBase*, result: Type*, is_unsafe: bool) -> Type* {

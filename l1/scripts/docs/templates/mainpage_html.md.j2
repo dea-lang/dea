@@ -1,0 +1,43 @@
+# Dea/L1{% if stage != "all" %} Stage {{ stage[-1] }}{% endif %} API Documentation
+
+Generated API documentation for the Dea/L1 codebase.
+
+This site is built from source comments and docstrings for:
+
+{% if stage in ["stage1", "all"] %}
+- Stage 1 L0 compiler sources under `compiler/stage1_l0/`
+{% endif %}
+{% if stage in ["stage2", "all"] %}
+- Stage 2 L1 compiler sources under `compiler/stage2_l1/src/`
+{% endif %}
+- Shared L1 standard library modules under `compiler/shared/l1/stdlib/`
+- Shared runtime API headers under `compiler/shared/runtime/include/`
+- Shared native implementation support under `compiler/stage1_l0/support/`
+
+Design and reference documents are located in the repository's `docs` directory and are not duplicated here.
+
+## About
+
+- Project: Dea/L1, a small safe C-family systems language that compiles to C99.
+- Source repository: [github.com/dea-lang/dea](https://github.com/dea-lang/dea).
+- Created and maintained by `gwz` ([\@googlielmo](https://github.com/googlielmo)).
+
+## Overview
+
+This API site supports both source-first and symbol-first browsing.
+Source-set hubs provide broad context, source pages and dedicated type pages provide detail.
+
+## Choose Where to Start
+
+{% if stage in ["stage1", "all"] %}
+- [Stage 1](stage1.html) - Browse generated pages for `compiler/stage1_l0/`.
+{% endif %}
+{% if stage in ["stage2", "all"] %}
+- [Stage 2](stage2.html) - Browse generated pages for `compiler/stage2_l1/`.
+{% endif %}
+- [Shared](shared.html) - Browse generated pages for shared stdlib and runtime sources.
+- [Reference Manual (pdf)](../pdf/dea_l1_{{ stage }}_api_reference.pdf) - Download the generated API reference as a single PDF.
+
+## Explore
+
+- Use the built-in search to jump directly to symbols, pages, and generated files (requires JavaScript).

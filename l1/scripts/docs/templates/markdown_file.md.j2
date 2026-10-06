@@ -1,0 +1,30 @@
+# {{ title }}
+
+{% if module_name %}
+Module: `{{ module_name }}`
+
+{% endif %}
+Source: `{{ source_path }}`
+Language: `{{ language }}`
+
+{% if summary %}
+{{ summary }}
+
+{% endif %}
+{% if includes %}
+## Imports / Includes
+
+{% for include in includes -%}
+- `{{ include }}`
+{% endfor %}
+
+{% endif %}
+{% if toc %}
+## Symbols
+
+{% for item in toc -%}
+- [{{ item.label }}](#{{ item.anchor }})
+{% endfor %}
+
+{% endif %}
+{{ body }}

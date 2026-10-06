@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-10-05
+Version: 2026-10-06
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -13,6 +13,11 @@ Dea/L1 currently supports local self-hosted development:
 
 L0 remains the active release line. The L1 subtree is the current home for bootstrap compiler work, library surface, and
 future language growth beyond L0.
+
+Stage-separated source references and verified offline HTML/full-PDF bundles are available locally through `make docs`,
+`make docs-pdf`, and `make docs-artifacts`. Each stage has an independent source inventory, navigation, search database,
+PDF, and provenance manifest. Stage 2 is the distribution handoff; install/dist consumption and hosted release
+attachment remain pending. See [l1/docs/README.md](README.md#generated-source-references).
 
 ## Scope and Canonical References
 

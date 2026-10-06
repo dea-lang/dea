@@ -112,7 +112,6 @@ func cem_emit_int_literal(value: int) -> string {
  * Emit a bigint literal with its base prefix reconstructed.
  *
  * @param text Canonical bigint payload text.
- * @param base Literal base.
  * @return C spelling for the literal.
  */
 func cem_emit_binary_bigint_literal(text: string) -> string {

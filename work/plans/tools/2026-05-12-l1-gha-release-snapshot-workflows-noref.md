@@ -4,7 +4,7 @@
 
 - Date: 2026-06-22
 - Last reviewed: 2026-10-05
-- Status: In progress (Phase 1 complete; workflow implementation blocked on L1 productization and Stage 2 autodocs)
+- Status: In progress (Phase 1 complete; workflow implementation blocked on L1 productization)
 - Title: Add L1 snapshot and release GHA workflows
 - Kind: Tooling
 - Scope: Shared
@@ -20,7 +20,8 @@
 - Porting rule: Shared. Trigger, namespace, and publication policy belong here. L1 install layout, archive construction,
   launcher behavior, and installed smoke tests remain owned by the L1 productization plan.
 - Target status:
-  - L1 snapshot GHA workflow: Blocked on install/dist, artifact smoke, and Stage 2 documentation generation
+  - L1 snapshot GHA workflow: Blocked on install/dist and artifact smoke; Stage 2 documentation generation is
+    implemented
   - L1 release GHA workflow: Blocked on the same prerequisites
   - L1 docs build integration: HTML/PDF contract defined; generation implementation pending
   - Monorepo release-line policy: Refined prerequisites and hosted acceptance implemented
@@ -40,7 +41,7 @@
 - Related:
   - [work/plans/tools/closed/2026-04-02-l1-ci-release-line-noref.md][ci-release-plan]
   - [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization]
-  - [l1/work/plans/tools/2026-10-05-l1-stage-separated-autodocs-noref.md][autodocs]
+  - [l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md][autodocs]
   - [MONOREPO.md][monorepo]
   - [AGENTS.md][agent-policy] (remote and publication authorization)
 
@@ -56,10 +57,10 @@ and a reproducible smoke-testable artifact contract. The productization plan's s
 input, archive layout, and installed preparation behavior are the handoff contract below. Confirm its final
 implementation and update its link if the plan moves to `closed/` before beginning workflow work.
 
-[l1/work/plans/tools/2026-10-05-l1-stage-separated-autodocs-noref.md][autodocs] defines the separate Stage 1/Stage 2
-HTML/PDF contract. This plan owns release integration of its Stage 2 bundle. Generation and productization must both
-land before workflow implementation; Stage 1 docs remain separate developer outputs. Neither docs generation nor its
-local acceptance depends on release workflows.
+[l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md][autodocs] defines the separate Stage
+1/Stage 2 HTML/PDF contract. This plan owns release integration of its Stage 2 bundle. Generation is implemented;
+productization remains the workflow implementation prerequisite; Stage 1 docs remain separate developer outputs. Neither
+docs generation nor its local acceptance depends on release workflows.
 
 The existing gate also requires documented release notes, tag gating, reproducible smoke tests, and continued exclusive
 reservation of `l1-v*` / `l1-snapshot-*`. Recheck authoritative remote tags before activation; a historical namespace
@@ -298,7 +299,7 @@ links.
    link updates are complete before plan closure.
 
 [agent-policy]: ../../../AGENTS.md
-[autodocs]: ../../../l1/work/plans/tools/2026-10-05-l1-stage-separated-autodocs-noref.md
+[autodocs]: ../../../l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md
 [ci-release-plan]: closed/2026-04-02-l1-ci-release-line-noref.md
 [monorepo]: ../../../MONOREPO.md
 [productization]: ../../../l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md

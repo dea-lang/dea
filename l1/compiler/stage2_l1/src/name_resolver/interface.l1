@@ -38,6 +38,9 @@ func nr_make_interface_module(mi: ModuleInterface*) -> Module* {
  * @param owner_name Owner name for enum variants, otherwise empty.
  * @param resolved_type Optional resolved type to clone into the symbol.
  * @param span Source/interface span for diagnostics.
+ * @param is_const Whether the symbol is constant.
+ * @param const_literal Canonical constant literal text.
+ * @param is_extern Whether the declaration is external.
  */
 func nr_define_interface_symbol(env: ModuleEnv*, diags: DiagCollector*, name: string, kind: SymbolKind,
                                 owner_name: string, resolved_type: Type*?, span: Span, is_const: bool,

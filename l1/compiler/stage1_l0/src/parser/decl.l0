@@ -44,6 +44,7 @@ func ps_make_empty_block_stmt(self: ParserState*, span: Span) -> StmtId {
  * @param params Parsed parameter vector.
  * @param is_extern Whether this is an extern declaration.
  * @param ret_type Parsed return type.
+ * @param is_unsafe Whether the declaration requires unsafe context.
  * @return Completed function declaration, or `null` on error.
  */
 func ps_finish_function(self: ParserState*, start: Span, name_tok: Token, params: VectorBase*, is_extern: bool,
@@ -72,6 +73,7 @@ func ps_finish_function(self: ParserState*, start: Span, name_tok: Token, params
  *
  * @param self Parser state to advance.
  * @param is_extern Whether the declaration started with `extern`.
+ * @param is_unsafe Whether the declaration requires unsafe context.
  * @return Parsed function declaration, or `null` on error.
  */
 func ps_parse_function(self: ParserState*, is_extern: bool, is_unsafe: bool) -> FuncDecl*? {

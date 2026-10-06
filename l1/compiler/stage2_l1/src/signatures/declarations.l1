@@ -27,6 +27,7 @@ import signatures.tables;
  * @param decl Struct declaration to resolve.
  * @param diags Diagnostic collector for resolution failures.
  * @param pending_shapes Deferred per-declaration shape checks.
+ * @param driver_state Driver state used for module and type resolution.
  */
 func sig_resolve_struct(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
                         decl: StructDecl*, diags: DiagCollector*, pending_shapes: VectorBase*) {
@@ -81,6 +82,7 @@ func sig_resolve_struct(tables: SignatureTables*, nr: NameResolution*, driver_st
  * @param decl Enum declaration to resolve.
  * @param diags Diagnostic collector for resolution failures.
  * @param pending_shapes Deferred per-declaration shape checks.
+ * @param driver_state Driver state used for module and type resolution.
  */
 func sig_resolve_enum(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
                       decl: EnumDecl*, diags: DiagCollector*, pending_shapes: VectorBase*) {
@@ -143,6 +145,7 @@ func sig_resolve_enum(tables: SignatureTables*, nr: NameResolution*, driver_stat
  * @param decl Function declaration to resolve.
  * @param diags Diagnostic collector for resolution failures.
  * @param pending_shapes Deferred per-declaration shape checks.
+ * @param driver_state Driver state used for module and type resolution.
  */
 func sig_resolve_func(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
                       decl: FuncDecl*, diags: DiagCollector*, pending_shapes: VectorBase*) {

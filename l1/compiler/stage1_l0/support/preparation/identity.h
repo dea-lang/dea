@@ -937,7 +937,7 @@ static void pc_option_inputs_free(PcOptionInputs *inputs) {
     pj_free(inputs->direct);
 }
 
-/** Preserve lexical directories for configuration includes and <CFGDIR>, including aliases. */
+/** Preserve lexical directories for configuration includes and `<CFGDIR>`, including aliases. */
 static PcOptionFile *pc_option_file(PcContext *c, PcOptionInputs *inputs,
                                     const char *path, int configuration) {
     char *absolute = pc_path_call(path, l1c_fs_absolute_path);

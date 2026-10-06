@@ -332,6 +332,7 @@ func tr_const_eval_expr(ctx: ConstEvalContext*, env: ModuleEnv*, expr_id: ExprId
  * @param sym Alias symbol to resolve.
  * @param diags Diagnostic collector for resolution failures.
  * @param seen Alias keys currently being expanded for cycle detection.
+ * @param driver_state Driver state used for module and type resolution.
  * @return Resolved aliased type, or `null` on failure.
  */
 func tr_resolve_alias(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
@@ -543,6 +544,10 @@ func tr_finalize_materialized_type(tables: SignatureTables*, nr: NameResolution*
  * @param tref Parsed type reference supplying suffixes.
  * @param diags Diagnostic collector.
  * @param filename Source filename for diagnostics.
+ * @param tables Signature tables used for type lookup.
+ * @param nr Name resolution context.
+ * @param driver_state Driver state used for module and type resolution.
+ * @param env Module environment for type lookup.
  * @return Suffixed type, or `null` if suffix validation fails.
  */
 func tr_apply_suffix(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
@@ -658,6 +663,7 @@ func tr_apply_suffix(tables: SignatureTables*, nr: NameResolution*, driver_state
  * @param tref Parsed type reference to resolve.
  * @param diags Diagnostic collector for resolution failures.
  * @param seen Alias keys currently being expanded for cycle detection.
+ * @param driver_state Driver state used for module and type resolution.
  * @return Resolved type, or `null` if resolution fails.
  */
 func tr_resolve_type_ref(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,

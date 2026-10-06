@@ -62,7 +62,7 @@
   - [l1/docs/reference/stdlib-preparation.md][preparation-contract]
   - [l1/AGENTS.md][l1-guidance]
   - [l0/docs/decisions/0023-toolchain-installation-and-distribution-layout.md][l0-delivery]
-  - [l1/work/plans/tools/2026-10-05-l1-stage-separated-autodocs-noref.md][autodocs]
+  - [l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md][autodocs]
 
 ## Summary
 
@@ -216,9 +216,9 @@ ordinary validation, verify Apple Clang's required capabilities separately, and 
 versions. Do not infer Clang 14/15 support from a successful direct C build.
 
 Stage 2 documentation is a required distribution input under
-[l1/work/plans/tools/2026-10-05-l1-stage-separated-autodocs-noref.md][autodocs]. That plan defines and implements
-separate Stage 1/Stage 2 HTML/PDF generation and a verified docs bundle. Installer/compiler work can proceed in
-parallel, but complete `make dist` acceptance waits for its Stage 2 bundle. Documentation generation requires source
+[l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md][autodocs]. Generation is implemented,
+including separate Stage 1/Stage 2 HTML/PDF references and a verified docs bundle. Installer/compiler work can proceed
+in parallel, but complete `make dist` acceptance waits for its Stage 2 bundle. Documentation generation requires source
 files and documentation tools, not an installed compiler, so this introduces no dependency cycle.
 
 ### Self-hosted package construction
@@ -583,7 +583,7 @@ new native startup diagnostic cases to both stage selectors. Run broader or trac
 requires them under `l1/AGENTS.md`; do not repeat preparation benchmarks or run exhaustive `test-ci` solely for an
 installer edit.
 
-[autodocs]: 2026-10-05-l1-stage-separated-autodocs-noref.md
+[autodocs]: closed/2026-10-05-l1-stage-separated-autodocs-noref.md
 [diagnostic-catalog]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
 [installed-inputs]: ../../../docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md
 [inventory-contract]: ../../../docs/reference/productization-inventory.md

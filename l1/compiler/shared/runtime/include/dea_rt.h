@@ -701,6 +701,8 @@ void l1c_interface_fingerprint_sip13_hex(const uint8_t *data, int32_t len, uint8
  * Compiler-private L0/L1 pointer adapter; does not modify input bytes.
  * Pointer parameters match generated extern declarations, including under GCC array-parameter warnings.
  * @param out_hex Caller-owned storage for exactly 16 output bytes; no NUL terminator is written.
+ * @param data Canonical interface bytes.
+ * @param len Number of canonical bytes.
  */
 void l1c_interface_fingerprint_sip13_hex_bytes(uint8_t *data, int32_t len, uint8_t *out_hex);
 dea_int _rt_hash_bool(dea_bool value, const uint8_t flags);

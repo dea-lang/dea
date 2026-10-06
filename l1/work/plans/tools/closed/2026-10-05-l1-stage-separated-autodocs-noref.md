@@ -2,29 +2,30 @@
 
 ## Generate separate L1 Stage 1 and Stage 2 autodocs
 
-- Date: 2026-10-05
-- Status: Draft
+- Date: 2026-10-06
+- Status: Completed
 - Title: Generate separate L1 Stage 1 and Stage 2 autodocs
 - Kind: Tooling
 - Severity: Medium
 - Stage: L1
 - Subsystem: Doxygen / HTML and PDF generation / distribution documentation
 - Targets:
-  - Stage 1 developer HTML/PDF reference: Pending
-  - Stage 2 HTML/PDF reference and distribution artifact: Pending
+  - Stage 1 developer HTML/PDF reference: Verified
+  - Stage 2 HTML/PDF reference and distribution artifact: Verified
 - Modules:
-  - `l1/scripts/gen_docs.py` (new)
+  - `l1/scripts/gen_docs.py`
+  - `l1/scripts/docs_artifacts.py`
   - `l1/compiler/docgen/` (new L1 filters and generation adapters)
-  - `l1/scripts/docs/templates/` (new)
+  - `l1/scripts/docs/templates/`
   - `l1/Makefile`
   - `l1/docs/README.md`
   - `l1/docs/project-status.md`
   - `l1/docs/roadmap.md`
 - Test modules:
-  - `l1/tests/test_docgen_source_scope.py` (new)
-  - `l1/tests/test_docgen_filters.py` (new)
-  - `l1/tests/test_docgen_outputs.py` (new)
-  - `l1/tests/test_docgen_artifacts.py` (new)
+  - `l1/tests/test_docgen_source_scope.py`
+  - `l1/tests/test_docgen_filters.py`
+  - `l1/tests/test_docgen_outputs.py`
+  - `l1/tests/test_docgen_artifacts.py`
 - Related:
   - [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization]
   - [work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md][release-workflows]
@@ -41,12 +42,12 @@ release tag.
 
 ## Current State
 
-Reviewed on 2026-10-05:
+Initial review on 2026-10-05:
 
 - L1 has hand-authored reference documentation and both compiler source trees, but no `scripts/gen_docs.py`, docgen
   package, or HTML/PDF artifact pipeline.
-- L0's `scripts/gen_docs.py`, `compiler/docgen/`, and `scripts/docs/templates/` produce one combined source manifest,
-  XML/HTML/Markdown/LaTeX tree, and `dea_l0_api_reference.pdf`. Stage sections in that output do not separate documents.
+- L0's stage split now provides a local baseline for independent source inventories and HTML/PDF generation. L1 owns its
+  adapted filters, renderers, templates, and artifact validation without importing an L0-bound generator.
 - L1 Stage 1 is written in L0; Stage 2 and the bundled stdlib are written in L1. L0's Python filter cannot document L1
   Stage 1, and its L0 filter cannot be assumed to cover every L1 construct.
 - L1's Stage 2 native build uses shared C support currently located under `compiler/stage1_l0/support/`. Physical
@@ -156,12 +157,44 @@ selected stage's outputs after success. Building Stage 1 must not remove or over
    roadmap with the implemented scope. Hand off verified Stage 2 artifacts to productization and workflow integration.
    Close this generation plan after local generation/artifact acceptance; remote publication is not its closure gate.
 
+## Implementation and Verification
+
+- Added L1-owned Doxygen filters, renderers, templates, a transactional wrapper, and a standard-library-only artifact
+  consumer. Stage 1 selects 158 inputs and Stage 2 selects 155; the Stage 1-only difference is the fingerprint bridge
+  and its internal headers. Native support ownership follows both builders' explicit source lists.
+- L0/L1 filtering preserves line locations and original signatures for wide integers, slices, function pointers,
+  aliases, unsafe declarations, inline records/functions, and textual interfaces. Strict builds compare declared source
+  functions against XML and reject synthetic members. Existing compiler/runtime edits only complete source comments.
+- Full PDFs retain the API reference, contents, and index without duplicating header source listings. Bundles use
+  numeric stages, complete file digests, selected-input provenance, relative PDF links, and exact package/tag mapping.
+- `make test-docgen`: 44 tests passed, including real Doxygen interface filtering, duplicate names, native ownership,
+  both sequential stage orders and `all`, preview isolation, stale-bundle invalidation, malformed archives/manifests,
+  identity mismatch, corruption, escaping links, remote assets, and release/snapshot tag mapping.
+- `python scripts/gen_docs.py --stage all --strict --pdf --artifacts`: both complete source inventories generated
+  independent HTML, Markdown, XML, LaTeX, PDFs, reports, and verified offline archives. Extracted archives passed
+  `unpack_bundle` and `verify_tree` against captured checkout identity with site packages disabled.
+- Reviewed rendered PDF title/contents, compiler signatures, shared runtime/native-support chapters, and final indexes
+  in both documents. Generated HTML title, navigation, source signatures, shared support, and all local asset/file links
+  were inspected programmatically. The browser tool rejected local file URLs, so browser visual inspection was
+  unavailable; no browser screenshot or interactive search test is claimed.
+- Normal L1 validation used `/usr/bin/clang`, Apple Clang 17.0.0, including successful managed preparation. `make test`
+  passed both smoke suites, parity, examples, and Docker/Wine runner checks. After updating the existing Make-target
+  expectation for `test-docgen`, `make test-stage2-tooling test-productization test-docgen` passed the remaining gates
+  (22 tooling tests, 52 productization tests, 14 expected optional skips). Compiler results were reused because no
+  executable compiler/runtime inputs changed afterward. The change is trace-independent.
+- Documentation tools: Doxygen 1.18.0, pdfTeX 1.40.29 (TeX Live 2026), Python 3.14.7, and the vendored m.css renderer
+  recorded by digest in each bundle. ADR Impact, staged whitespace, and repository pre-commit checks passed.
+- Productization consumes `scripts/docs_artifacts.py` and the explicit Stage 2 bundle; installer integration and hosted
+  release attachment remain with their owning plans. No release tag, remote write, workflow dispatch, or publication was
+  performed. Local validation artifacts retain their pre-commit source provenance and require regeneration for a
+  different checkout identity.
+
 ## ADR Impact
 
 - Decision: Generate independent stage-specific L1 references and distribute only Stage 2 autodocs with Stage 2 tooling.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0041-stage-separated-source-references.md`
   - Rationale: Source ownership, independent documents, artifact identity, and distribution selection are durable L1
     documentation contracts. The existing root publication ADR continues to govern remote effects.
 
@@ -188,7 +221,7 @@ selected stage's outputs after success. Building Stage 1 must not remove or over
 6. Lightweight docgen tests and real strict Stage 1/2 HTML/PDF builds pass. Record commands, tool versions, and
    outcomes; do not infer publication success from local generation. Create/index the ADR and repair links at closure.
 
-[l0-split]: ../../../../l0/work/plans/tools/closed/2026-10-05-l0-stage-separated-autodocs-noref.md
-[productization]: 2026-04-02-l1-bootstrap-productization-noref.md
-[publication-adr]: ../../../../docs/decisions/0017-documentation-publication-ownership-and-cross-repository-boundary.md
-[release-workflows]: ../../../../work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md
+[l0-split]: ../../../../../l0/work/plans/tools/closed/2026-10-05-l0-stage-separated-autodocs-noref.md
+[productization]: ../2026-04-02-l1-bootstrap-productization-noref.md
+[publication-adr]: ../../../../../docs/decisions/0017-documentation-publication-ownership-and-cross-repository-boundary.md
+[release-workflows]: ../../../../../work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md

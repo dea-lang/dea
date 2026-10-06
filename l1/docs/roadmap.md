@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-10-05
+Version: 2026-10-06
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -11,16 +11,27 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 
 ## Current position
 
+- Independent Stage 1/Stage 2 source references and verified offline HTML/full-PDF bundles are implemented. Stage 2
+  artifact consumption remains in productization; hosted attachment remains in the root release-workflow plan. See
+  [l1/docs/README.md][autodocs-guide] and
+  [l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md][source-docs-plan].
+
 - `compiler/stage1_l0/` is the bootstrap compiler and semantic/diagnostic oracle.
+
 - `compiler/stage2_l1/` implements the self-hosted L1 compiler, with explicit build, selection, test, and fixed-point
   targets.
+
 - Stage 1 uses 119 phase/ownership modules with explicit canonical state imports. The settled layout and its two
   recursive-kernel exceptions are documented in [l1/docs/reference/architecture.md][compiler-architecture].
+
 - The current L1 runtime and stdlib inputs live under `compiler/shared/runtime/` and `compiler/shared/l1/stdlib/`.
+
 - The Stage 1 child fixture trace runner analyzes successful math runtime executables independently as part of `test-ci`
   under Tool [2026-04-17-l1-child-process-trace-support-noref][child-trace].
+
 - `--gen` emits one source-backed module through the shared per-module backend; ordinary `--build` and `--run` compile
   one translation unit per source-backed graph node and reuse the verified common linker.
+
 - Internal resolution-aware APIs expose canonical artifact associations, a deterministic source/interface module graph,
   verified whole-module `.l1m` fingerprints, and target-aware per-module C generation with external `I4init` / `I4fini`
   plus conditional `I5entry`. Per-module output carries no embedded Dea metadata or retention anchors. `--gen` resolves
@@ -39,13 +50,16 @@ L1 carries post-L0 language growth and bootstrap compiler work.
   legacy whole-program generator and backend-owned process wrapper are removed. Build, standalone link, and run accept
   ordered external libraries, library search paths, supported-family rpaths, and raw host-driver words while preserving
   typed object roles and exact driver-selected runtime inputs.
+
 - Bootstrap supplies public runtime headers and the complete bundled semantic interface set independently of native
   program-runtime construction. Source modes retain system-before-project precedence; standalone link discovers missing
   providers through ordered `-I` roots and bundled interfaces after explicit objects. Build/run/link obtain matching
   native stdlib/runtime support on demand using one local cache, with conservative reuse and fresh private preparation
   when persistent reuse is unavailable. See [l1/docs/reference/stdlib-preparation.md][preparation-contract].
+
 - L1 local development defaults to the repo-local upstream L0 Stage 2 compiler at `../l0/build/dea/bin/l0c-stage2`, or
   an explicit `L1_BOOTSTRAP_L0C` override.
+
 - Strict L1 triple-bootstrap runs through `make triple-test` and is required by `make test-ci`.
 
 ## Stage 2 Source Review
@@ -410,6 +424,7 @@ update to be promoted to an initiative or plan:
 [abi-prefix]: ../work/plans/features/closed/2026-04-04-l1-dea-c-abi-prefix-migration-noref.md
 [arrays-unsafe]: ../work/initiatives/closed/0004-array-primitives-and-unsafe-marker.md
 [artifact-graph]: ../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
+[autodocs-guide]: README.md#generated-source-references
 [bitwise-operators]: ../work/plans/features/closed/2026-04-18-l1-bitwise-operators-noref.md
 [blocking-networking]: ../work/initiatives/0007-blocking-networking.md
 [bootstrap-productization]: ../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
@@ -482,6 +497,7 @@ update to be promoted to an initiative or plan:
 [separate-compilation]: ../work/initiatives/closed/0001-separate-compilation-and-linking.md
 [single-statements]: ../work/plans/features/closed/2026-04-23-single-statement-loop-and-match-bodies-noref.md
 [small-int]: ../work/plans/features/closed/2026-04-04-l1-small-int-builtins-on-dea-abi-noref.md
+[source-docs-plan]: ../work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md
 [stage1-slices]: ../work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md
 [stage1-source-decomposition]: ../work/plans/refactors/closed/2026-07-08-stage1-source-decomposition-noref.md
 [stage2-native-review]: ../work/plans/refactors/closed/2026-09-28-stage2-native-source-review-noref.md

@@ -105,6 +105,7 @@ func sig_infer_literal_type(tables: SignatureTables*, nr: NameResolution*, env: 
  * Report whether one symbol names a zero-field enum variant.
  *
  * @param sym Symbol to inspect.
+ * @param tables Signature tables used for type lookup.
  * @return `true` when `sym` is a zero-field enum variant.
  */
 func sig_symbol_is_zero_field_enum_variant(tables: SignatureTables*, sym: Symbol*) -> bool {
