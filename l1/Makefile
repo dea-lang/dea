@@ -74,20 +74,25 @@ RUNTIME_INCLUDE_FLAGS := -I$(RUNTIME_ROOT)/include -I$(RUNTIME_ROOT)/internal
 
 help:
 	@printf '%s\n' \
-		'Dea/L1 bootstrap workflow' \
+		'Dea/L1 development workflow' \
 		'' \
 		'Targets:' \
 		'  venv               Delegate to the root `make venv` to create or sync the shared monorepo `../.venv`.' \
 		'  runtime            Build the repo-local L1 runtime archives (`libdea_rt.a`, traced, unchecked, and check-basic) and public headers under `$(L1_BUILD_DIR)`.' \
-		'  build-stage1       Build the L1 compiler, public headers, and verified bundled semantic interfaces.' \
+		'  build-stage1       Build the bootstrap Stage 1 compiler, public headers, and verified bundled semantic interfaces.' \
+		'  build-stage2       Build the self-hosted Stage 2 compiler through the repo-local Stage 1 compiler.' \
 		'  use-dev-stage1     Build and switch the repo-local `l1c` alias to Stage 1.' \
+		'  use-dev-stage2     Build and switch the repo-local `l1c` alias to Stage 2.' \
 		'  test               Run Stage 1/2 smoke checks, parity, examples, Stage 2 tooling, and Docker/Wine runner regressions.' \
 		'  test-ci            Run test-extended with CI-only normal cases, environment/bootstrap, traces, child fixtures, and triple bootstrap.' \
 		'  test-extended      Run normal suites without CI-only cases, examples, parity, and tooling checks.' \
 		'  test-docker        Run the broad local-normal gate under the repo-owned Linux container (POSIX reference path).' \
 		'  test-stage1        Run the L1 Stage 1 `.l0` implementation tests with the built repo-local compiler.' \
+		'  test-stage2        Run the L1 Stage 2 `.l1` implementation tests and shared compiler integration tests.' \
 		'  test-stage1-smoke  Run array, parser, analysis, expression typing, interface, backend, C emitter, and driver tests.' \
 		'  test-stage2-smoke  Run the Stage 2 array and parser smoke tests.' \
+		'  test-stage-parity   Compare Stage 1 and Stage 2 observable behavior.' \
+		'  triple-test        Strict retained-C/native fixed point and final compiler tests.' \
 		'  test-stage1-trace  Run default L1 Stage 1 ARC/memory trace checks; skips intentionally slow trace tests.' \
 		'  test-stage1-trace-smoke' \
 		'                     Run the focused ARC/memory trace smoke set for developer diagnostics.' \
@@ -95,6 +100,13 @@ help:
 		'                     Run L1 Stage 1 ARC/memory trace checks including intentionally slow trace tests.' \
 		'  test-stage1-trace-children' \
 		'                     Build, run, and analyze L1 child runtime fixtures independently; TESTS selects fixture names.' \
+		'  test-stage2-trace  Run default L1 Stage 2 ARC/memory trace checks; skips intentionally slow trace tests.' \
+		'  test-stage2-trace-smoke' \
+		'                     Run the focused Stage 2 ARC/memory trace smoke set for developer diagnostics.' \
+		'  test-stage2-trace-all' \
+		'                     Run L1 Stage 2 ARC/memory trace checks including intentionally slow trace tests.' \
+		'  test-stage2-trace-children' \
+		'                     Build, run, and analyze Stage 2 child runtime fixtures independently; TESTS selects fixture names.' \
 		'  test-env           Validate stackable L0/L1 repo-local env script activation.' \
 		'  test-productization  Run fixture-based prefix inventory, recovery, and installed launcher regressions.' \
 		'  check-examples     Validate all `examples/*.l1` sources with the repo-local Stage 2 compiler; fail on warnings or errors.' \
@@ -166,15 +178,7 @@ help:
 		'  DOCKER_L0_CC=<compiler>' \
 		'                     Legacy compatibility selector used when the canonical Docker compiler selector is unset.' \
 		'' \
-		'Stage 2 development targets:' \
-		'  build-stage2 / use-dev-stage2  Build or select the self-hosted compiler.' \
-		'  test-stage2 / test-stage2-trace  Normal and default trace suites.' \
-		'  test-stage2-trace-smoke / test-stage2-trace-all / test-stage2-trace-children' \
-		'  test-stage-parity   Compare Stage 1 and Stage 2 observable behavior.' \
-		'  triple-test        Strict retained-C/native fixed point and final compiler tests.' \
-		'  test-ci            Run exhaustive CI-only, environment, trace, child-fixture, and triple-bootstrap checks.' \
-		'' \
-		'Default local bootstrap flow:' \
+		'Default local development flow:' \
 		'  1. `make use-dev-stage2`  # auto-prepares ../l0 Stage 2 if needed' \
 		'  2. `source build/dea/bin/l1-env.sh`' \
 		'  3. `l1c --help`'
