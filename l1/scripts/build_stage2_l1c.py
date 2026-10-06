@@ -141,7 +141,10 @@ def write_stage2_wrapper(layout: L1BuildLayout) -> Path:
     return path
 
 
-def build_compiler(compiler: Path, output: Path, env: dict[str, str], *, keep_c: bool = False) -> None:
+def build_compiler(
+    compiler: Path, output: Path, env: dict[str, str], *, keep_c: bool = False,
+    build_info_overlay: Path | None = None,
+) -> None:
     """Build one Stage 2 generation using the supplied compiler and native inputs.
 
     Args:
@@ -149,12 +152,32 @@ def build_compiler(compiler: Path, output: Path, env: dict[str, str], *, keep_c:
         output: Native output path; retained C is its `.dea-c` sibling directory.
         env: Compiler construction environment.
         keep_c: Preserve the exact generated translation-unit tree.
+        build_info_overlay: Optional generated build-info module. Only this file
+            enters a private project root ahead of the checked-in sources; its
+            siblings cannot shadow compiler modules. Ordinary builds use the
+            checked-in fallback. The caller owns provenance and installed-mode
+            policy and must select a separate package output.
+
+    Raises:
+        OSError: The supplied overlay cannot be read or build scratch cannot be written.
+        subprocess.CalledProcessError: Native support or compiler construction fails.
     """
+    # Read before starting construction so a missing overlay cannot silently fall
+    # back to repository metadata or launch an expensive partial build.
+    overlay_bytes = build_info_overlay.read_bytes() if build_info_overlay is not None else None
     output.parent.mkdir(parents=True, exist_ok=True)
     build_env, mode = compiler_build_env(env)
     with tempfile.TemporaryDirectory(prefix="stage2-support-", dir=output.parent) as temporary:
-        support = build_support_objects(Path(temporary), build_env)
+        scratch = Path(temporary)
+        project_roots = []
+        if overlay_bytes is not None:
+            overlay_root = scratch / "build-info"
+            overlay_root.mkdir()
+            (overlay_root / "build_info.l1").write_bytes(overlay_bytes)
+            project_roots = ["--project-root", str(overlay_root)]
+        support = build_support_objects(scratch, build_env)
         command = [*wrapper_command(compiler), "--build", *mode, *support,
+                   *project_roots,
                    "--project-root", str(REPO_ROOT / "compiler/stage2_l1/src"),
                    "-o", str(output), "l1c"]
         if keep_c:

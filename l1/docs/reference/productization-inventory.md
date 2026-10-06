@@ -4,9 +4,9 @@ Version: 2026-10-06
 
 The first productization milestone implements prefix ownership, recoverable payload copying, and installed-context
 launcher templates. These are internal packaging primitives. L1 does not yet expose `make install`,
-`make list-installed`, `make dist`, or `make smoke-dist`. The native installed-state guard, package provenance overlay,
-self-hosted package construction, and artifact acceptance remain in
-[l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization].
+`make list-installed`, `make dist`, or `make smoke-dist`. Stage 2 construction also accepts a private build-info
+overlay. The native installed-state guard, package provenance generation, self-hosted package assembly, and artifact
+acceptance remain in [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization].
 
 ## Inventory schema
 
@@ -98,6 +98,23 @@ guidance.
 The templates select prefix context; native installation-state validation is still pending. Shell probes exercise
 context and argument/exit-code behavior without claiming real installed-compiler acceptance.
 
+## Private Stage 2 build-info overlay
+
+`build_compiler` in [l1/scripts/build_stage2_l1c.py][stage2-builder] accepts an optional `build_info_overlay` path. The
+caller supplies a generated L1 `build_info` module and a separate native output path. The builder snapshots that file
+before construction, writes it as `build_info.l1` in private scratch, and puts that project root ahead of the checked-in
+compiler source root. It copies no neighboring modules. Scratch is removed after successful construction or an
+exception; `keep_c=True` still retains the generated C beside the requested output.
+
+Missing or unreadable explicit overlays fail before construction. Invalid L1 is rejected by the selected compiler;
+neither case falls back to repository metadata. Calls without an overlay retain ordinary repository build behavior. The
+builder neither edits checked-in sources nor selects the development alias. Its existing construction environment
+overrides inherited `L1_HOME` and clears system/runtime input overrides.
+
+This internal API supplies the overlay mechanism only. The package builder still needs to generate agreed provenance,
+select the installed marker after native startup validation is implemented, and use the repository-mode Stage 2 seed to
+construct the delivered executable. An overlaid build alone is not an installed package.
+
 ## Validation
 
 From `l1/`, run `make test-productization`. The fixture suite covers metadata/path rejection, collisions, preservation
@@ -105,6 +122,12 @@ of unrelated files, controlled reinstalls, interrupted metadata/payload writes a
 recovery, relocation with spaces, and launcher/activation behavior. It is included in `make test` and
 `make test-extended`. Native `cmd.exe` cases run on Windows; unavailable host shells are reported as skipped.
 
+`make test-productization-build` is the explicit native overlay acceptance target. It builds the Stage 2 seed, uses it
+to self-build a separate compiler with test provenance in a path containing spaces, removes the input overlay, verifies
+native version output and semantic compilation, and checks that source modules and development binaries/aliases retain
+their bytes. It does not establish installed-package acceptance or run automatically in the lightweight fixture gate.
+
 [inventory]: ../../scripts/productization_inventory.py
 [launchers]: ../../scripts/productization_launchers.py
 [productization]: ../../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
+[stage2-builder]: ../../scripts/build_stage2_l1c.py

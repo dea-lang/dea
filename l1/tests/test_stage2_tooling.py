@@ -20,7 +20,7 @@ L1_ROOT = Path(__file__).resolve().parents[1]
 STAGE2_SCRIPTS = L1_ROOT / "compiler/stage2_l1/scripts"
 sys.path.insert(0, str(L1_ROOT / "scripts"))
 sys.path.insert(0, str(STAGE2_SCRIPTS))
-from build_stage2_l1c import compiler_build_env, build_support_objects, write_stage2_wrapper, host_compiler
+from build_stage2_l1c import build_compiler, compiler_build_env, build_support_objects, write_stage2_wrapper, host_compiler
 from build_stage1_l1c import L1BuildLayout, write_relative_alias
 from triple_bootstrap import compare_trees, input_manifest
 from bootstrap_identity import assert_stable_native_toolchain, compiler_command_words, merge_cflags
@@ -341,6 +341,84 @@ class Stage2ToolingTests(unittest.TestCase):
             self.assertIn("l1c-stage2.native", (layout.bin_dir / "l1c").read_text())
             write_relative_alias(layout.bin_dir / "l1c", first.name)
             self.assertEqual((layout.bin_dir / "l1c").read_text(), "stage1")
+
+    def test_build_info_overlay_is_private_and_narrow(self):
+        """Only the requested module shadows sources and scratch survives through the build."""
+        fallback = L1_ROOT / "compiler/stage2_l1/src/build_info.l1"
+        original = fallback.read_bytes()
+        with tempfile.TemporaryDirectory(prefix="overlay with spaces ") as temporary:
+            root = Path(temporary)
+            overlay = root / "package-info.l1"
+            overlay.write_bytes(b"module build_info;\n// private metadata\n")
+            (root / "l1c.l1").write_text("poison sibling")
+            output = root / "package/bin/l1c-stage2.native"
+            seen_roots = []
+
+            def construct(command, **kwargs):
+                roots = [Path(command[i + 1]) for i, arg in enumerate(command) if arg == "--project-root"]
+                seen_roots.extend(roots)
+                self.assertEqual(len(roots), 2)
+                self.assertEqual(roots[1], fallback.parent)
+                self.assertNotEqual(roots[0], overlay.parent)
+                self.assertEqual([path.name for path in roots[0].iterdir()], ["build_info.l1"])
+                self.assertEqual((roots[0] / "build_info.l1").read_bytes(), overlay.read_bytes())
+                self.assertEqual(fallback.read_bytes(), original)
+                self.assertIn("--keep-c", command)
+                self.assertEqual(kwargs["env"]["L1_HOME"], str(L1_ROOT / "compiler"))
+                self.assertNotIn("L1_SYSTEM", kwargs["env"])
+                output.write_bytes(b"native compiler")
+
+            env = {"L1_CC": "test-cc", "L1_HOME": "/stale/install", "L1_SYSTEM": "/stale/interfaces"}
+            with patch("build_stage2_l1c.host_compiler", return_value="test-cc"), \
+                    patch("build_stage2_l1c.build_support_objects", return_value=[]), \
+                    patch("build_stage2_l1c.subprocess.run", side_effect=construct):
+                build_compiler(root / "seed", output, env, keep_c=True, build_info_overlay=overlay)
+            self.assertFalse(seen_roots[0].exists())
+            self.assertEqual(fallback.read_bytes(), original)
+            self.assertEqual(env["L1_HOME"], "/stale/install")
+            self.assertEqual(overlay.read_bytes(), b"module build_info;\n// private metadata\n")
+
+    def test_build_info_overlay_failure_cleans_scratch(self):
+        """Compiler rejection removes private metadata without touching the supplied module."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            overlay = root / "build_info.l1"
+            overlay.write_text("invalid module")
+            output = root / "bin/compiler"
+            with patch("build_stage2_l1c.host_compiler", return_value="test-cc"), \
+                    patch("build_stage2_l1c.build_support_objects", return_value=[]), \
+                    patch("build_stage2_l1c.subprocess.run", side_effect=subprocess.CalledProcessError(1, "seed")):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    build_compiler(root / "seed", output, {}, build_info_overlay=overlay)
+            self.assertEqual(list(output.parent.iterdir()), [])
+            self.assertEqual(overlay.read_text(), "invalid module")
+
+    def test_missing_build_info_overlay_fails_before_construction(self):
+        """An explicit missing module never falls back to source-tree metadata."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch("build_stage2_l1c.build_support_objects") as support:
+                with self.assertRaises(FileNotFoundError):
+                    build_compiler(root / "seed", root / "bin/compiler", {},
+                                   build_info_overlay=root / "missing.l1")
+                support.assert_not_called()
+            self.assertFalse((root / "bin").exists())
+
+    def test_default_build_has_no_overlay(self):
+        """Existing callers keep the original source root and fallback metadata."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "compiler"
+
+            def construct(command, **_kwargs):
+                roots = [command[i + 1] for i, arg in enumerate(command) if arg == "--project-root"]
+                self.assertEqual(roots, [str(L1_ROOT / "compiler/stage2_l1/src")])
+                output.write_bytes(b"native compiler")
+
+            with patch("build_stage2_l1c.host_compiler", return_value="test-cc"), \
+                    patch("build_stage2_l1c.build_support_objects", return_value=[]), \
+                    patch("build_stage2_l1c.subprocess.run", side_effect=construct):
+                build_compiler(root / "seed", output, {})
 
 
 if __name__ == "__main__":

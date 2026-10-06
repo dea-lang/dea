@@ -12,7 +12,8 @@
 - Target status:
   - Prefix installer, inventory, and launcher adaptation: In progress (inventory/recovery and launcher helpers
     implemented; curated package assembly pending)
-  - Native installed-state guard and package provenance: Pending
+  - Native installed-state guard and package provenance: In progress (private Stage 2 build-info overlay mechanism
+    implemented; metadata generation and native guard pending)
   - Distribution archive and reusable artifact smoke command: Pending
   - Stage 2 HTML/PDF inclusion: Blocked on documentation-generation artifact implementation
   - Four-platform acceptance and documentation: Pending
@@ -42,6 +43,7 @@
   - `l1/tests/test_bootstrap_productization.py` (new install/dist regression suite)
   - `l1/tests/test_env_stackability.py`
   - `l1/tests/test_stage2_tooling.py`
+  - `l1/tests/test_stage2_build_overlay.py`
   - `l1/tests/test_bootstrap_identity.py`
   - `l1/compiler/stage1_l0/tests/compiler_runtime_build_env_test.py`
   - `l1/compiler/stage1_l0/tests/runtime_build_config_test.py`
@@ -75,7 +77,7 @@ release-workflow plan.
 
 ## Current State
 
-Reviewed on 2026-10-05 against the local checkout:
+Reviewed on 2026-10-06 against the local checkout:
 
 01. `l1/` supports both compiler stages, observable stage parity, and strict triple bootstrap. `make test` exercises
     representative suites in both stages; full hosted validation uses `make test-ci`.
@@ -99,9 +101,9 @@ Reviewed on 2026-10-05 against the local checkout:
 08. Automatic stdlib/runtime preparation and standalone-link discovery are implemented by the related preparation plan.
     Read-only installed fixtures contain semantic interfaces and rebuild inputs with no native profile requirement. They
     select context using `L1_HOME` and do not provide the proposed inventory or installed-state startup guard.
-09. Both stages' `build_info` modules still supply fallback metadata. Package provenance is not embedded by the Stage 2
-    builder, and `--help` / `--version` currently return before any installation validation. Both require explicit
-    implementation.
+09. Both stages' checked-in `build_info` modules supply fallback metadata. The Stage 2 builder now accepts a private
+    generated build-info module; package provenance generation remains pending. `--help` / `--version` currently return
+    before any installation validation, which still requires explicit implementation.
 10. No install/dist or reusable artifact smoke target exists. Prefix/inventory/recovery primitives and the fixture-based
     `test-productization` target are implemented. Preparation identity and storage internals have evolved since the
     original preparation plan; the current reference docs and ADR-0038 govern their consumption.
@@ -124,7 +126,14 @@ adapter now retains toolchain discovery but checks membership alongside prefix d
 and preserving existing entry order. Exact A/B/A assertions cover toolchain placement, case-insensitive matches, empty
 entries, and literal punctuation; the toolchain need not remain the second entry after prefix switching.
 
-Remaining Phase 1 work: native installed-state reader and `L1C-9515`, package build-info/provenance overlay, curated
+The Stage 2 builder accepts an optional `build_info_overlay` file, snapshots it before construction, and stages only
+that module in a private project root ahead of checked-in compiler sources. Neighboring modules cannot shadow the
+compiler. Scratch is removed on success or failure, missing overlays fail before construction, and ordinary builds keep
+fallback metadata. The explicit `make test-productization-build` target exercises a real self-build through a Stage 2
+seed, checks embedded version output and semantic compilation after overlay removal, and verifies compiler sources and
+development artifacts remain unchanged. It is separate from the lightweight fixture gate.
+
+Remaining Phase 1 work: native installed-state reader and `L1C-9515`, package build-info/provenance generation, curated
 payload construction, standalone packaged instructions, and actual compiler fixtures. Public install/dist targets remain
 unavailable until these prerequisites are implemented. Native Windows execution and four-platform artifact acceptance
 remain pending for the revised helpers; local shell/inventory fixture success is not installed-compiler acceptance.
@@ -140,6 +149,20 @@ Verification on macOS Intel with `/usr/bin/clang`, Apple Clang 17.0.0 (`clang-17
   fixture suite and existing L0/L1 bash/zsh activation/bootstrap integration. The final helper revision is covered
   separately above.
 - `python3 scripts/check_adr_impact.py --all-active` from the monorepo root: passed.
+
+Private-overlay milestone validation on the same macOS Intel/Apple Clang 17 toolchain:
+
+- `make test L0_CC=/usr/bin/clang L1_CC=/usr/bin/clang L1_RUNTIME_CC=/usr/bin/clang`: passed, including 22 Stage 2
+  tooling/bootstrap-identity cases and 52 productization fixtures; fourteen native Windows fixtures skipped.
+- `make -o build-stage2 test-productization-build L0_CC=/usr/bin/clang L1_CC=/usr/bin/clang L1_RUNTIME_CC=/usr/bin/clang`:
+  passed the native overlay self-build in a path containing spaces, complete version report, post-overlay-removal
+  semantic check, and source/development-artifact preservation. Reused the unchanged seed just built by `make test`.
+- `L1_BUILD_DIR=build/dea L0_CC=/usr/bin/clang L1_CC=/usr/bin/clang L1_RUNTIME_CC=/usr/bin/clang ../.venv/bin/python scripts/triple_bootstrap.py`:
+  passed the existing `triple-test` implementation using the already-built Stage 1/runtime prerequisites. All 137
+  generated C translation units and normalized native executables matched; the final compiler passed its normal suite,
+  examples, and run smoke check. No bootstrap inputs changed during validation.
+- The validation tier is the normal gate plus focused native construction/fixed-point checks. Compiler source, ownership
+  semantics, runtime controls, and trace behavior are unchanged.
 
 Wine/MSYS2 validation of the revised Windows helpers used the provisioned container environment and a fresh source
 snapshot. `../.venv/bin/python -m pytest -q -n 0 tests/test_bootstrap_productization.py` passed 57 cases with nine
@@ -547,6 +570,7 @@ During implementation, run the new packaging regression suite, installed/extract
 and cache/driver tests, and L1's normal validation. Use these focused commands from `l1/` after the new targets exist:
 
 - `make test-productization`
+- `make test-productization-build` for the real Stage 2 private-overlay self-build
 - `make smoke-dist ARCHIVE=<archive-from-DIST_RESULT>` on each supported host
 - `make test-env`
 - `make test-stage1 TESTS="l1c_stage1_installed_preparation_test l1c_stage1_preparation_test"`

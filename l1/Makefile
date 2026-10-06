@@ -109,6 +109,7 @@ help:
 		'                     Build, run, and analyze Stage 2 child runtime fixtures independently; TESTS selects fixture names.' \
 		'  test-env           Validate stackable L0/L1 repo-local env script activation.' \
 		'  test-productization  Run fixture-based prefix inventory, recovery, and installed launcher regressions.' \
+		'  test-productization-build  Self-build Stage 2 with private build-info and verify source/artifact preservation.' \
 		'  check-examples     Validate all `examples/*.l1` sources with the repo-local Stage 2 compiler; fail on warnings or errors.' \
 		'  bench-runtime      Benchmark the checked runtime allocation tracker across C compilers and quarantine settings (informational; not part of `test-extended`). Variables: `BENCH_CC="tcc clang gcc-16"`, `BENCH_SCALE=<n>`, `BENCH_RUNS=<n>`.' \
 		'  bench-link-provenance' \
@@ -465,6 +466,10 @@ test-stage2-tooling: venv
 test-productization: venv
 	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_bootstrap_productization.py
 
+test-productization-build: build-stage2
+	L1_BUILD_DIR="$(L1_BUILD_DIR)" L1_PRODUCTIZATION_SEED="$(L1_BUILD_DIR)/bin/l1c-stage2" \
+	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_stage2_build_overlay.py
+
 triple-test: build-stage1 runtime
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" "$(VENV_PYTHON)" scripts/triple_bootstrap.py
 
@@ -538,4 +543,4 @@ docker-wine-image:
 test-docker-wine-runner:
 	$(HOST_PYTHON) tests/test_docker_wine.py
 
-.PHONY: build-stage2 use-dev-stage2 test-stage2 test-stage2-trace test-stage2-trace-smoke test-stage2-trace-all test-stage2-trace-children test-stage-parity test-stage2-tooling triple-test
+.PHONY: build-stage2 use-dev-stage2 test-stage2 test-stage2-trace test-stage2-trace-smoke test-stage2-trace-all test-stage2-trace-children test-stage-parity test-stage2-tooling test-productization-build triple-test
