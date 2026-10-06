@@ -3,7 +3,7 @@
 ## Define the self-hosted L1 Stage 2 install and distribution workflow
 
 - Date: 2026-04-02
-- Last reviewed: 2026-10-05
+- Last reviewed: 2026-10-06
 - Status: In progress
 - Title: Define the self-hosted L1 Stage 2 install and distribution workflow
 - Kind: Tooling
@@ -119,22 +119,32 @@ retaining explicit selectors, moving/deduplicating activation PATH entries, and 
 The focused fixture suite is wired into `test` and `test-extended`. Its implementation contract is recorded in
 [l1/docs/reference/productization-inventory.md][inventory-contract].
 
+Native Windows activation exposed an invalid nested percent-expansion check in the inherited MSYS2 PATH template. The L1
+adapter now retains toolchain discovery but checks membership alongside prefix deduplication, adding a missing toolchain
+and preserving existing entry order. Exact A/B/A assertions cover toolchain placement, case-insensitive matches, empty
+entries, and literal punctuation; the toolchain need not remain the second entry after prefix switching.
+
 Remaining Phase 1 work: native installed-state reader and `L1C-9515`, package build-info/provenance overlay, curated
 payload construction, standalone packaged instructions, and actual compiler fixtures. Public install/dist targets remain
 unavailable until these prerequisites are implemented. Native Windows execution and four-platform artifact acceptance
-remain pending; local shell/inventory fixture success is not installed-compiler acceptance.
+remain pending for the revised helpers; local shell/inventory fixture success is not installed-compiler acceptance.
 
 Verification on macOS Intel with `/usr/bin/clang`, Apple Clang 17.0.0 (`clang-1700.6.4.2`):
 
-- `make clean test L0_CC=/usr/bin/clang L1_CC=/usr/bin/clang L1_RUNTIME_CC=/usr/bin/clang`: passed Stage 1/Stage 2 smoke
+- `make test L0_CC=/usr/bin/clang L1_CC=/usr/bin/clang L1_RUNTIME_CC=/usr/bin/clang`: passed Stage 1/Stage 2 smoke
   checks, parity, all four examples, Docker/Wine runner regressions, existing tooling, and productization fixtures.
   Managed preparation succeeded with this compiler's supported configuration controls.
 - `../.venv/bin/python -m pytest -q -n 0 tests/test_bootstrap_productization.py`: final helper revision passed 52 cases;
-  three native Windows cases skipped. Compiler-stage inputs remain unchanged from the normal gate.
+  fourteen native Windows cases skipped. Compiler-stage inputs remain unchanged from the normal gate.
 - `make test-productization test-env L0_CC=/usr/bin/clang L1_CC=/usr/bin/clang L1_RUNTIME_CC=/usr/bin/clang`: passed the
   fixture suite and existing L0/L1 bash/zsh activation/bootstrap integration. The final helper revision is covered
   separately above.
 - `python3 scripts/check_adr_impact.py --all-active` from the monorepo root: passed.
+
+Wine/MSYS2 validation of the revised Windows helpers used the provisioned container environment and a fresh source
+snapshot. `../.venv/bin/python -m pytest -q -n 0 tests/test_bootstrap_productization.py` passed 57 cases with nine
+POSIX-only cases skipped. The focused missing-toolchain regression fails against the original launcher and passes with
+the revised adapter. This emulated result does not replace hosted native Windows acceptance.
 
 ## Defaults Chosen
 

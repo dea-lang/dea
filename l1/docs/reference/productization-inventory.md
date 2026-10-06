@@ -1,6 +1,6 @@
 # L1 Productization Inventory Helpers
 
-Version: 2026-10-05
+Version: 2026-10-06
 
 The first productization milestone implements prefix ownership, recoverable payload copying, and installed-context
 launcher templates. These are internal packaging primitives. L1 does not yet expose `make install`,
@@ -90,7 +90,10 @@ guidance.
   preserves other entries in order, and clears shell command caches. It must be sourced.
 - Windows compiler wrappers use `setlocal` and preserve the native exit status through `endlocal`; activation
   intentionally transfers `L1_HOME`, `PATH`, and cleared `L1_BUILD_DIR` into the caller. Activation retains the shared
-  MSYS2 toolchain probe and moves the selected compiler directory to the front after that probe.
+  MSYS2 toolchain discovery, checks PATH membership case-insensitively, and adds a missing toolchain directory without
+  duplicating an existing entry. The selected compiler directory moves to the front; other entries retain their order,
+  including empty entries and literal `!` and `%` characters. Repeated prefix switching can therefore leave the
+  toolchain directory after an inactive compiler directory.
 
 The templates select prefix context; native installation-state validation is still pending. Shell probes exercise
 context and argument/exit-code behavior without claiming real installed-compiler acceptance.

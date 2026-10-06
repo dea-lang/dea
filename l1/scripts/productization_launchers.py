@@ -91,10 +91,11 @@ def env_script() -> str:
 
 # Keep delayed expansion off so literal exclamation marks survive. Split PATH
 # character by character to retain empty entries and the order of other entries.
-_CMD_PREPEND = r"""if not defined PATH goto :_l1_path_empty
+_CMD_PREPEND = r"""set "_L1_TAIL="
+set "_L1_TOOLCHAIN_PRESENT="
+if not defined PATH goto :_l1_path_done
 set "_L1_REST=%PATH%;"
 set "_L1_ENTRY="
-set "_L1_SELECTED=%SCRIPT_DIR%"
 :_l1_path_loop
 if not defined _L1_REST goto :_l1_path_done
 set "_L1_CHAR=%_L1_REST:~0,1%"
@@ -104,18 +105,21 @@ set "_L1_ENTRY=%_L1_ENTRY%%_L1_CHAR%"
 goto :_l1_path_loop
 :_l1_path_entry
 if /I "%_L1_ENTRY%"=="%SCRIPT_DIR%" goto :_l1_path_next
-set "_L1_SELECTED=%_L1_SELECTED%;%_L1_ENTRY%"
+if defined _L1_TOOLCHAIN_BIN if /I "%_L1_ENTRY%"=="%_L1_TOOLCHAIN_BIN%" set "_L1_TOOLCHAIN_PRESENT=1"
+set "_L1_TAIL=%_L1_TAIL%;%_L1_ENTRY%"
 :_l1_path_next
 set "_L1_ENTRY="
 goto :_l1_path_loop
-:_l1_path_empty
-set "_L1_SELECTED=%SCRIPT_DIR%"
 :_l1_path_done
-set "PATH=%_L1_SELECTED%"
+set "PATH=%SCRIPT_DIR%%_L1_TAIL%"
+if /I "%_L1_TOOLCHAIN_BIN%"=="%SCRIPT_DIR%" set "_L1_TOOLCHAIN_PRESENT=1"
+if defined _L1_TOOLCHAIN_BIN if not defined _L1_TOOLCHAIN_PRESENT set "PATH=%SCRIPT_DIR%;%_L1_TOOLCHAIN_BIN%%_L1_TAIL%"
 set "_L1_REST="
 set "_L1_ENTRY="
 set "_L1_CHAR="
-set "_L1_SELECTED="
+set "_L1_TAIL="
+set "_L1_TOOLCHAIN_BIN="
+set "_L1_TOOLCHAIN_PRESENT="
 """
 
 
@@ -136,6 +140,12 @@ def env_cmd_script() -> str:
                          '    ) else (\n'
                          '        set "PATH=%SCRIPT_DIR%"\n'
                          '    )\n)\nset "PATH_PADDED="\n', "")
-    # The shared MSYS2 probe may prepend a DLL/toolchain directory. Select the
-    # installed compiler last so its bin directory still occupies PATH's front.
+    # Retain toolchain discovery, but check membership in the PATH entry loop.
+    # CMD cannot nest percent expansions in the shared substitution expression.
+    text = _replace_once(text, 'set "PATH_PADDED=;%PATH%;"\n'
+                         'if /I not "%PATH_PADDED%"=="%PATH_PADDED:;%_MSYS2_BIN%;=%" goto :_msys2_toolchain_done\n'
+                         'set "PATH=%_MSYS2_BIN%;%PATH%"\n',
+                         'set "_L1_TOOLCHAIN_BIN=%_MSYS2_BIN%"\n')
+    text = _replace_once(text, 'set "_MSYS2_BIN="\nif defined MSYS2_TOOLCHAIN_BIN',
+                         'set "_MSYS2_BIN="\nset "_L1_TOOLCHAIN_BIN="\nif defined MSYS2_TOOLCHAIN_BIN')
     return text + _CMD_PREPEND + 'endlocal & set "PATH=%PATH%" & set "L1_HOME=%L1_HOME%" & set "L1_BUILD_DIR="\n'

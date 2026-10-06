@@ -453,42 +453,61 @@ def test_native_cmd_wrapper_restores_parent_environment(tmp_path, exitcode):
     shutil.copyfile(os.environ["COMSPEC"], prefix / "bin/probe.exe")
     wrapper = prefix / "bin/l1c.cmd"
     wrapper.write_text(launchers.native_cmd_wrapper(native_name="probe.exe"))
+    child = tmp_path / "child probe.cmd"
+    child.write_text(f'@echo off\necho CHILD_HOME=%L1_HOME%\necho CHILD_BUILD=%L1_BUILD_DIR%\nexit /b {exitcode}\n')
     driver = tmp_path / "driver.cmd"
-    driver.write_text(f'@echo off\ncall "{wrapper}" /d /c "set L1_HOME & set L1_BUILD_DIR & exit /b {exitcode}"\n'
+    driver.write_text(f'@echo off\ncall "{wrapper}" /d /c call "{child}"\n'
                       'echo RETURN=%ERRORLEVEL%\necho HOME=%L1_HOME%\necho BUILD=%L1_BUILD_DIR%\n'
                       'echo SCRIPT=%SCRIPT_DIR%\necho PREFIX=%PREFIX_ROOT%\n')
     env = {**os.environ, "L1_HOME": "sentinel home", "L1_BUILD_DIR": "sentinel build",
            "SCRIPT_DIR": "sentinel script", "PREFIX_ROOT": "sentinel prefix"}
     result = subprocess.run([os.environ["COMSPEC"], "/d", "/c", str(driver)], env=env,
                             cwd=tmp_path, text=True, capture_output=True)
-    assert f"L1_HOME={prefix}" in result.stdout
-    assert "L1_BUILD_DIR=sentinel" not in result.stdout
+    assert "CHILD_HOME=" + str(prefix).replace("/", "\\") in result.stdout
+    assert "CHILD_BUILD=\n" in result.stdout
     assert f"RETURN={exitcode}" in result.stdout
     assert "HOME=sentinel home" in result.stdout and "BUILD=sentinel build" in result.stdout
     assert "SCRIPT=sentinel script" in result.stdout and "PREFIX=sentinel prefix" in result.stdout
 
 
 @pytest.mark.skipif(os.name != "nt", reason="requires native cmd.exe")
-def test_native_cmd_activation_switches_prefixes(tmp_path):
+@pytest.mark.parametrize("toolchain_position", ["missing", "first", "last", "selected"])
+@pytest.mark.parametrize("base_path", ["", r"C:\ordinary!%literal%\bin;C:\Program Files (x86)\bin", os.environ["PATH"]])
+def test_native_cmd_activation_switches_prefixes(tmp_path, toolchain_position, base_path):
     a = tmp_path / "prefix A with spaces"
     b = tmp_path / "prefix B with spaces"
     for prefix in (a, b):
         (prefix / "bin").mkdir(parents=True)
         (prefix / "bin/l1-env.cmd").write_text(launchers.env_cmd_script())
-    toolchain = tmp_path / "toolchain bin"
-    toolchain.mkdir()
+    toolchain = a / "bin" if toolchain_position == "selected" else tmp_path / "toolchain bin"
+    toolchain.mkdir(exist_ok=True)
     driver = tmp_path / "activation.cmd"
     driver.write_text('@echo off\n' + "\n".join(
         f'call "{prefix / "bin/l1-env.cmd"}"' for prefix in (a, b, a)
     ) + '\necho HOME=%L1_HOME%\necho PATH=%PATH%\n'
       'if defined L1_BUILD_DIR exit /b 1\necho SCRIPT=%SCRIPT_DIR%\n')
-    base_path = os.environ["PATH"]
+    # MSYS2 Python can render Windows paths with forward slashes. CMD resolves
+    # its own script location with backslashes, so use that spelling for PATH.
+    a_bin = str(a / "bin").replace("/", "\\")
+    b_bin = str(b / "bin").replace("/", "\\")
+    toolchain_bin = str(toolchain).replace("/", "\\")
+    entries = [b_bin, a_bin, a_bin.upper(), "", *base_path.split(";")]
+    remaining = [b_bin, "", *base_path.split(";")]
+    if toolchain_position == "first":
+        entries.insert(0, toolchain_bin.upper())
+        remaining.insert(1, toolchain_bin.upper())
+    elif toolchain_position == "last":
+        entries.append(toolchain_bin)
+        remaining.append(toolchain_bin)
+    elif toolchain_position == "missing":
+        remaining.insert(1, toolchain_bin)
     env = {**os.environ, "L1_HOME": "sentinel home", "L1_BUILD_DIR": "sentinel build",
-           "SCRIPT_DIR": "sentinel script", "MSYS2_TOOLCHAIN_BIN": str(toolchain),
-           "PATH": f"{b / 'bin'};{a / 'bin'};{a / 'bin'};;{base_path}"}
+           "SCRIPT_DIR": "sentinel script", "MSYS2_TOOLCHAIN_BIN": toolchain_bin,
+           "PATH": ";".join(entries)}
     result = subprocess.run([os.environ["COMSPEC"], "/d", "/c", str(driver)], env=env,
                             cwd=tmp_path, text=True, capture_output=True)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert f"HOME={a}" in result.stdout
-    assert f"PATH={a / 'bin'};{toolchain};{b / 'bin'};;{base_path}" in result.stdout
+    assert "HOME=" + str(a).replace("/", "\\") in result.stdout
+    actual_path = next(line.removeprefix("PATH=") for line in result.stdout.splitlines() if line.startswith("PATH="))
+    assert actual_path.split(";") == [a_bin, *remaining]
     assert "SCRIPT=sentinel script" in result.stdout
