@@ -151,6 +151,27 @@ returns status 1 even for help/version. Successful startup sets `L1_HOME` to the
 `L1_BUILD_DIR`, preserving explicit system/runtime/compiler/cache selectors. No external interpreter, build tool, cache
 write, or payload digest scan is needed. Repository-mode binaries do not invoke the hook or require inventory metadata.
 
+## Curated payload assembly
+
+`productization_payload.build_payload` consumes an explicit completed bootstrap layout and Stage 2 seed. It selects only
+bundled `std.*`/`sys.*` sources, the exact corresponding interface set, runtime C sources and internal headers, public
+headers, and the two runtime symbol manifests. Bootstrap public headers must match the source headers. Selected files
+and parents must be ordinary files/directories; compiler sources, native caches, retained outputs, and unrelated build
+files are excluded.
+
+The helper captures support bytes before construction and records every captured support digest in provenance. It
+validates the captured interface graph with the selected seed, then self-builds a separate marked native compiler with a
+private provenance overlay. The private payload adds installed launchers/activation, `VERSION`, notices, a bundled smoke
+program, and standalone instructions with package-relative or canonical repository links. Windows payloads include both
+MSYS2 shell entrypoints and native Command Prompt counterparts.
+
+Packaged guides come from `l1/docs/user/`, following the L0 convention. `README.md` and `README-WINDOWS.md` go to the
+prefix root; `toolchain.md` goes to `share/doc/dea/l1/toolchain.md`.
+
+The context-managed result is an uninstalled payload for `install_payload`; it does not publish an inventory itself.
+Private scratch and payload files are removed on success or failure when the context exits. This helper does not build
+the prerequisite bootstrap chain, expose a public install command, or consume documentation bundles yet.
+
 ## Validation
 
 From `l1/`, run `make test-productization`. The fixture suite covers metadata/path rejection, collisions, preservation
@@ -164,8 +185,9 @@ generated provenance in native version output and semantic compilation, and chec
 binaries/aliases retain their bytes. It does not establish installed-package acceptance or run automatically in the
 lightweight fixture gate. The same target also self-builds a marked compiler and exercises direct and launcher
 entrypoints against a relocated prefix, stale inherited roots, read-only inputs, and absent/malformed/incomplete
-metadata. The guard fixtures use real native code and run through `test-productization`; platform-specific cases skip
-explicitly when their host prerequisites are absent.
+metadata. Its curated payload also covers compile-only use, a cold cache with automatic preparation disabled, native
+preparation/run, and warm standalone linking while preserving installed digests. The guard fixtures use real native code
+and run through `test-productization`; platform-specific cases skip explicitly when their host prerequisites are absent.
 
 [installation]: ../../compiler/stage1_l0/support/installation.h
 [inventory]: ../../scripts/productization_inventory.py
