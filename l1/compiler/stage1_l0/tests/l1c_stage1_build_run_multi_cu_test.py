@@ -607,16 +607,36 @@ def main() -> int:
         require_status(selected, 11, "explicit source-target entry selection")
         if "multiple entry" in selected.stderr:
             raise MultiCuFailure("build/run reused ambiguous standalone entry inference")
-        missing_entry = run(
-            compiler_command(
-                compiler, cc, "--run", entry_root, "entry.no_entry"
-            ),
-            cwd=root,
-            env=env,
-        )
-        require_status(missing_entry, 1, "selected target without entry bridge")
-        if "does not carry 'entry;'" not in missing_entry.stderr:
-            raise MultiCuFailure("non-entry target was replaced by an imported entry")
+        for name, declaration in (
+            ("absent", "func value() -> int { return 5; }"),
+            ("extern_only", "extern func main() -> int;"),
+            ("parameterized", "func main(value: int) -> int { return value; }"),
+            ("non_function", "let main: int = 5;"),
+        ):
+            module = f"entry.{name}"
+            write_module(
+                entry_root, module, f"module {module};\n{declaration}\n"
+            )
+        for mode in ("--build", "--run"):
+            for name in ("no_entry", "absent", "extern_only", "parameterized", "non_function"):
+                module = f"entry.{name}"
+                missing_entry = run(
+                    compiler_command(compiler, cc, mode, entry_root, module),
+                    cwd=root,
+                    env=env,
+                )
+                require_status(missing_entry, 1, f"{mode} ineligible entry {name}")
+                expected = (
+                    f"error: [L1C-0012] entry module '{module}' must define a "
+                    "non-extern 'main' function with no parameters for build/run"
+                )
+                if expected not in missing_entry.stderr:
+                    raise MultiCuFailure(
+                        f"{mode} did not explain the source entry requirement:\n"
+                        f"{missing_entry.stderr}"
+                    )
+                if "[L1C-2104]" in missing_entry.stderr or ".l1m:" in missing_entry.stderr:
+                    raise MultiCuFailure("source entry failure leaked link diagnostics")
 
         wrapper_name_root = root / "wrapper-name"
         write_module(

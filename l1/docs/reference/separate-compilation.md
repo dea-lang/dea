@@ -1,6 +1,6 @@
 # L1 Separate Compilation, Build, Run, and Standalone Linking
 
-Version: 2026-09-27
+Version: 2026-10-07
 
 This document describes the implemented Dea/L1 Stage 1 path from per-module generated C and one-module compilation to an
 interface-authoritative executable. It is the current behavioral reference for `l1c --gen`, `l1c --compile`,
@@ -56,8 +56,11 @@ authoritative. Explicit providers contribute their original opaque sibling `.o`;
 an exact copied semantic interface and matching native object from preparation. Otherwise a provider may fall back to
 source and is compiled once into the invocation workspace. Source nodes compile dependency-first with direct-import
 order as the deterministic tie-breaker. The requested target is the explicit link entry and must itself define an
-eligible bridge; `--entry` is invalid. Foreign objects are caller-asserted opaque inputs and retain their relative
-declaration order.
+eligible bridge; `--entry` is invalid. After successful semantic analysis, build/run report `L1C-0012` if the target
+does not define a non-extern `main` with no parameters, before native compilation of the source graph. A private
+eligible `main` is accepted; an imported module's `main` does not satisfy this requirement. Standalone link entry
+selection continues to report `L1C-2104` for missing interface `entry;` records. Foreign objects are caller-asserted
+opaque inputs and retain their relative declaration order.
 
 Build writes the requested or default executable. Run writes a temporary executable, launches it directly with exact
 post-`--` arguments, returns its status, and cleans it. Build keep-C retains `OUTPUT.dea-c/`; run keep-C retains
