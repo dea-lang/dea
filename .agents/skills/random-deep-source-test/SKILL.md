@@ -59,6 +59,12 @@ For every reviewed body, inspect its contract, inputs and boundary values, contr
 resource cleanup, state changes, invariants, and interactions with each confirmed direct edge. Read the relevant
 language or runtime documentation whenever it defines the behavior under review.
 
+When the bounded review involves filesystem paths or path-bearing output, apply
+[AGENTS.md](../../../AGENTS.md#portable-path-comparisons) to both the implementation and its test evidence. Distinguish
+native path equivalence from exact serialization requirements. Include Windows spellings in relevant temporary probes
+without relying on POSIX path parsing, and check whether a failing assertion reflects a representation mismatch before
+scoring it as a production defect. Label simulated checks and unavailable native Windows coverage explicitly.
+
 Assign a calibrated integer score from `0` through `100` and cite the evidence:
 
 | Score | Meaning                                                                                  |

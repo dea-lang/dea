@@ -264,3 +264,31 @@ Treat local implementation, remote writes, and publication as separate authoriza
 - Keep code names and comments in English.
 - Update relevant tests in the same change.
 - Update relevant documentation in the same change.
+
+### Portable Path Comparisons
+
+- Apply these rules across all levels when writing or reviewing path handling and tests, especially diagnostics,
+  subprocess output, launchers, installation, and documentation tooling. Review new path assertions for Windows
+  portability before committing; a passing POSIX run does not exercise Windows path semantics.
+- Choose the comparison from the contract. Native filesystem paths may use `\`, `/`, or mixed separators on Windows. Do
+  not compare `str(expected_path)` literally with diagnostic or subprocess text unless exact spelling is the behavior
+  under test. For same-host native path text where only separators are irrelevant, normalize both sides with
+  `.replace(os.sep, "/")`; this preserves literal backslashes in POSIX filenames. Prefer extracting the path field
+  before comparing when the output format permits it, and retain independent assertions for diagnostic codes, exit
+  status, and other required text.
+- Host `Path` and `os.path` follow the running platform. For synthetic Windows paths tested on POSIX, use
+  `PureWindowsPath` or `ntpath` with explicitly chosen semantics; do not assume host `normpath` handles Windows
+  separators. Lexical equality does not establish filesystem identity. Use `samefile` only when both paths exist and
+  physical identity is the intended contract.
+- Do not normalize away behavior under test. Keep exact assertions for specified canonical output, manifest paths, URLs,
+  escaping, and security checks. Do not indiscriminately lowercase paths, resolve symlinks, collapse `..`, or rewrite an
+  entire structured payload merely to make an assertion pass. Case and alias equivalence depend on the relevant
+  filesystem and contract.
+- For changed path comparisons, exercise representative POSIX and Windows spellings, including mixed separators and
+  spaces, plus a genuinely different path that must still fail. Include drive, UNC, case, or alias cases when the
+  affected behavior handles them. Prefer existing focused tests; use a small portable probe where the Windows branch
+  would otherwise be untested locally. Report simulated checks separately from native Windows validation and keep
+  unavailable native coverage explicit.
+- When Windows CI fails on a path assertion, inspect the expected and actual paths and the preceding behavior checks
+  before attributing it to a compiler or runtime bug. Correct a faulty test comparison without weakening unrelated
+  checks or changing production output whose spelling already satisfies its contract.

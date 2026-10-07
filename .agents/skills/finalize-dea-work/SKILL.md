@@ -130,6 +130,13 @@ absence of intervening relevant or external modifications.
 
 ### Validation tier classification
 
+Before selecting validation, inspect changed path assertions and path-handling code against
+[AGENTS.md](../../../AGENTS.md#portable-path-comparisons). Check native diagnostic and subprocess comparisons for
+Windows mixed separators, preserve exact serialization contracts, and exercise equivalent spellings plus a different
+path that must be rejected. Use the relevant focused test or portable probe, and distinguish simulated Windows inputs
+from actual Windows execution in the handoff. A POSIX suite alone does not validate a Windows-only comparison branch.
+This check applies within the changed scope; it does not require a repository-wide audit or a remote CI dispatch.
+
 Choose the validation tier from the complete intended commit diff before applying the level scope matrix. Scope and tier
 are independent decisions; reclassify if staging or pre-commit changes that diff:
 
