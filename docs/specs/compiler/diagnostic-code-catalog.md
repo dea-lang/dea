@@ -322,7 +322,7 @@ diagnostic.
 |            | `L1C-2101` | L1 only | A non-virtual manifest provider is absent from the resolved Dea set                                                           |
 |            | `L1C-2102` | L1 only | An interface expectation differs from the supplied verified provider-interface fingerprint                                    |
 |            | `L1C-2103` | L1 only | The supplied lifecycle-import graph contains a cycle                                                                          |
-|            | `L1C-2104` | L1 only | Explicit, inferred, or build/run target entry selection from verified interfaces failed                                       |
+|            | `L1C-2104` | L1 only | Explicit or inferred entry selection from verified interfaces failed                                                          |
 |            | `L1C-2105` | L1 only | Standalone-link output, parent, or protected-input alias validation failed                                                    |
 |            | `L1C-2106` | L1 only | Host compiler/runtime selection or exact Windows compile/link command preflight failed                                        |
 |            | `L1C-2107` | L1 only | Standalone-link transaction setup or wrapper-source write failed                                                              |

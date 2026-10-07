@@ -12,6 +12,7 @@ import std.vector;
 import util.diag;
 import util.log;
 import analysis;
+import interface_projection;
 import preparation.consumer;
 import build_driver;
 import cli_args.model;
@@ -331,6 +332,19 @@ func ld_build_run_in_workspace(
             );
         }
         if (analysis_has_errors(result)) {
+            analysis_result_free(result);
+            return 1;
+        }
+
+        if (analysis_module_entry_type(result, prepared.entry_module) == null) {
+            ld_error(
+                diags,
+                "L1C-0012",
+                "entry module '" + prepared.entry_module +
+                    "' must define a non-extern 'main' function with no parameters for build/run",
+                ""
+            );
+            dp_print_collector(diags);
             analysis_result_free(result);
             return 1;
         }
