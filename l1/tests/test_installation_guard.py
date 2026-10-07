@@ -128,7 +128,9 @@ def test_invalid_inventory_fails_closed(installed, tmp_path, change):
     result = invoke(prefix, name)
     assert result.returncode == 1
     assert result.stdout == ""
-    assert "[L1C-9515]" in result.stderr and str(path) in result.stderr
+    assert "[L1C-9515]" in result.stderr
+    # Native diagnostics can join Windows prefixes with forward-slash suffixes.
+    assert str(path).replace(os.sep, "/") in result.stderr.replace(os.sep, "/")
     assert "repair or retry installation" in result.stderr
 
 
