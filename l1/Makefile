@@ -561,5 +561,5 @@ docs-pdf:
 docs-artifacts:
 	DEA_DIST_VERSION="$(DEA_DIST_VERSION)" $(PYTHON) scripts/gen_docs.py --strict --pdf --artifacts --stage $(DOC_STAGE)
 
-test-docgen:
-	$(PYTHON) -m pytest -q -n 0 tests/test_docgen_*.py
+test-docgen: venv
+	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_docgen_*.py

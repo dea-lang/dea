@@ -96,7 +96,8 @@ to `snapshot-...` (plain and `v`-prefixed versions also match). The standard-lib
 `scripts/docs_artifacts.py` provides `source_identity`, `package_version`, `unpack_bundle`, and `verify_tree`. Consumers
 supply the expected stage, version, and source identity, and extract into an empty destination. Validation rejects
 unsafe members, links outside the bundle, missing files, network assets, corruption, stale source identity, and
-preview/partial evidence. Run `make test-docgen` for focused regression coverage.
+preview/partial evidence. Run `make test-docgen` for focused regression coverage. This target prepares the shared
+virtual environment and runs its Python interpreter, independently of an explicit host `PYTHON` override.
 
 A failed selected-stage invocation removes its old consumer bundle, retains previous successful reference output, and
 preserves generation failures under `build/docs/stageS-failure/`. The other stage is untouched. Builds need separate
