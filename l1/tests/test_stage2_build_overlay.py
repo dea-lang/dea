@@ -22,7 +22,7 @@ from build_stage2_l1c import build_compiler, compiler_build_env
 from dea_tooling.bootstrap import wrapper_command
 from productization_provenance import collect_provenance
 from productization_inventory import MANIFEST_PATH, install_payload
-from productization_launchers import native_wrapper, native_cmd_wrapper
+from productization_payload import build_payload
 
 
 @unittest.skipUnless(os.environ.get("L1_PRODUCTIZATION_SEED"), "requires an explicit Stage 2 seed")
@@ -85,32 +85,15 @@ class Stage2BuildOverlayTests(unittest.TestCase):
         seed = Path(os.environ["L1_PRODUCTIZATION_SEED"]).absolute()
         env, _ = compiler_build_env(dict(os.environ))
         layout = seed.parent.parent
-        provenance, env = collect_provenance(
-            L1_ROOT, env | {"DEA_DIST_VERSION": "installed-guard-test"},
-            upstream=Path(env.get("L1_BOOTSTRAP_L0C", str(L1_ROOT.parent / "l0/build/dea/bin/l0c-stage2"))),
-            stage1=layout / "bin/l1c-stage1", stage2=seed, stage1_options=[],
-            preparation_inputs={"include/dea_rt.h": hashlib.sha256(
-                (layout / "include/dea_rt.h").read_bytes()).hexdigest()})
-        with tempfile.TemporaryDirectory(prefix="l1 installed startup ") as temporary:
+        with tempfile.TemporaryDirectory(prefix="l1 installed startup ") as temporary, build_payload(
+                L1_ROOT, layout, seed, env | {"DEA_DIST_VERSION": "installed-guard-test"},
+                upstream=Path(env.get("L1_BOOTSTRAP_L0C", str(L1_ROOT.parent / "l0/build/dea/bin/l0c-stage2"))),
+                stage1_options=[]) as (payload, provenance):
             root = Path(temporary)
-            payload = root / "payload"
-            overlay = root / "build_info.l1"
-            overlay.write_text(provenance.build_info_module(installed=True), encoding="utf-8")
-            binary = payload / "bin/l1c-stage2.native"
-            build_compiler(seed, binary, env, build_info_overlay=overlay)
-            overlay.unlink()
-            for directory in ("interfaces", "include"):
-                shutil.copytree(layout / directory, payload / directory)
-            shutil.copytree(L1_ROOT / "compiler/shared", payload / "shared")
-            for name in ("l1c", "l1c-stage2"):
-                path = payload / "bin" / (name + (".cmd" if os.name == "nt" else ""))
-                path.write_text(native_cmd_wrapper() if os.name == "nt" else native_wrapper(), encoding="utf-8")
-                path.chmod(0o755)
             prefix = root / "prefix"
             record = install_payload(payload, prefix, provenance.metadata())
             relocated = root / "relocated prefix with spaces"
             prefix.rename(relocated)
-            shutil.rmtree(payload)
             child_env = {**env, "L1_HOME": str(root / "absent-repo"), "L1_BUILD_DIR": str(root / "absent-build")}
             for name in ("L1_SYSTEM", "L1_RUNTIME_INCLUDE", "L1_RUNTIME_LIB"):
                 child_env.pop(name, None)
@@ -125,12 +108,12 @@ class Stage2BuildOverlayTests(unittest.TestCase):
             entries = [relocated / "bin/l1c-stage2.native", *[
                 relocated / "bin" / (name + (".cmd" if os.name == "nt" else ""))
                 for name in ("l1c", "l1c-stage2")]]
-            source = root / "startup_smoke.l1"
-            source.write_text('module startup_smoke; import std.io; func main() { printl_s("ok"); }\n')
+            source = root / "hello.l1"
+            shutil.copyfile(relocated / "share/dea/l1/smoke/hello.l1", source)
 
             def invoke(entry, args, expected=0):
                 result = subprocess.run([*wrapper_command(entry), *args], cwd=root, env=child_env,
-                                        capture_output=True, text=True, timeout=60)
+                                        capture_output=True, text=True, timeout=600)
                 self.assertEqual(result.returncode, expected, (args, result.stdout, result.stderr))
                 return result
 
@@ -148,6 +131,18 @@ class Stage2BuildOverlayTests(unittest.TestCase):
                         path.chmod(0o555 if path.is_dir() or mode & 0o111 else 0o444)
                 invoke(entries[0], ["--check", str(source)])
                 invoke(entries[0], ["--gen", str(source), "-o", str(root / "readonly.c")])
+                # Curated inputs must also suffice for cold native preparation and standalone linking.
+                child_env["PATH"] = env["PATH"]
+                child_env["L1_STDLIB_CACHE"] = str(root / "fresh cache")
+                child_env.pop("L1_CFLAGS", None)
+                invoke(entries[0], ["--compile", str(source), "-o", str(root / "hello.o")])
+                self.assertFalse((root / "fresh cache").exists())
+                missing = invoke(entries[0], ["--run", "--no-auto-prepare", str(source)], 1)
+                self.assertIn("L1C-2159", missing.stderr)
+                self.assertEqual(invoke(entries[0], ["--run", str(source)]).stdout, "hello from Dea L1\n")
+                program = root / ("hello.exe" if os.name == "nt" else "hello")
+                invoke(entries[0], ["--link", "--no-auto-prepare", str(root / "hello.o"), "-o", str(program)])
+                self.assertEqual(subprocess.check_output([str(program)], text=True), "hello from Dea L1\n")
                 self.assertEqual(originals, {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in originals})
             finally:
                 if os.name != "nt":

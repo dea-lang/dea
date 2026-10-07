@@ -11,7 +11,7 @@
 - Stage: L1
 - Target status:
   - Prefix installer, inventory, and launcher adaptation: In progress (inventory/recovery and launcher helpers
-    implemented; curated package assembly pending)
+    implemented; curated payload helper implemented; public install integration pending)
   - Native installed-state guard and package provenance: Implemented; four-platform acceptance pending
   - Distribution archive and reusable artifact smoke command: Pending
   - Stage 2 HTML/PDF inclusion: Pending integration (documentation artifact generator implemented)
@@ -23,6 +23,9 @@
   - `l1/scripts/productization_inventory.py`
   - `l1/scripts/productization_launchers.py`
   - `l1/scripts/productization_provenance.py`
+  - `l1/scripts/productization_payload.py`
+  - `l1/scripts/package/`
+  - `l1/docs/user/`
   - `l1/compiler/stage1_l0/support/installation.h`
   - `l1/scripts/build_stage2_l1c.py`
   - `l1/scripts/triple_bootstrap.py` (reuse fixed-point validation)
@@ -46,6 +49,7 @@
   - `l1/tests/test_stage2_tooling.py`
   - `l1/tests/test_stage2_build_overlay.py`
   - `l1/tests/test_installation_guard.py`
+  - `l1/tests/test_productization_payload.py`
   - `l1/tests/test_bootstrap_identity.py`
   - `l1/compiler/stage1_l0/tests/compiler_runtime_build_env_test.py`
   - `l1/compiler/stage1_l0/tests/runtime_build_config_test.py`
@@ -169,10 +173,28 @@ Validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
 - Runtime ownership and trace instrumentation are unchanged; validation scope adds focused startup/preparation trace
   checks and real installed-mode self-build acceptance. Native Windows and macOS acceptance remain pending.
 
-Remaining Phase 1 work: curated payload construction, standalone packaged instructions, and complete package fixtures.
-Public install/dist targets remain unavailable until these prerequisites are implemented. Native Windows execution and
-four-platform artifact acceptance remain pending for the revised helpers; local shell/inventory fixture success is not
-installed-compiler acceptance.
+Curated payload assembly now snapshots the selected semantic/runtime inputs, verifies the complete captured interface
+graph, and self-builds a separate marked Stage 2 executable. It includes launcher/activation scripts, notices, package
+identity, standalone instructions, and a stdlib smoke module. The internal context-managed helper cleans up private
+scratch on success/failure and leaves bootstrap outputs unchanged. Public install integration and complete artifact
+fixtures remain pending; install/dist targets are not yet exposed. Native Windows execution and four-platform artifact
+acceptance remain pending for the revised helpers; local shell/inventory fixture success is not installed-compiler
+acceptance.
+
+Curated payload milestone validation uses the same Linux/GCC toolchain:
+
+- `../.venv/bin/python -m pytest -q -n 0 tests/test_productization_payload.py`: ten cases passed, covering source
+  selection, interface/header mismatches, substituted inputs, provenance digests, shell/Windows payload forms, packaged
+  links, inventory verification, and failure cleanup.
+- `make -o build-stage1 -o build-stage2 -o runtime test L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc`: passed the normal gate,
+  including 125 productization cases; fourteen native Windows cases skipped. Reused unchanged compiler/runtime
+  artifacts.
+- `L1_BUILD_DIR=build/dea L1_PRODUCTIZATION_SEED=build/dea/bin/l1c-stage2 L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc ../.venv/bin/python -m pytest -q -n 0 tests/test_stage2_build_overlay.py -k installed_startup`:
+  passed real curated self-build, relocated direct/launcher use, read-only prefix compilation, cold-cache rejection with
+  automatic preparation disabled, preparation/run, warm standalone linking, and unchanged payload digests. The separate
+  private-overlay self-build case also passed through `test-productization-build`.
+- Compiler sources, ownership behavior, trace instrumentation, and self-build implementation are unchanged. Validation
+  adds curated-payload acceptance to the existing self-build test; four-platform package acceptance remains pending.
 
 Verification on macOS Intel with `/usr/bin/clang`, Apple Clang 17.0.0 (`clang-1700.6.4.2`):
 
@@ -283,21 +305,21 @@ source/build/payload paths that would overwrite build inputs or recursively copy
 
 The selected layout is:
 
-| Prefix-relative path                                   | Contents                                                                                                                                                         |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bin/l1c`, `bin/l1c-stage2`, `bin/l1c-stage2.native`   | Selected Stage 2 alias, prefix-relative launcher, and self-built host native executable. Use the current native-artifact naming convention.                      |
-| `bin/l1-env.sh`                                        | Sourceable bash/zsh activation, including MSYS2 bash.                                                                                                            |
-| `bin/l1c.cmd`, `bin/l1c-stage2.cmd`, `bin/l1-env.cmd`  | Windows launcher/activation counterparts; Windows aliases use copies as in the current workflow.                                                                 |
-| `shared/l1/stdlib/`                                    | Bundled `std.*` and `sys.*` `.l1` sources with their module-relative paths.                                                                                      |
-| `shared/runtime/`                                      | Runtime `src/`, `include/`, `internal/`, and symbol manifests needed by the preparation service.                                                                 |
-| `interfaces/`                                          | Complete verified bundled semantic `.l1m` set, copied exactly from bootstrap using module-relative paths.                                                        |
-| `include/`                                             | Public `dea_rt.h` and `l1_real.h`; rebuild-only internal headers remain under `shared/runtime/internal/`.                                                        |
-| `VERSION`                                              | Human-readable Stage 2 package identity, development status, host target, and bootstrap/build provenance.                                                        |
-| `share/dea/l1/install-manifest.json`                   | Versioned inventory of payload files, file modes, relative alias targets, content digests, and compiler-owned input-set identity (including `D` where supplied). |
-| `README.md`, `share/doc/dea/l1/toolchain.md`           | Self-contained Stage 2 installation/use/cache instructions with working payload or canonical repository links.                                                   |
-| `share/doc/dea/l1/autodocs/stage2/`                    | Verified Stage 2 `html/`, `pdf/dea_l1_stage2_api_reference.pdf`, and docs `manifest.json`; required for distributions, optional for direct installs.             |
-| `share/dea/l1/smoke/hello.l1`                          | Small bundled smoke program importing a stdlib module and producing deterministic output.                                                                        |
-| `LICENSE-MIT`, `LICENSE-APACHE`, `THIRD_PARTY_NOTICES` | Repository license and attribution files, plus any notices required by the shipped payload.                                                                      |
+| Prefix-relative path                                              | Contents                                                                                                                                                         |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bin/l1c`, `bin/l1c-stage2`, `bin/l1c-stage2.native`              | Selected Stage 2 alias, prefix-relative launcher, and self-built host native executable. Use the current native-artifact naming convention.                      |
+| `bin/l1-env.sh`                                                   | Sourceable bash/zsh activation, including MSYS2 bash.                                                                                                            |
+| `bin/l1c.cmd`, `bin/l1c-stage2.cmd`, `bin/l1-env.cmd`             | Windows launcher/activation counterparts; Windows aliases use copies as in the current workflow.                                                                 |
+| `shared/l1/stdlib/`                                               | Bundled `std.*` and `sys.*` `.l1` sources with their module-relative paths.                                                                                      |
+| `shared/runtime/`                                                 | Runtime `src/`, `include/`, `internal/`, and symbol manifests needed by the preparation service.                                                                 |
+| `interfaces/`                                                     | Complete verified bundled semantic `.l1m` set, copied exactly from bootstrap using module-relative paths.                                                        |
+| `include/`                                                        | Public `dea_rt.h` and `l1_real.h`; rebuild-only internal headers remain under `shared/runtime/internal/`.                                                        |
+| `VERSION`                                                         | Human-readable Stage 2 package identity, development status, host target, and bootstrap/build provenance.                                                        |
+| `share/dea/l1/install-manifest.json`                              | Versioned inventory of payload files, file modes, relative alias targets, content digests, and compiler-owned input-set identity (including `D` where supplied). |
+| `README.md`, `README-WINDOWS.md`, `share/doc/dea/l1/toolchain.md` | Self-contained Stage 2 installation/use/cache instructions with working payload or canonical repository links.                                                   |
+| `share/doc/dea/l1/autodocs/stage2/`                               | Verified Stage 2 `html/`, `pdf/dea_l1_stage2_api_reference.pdf`, and docs `manifest.json`; required for distributions, optional for direct installs.             |
+| `share/dea/l1/smoke/hello.l1`                                     | Small bundled smoke program importing a stdlib module and producing deterministic output.                                                                        |
+| `LICENSE-MIT`, `LICENSE-APACHE`, `THIRD_PARTY_NOTICES`            | Repository license and attribution files, plus any notices required by the shipped payload.                                                                      |
 
 Resolve installed defaults from the launcher's own prefix: `L1_HOME` points to the prefix, source lookup uses
 `shared/l1/stdlib`, and semantic discovery uses `interfaces`. Installed wrappers set their own `L1_HOME` and remove
