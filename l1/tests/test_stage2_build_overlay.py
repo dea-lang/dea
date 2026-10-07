@@ -18,6 +18,7 @@ L1_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(L1_ROOT / "scripts"))
 from build_stage2_l1c import build_compiler, compiler_build_env
 from dea_tooling.bootstrap import wrapper_command
+from productization_provenance import collect_provenance
 
 
 @unittest.skipUnless(os.environ.get("L1_PRODUCTIZATION_SEED"), "requires an explicit Stage 2 seed")
@@ -36,9 +37,16 @@ class Stage2BuildOverlayTests(unittest.TestCase):
             layout_root = L1_ROOT / layout_root
         paths = [*source_root.rglob("*.l1"), *sorted((layout_root / "bin").glob("*"))]
         before = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in paths if path.is_file()}
-        fallback = (source_root / "build_info.l1").read_text(encoding="utf-8")
-        overlay_text = fallback.replace("return false;", "return true;", 1).replace(
-            'return "unknown";', 'return "private-overlay-test";')
+        inputs = {"include/dea_rt.h": hashlib.sha256(
+            (L1_ROOT / "compiler/shared/runtime/include/dea_rt.h").read_bytes()).hexdigest()}
+        provenance, env = collect_provenance(
+            L1_ROOT, env | {"DEA_DIST_VERSION": "private-overlay-test"},
+            upstream=Path(env.get("L1_BOOTSTRAP_L0C", str(L1_ROOT.parent / "l0/build/dea/bin/l0c-stage2"))),
+            stage1=layout_root / "bin/l1c-stage1", stage2=seed,
+            stage1_options=[], preparation_inputs=inputs)
+        metadata = provenance.metadata()
+        evidence = metadata["provenance"]
+        overlay_text = provenance.build_info_module()
         with tempfile.TemporaryDirectory(prefix="l1 package overlay with spaces ") as temporary:
             root = Path(temporary)
             overlay = root / "metadata.l1"
@@ -53,11 +61,13 @@ class Stage2BuildOverlayTests(unittest.TestCase):
             version = subprocess.check_output([str(output), "--version"], cwd=root, env=env, text=True)
             self.assertEqual(version.strip().splitlines(), [
                 "Dea language / L1 compiler (Stage 2) private-overlay-test",
-                "build: private-overlay-test",
-                "build time: private-overlay-test",
-                "commit: private-overlay-test",
-                "host: private-overlay-test",
-                "compiler: private-overlay-test",
+                f'build: {evidence["build_id"]}',
+                f'build time: {evidence["build_time"]}',
+                'commit: ' + evidence["source"]["revision"] +
+                ("+dirty" if evidence["source"]["tree_state"] == "dirty" else ""),
+                f'host: {metadata["os"]}-{metadata["arch"]}',
+                "maturity: development",
+                f'compiler: {evidence["native_compiler"]["version"].splitlines()[0]}',
             ])
             hello = root / "overlay_smoke.l1"
             hello.write_text('module overlay_smoke;\nfunc main() -> int { return 0; }\n', encoding="utf-8")

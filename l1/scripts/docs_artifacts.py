@@ -18,6 +18,8 @@ import sys
 import tarfile
 import tempfile
 
+from productization_provenance import package_version as compiler_package_version
+
 L1_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -87,7 +89,7 @@ def package_version(root: Path) -> str:
     Returns:
         Explicit distribution version, or the matching development identity.
     """
-    version = os.environ.get("DEA_DIST_VERSION", "").strip() or "dev"
+    version = compiler_package_version(dict(os.environ))
     tag = os.environ.get("L1_DOCS_RELEASE_TAG", "").strip()
     if tag and tag.removeprefix("l1-").removeprefix("v") != version.removeprefix("v"):
         raise ValueError("L1_DOCS_RELEASE_TAG must agree with DEA_DIST_VERSION")

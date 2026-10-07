@@ -1,11 +1,11 @@
 # L1 Productization Inventory Helpers
 
-Version: 2026-10-06
+Version: 2026-10-07
 
 The first productization milestone implements prefix ownership, recoverable payload copying, and installed-context
 launcher templates. These are internal packaging primitives. L1 does not yet expose `make install`,
-`make list-installed`, `make dist`, or `make smoke-dist`. Stage 2 construction also accepts a private build-info
-overlay. The native installed-state guard, package provenance generation, self-hosted package assembly, and artifact
+`make list-installed`, `make dist`, or `make smoke-dist`. Stage 2 construction also accepts a private build-info overlay
+with generated package provenance. The native installed-state guard, self-hosted package assembly, and artifact
 acceptance remain in [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization].
 
 ## Inventory schema
@@ -26,9 +26,9 @@ native startup reader. A complete record requires exactly these fields:
 | `entries`         | Intended owned files and aliases                                                                                    |
 
 An incomplete record additionally requires `previous_entries`, retaining the ownership of the previous installation and
-any interrupted installation attempts. Both entry lists obey the same validation rules. The future builder owns the
-detailed source/bootstrap/build provenance fields; the inventory helper does not invent preparation identities or native
-cache keys.
+any interrupted installation attempts. Both entry lists obey the same validation rules. The provenance collector
+supplies the detailed source/bootstrap/build provenance fields; the inventory helper does not invent preparation
+identities or native cache keys.
 
 Each entry is one of:
 
@@ -111,9 +111,23 @@ neither case falls back to repository metadata. Calls without an overlay retain 
 builder neither edits checked-in sources nor selects the development alias. Its existing construction environment
 overrides inherited `L1_HOME` and clears system/runtime input overrides.
 
-This internal API supplies the overlay mechanism only. The package builder still needs to generate agreed provenance,
-select the installed marker after native startup validation is implemented, and use the repository-mode Stage 2 seed to
-construct the delivered executable. An overlaid build alone is not an installed package.
+[l1/scripts/productization_provenance.py][provenance] captures one immutable snapshot for the overlay, standalone
+`VERSION` text, and inventory metadata. `collect_provenance` takes explicit upstream L0, L1 Stage 1, and Stage 2 seed
+paths, recorded Stage 1 construction arguments, and shipped preparation-input digests. It probes each compiler identity,
+records source revision/cleanliness (explicitly unknown outside Git), uses the canonical repository URL, and returns the
+effective self-build environment alongside the snapshot. Pass that returned environment to `build_compiler`; the
+recorded native compiler and C flags include the builder's runtime/quarantine defaults. Only selected options enter
+metadata; the process environment is not serialized. Paths are informational, never installed lookup roots.
+
+The explicit `DEA_DIST_VERSION` or `dev` fallback is shared with documentation bundles and must be a portable filename
+token. Host tokens cover Linux x86_64, macOS x86_64/arm64, and Windows UCRT64 x86_64. Build time is captured once in
+UTC. Development maturity remains visible in native version output even for version strings that resemble stable
+releases. `VERSION` and inventory provenance additionally retain bootstrap reports, construction arguments, and named
+SHA-256 input digests. A preparation-service identity is recorded only when supplied; this helper never derives `D` or a
+native cache key. The caller must provide the actual Stage 1 arguments and digests of the selected shipped inputs.
+
+The generated module retains repository startup behavior. Selecting an installed marker remains gated on the native
+startup guard, which is not implemented. An overlaid build alone is not an installed package.
 
 ## Validation
 
@@ -124,10 +138,12 @@ recovery, relocation with spaces, and launcher/activation behavior. It is includ
 
 `make test-productization-build` is the explicit native overlay acceptance target. It builds the Stage 2 seed, uses it
 to self-build a separate compiler with test provenance in a path containing spaces, removes the input overlay, verifies
-native version output and semantic compilation, and checks that source modules and development binaries/aliases retain
-their bytes. It does not establish installed-package acceptance or run automatically in the lightweight fixture gate.
+generated provenance in native version output and semantic compilation, and checks that source modules and development
+binaries/aliases retain their bytes. It does not establish installed-package acceptance or run automatically in the
+lightweight fixture gate.
 
 [inventory]: ../../scripts/productization_inventory.py
 [launchers]: ../../scripts/productization_launchers.py
 [productization]: ../../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
+[provenance]: ../../scripts/productization_provenance.py
 [stage2-builder]: ../../scripts/build_stage2_l1c.py

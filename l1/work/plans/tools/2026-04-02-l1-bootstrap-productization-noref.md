@@ -3,7 +3,7 @@
 ## Define the self-hosted L1 Stage 2 install and distribution workflow
 
 - Date: 2026-04-02
-- Last reviewed: 2026-10-06
+- Last reviewed: 2026-10-07
 - Status: In progress
 - Title: Define the self-hosted L1 Stage 2 install and distribution workflow
 - Kind: Tooling
@@ -12,10 +12,10 @@
 - Target status:
   - Prefix installer, inventory, and launcher adaptation: In progress (inventory/recovery and launcher helpers
     implemented; curated package assembly pending)
-  - Native installed-state guard and package provenance: In progress (private Stage 2 build-info overlay mechanism
-    implemented; metadata generation and native guard pending)
+  - Native installed-state guard and package provenance: In progress (private Stage 2 build-info overlay mechanism and
+    metadata generation implemented; native guard pending)
   - Distribution archive and reusable artifact smoke command: Pending
-  - Stage 2 HTML/PDF inclusion: Blocked on documentation-generation artifact implementation
+  - Stage 2 HTML/PDF inclusion: Pending integration (documentation artifact generator implemented)
   - Four-platform acceptance and documentation: Pending
 - Subsystem: Build workflow / install layout / distribution packaging / bootstrap docs
 - Modules:
@@ -102,7 +102,7 @@ Reviewed on 2026-10-06 against the local checkout:
     Read-only installed fixtures contain semantic interfaces and rebuild inputs with no native profile requirement. They
     select context using `L1_HOME` and do not provide the proposed inventory or installed-state startup guard.
 09. Both stages' checked-in `build_info` modules supply fallback metadata. The Stage 2 builder now accepts a private
-    generated build-info module; package provenance generation remains pending. `--help` / `--version` currently return
+    generated build-info module; package provenance generation is implemented. `--help` / `--version` currently return
     before any installation validation, which still requires explicit implementation.
 10. No install/dist or reusable artifact smoke target exists. Prefix/inventory/recovery primitives and the fixture-based
     `test-productization` target are implemented. Preparation identity and storage internals have evolved since the
@@ -133,10 +133,29 @@ fallback metadata. The explicit `make test-productization-build` target exercise
 seed, checks embedded version output and semantic compilation after overlay removal, and verifies compiler sources and
 development artifacts remain unchanged. It is separate from the lightweight fixture gate.
 
-Remaining Phase 1 work: native installed-state reader and `L1C-9515`, package build-info/provenance generation, curated
-payload construction, standalone packaged instructions, and actual compiler fixtures. Public install/dist targets remain
-unavailable until these prerequisites are implemented. Native Windows execution and four-platform artifact acceptance
-remain pending for the revised helpers; local shell/inventory fixture success is not installed-compiler acceptance.
+Package provenance collection now captures explicit bootstrap compiler reports, effective Stage 2 self-build options,
+UTC build identity, normalized supported host tokens, and supplied preparation-input digests. The overlay, `VERSION`,
+and inventory consume one immutable snapshot; documentation bundles share the same validated package-version selection.
+The collector does not infer a preparation identity, serialize the process environment, or enable installed startup. The
+standalone Stage 2 documentation generator is implemented; distribution integration remains pending.
+
+Provenance milestone validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
+
+- Focused provenance, inventory/launcher, and documentation-artifact regression tests passed. Native Windows cases are
+  skipped on this host.
+- `make test L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc`: passed documentation tests, Stage 1/Stage 2 smoke suites, parity,
+  all four examples, Docker/Wine runner regressions, 22 tooling/bootstrap-identity tests, and 82 productization tests;
+  fourteen native Windows productization cases skipped.
+- `make -o build-stage2 test-productization-build L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc`: passed the
+  generated-provenance native self-build, embedded version report, semantic compilation after overlay removal, and
+  source/development-artifact preservation. Reused the unchanged Stage 2 seed from the normal gate.
+- Compiler source, runtime selection, ownership, and trace behavior are unchanged; validation scope is the normal gate
+  plus focused provenance/overlay checks.
+
+Remaining Phase 1 work: native installed-state reader and `L1C-9515`, curated payload construction, standalone packaged
+instructions, and actual compiler fixtures. Public install/dist targets remain unavailable until these prerequisites are
+implemented. Native Windows execution and four-platform artifact acceptance remain pending for the revised helpers;
+local shell/inventory fixture success is not installed-compiler acceptance.
 
 Verification on macOS Intel with `/usr/bin/clang`, Apple Clang 17.0.0 (`clang-1700.6.4.2`):
 

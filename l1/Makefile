@@ -468,7 +468,7 @@ test-stage2-tooling: venv
 	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_stage2_tooling.py tests/test_bootstrap_identity.py
 
 test-productization: venv
-	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_bootstrap_productization.py
+	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_bootstrap_productization.py tests/test_productization_provenance.py
 
 test-productization-build: build-stage2
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" L1_PRODUCTIZATION_SEED="$(L1_BUILD_DIR)/bin/l1c-stage2" \
