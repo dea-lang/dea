@@ -120,3 +120,8 @@ func build_info_version_text(identity: string) -> string? {
         return sb_to_string(sb);
     }
 }
+
+/** Return whether this binary requires an installed-prefix inventory at startup. */
+func build_info_is_installed() -> bool {
+    return false;
+}

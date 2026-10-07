@@ -153,6 +153,40 @@ def _validate_entries(entries: Any) -> None:
             entry = indexed[path]
 
 
+def _validate_native_json(record: Any) -> None:
+    """Enforce the native reader's size, nesting, node, and string bounds."""
+    nodes = 0
+
+    def visit(value: Any, depth: int) -> None:
+        nonlocal nodes
+        nodes += 1
+        if depth > 64 or nodes > 100000:
+            raise InventoryError("inventory exceeds native JSON nesting or node limits")
+        if isinstance(value, str):
+            if "\0" in value:
+                raise InventoryError("inventory strings must not contain NUL")
+            value.encode("utf-8")
+        elif isinstance(value, dict):
+            for key, child in value.items():
+                if not isinstance(key, str) or "\0" in key:
+                    raise InventoryError("inventory object keys must be strings without NUL")
+                key.encode("utf-8")
+                visit(child, depth + 1)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child, depth + 1)
+        elif value is not None and type(value) not in (bool, int, float):
+            raise InventoryError("inventory must contain JSON values")
+
+    try:
+        visit(record, 0)
+        wire = json.dumps(record, indent=2, sort_keys=True, allow_nan=False) + "\n"
+        if len(wire.encode("utf-8")) > 16 * 1024 * 1024:
+            raise InventoryError("inventory exceeds native JSON size limit")
+    except (TypeError, ValueError, UnicodeError, RecursionError) as exc:
+        raise InventoryError(f"invalid native inventory JSON: {exc}") from exc
+
+
 def validate_inventory(record: Any, *, require_complete: bool = False) -> None:
     """Validate schema 1 metadata without reading or hashing payload files.
 
@@ -181,10 +215,7 @@ def validate_inventory(record: Any, *, require_complete: bool = False) -> None:
             raise InventoryError(f"invalid package {name}")
     if not isinstance(record["provenance"], dict) or not record["provenance"]:
         raise InventoryError("package provenance must be a nonempty object")
-    try:
-        json.dumps(record, allow_nan=False)
-    except (TypeError, ValueError) as exc:
-        raise InventoryError("inventory must contain finite JSON values") from exc
+    _validate_native_json(record)
     _validate_entries(record["entries"])
     if state == "incomplete":
         _validate_entries(record["previous_entries"])

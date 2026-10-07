@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-09-24
+Version: 2026-10-07
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -375,6 +375,7 @@ diagnostic.
 | `L0C-9512` |            | L0 only | Compiler temporary source cleanup failed and the retained path was reported                                                   |
 | `L0C-9513` | `L1C-9513` | All     | Native compiler temporary-parent inspection, setup, trust validation, or exclusive reservation failed                         |
 | `L0C-9514` | `L1C-9514` | All     | Native compiler temporary workspace cleanup failed and the retained workspace path was reported                               |
+|            | `L1C-9515` | L1 only | Installed compiler prefix or inventory is missing, unreadable, malformed, unsupported, or incomplete                          |
 
 ## Name Resolution and Import Analysis
 

@@ -9,6 +9,7 @@
 
 #include <errno.h>
 #include <inttypes.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,7 +57,7 @@ static void pc_text(PcBuffer *b, const char *s) { pc_bytes(b, s, strlen(s)); }
 static void pc_char(PcBuffer *b, char c) { pc_bytes(b, &c, 1); }
 static char *pc_take(PcBuffer *b) { return b->s ? b->s : pc_string(""); }
 
-enum { PJ_NULL, PJ_STRING, PJ_NUMBER, PJ_ARRAY, PJ_OBJECT, PJ_BOOL };
+enum { PJ_NULL, PJ_STRING, PJ_NUMBER, PJ_ARRAY, PJ_OBJECT, PJ_BOOL, PJ_RAW_NUMBER };
 typedef struct PcJson {
     int type;
     char *key, *text;
@@ -194,6 +195,9 @@ static void pj_write(PcBuffer *b, const PcJson *j) {
         snprintf(number, sizeof(number), "%" PRId64, j->number);
         pc_text(b, number);
         break;
+    case PJ_RAW_NUMBER:
+        pc_text(b, j->text);
+        break;
     case PJ_BOOL:
         pc_text(b, j->number ? "true" : "false");
         break;
@@ -238,7 +242,7 @@ static char *pj_encode(const PcJson *j) {
 typedef struct {
     const char *s;
     size_t i, n, nodes;
-    int failed;
+    int failed, general_numbers;
 } PjParser;
 static void pj_space(PjParser *p) {
     while (p->i < p->n && strchr(" \t\r\n", p->s[p->i]))
@@ -436,13 +440,37 @@ static PcJson *pj_parse_value(PjParser *p, int depth) {
         else
             while (p->i < p->n && p->s[p->i] >= '0' && p->s[p->i] <= '9')
                 ++p->i;
+        if (p->general_numbers) {
+            if (p->i < p->n && p->s[p->i] == '.') {
+                size_t digits = ++p->i;
+                while (p->i < p->n && p->s[p->i] >= '0' && p->s[p->i] <= '9') ++p->i;
+                if (digits == p->i) p->failed = 1;
+            }
+            if (p->i < p->n && (p->s[p->i] == 'e' || p->s[p->i] == 'E')) {
+                size_t digits;
+                ++p->i;
+                if (p->i < p->n && (p->s[p->i] == '+' || p->s[p->i] == '-')) ++p->i;
+                digits = p->i;
+                while (p->i < p->n && p->s[p->i] >= '0' && p->s[p->i] <= '9') ++p->i;
+                if (digits == p->i) p->failed = 1;
+            }
+        }
         num = pc_slice(p->s + start, p->i - start);
         errno = 0;
         value = strtoll(num, &end, 10);
-        if (errno || *end)
+        if (!errno && !*end) {
+            j = pj_number(value);
+            free(num);
+        } else if (p->general_numbers) {
+            /* Preserve non-integral and large values in opaque provenance. Schema
+               integers still require PJ_NUMBER, so 1.0 never means schema 1. */
+            if (strpbrk(num, ".eE") && !isfinite(strtod(num, NULL))) p->failed = 1;
+            j = pj_new(PJ_RAW_NUMBER);
+            j->text = num;
+        } else {
+            free(num);
             p->failed = 1;
-        free(num);
-        j = pj_number(value);
+        }
     } else if (p->n - p->i >= 4 && !memcmp(p->s + p->i, "null", 4)) {
         p->i += 4;
         j = pj_new(PJ_NULL);
@@ -494,8 +522,8 @@ static int pj_valid_utf8(const char *text, size_t n) {
     }
     return 1;
 }
-static PcJson *pj_parse(const char *s, size_t n) {
-    PjParser p = {s, 0, n, 0, 0};
+static PcJson *pj_parse_mode(const char *s, size_t n, int general_numbers) {
+    PjParser p = {s, 0, n, 0, 0, general_numbers};
     PcJson *j;
     if (n > 16 * 1024 * 1024 || memchr(s, 0, n) || !pj_valid_utf8(s, n))
         return NULL;
@@ -507,6 +535,8 @@ static PcJson *pj_parse(const char *s, size_t n) {
     }
     return j;
 }
+/** Preparation identities retain their integral-only canonical JSON contract. */
+static PcJson *pj_parse(const char *s, size_t n) { return pj_parse_mode(s, n, 0); }
 static PcJson *pj_clone(const PcJson *j) {
     PcJson *copy;
     const PcJson *child;
@@ -526,7 +556,7 @@ static int pj_equal(const PcJson *a, const PcJson *b) {
         return a == b;
     if (a->type != b->type || a->number != b->number)
         return 0;
-    if (a->type == PJ_STRING)
+    if (a->type == PJ_STRING || a->type == PJ_RAW_NUMBER)
         return !strcmp(a->text, b->text);
     if (pj_count(a) != pj_count(b))
         return 0;

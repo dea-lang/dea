@@ -1,6 +1,6 @@
 # Dea Compiler CLI Contract
 
-Version: 2026-10-03
+Version: 2026-10-07
 
 This document defines the shared command-line contract for Dea compilers. It covers behavior common to the current L0
 Stage 1, L0 Stage 2, L1 Stage 1, and L1 Stage 2 implementations. A level may add a documented mode or option without
@@ -428,3 +428,17 @@ Equivalent behavior keeps the same flag names, aliases, option ordering, exit-co
 across stages and levels. A level may recognize a shared spelling while reporting that its capability is unavailable,
 but it must not reinterpret that spelling. A level-specific extension must be documented in the shared contract and in
 its owning level's live docs before it is treated as public behavior.
+
+## L1 Installed Startup
+
+L1 binaries built with the internal installed marker validate their physical prefix and
+`share/dea/l1/install-manifest.json` before argument parsing, including `--help` and `--version`. The native executable
+resolves its own location under `bin/`; launchers, inherited environment roots, and valid metadata are not required to
+recognize installed mode. Missing, unreadable, malformed, unsupported, or incomplete state reports `L1C-9515`,
+identifies the metadata path or unresolved executable context, recommends repair/reinstallation, and exits with status
+1\. This check requires no external interpreter or build tool and does not hash the payload.
+
+After successful validation, the physical prefix replaces `L1_HOME` and inherited `L1_BUILD_DIR` is cleared. Explicit
+system, runtime, compiler, and cache selectors remain authoritative. Ordinary repository builds of both stages retain
+their existing startup behavior and require no inventory. The marker is an internal packaging input, not a public CLI
+option; its availability does not establish a complete install or distribution workflow.

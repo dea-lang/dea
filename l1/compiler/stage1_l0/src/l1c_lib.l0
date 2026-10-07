@@ -27,6 +27,7 @@ import preparation.consumer;
 import compile_driver;
 import link_driver;
 import build_info;
+
 import cli_args;
 import cli_args.help;
 import cli_args.model;
@@ -41,6 +42,9 @@ import name_resolver.state;
 import types;
 import symbols;
 import ast_printer;
+
+/** Native installed-state validation, shared by both compiler stages. */
+extern func l1c_installation_startup() -> int;
 
 /**
  * Represents the PreparedInput structure.
@@ -831,6 +835,11 @@ func l1c_cmd_nyi(mode: CliMode, cfg: LogConfig*) -> int {
  * @return Process-style status code.
  */
 func run_with_argv(argv: StringVector*) -> int {
+    if (build_info_is_installed()) {
+        if (l1c_installation_startup() != 0) {
+            return 1;
+        }
+    }
     let parsed = cli_parse(argv);
     if (parsed.help_requested) {
         cli_print_help();

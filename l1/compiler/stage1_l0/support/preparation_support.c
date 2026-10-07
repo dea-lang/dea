@@ -22,6 +22,7 @@
 #include "preparation/identity.h"
 #include "preparation/construction.h"
 #include "preparation/build.h"
+#include "installation.h"
 
 /** Project resolved managed inputs without copying cache identities or storage policy. */
 static PcJson *pc_managed_construction_inputs(PcContext *c) {

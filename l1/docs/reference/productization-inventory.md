@@ -5,7 +5,7 @@ Version: 2026-10-07
 The first productization milestone implements prefix ownership, recoverable payload copying, and installed-context
 launcher templates. These are internal packaging primitives. L1 does not yet expose `make install`,
 `make list-installed`, `make dist`, or `make smoke-dist`. Stage 2 construction also accepts a private build-info overlay
-with generated package provenance. The native installed-state guard, self-hosted package assembly, and artifact
+with generated package provenance and native installed-state validation. Self-hosted package assembly and artifact
 acceptance remain in [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization].
 
 ## Inventory schema
@@ -22,7 +22,7 @@ native startup reader. A complete record requires exactly these fields:
 | `package_version` | Nonempty filename token beginning with an ASCII letter or digit, followed by letters, digits, `.`, `_`, `+`, or `-` |
 | `maturity`        | `"development"`, independently of the package version                                                               |
 | `os`, `arch`      | Nonempty lowercase ASCII target tokens; letters, digits, `_`, and `-` are allowed                                   |
-| `provenance`      | Nonempty JSON object supplied by the package builder; all values must be finite JSON values                         |
+| `provenance`      | Nonempty JSON object supplied by the package builder; values must satisfy the native JSON bounds below              |
 | `entries`         | Intended owned files and aliases                                                                                    |
 
 An incomplete record additionally requires `previous_entries`, retaining the ownership of the previous installation and
@@ -42,9 +42,12 @@ Each entry is one of:
 Paths use canonical prefix-relative `/` separators. Empty components, `.`, `..`, backslashes, control characters,
 Windows-reserved names/characters, trailing dots/spaces, duplicate paths, case/Unicode-equivalent collisions, and file
 paths used as parent directories are rejected. Unknown record/entry fields and duplicate JSON object keys are errors.
-Regular source files receive portable read or executable modes; aliases preserve their relative targets. Windows payload
-builders use ordinary file copies for launcher aliases. POSIX verification checks recorded modes; Windows verification
-checks bytes and file type without treating POSIX mode bits as native permissions.
+The native JSON format limits records to 16 MiB, 100,000 value nodes, and nesting depth 64. Object keys must be strings;
+strings must be valid Unicode without NUL. Numeric provenance values must be finite; schema and mode fields remain
+integers. The Python validator enforces these bounds before publication. Regular source files receive portable read or
+executable modes; aliases preserve their relative targets. Windows payload builders use ordinary file copies for
+launcher aliases. POSIX verification checks recorded modes; Windows verification checks bytes and file type without
+treating POSIX mode bits as native permissions.
 
 ## Prefix installation and recovery
 
@@ -95,8 +98,8 @@ guidance.
   including empty entries and literal `!` and `%` characters. Repeated prefix switching can therefore leave the
   toolchain directory after an inactive compiler directory.
 
-The templates select prefix context; native installation-state validation is still pending. Shell probes exercise
-context and argument/exit-code behavior without claiming real installed-compiler acceptance.
+The templates select prefix context. Marked native compilers independently derive and validate that context before
+command dispatch. Shell-only probes still exercise argument, environment, and exit-code behavior separately.
 
 ## Private Stage 2 build-info overlay
 
@@ -126,8 +129,27 @@ releases. `VERSION` and inventory provenance additionally retain bootstrap repor
 SHA-256 input digests. A preparation-service identity is recorded only when supplied; this helper never derives `D` or a
 native cache key. The caller must provide the actual Stage 1 arguments and digests of the selected shipped inputs.
 
-The generated module retains repository startup behavior. Selecting an installed marker remains gated on the native
-startup guard, which is not implemented. An overlaid build alone is not an installed package.
+`build_info_module(installed=True)` enables the native installed marker. The default remains `False`, matching both
+checked-in fallback modules and ordinary repository construction. An overlaid build alone is not a complete package.
+
+## Native installed startup
+
+The shared native hook in [l1/compiler/stage1_l0/support/installation.h][installation] runs before CLI parsing when the
+compiled marker is enabled. Both compiler stages contain the same hook; only Stage 2 packaging enables it. Existing
+preparation support provides the executable-path, filesystem, and bounded JSON helpers. Preparation identity parsing
+retains its integral-only JSON mode; the inventory reader additionally accepts finite numeric provenance values.
+
+The running executable's physical parent must be `bin/`. Its parent becomes the prefix, independently of wrappers,
+`L1_HOME`, `L1_BUILD_DIR`, and inventory contents. Metadata and its parent directories must be ordinary
+files/directories, not substituted links. Startup validates schema 1, L1 Stage 2, development maturity, complete state,
+required fields, entry shapes, portable paths, exact duplicate paths, mode values and digest syntax, and closed relative
+alias chains. Installer preflight additionally owns case/Unicode-equivalent path collision checks and destination
+safety; full artifact verification owns payload hashing and physical mode checks.
+
+Invalid state prints `L1C-9515` with the metadata path or unresolved executable context and repair/retry guidance, then
+returns status 1 even for help/version. Successful startup sets `L1_HOME` to the physical prefix and clears inherited
+`L1_BUILD_DIR`, preserving explicit system/runtime/compiler/cache selectors. No external interpreter, build tool, cache
+write, or payload digest scan is needed. Repository-mode binaries do not invoke the hook or require inventory metadata.
 
 ## Validation
 
@@ -140,8 +162,12 @@ recovery, relocation with spaces, and launcher/activation behavior. It is includ
 to self-build a separate compiler with test provenance in a path containing spaces, removes the input overlay, verifies
 generated provenance in native version output and semantic compilation, and checks that source modules and development
 binaries/aliases retain their bytes. It does not establish installed-package acceptance or run automatically in the
-lightweight fixture gate.
+lightweight fixture gate. The same target also self-builds a marked compiler and exercises direct and launcher
+entrypoints against a relocated prefix, stale inherited roots, read-only inputs, and absent/malformed/incomplete
+metadata. The guard fixtures use real native code and run through `test-productization`; platform-specific cases skip
+explicitly when their host prerequisites are absent.
 
+[installation]: ../../compiler/stage1_l0/support/installation.h
 [inventory]: ../../scripts/productization_inventory.py
 [launchers]: ../../scripts/productization_launchers.py
 [productization]: ../../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md

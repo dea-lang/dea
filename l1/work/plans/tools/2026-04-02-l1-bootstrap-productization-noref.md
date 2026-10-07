@@ -12,8 +12,7 @@
 - Target status:
   - Prefix installer, inventory, and launcher adaptation: In progress (inventory/recovery and launcher helpers
     implemented; curated package assembly pending)
-  - Native installed-state guard and package provenance: In progress (private Stage 2 build-info overlay mechanism and
-    metadata generation implemented; native guard pending)
+  - Native installed-state guard and package provenance: Implemented; four-platform acceptance pending
   - Distribution archive and reusable artifact smoke command: Pending
   - Stage 2 HTML/PDF inclusion: Pending integration (documentation artifact generator implemented)
   - Four-platform acceptance and documentation: Pending
@@ -23,6 +22,8 @@
   - `l1/scripts/`
   - `l1/scripts/productization_inventory.py`
   - `l1/scripts/productization_launchers.py`
+  - `l1/scripts/productization_provenance.py`
+  - `l1/compiler/stage1_l0/support/installation.h`
   - `l1/scripts/build_stage2_l1c.py`
   - `l1/scripts/triple_bootstrap.py` (reuse fixed-point validation)
   - `l1/compiler/stage1_l0/src/build_info.l0`
@@ -44,6 +45,7 @@
   - `l1/tests/test_env_stackability.py`
   - `l1/tests/test_stage2_tooling.py`
   - `l1/tests/test_stage2_build_overlay.py`
+  - `l1/tests/test_installation_guard.py`
   - `l1/tests/test_bootstrap_identity.py`
   - `l1/compiler/stage1_l0/tests/compiler_runtime_build_env_test.py`
   - `l1/compiler/stage1_l0/tests/runtime_build_config_test.py`
@@ -77,7 +79,7 @@ release-workflow plan.
 
 ## Current State
 
-Reviewed on 2026-10-06 against the local checkout:
+Reviewed on 2026-10-07 against the local checkout:
 
 01. `l1/` supports both compiler stages, observable stage parity, and strict triple bootstrap. `make test` exercises
     representative suites in both stages; full hosted validation uses `make test-ci`.
@@ -100,10 +102,11 @@ Reviewed on 2026-10-06 against the local checkout:
     inherited roots, deduplicate/move PATH entries, and scope Windows wrapper state without changing shared L0 defaults.
 08. Automatic stdlib/runtime preparation and standalone-link discovery are implemented by the related preparation plan.
     Read-only installed fixtures contain semantic interfaces and rebuild inputs with no native profile requirement. They
-    select context using `L1_HOME` and do not provide the proposed inventory or installed-state startup guard.
+    select context using `L1_HOME` with repository-mode binaries. Separate marked-compiler fixtures cover inventory
+    validation and installed startup.
 09. Both stages' checked-in `build_info` modules supply fallback metadata. The Stage 2 builder now accepts a private
-    generated build-info module; package provenance generation is implemented. `--help` / `--version` currently return
-    before any installation validation, which still requires explicit implementation.
+    generated build-info module with provenance and an optional installed marker. Marked compilers validate native
+    installation state before CLI parsing, including `--help` / `--version`; ordinary builds remain in repository mode.
 10. No install/dist or reusable artifact smoke target exists. Prefix/inventory/recovery primitives and the fixture-based
     `test-productization` target are implemented. Preparation identity and storage internals have evolved since the
     original preparation plan; the current reference docs and ADR-0038 govern their consumption.
@@ -136,26 +139,40 @@ development artifacts remain unchanged. It is separate from the lightweight fixt
 Package provenance collection now captures explicit bootstrap compiler reports, effective Stage 2 self-build options,
 UTC build identity, normalized supported host tokens, and supplied preparation-input digests. The overlay, `VERSION`,
 and inventory consume one immutable snapshot; documentation bundles share the same validated package-version selection.
-The collector does not infer a preparation identity, serialize the process environment, or enable installed startup. The
-standalone Stage 2 documentation generator is implemented; distribution integration remains pending.
+The collector does not infer a preparation identity or serialize the process environment. Installed mode is an explicit
+overlay-generation option, disabled by default. The standalone Stage 2 documentation generator is implemented;
+distribution integration remains pending.
 
-Provenance milestone validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
+The native startup milestone implements the physical-executable prefix check, schema/state validation, installed context
+selection, and `L1C-9515` before command dispatch in both stages. It reuses preparation's native helpers while
+preserving its strict identity JSON mode. Installer JSON limits match the bounded native reader. Native fixtures cover
+invalid metadata, aliases, path substitution, relocation, and environment selection; real marked-compiler acceptance is
+included in `test-productization-build`.
+
+Validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
 
 - Focused provenance, inventory/launcher, and documentation-artifact regression tests passed. Native Windows cases are
   skipped on this host.
 - `make test L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc`: passed documentation tests, Stage 1/Stage 2 smoke suites, parity,
-  all four examples, Docker/Wine runner regressions, 22 tooling/bootstrap-identity tests, and 82 productization tests;
+  all four examples, Docker/Wine runner regressions, 22 tooling/bootstrap-identity tests, and 113 productization tests;
   fourteen native Windows productization cases skipped.
 - `make -o build-stage2 test-productization-build L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc`: passed the
   generated-provenance native self-build, embedded version report, semantic compilation after overlay removal, and
-  source/development-artifact preservation. Reused the unchanged Stage 2 seed from the normal gate.
-- Compiler source, runtime selection, ownership, and trace behavior are unchanged; validation scope is the normal gate
-  plus focused provenance/overlay checks.
+  source/development-artifact preservation. The marked self-build also passed direct/launcher help, version, check,
+  generation, read-only relocation, and invalid-state rejection. Reused the unchanged Stage 2 seed from the normal gate.
+- `../.venv/bin/python -m pytest -q -n 0 tests/test_installation_guard.py`: all 33 native guard and JSON-bound fixtures
+  passed, including physical-prefix behavior through an external executable alias.
+- `../.venv/bin/python compiler/stage1_l0/tests/preparation_support_test.py`: existing preparation storage, integrity,
+  and process coordination regression passed.
+- `make -o build-stage1 -o build-stage2 -o runtime test-stage1-trace test-stage2-trace TESTS="l1c_lib_test preparation_test" L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc`:
+  both stages passed both focused trace cases with zero leaked object/string pointers, reusing the validated compilers.
+- Runtime ownership and trace instrumentation are unchanged; validation scope adds focused startup/preparation trace
+  checks and real installed-mode self-build acceptance. Native Windows and macOS acceptance remain pending.
 
-Remaining Phase 1 work: native installed-state reader and `L1C-9515`, curated payload construction, standalone packaged
-instructions, and actual compiler fixtures. Public install/dist targets remain unavailable until these prerequisites are
-implemented. Native Windows execution and four-platform artifact acceptance remain pending for the revised helpers;
-local shell/inventory fixture success is not installed-compiler acceptance.
+Remaining Phase 1 work: curated payload construction, standalone packaged instructions, and complete package fixtures.
+Public install/dist targets remain unavailable until these prerequisites are implemented. Native Windows execution and
+four-platform artifact acceptance remain pending for the revised helpers; local shell/inventory fixture success is not
+installed-compiler acceptance.
 
 Verification on macOS Intel with `/usr/bin/clang`, Apple Clang 17.0.0 (`clang-1700.6.4.2`):
 
@@ -497,14 +514,12 @@ validation.
 ## Diagnostic Planning
 
 Install, list, and archive script failures use actionable tooling errors and nonzero exit status. The native installed
-state guard uses the existing driver filesystem/environment diagnostic area: `L1C-9515` is still unused in the live
-catalog and unclaimed by another active plan as of 2026-10-05. Provisionally reserve it for missing, unreadable,
-malformed, or incomplete installation metadata, with the prefix/inventory path, reason, repair/retry guidance, and exit
-status 1. Re-check this reservation against [docs/specs/compiler/diagnostic-code-catalog.md][diagnostic-catalog] and
-active plans at implementation time, then update the shared catalog and CLI contract. Apply the same diagnostic and
-status in both compiler stages wherever the installed-state hook is present. Existing preparation failures retain
-`L1C-2150` through `L1C-2159`, including `L1C-2158` for missing semantic/preparation inputs after valid
-installation-state selection; do not assign those codes to the new startup inventory failure.
+state guard now uses `L1C-9515` in the existing driver filesystem/environment diagnostic area for missing, unreadable,
+malformed, unsupported, or incomplete installation state. It reports the prefix/inventory path, reason, repair/retry
+guidance, and exit status 1. The shared catalog and CLI contract record this assignment. Both compiler stages contain
+the same native hook; repository-mode builds leave it disabled. Existing preparation failures retain `L1C-2150` through
+`L1C-2159`, including `L1C-2158` for missing semantic/preparation inputs after valid installation-state selection; do
+not assign those codes to the new startup inventory failure.
 
 ## ADR Impact
 
@@ -603,7 +618,6 @@ requires them under `l1/AGENTS.md`; do not repeat preparation benchmarks or run 
 installer edit.
 
 [autodocs]: closed/2026-10-05-l1-stage-separated-autodocs-noref.md
-[diagnostic-catalog]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
 [installed-inputs]: ../../../docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md
 [inventory-contract]: ../../../docs/reference/productization-inventory.md
 [l0-delivery]: ../../../../l0/docs/decisions/0023-toolchain-installation-and-distribution-layout.md

@@ -98,8 +98,11 @@ class PackageProvenance:
         """Render standalone VERSION metadata, including all construction evidence."""
         return "Dea language / L1 compiler (Stage 2)\n" + json.dumps(self.metadata(), indent=2, sort_keys=True) + "\n"
 
-    def build_info_module(self) -> str:
-        """Render repository-mode provenance; installed startup is a separate gate.
+    def build_info_module(self, *, installed: bool = False) -> str:
+        """Render provenance and optionally enable the native installation guard.
+
+        Args:
+            installed: Require physical prefix metadata before every command.
 
         Returns:
             L1 source suitable for the builder's private module overlay.
@@ -111,14 +114,14 @@ class PackageProvenance:
         provenance = metadata["provenance"]
         source = provenance["source"]
         commit = source["revision"] + ("+dirty" if source["tree_state"] == "dirty" else "")
-        values = {"has_embedded_version": "true", "build_id": provenance["build_id"],
+        values = {"is_installed": installed, "has_embedded_version": True, "build_id": provenance["build_id"],
                   "build_time": provenance["build_time"], "commit": commit,
                   "host": f'{metadata["os"]}-{metadata["arch"]}',
                   "compiler": provenance["native_compiler"]["version"].splitlines()[0],
                   "release_version": metadata["package_version"]}
         text = (L1_ROOT / "compiler/stage2_l1/src/build_info.l1").read_text(encoding="utf-8")
         for name, value in values.items():
-            literal = "true" if name == "has_embedded_version" else json.dumps(value, ensure_ascii=False)
+            literal = json.dumps(value, ensure_ascii=False)
             pattern = rf'(func build_info_{name}\(\) -> (?:bool|string) \{{\n)    return [^\n]+;\n\}}'
             text, count = re.subn(pattern, lambda match: match[1] + f"    return {literal};\n}}", text)
             if count != 1:
