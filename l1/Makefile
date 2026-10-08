@@ -71,6 +71,25 @@ RUNTIME_TUNING_CFLAGS := $(if $(strip $(L1_RT_QUARANTINE_MAX_BYTES)),-D_RT_QUARA
 RUNTIME_INCLUDE_FLAGS := -I$(RUNTIME_ROOT)/include -I$(RUNTIME_ROOT)/internal
 
 .PHONY: help venv runtime clean-runtime clean-all runtime-tcc-objects _ensure-bootstrap-l0-stage2 _print-test-compiler-env build-stage1 use-dev-stage1 test test-ci test-stage1 test-stage1-smoke test-stage2 test-stage2-smoke test-stage1-trace test-stage1-trace-smoke test-stage1-trace-all test-stage1-trace-children test-env test-productization check-examples bench-runtime bench-link-provenance test-extended test-docker print-l1-build-dir clean docker docker-wine docker-wine-toolchain docker-wine-image test-docker-wine-runner FORCE
+.PHONY: install list-installed
+
+# Export destination/version text directly: shell interpolation would reinterpret
+# literal punctuation in prefix paths. Listing needs neither venv nor bootstrap.
+install list-installed: export PREFIX := $(PREFIX)
+install: export DOCS_ARTIFACT := $(DOCS_ARTIFACT)
+install: export DEA_DIST_VERSION := $(DEA_DIST_VERSION)
+install: export L1_BUILD_DIR := $(L1_BUILD_DIR)
+install: export L1_COMPILER_RT_CHECK_BASIC := $(L1_COMPILER_RT_CHECK_BASIC)
+install: export L1_COMPILER_RT_UNCHECKED := $(L1_COMPILER_RT_UNCHECKED)
+install: export L1_COMPILER_RT_QUARANTINE_MAX_BYTES := $(L1_COMPILER_RT_QUARANTINE_MAX_BYTES)
+install: export L1_COMPILER_RT_QUARANTINE_MAX_COUNT := $(L1_COMPILER_RT_QUARANTINE_MAX_COUNT)
+install: export L1_INSTALL_MAKE := $(MAKE)
+
+install:
+	@"$(PYTHON)" scripts/install_toolchain.py install
+
+list-installed:
+	@"$(PYTHON)" scripts/install_toolchain.py list-installed
 
 help:
 	@printf '%s\n' \
@@ -83,6 +102,8 @@ help:
 		'  build-stage2       Build the self-hosted Stage 2 compiler through the repo-local Stage 1 compiler.' \
 		'  use-dev-stage1     Build and switch the repo-local `l1c` alias to Stage 1.' \
 		'  use-dev-stage2     Build and switch the repo-local `l1c` alias to Stage 2.' \
+		'  install            Self-build and install Stage 2 (PREFIX required; DEA_DIST_VERSION defaults to dev).' \
+		'  list-installed     Print sorted owned paths from the complete PREFIX inventory; no build.' \
 		'  test               Run Stage 1/2 smoke checks, parity, examples, Stage 2 tooling, and Docker/Wine runner regressions.' \
 		'  test-ci            Run test-extended with CI-only normal cases, environment/bootstrap, traces, child fixtures, and triple bootstrap.' \
 		'  test-extended      Run normal suites without CI-only cases, examples, parity, and tooling checks.' \
@@ -468,7 +489,7 @@ test-stage2-tooling: venv
 	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_stage2_tooling.py tests/test_bootstrap_identity.py
 
 test-productization: venv
-	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_bootstrap_productization.py tests/test_productization_provenance.py tests/test_installation_guard.py tests/test_productization_payload.py
+	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_bootstrap_productization.py tests/test_productization_provenance.py tests/test_installation_guard.py tests/test_productization_payload.py tests/test_install_toolchain.py
 
 test-productization-build: build-stage2
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" L1_PRODUCTIZATION_SEED="$(L1_BUILD_DIR)/bin/l1c-stage2" \

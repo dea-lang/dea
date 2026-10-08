@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-10-06
+Version: 2026-10-08
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -332,8 +332,10 @@ triple bootstrap. New stdlib APIs and delivery workflows remain separate work. S
   preparation compatibility, with persistent reuse gated on configuration isolation, discovery, identity, and
   invalidation validation, and private fallback when reuse cannot be authorized.
 - Tool [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][bootstrap-productization] implements the
-  first self-hosted L1 install/dist workflow. Prefix ownership/recovery and launcher helpers are implemented; native
-  installed-state validation, package construction, and artifact acceptance remain pending.
+  first self-hosted L1 install/dist workflow. Public compiler-only install/list targets, private bootstrap
+  orchestration, curated Stage 2 construction, prefix recovery, launchers, and native installed-state validation are
+  implemented. Documentation-bundle integration, distribution commands, and full four-platform artifact acceptance
+  remain pending.
 - Feature [2026-06-21-cheap-string-slices-noref][cheap-string-slices] extends `dea::slice` to ARC-backed string views
   while preserving internal terminated copies for native runtime calls that require them.
 - Feature [2026-08-30-typed-formatting-noref][typed-formatting] is the Priority 2 replacement for the combinatorial

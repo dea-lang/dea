@@ -3,15 +3,15 @@
 ## Define the self-hosted L1 Stage 2 install and distribution workflow
 
 - Date: 2026-04-02
-- Last reviewed: 2026-10-07
+- Last reviewed: 2026-10-08
 - Status: In progress
 - Title: Define the self-hosted L1 Stage 2 install and distribution workflow
 - Kind: Tooling
 - Severity: Medium
 - Stage: L1
 - Target status:
-  - Prefix installer, inventory, and launcher adaptation: In progress (inventory/recovery and launcher helpers
-    implemented; curated payload helper implemented; public install integration pending)
+  - Prefix installer, inventory, and launcher adaptation: Implemented (compiler-only public install/list targets and
+    private bootstrap orchestration; full four-platform artifact acceptance pending)
   - Native installed-state guard and package provenance: Implemented; four-platform acceptance pending
   - Distribution archive and reusable artifact smoke command: Pending
   - Stage 2 HTML/PDF inclusion: Pending integration (documentation artifact generator implemented)
@@ -24,6 +24,7 @@
   - `l1/scripts/productization_launchers.py`
   - `l1/scripts/productization_provenance.py`
   - `l1/scripts/productization_payload.py`
+  - `l1/scripts/install_toolchain.py`
   - `l1/scripts/package/`
   - `l1/docs/user/`
   - `l1/compiler/stage1_l0/support/installation.h`
@@ -50,6 +51,7 @@
   - `l1/tests/test_stage2_build_overlay.py`
   - `l1/tests/test_installation_guard.py`
   - `l1/tests/test_productization_payload.py`
+  - `l1/tests/test_install_toolchain.py`
   - `l1/tests/test_bootstrap_identity.py`
   - `l1/compiler/stage1_l0/tests/compiler_runtime_build_env_test.py`
   - `l1/compiler/stage1_l0/tests/runtime_build_config_test.py`
@@ -83,7 +85,7 @@ release-workflow plan.
 
 ## Current State
 
-Reviewed on 2026-10-07 against the local checkout:
+Reviewed on 2026-10-08 against the local checkout:
 
 01. `l1/` supports both compiler stages, observable stage parity, and strict triple bootstrap. `make test` exercises
     representative suites in both stages; full hosted validation uses `make test-ci`.
@@ -91,7 +93,8 @@ Reviewed on 2026-10-07 against the local checkout:
     explicitly selected repo-local `L1_BUILD_DIR`.
 03. `make test-stage1` runs the complete local-normal Stage 1 suite. Installed preparation and recovery fixtures are
     CI-only unless selected explicitly. Stage 2 reuses the installed preparation Python test against its own compiler.
-04. There is no `make install`, `make list-installed`, `make dist`, or release-artifact layout for L1.
+04. `make install PREFIX=...` builds and installs a curated Stage 2 compiler-only payload;
+    `make list-installed PREFIX=...` reads its complete inventory without building. Distribution targets remain pending.
 05. Bootstrap correctness depends on the explicit upstream compiler contract:
     - local development defaults to `../l0/build/dea/bin/l0c-stage2`
     - reproducible overrides must use `L1_BOOTSTRAP_L0C`
@@ -111,9 +114,10 @@ Reviewed on 2026-10-07 against the local checkout:
 09. Both stages' checked-in `build_info` modules supply fallback metadata. The Stage 2 builder now accepts a private
     generated build-info module with provenance and an optional installed marker. Marked compilers validate native
     installation state before CLI parsing, including `--help` / `--version`; ordinary builds remain in repository mode.
-10. No install/dist or reusable artifact smoke target exists. Prefix/inventory/recovery primitives and the fixture-based
-    `test-productization` target are implemented. Preparation identity and storage internals have evolved since the
-    original preparation plan; the current reference docs and ADR-0038 govern their consumption.
+10. No dist or reusable artifact smoke target exists. Public install/list commands, prefix/inventory/recovery
+    primitives, and the fixture-based `test-productization` target are implemented. Preparation identity and storage
+    internals have evolved since the original preparation plan; the current reference docs and ADR-0038 govern their
+    consumption.
 
 ## Implementation Progress
 
@@ -176,8 +180,8 @@ Validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
 Curated payload assembly now snapshots the selected semantic/runtime inputs, verifies the complete captured interface
 graph, and self-builds a separate marked Stage 2 executable. It includes launcher/activation scripts, notices, package
 identity, standalone instructions, and a stdlib smoke module. The internal context-managed helper cleans up private
-scratch on success/failure and leaves bootstrap outputs unchanged. Public install integration and complete artifact
-fixtures remain pending; install/dist targets are not yet exposed. Native Windows execution and four-platform artifact
+scratch on success/failure and leaves bootstrap outputs unchanged. Public install integration is implemented below;
+complete artifact fixtures and dist targets remain pending. Native Windows execution and four-platform artifact
 acceptance remain pending for the revised helpers; local shell/inventory fixture success is not installed-compiler
 acceptance.
 
@@ -226,6 +230,42 @@ Wine/MSYS2 validation of the revised Windows helpers used the provisioned contai
 snapshot. `../.venv/bin/python -m pytest -q -n 0 tests/test_bootstrap_productization.py` passed 57 cases with nine
 POSIX-only cases skipped. The focused missing-toolchain regression fails against the original launcher and passes with
 the revised adapter. This emulated result does not replace hosted native Windows acceptance.
+
+Public install integration now exposes `make install PREFIX=...` and `make list-installed PREFIX=...`. The installer
+validates destination/version/host inputs before bootstrap, honors an explicit upstream override, and prepares only an
+absent repo-local L0 default without switching its alias. Disposable L1 Stage 1 and Stage 2 seed artifacts live under
+the selected build root, with isolated native preparation and no changes to existing development compilers or aliases.
+The seed must reproduce all Stage 1 semantic interface bytes before self-building the curated marked compiler. The
+existing inventory helper publishes the payload and retains interrupted ownership for retry. Listing only reads the
+complete inventory. Direct installs currently omit autodocs and reject a supplied `DOCS_ARTIFACT` explicitly.
+
+Focused orchestration regressions cover failed bootstrap/payload construction, cleanup, artifact/alias preservation,
+invalid destinations/overrides, semantic disagreement, literal prefix punctuation, missing/malformed/incomplete listing,
+and Make dry-run behavior. The productization plan remains open for docs integration, dist/result/smoke interfaces,
+four-platform artifact acceptance, and final ADR/documentation closure.
+
+Public workflow validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
+
+- `make test L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc`: passed the normal gate. The final focused
+  `make test-productization` run passed 149 cases; fourteen native Windows cases skipped.
+- `make test-env L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc`: passed environment/bootstrap integration.
+- Fresh `make install PREFIX=... DEA_DIST_VERSION=install-test L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc`: prepared the
+  absent upstream compiler, built the private chain, and installed the curated Stage 2 payload. Bootstrap scratch was
+  removed. Relocation to a path containing spaces passed direct/launcher help, version, check, and generation without
+  Python, Make, or C compilers on `PATH`. With only the required host compilation/inspection tools added, a read-only
+  prefix passed compile-only, cold-cache rejection with automatic preparation disabled, preparation/run, warm standalone
+  link, and build. Every payload digest remained unchanged. All three entrypoints rejected invalid installation state;
+  public listing matched the recorded inventory.
+- Explicit-upstream reinstall with a relative `PREFIX`, a custom `L1_BUILD_DIR` containing spaces, `-O0` construction
+  flags, and stale inherited home/system/runtime/cache selectors passed. It preserved unrelated files and every
+  development compiler/launcher digest, retained the selected Stage 1 alias, removed obsolete owned files, embedded the
+  requested new package version, and removed private scratch.
+- `make -o build-stage1 -o runtime triple-test L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc`: passed using the normal gate's
+  unchanged prerequisites. All 137 generated C translation units and normalized native executables matched; the final
+  compiler passed all 65 normal tests, examples, and the executable smoke check.
+- Whitespace, copyright-header, Markdown-formatting, and ADR-impact checks passed.
+- Native macOS and Windows acceptance for this public workflow remains pending. Compiler ownership, runtime selection,
+  and trace instrumentation are unchanged; the validation tier adds install/bootstrap integration to the normal gate.
 
 ## Defaults Chosen
 

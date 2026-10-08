@@ -46,6 +46,8 @@ Dea/L1 is in self-hosted development status.
 ```bash
 make venv
 make use-dev-stage2
+make install PREFIX=/path/to/l1
+make list-installed PREFIX=/path/to/l1
 source build/dea/bin/l1-env.sh
 l1c --help
 l1c --version
@@ -67,7 +69,7 @@ make test-ci
 `make test` is the fast local development gate. It runs representative Stage 1 and Stage 2 smoke tests, parity,
 examples, Stage 2 tooling, and Docker/Wine runner regressions. Use it after ordinary implementation work. It also
 includes fixture-based prefix inventory/recovery and installed-context launcher checks through
-`make test-productization`; these helpers do not yet expose a public install/dist workflow.
+`make test-productization`, including public install orchestration and inventory-only listing.
 
 `make test-extended` is the broad local-normal gate for subsystem work and refactors. It runs both Stage 1 and Stage 2
 normal suites, parity, examples, Stage 2 tooling, and Docker/Wine runner regressions. Normal runner discovery excludes
@@ -111,8 +113,10 @@ exhaustive L1 container path.
 
 ## Current Scope
 
-- This subtree supports local self-hosted development; delivery workflows remain separate.
-- There is no L1 install/dist/release/docs-publish workflow yet.
+- This subtree supports local self-hosted development and compiler-only Stage 2 installation through
+  `make install PREFIX=...`. Installation builds a private bootstrap chain and preserves development artifacts/aliases.
+- `make list-installed PREFIX=...` reads only the complete installation inventory; it has no build/venv prerequisite.
+- Documentation-bundle integration, dist/release, and docs-publish workflows remain pending.
 - Keep root `README.md` and existing L0 user-facing docs unchanged unless the task explicitly requires a minimal
   consistency fix.
 

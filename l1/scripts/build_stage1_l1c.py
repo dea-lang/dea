@@ -327,6 +327,21 @@ def build_semantic_interfaces(layout: L1BuildLayout, native_bin: Path) -> None:
     print(f"build-stage1-l1c: verified {len(modules)} bundled interfaces under {destination}")
 
 
+def stage1_build_options(layout: L1BuildLayout, keep_c: bool = False) -> list[str]:
+    """Return the actual Stage 1 arguments shared by construction and provenance.
+
+    Args:
+        layout: Validated repo-local output layout.
+        keep_c: Whether construction retains generated C.
+
+    Returns:
+        Ordered arguments passed to the upstream L0 compiler.
+    """
+    return ["--build", *stage1_support_args(), *(["--keep-c"] if keep_c else []),
+            "--project-root", "compiler/stage1_l0/src", "-o",
+            str(layout.bin_dir / "l1c-stage1.native"), "l1c"]
+
+
 def build_stage1_artifact(layout: L1BuildLayout, bootstrap_command: list[str], keep_c: bool) -> tuple[Path, Path, Path]:
     """Build the repo-local L1 Stage 1 compiler artifact."""
 
@@ -336,12 +351,9 @@ def build_stage1_artifact(layout: L1BuildLayout, bootstrap_command: list[str], k
     native_bin = layout.bin_dir / "l1c-stage1.native"
     c_output = layout.bin_dir / "l1c-stage1.c"
 
-    build_args = [*bootstrap_command, "--build", *stage1_support_args()]
-    if keep_c:
-        build_args.append("--keep-c")
-    else:
+    build_args = [*bootstrap_command, *stage1_build_options(layout, keep_c)]
+    if not keep_c:
         c_output.unlink(missing_ok=True)
-    build_args.extend(["--project-root", "compiler/stage1_l0/src", "-o", str(native_bin), "l1c"])
 
     build_env = compiler_runtime_build_env(os.environ.copy())
     build_env["L0_HOME"] = str(MONOREPO_ROOT / "l0" / "compiler")

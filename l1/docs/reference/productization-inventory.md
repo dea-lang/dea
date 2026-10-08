@@ -1,12 +1,37 @@
 # L1 Productization Inventory Helpers
 
-Version: 2026-10-07
+Version: 2026-10-08
 
-The first productization milestone implements prefix ownership, recoverable payload copying, and installed-context
-launcher templates. These are internal packaging primitives. L1 does not yet expose `make install`,
-`make list-installed`, `make dist`, or `make smoke-dist`. Stage 2 construction also accepts a private build-info overlay
-with generated package provenance and native installed-state validation. Self-hosted package assembly and artifact
+L1 exposes `make install PREFIX=...` and `make list-installed PREFIX=...` for a curated, self-built Stage 2 toolchain.
+Prefix ownership, recoverable payload copying, installed-context launchers, generated provenance, and native startup
+validation are implemented. Documentation-bundle integration, `make dist`, `make smoke-dist`, and full platform artifact
 acceptance remain in [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization].
+
+## Public install workflow
+
+Run the targets from `l1/`. `PREFIX` is required and relative destinations resolve against that directory. Destination
+validation and package-version/host checks run before bootstrap. `DEA_DIST_VERSION` defaults to `dev`. These direct
+installs are compiler-only; a supplied `DOCS_ARTIFACT` fails explicitly until bundle integration is implemented.
+
+`install_toolchain.py` resolves `L1_BOOTSTRAP_L0C` or prepares the absent default `../l0/build/dea/bin/l0c-stage2`
+through L0's `venv` and `install-dev-stage2` targets. An invalid explicit override fails without trying the default or
+ambient `l0c`. Upstream preparation does not change L0's selected development alias.
+
+L1 construction uses a disposable directory beneath the validated repo-local `L1_BUILD_DIR` (default `build/dea`). It
+builds Stage 1, uses that exact compiler to build a repository-mode Stage 2 seed, and requires the seed to reproduce
+Stage 1's complete semantic interface set byte-for-byte. The existing payload helper then self-builds the marked Stage 2
+executable using that seed and one provenance snapshot. Host compiler selection and runtime controls agree across seed
+and final construction. Inherited installation roots/runtime overrides are cleared, and native support uses a private
+cache. No development compiler or selected alias is replaced, and private scratch is removed on success or failure.
+
+The installer publishes the curated payload through the recovery protocol below. It rejects overlap with bootstrap,
+payload, and source inputs. A failed construction cannot mutate the destination. Reinstall replaces owned files and
+removes obsolete ownership while preserving unrelated files; serialize it against compiler consumers and other
+installers. Prefix payload files become immutable inputs for compiler operations after installation.
+
+`list-installed` has no venv, bootstrap, native compiler, or cache prerequisite. It prints sorted prefix-relative
+inventory paths only and fails for missing, malformed, or incomplete metadata. It requires Python to read the record;
+installed native compiler startup itself does not require Python or Make.
 
 ## Inventory schema
 
@@ -169,8 +194,8 @@ Packaged guides come from `l1/docs/user/`, following the L0 convention. `README.
 prefix root; `toolchain.md` goes to `share/doc/dea/l1/toolchain.md`.
 
 The context-managed result is an uninstalled payload for `install_payload`; it does not publish an inventory itself.
-Private scratch and payload files are removed on success or failure when the context exits. This helper does not build
-the prerequisite bootstrap chain, expose a public install command, or consume documentation bundles yet.
+Private scratch and payload files are removed on success or failure when the context exits. The public installer owns
+the prerequisite bootstrap chain and inventory publication; documentation-bundle consumption remains pending.
 
 ## Validation
 

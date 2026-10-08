@@ -26,12 +26,36 @@ bootstrap.
 Both compiler stages support per-module generated C, compile-only `.o + .l1m` artifact pairs, verified standalone
 linking with ordered interface discovery, and multi-compilation-unit build/run across mixed source/interface graphs.
 Link-involving modes also accept one ordered stream of explicit foreign objects, external libraries, search paths,
-rpaths, and raw host-driver words. Stage 2 is the mechanical L1 port of the Stage 1 oracle. L1 has no
-install/dist/release workflow yet.
+rpaths, and raw host-driver words. Stage 2 is the mechanical L1 port of the Stage 1 oracle. L1 supports compiler-only
+Stage 2 installation; distribution archives and release workflows remain pending.
 
-`make test-productization` validates the internal prefix/inventory/recovery helpers and installed-context launcher
-templates. It is included in the normal test gates; package construction and native installed-state validation remain
-pending.
+`make test-productization` validates prefix ownership/recovery, installed-context launchers, native startup guards,
+curated payload selection, and public install orchestration. It is included in the normal test gates.
+
+To install a self-built Stage 2 compiler outside the development layout, run from `l1/`:
+
+```bash
+make install PREFIX="/path/to/l1" L0_CC=gcc L1_CC=gcc
+make list-installed PREFIX="/path/to/l1"
+"/path/to/l1/bin/l1c" --version
+"/path/to/l1/bin/l1c" --run "/path/to/l1/share/dea/l1/smoke/hello.l1"
+```
+
+`PREFIX` is required; relative paths resolve against `l1/`. Installation prepares missing repo-local upstream L0 Stage
+2, or honors an explicit `L1_BOOTSTRAP_L0C`. It builds private L1 Stage 1 and Stage 2 seed artifacts beneath
+`L1_BUILD_DIR`, then self-builds the delivered Stage 2 executable. Development compiler artifacts and the selected `l1c`
+alias are preserved. `DEA_DIST_VERSION` defaults to `dev`; every package remains a development toolchain.
+
+The prefix is relocatable and needs no activation to run. Optionally source `<PREFIX>/bin/l1-env.sh` in bash/zsh or
+MSYS2 bash, or call `<PREFIX>\\bin\\l1-env.cmd` in native Windows cmd.exe. Installed compiler operations need no L0,
+Python, or Make; native output still requires a host C compiler and preparation tools. Semantic inputs remain in the
+prefix, while native support is prepared in the selected writable cache. Reinstall with the same command to replace
+owned files, remove obsolete owned files, and preserve unrelated files. Serialize installation against other installers
+and compiler consumers. `list-installed` prints sorted recorded paths without building or scanning caches.
+
+Direct installs currently omit autodocs and reject `DOCS_ARTIFACT` until bundle integration lands. See
+[l1/docs/reference/productization-inventory.md][productization] for the install/recovery contract and
+[l1/docs/user/toolchain.md][installed-toolchain] for installed operation.
 
 `make build-stage1` supplies public runtime headers and the complete verified bundled interface set under
 `$L1_BUILD_DIR/interfaces/`. Build/run/link prepare matching native stdlib/runtime support on demand in one local cache.
@@ -84,6 +108,7 @@ running `make build-stage1`.
 [docker-wine]: docker/wine/README.md
 [docs]: docs/
 [examples]: examples/
+[installed-toolchain]: docs/user/toolchain.md
 [legacy-clang-plan]: work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md
 [linking]: docs/user/linking.md
 [preparation]: docs/reference/stdlib-preparation.md

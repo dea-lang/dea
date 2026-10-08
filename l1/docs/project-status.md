@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-10-06
+Version: 2026-10-08
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -190,9 +190,11 @@ The current L1 tree includes:
 
 Semantic-only commands do not probe a C compiler or access native cache state. Repo-local cache defaults use
 `$L1_BUILD_DIR/cache`; installed-context defaults use the platform per-user cache. Installed fixtures work from a
-read-only payload of semantic interfaces and rebuild inputs with an empty user cache. Productization now has internal
-prefix/inventory/recovery and launcher helpers, tested through `make test-productization`. Native installed-state
-validation, package construction, and public install/dist commands remain pending. See
+read-only payload of semantic interfaces and rebuild inputs with an empty user cache. Productization now exposes
+`make install PREFIX=...` and inventory-only `make list-installed PREFIX=...`, using a private bootstrap chain, curated
+self-built Stage 2 payload, recoverable inventory publication, and native installed-state validation.
+`make test-productization` covers the helpers and public orchestration. Documentation-bundle integration, distribution
+commands, and full four-platform artifact acceptance remain pending. See
 [l1/docs/reference/productization-inventory.md](reference/productization-inventory.md) and
 [l1/docs/reference/stdlib-preparation.md](reference/stdlib-preparation.md).
 
