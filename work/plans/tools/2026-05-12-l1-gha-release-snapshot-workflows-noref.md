@@ -76,8 +76,9 @@ Reviewed on 2026-10-08 against the local checkout:
    install/dist ship self-built Stage 2 only, while Stage 1 remains a bootstrap/development tool. Packaging must not
    follow the active development alias.
 4. The productization plan is in progress. Public `install` and `list-installed` targets and optional verified Stage 2
-   docs installation are implemented. `dist`, `DIST_RESULT`, reusable archive smoke, and four-platform artifact
-   acceptance remain pending.
+   docs installation, `dist`, atomic schema-1 `DIST_RESULT`, and reusable `smoke-dist` are implemented. The exact local
+   handoff is documented in `l1/docs/reference/productization-inventory.md`; full four-platform artifact acceptance
+   remains pending.
 5. L0 release/snapshot workflows provide examples for tag handling, matrix builds, artifact staging, and publication.
    Their docs-build pattern informs the new L1 Stage 2 job; Pages and blog machinery remain outside scope. L0 snapshot's
    empty `ref` input selects the repository default branch, rather than a hard-coded `main`.

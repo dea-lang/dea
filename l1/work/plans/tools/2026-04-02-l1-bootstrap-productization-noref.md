@@ -13,9 +13,11 @@
   - Prefix installer, inventory, and launcher adaptation: Implemented (public install/list targets, optional Stage 2
     docs, and private bootstrap orchestration; full four-platform artifact acceptance pending)
   - Native installed-state guard and package provenance: Implemented; four-platform acceptance pending
-  - Distribution archive and reusable artifact smoke command: Pending
-  - Stage 2 HTML/PDF inclusion: Implemented for direct installs; distribution integration pending
-  - Four-platform acceptance and documentation: Pending
+  - Distribution archive, atomic result metadata, and reusable artifact smoke command: Implemented
+  - Stage 2 HTML/PDF inclusion: Implemented for direct installs and required distributions
+  - Native artifact acceptance: Linux x86_64 passed with full generated Stage 2 docs; macOS Intel/ARM and Windows UCRT64
+    pending
+  - Final documentation, delivery ADR, and plan closure: Pending
 - Subsystem: Build workflow / install layout / distribution packaging / bootstrap docs
 - Modules:
   - `l1/Makefile`
@@ -114,7 +116,7 @@ Reviewed on 2026-10-08 against the local checkout:
 09. Both stages' checked-in `build_info` modules supply fallback metadata. The Stage 2 builder now accepts a private
     generated build-info module with provenance and an optional installed marker. Marked compilers validate native
     installation state before CLI parsing, including `--help` / `--version`; ordinary builds remain in repository mode.
-10. No dist or reusable artifact smoke target exists. Public install/list commands, prefix/inventory/recovery
+10. Public install/list/dist/smoke-dist commands, atomic distribution result metadata, prefix/inventory/recovery
     primitives, and the fixture-based `test-productization` target are implemented. Preparation identity and storage
     internals have evolved since the original preparation plan; the current reference docs and ADR-0038 govern their
     consumption.
@@ -286,6 +288,49 @@ Docs integration validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
   unchanged payload digests, and scratch cleanup passed. Docs/no-docs reinstallation is covered by the fixture suite.
 - Native macOS/Windows acceptance and full distribution-bundle acceptance remain pending. No compiler construction,
   ownership, runtime, or trace implementation changed; no additional triple-bootstrap or trace rerun is required.
+
+## Distribution packaging implementation
+
+`make dist` now uses the existing private install chain and requires a snapshotted, verified Stage 2 HTML/full-PDF
+bundle. It writes curated host archives with one `dea-l1/` root, checks a complete extraction round trip, and publishes
+only the finished archive. Schema-1 `DIST_RESULT` records its absolute path, size/digest, package identity/provenance,
+and docs-bundle digest/source evidence. Valid prior result destinations are invalidated before input validation, and new
+JSON is closed in a sibling temporary file before atomic replacement. Unsafe destinations are rejected without mutation;
+interrupted publication cannot report an older archive as this invocation's success.
+
+`make smoke-dist ARCHIVE=...` validates all members before extraction, inventory bytes/modes and exact membership,
+curated exclusions, `VERSION`, preparation inputs, and offline docs. It relocates the prefix into a path containing
+spaces, uses an unrelated working directory and private cache, checks native/launcher identity, and exercises semantic,
+compile-only, standalone link, build/run, cold/warm preparation, checking/trace configurations, forced preparation, and
+cache disposal. POSIX execution uses a read-only prefix and a native-tool-only PATH; semantic native commands have no
+tools on PATH. The harness verifies unchanged payload digests after execution.
+
+The exact public commands, archive names, result schema, and failure/consumer rules are documented in
+[l1/docs/reference/productization-inventory.md][inventory-reference]. The packaging regression suite is part of both
+normal gates. No compiler construction, native selection, runtime ownership, or trace implementation changes are
+introduced by this phase. Native macOS Intel/ARM and Windows UCRT64 artifact acceptance, the delivery ADR/ADR-0001
+amendment, and final plan closure remain open. Hosted release/snapshot implementation remains a separate plan.
+
+Distribution validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
+
+- `make test-productization`: 224 passed, 14 native Windows cases skipped; includes 61 distribution regressions for
+  tar/zip round trips, safe aliases, hostile archive members, exact inventory/docs checks, and interrupted
+  result/archive publication. `make test` components passed: docs tests, Stage 1/Stage 2 representative suites, parity,
+  examples, Docker/Wine runner tests, Stage 2 tooling, and productization. `make test-env` passed. The container's
+  tooling targets require the shared virtual environment's `bin` directory on `PATH` for bare `python` invocations.
+- `make docs-artifacts DOC_STAGE=stage2`: generated and verified the full Doxygen 1.9.8 HTML reference and indexed PDF,
+  using the actual Stage 2 source inventory. This acceptance used the full reference, not the earlier docs fixture.
+- `make dist DOCS_ARTIFACT=<full-stage2-bundle> DIST_RESULT=<absolute-json-path>`: built the complete private chain,
+  verified all 23 Stage 1/Stage 2 interface pairs, self-built the installed compiler, round-tripped the archive, and
+  published a matching schema-1 result and approximately 6.6 MiB Linux archive.
+- `make smoke-dist ARCHIVE=<exact-result-archive>`: passed in a separate Debian validation container mounting only the
+  archive, Python validation harness, and host tools. Compiler sources, repository payload inputs, and bootstrap
+  binaries were absent. Relocation/read-only checks, native metadata agreement, semantic operations without tools on
+  PATH, standalone linking, native preparation/reuse, checking/trace selections, cache disposal, invalid explicit
+  overrides, offline documentation, and unchanged inventory digests all passed. The restricted native-tool PATH includes
+  `ldd`/`readelf` on Linux and `otool` on macOS, required by managed toolchain identity checks.
+- ADR Impact validation, staged whitespace checks, and the repository pre-commit hooks passed. Compiler construction and
+  runtime implementations are unchanged, so triple-bootstrap and broad trace suites were not repeated.
 
 ## Defaults Chosen
 
@@ -702,6 +747,7 @@ installer edit.
 [autodocs]: closed/2026-10-05-l1-stage-separated-autodocs-noref.md
 [installed-inputs]: ../../../docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md
 [inventory-contract]: ../../../docs/reference/productization-inventory.md
+[inventory-reference]: ../../../docs/reference/productization-inventory.md
 [l0-delivery]: ../../../../l0/docs/decisions/0023-toolchain-installation-and-distribution-layout.md
 [l1-guidance]: ../../../AGENTS.md
 [monorepo]: ../../../../MONOREPO.md

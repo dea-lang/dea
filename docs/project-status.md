@@ -84,8 +84,8 @@ Its repository status today is:
   libraries, search paths, rpaths, and raw host-driver arguments in every link-involving mode,
 - shipping bootstrap-oriented stdlib growth such as `std.real`, wider integer I/O/math helpers, and the new `std.types`
   value-type helper surface,
-- supporting self-built Stage 2 installation with optional verified offline HTML/PDF documentation; distribution
-  archives and release workflows remain pending.
+- supporting self-built Stage 2 installation and local distribution archives with verified offline HTML/PDF
+  documentation and reusable archive smoke validation; full platform acceptance and hosted releases remain pending.
 
 L1 bootstrap CI validation is now automated through the unified `ci.yml` GitHub Actions workflow, which routes
 L1-relevant changes into the reusable `l1-ci.yml` delegate. That path covers:

@@ -16,8 +16,8 @@ future language growth beyond L0.
 
 Stage-separated source references and verified offline HTML/full-PDF bundles are available locally through `make docs`,
 `make docs-pdf`, and `make docs-artifacts`. Each stage has an independent source inventory, navigation, search database,
-PDF, and provenance manifest. Stage 2 bundles can be included in direct installs through `DOCS_ARTIFACT`; distribution
-consumption and hosted release attachment remain pending. See
+PDF, and provenance manifest. Stage 2 bundles can be included in direct installs and are required by local distributions
+through `DOCS_ARTIFACT`; hosted release attachment remains pending. See
 [l1/docs/README.md](README.md#generated-source-references).
 
 ## Scope and Canonical References
@@ -195,9 +195,11 @@ read-only payload of semantic interfaces and rebuild inputs with an empty user c
 `make install PREFIX=...` and inventory-only `make list-installed PREFIX=...`, using a private bootstrap chain, curated
 self-built Stage 2 payload, recoverable inventory publication, and native installed-state validation. `DOCS_ARTIFACT`
 optionally installs a verified Stage 2 offline HTML/PDF bundle. `make test-productization` covers the helpers and public
-orchestration, including docs ownership across reinstalls. Distribution commands and full four-platform artifact
-acceptance remain pending. See [l1/docs/reference/productization-inventory.md](reference/productization-inventory.md)
-and [l1/docs/reference/stdlib-preparation.md](reference/stdlib-preparation.md).
+orchestration, including docs ownership across reinstalls, curated tar/zip archives, and atomic `DIST_RESULT` metadata.
+`make dist` packages the required docs, and `make smoke-dist ARCHIVE=...` verifies extraction, relocation, and
+standalone operation. Full four-platform artifact acceptance remains pending. See
+[l1/docs/reference/productization-inventory.md](reference/productization-inventory.md) and
+[l1/docs/reference/stdlib-preparation.md](reference/stdlib-preparation.md).
 
 These shared assets support both the bootstrap compiler and the self-hosted L1 compiler.
 

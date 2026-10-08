@@ -105,7 +105,8 @@ output parents when invoked concurrently for the same stage.
 
 Direct installation consumes the optional Stage 2 bundle through `make install PREFIX=... DOCS_ARTIFACT=<absolute-path>`
 and places verified files under `share/doc/dea/l1/autodocs/stage2/`. Use the same `DEA_DIST_VERSION` and checkout
-identity for generation and installation. Distribution integration and hosted release attachment remain pending. Local
-generation and verification do not publish documentation or dispatch workflows.
+identity for generation and installation. `make dist DOCS_ARTIFACT=<absolute-path>` requires the same bundle and
+`make smoke-dist ARCHIVE=<absolute-path>` verifies its offline contents after extraction. Hosted release attachment
+remains pending. Local generation, packaging, and verification do not publish documentation or dispatch workflows.
 
 [roadmap]: roadmap.md

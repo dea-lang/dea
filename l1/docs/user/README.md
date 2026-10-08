@@ -47,7 +47,8 @@ See the bundled [share/doc/dea/l1/toolchain.md][toolchain] for native preparatio
 relocation. Keep the entire prefix together when moving it. Activation is optional; direct launcher invocation works
 from any directory.
 
-When installed with autodocs, open `share/doc/dea/l1/autodocs/stage2/html/index.html` for the offline HTML reference or
+Distribution archives include autodocs; direct installations may omit them. Open
+`share/doc/dea/l1/autodocs/stage2/html/index.html` for the offline HTML reference or
 `share/doc/dea/l1/autodocs/stage2/pdf/dea_l1_stage2_api_reference.pdf` for the full PDF. Compiler-only installations
 omit these optional files.
 

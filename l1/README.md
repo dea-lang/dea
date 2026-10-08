@@ -27,10 +27,16 @@ Both compiler stages support per-module generated C, compile-only `.o + .l1m` ar
 linking with ordered interface discovery, and multi-compilation-unit build/run across mixed source/interface graphs.
 Link-involving modes also accept one ordered stream of explicit foreign objects, external libraries, search paths,
 rpaths, and raw host-driver words. Stage 2 is the mechanical L1 port of the Stage 1 oracle. L1 supports Stage 2
-installation with optional offline HTML/PDF references; distribution archives and release workflows remain pending.
+installation with optional offline HTML/PDF references and local distribution archives with required Stage 2 docs.
+Hosted release workflows remain pending.
 
 `make test-productization` validates prefix ownership/recovery, installed-context launchers, native startup guards,
-curated payload selection, and public install orchestration. It is included in the normal test gates.
+curated payload selection, public install orchestration, safe archives, and atomic distribution results. It is included
+in the normal test gates.
+
+Use `make dist DOCS_ARTIFACT=/absolute/stage2-bundle.tar.gz DIST_RESULT=/absolute/result.json` to create a curated
+archive in `l1/dist/`. Run `make smoke-dist ARCHIVE=/absolute/archive.tar.gz` against the exact resulting archive. See
+[l1/docs/reference/productization-inventory.md][productization] for naming, result schema, and validation.
 
 To install a self-built Stage 2 compiler outside the development layout, run from `l1/`:
 

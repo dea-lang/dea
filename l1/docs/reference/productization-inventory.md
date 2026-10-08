@@ -1,12 +1,75 @@
-# L1 Productization Inventory Helpers
+# L1 Installation and Distribution Contract
 
 Version: 2026-10-08
 
 L1 exposes `make install PREFIX=...` and `make list-installed PREFIX=...` for a curated, self-built Stage 2 toolchain.
 Prefix ownership, recoverable payload copying, installed-context launchers, generated provenance, and native startup
-validation and optional Stage 2 documentation installation are implemented. `make dist`, `make smoke-dist`, and full
-platform artifact acceptance remain in
+validation and optional Stage 2 documentation installation are implemented. `make dist` creates a local archive with
+required Stage 2 documentation, and `make smoke-dist` validates that exact artifact. Full platform acceptance remains in
 [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization].
+
+## Local distribution workflow
+
+Run from `l1/`, using the same checkout and version for documentation and compiler construction:
+
+```bash
+make docs-artifacts DOC_STAGE=stage2 DEA_DIST_VERSION=dev
+make dist DEA_DIST_VERSION=dev \
+  DOCS_ARTIFACT="/absolute/path/to/l1/build/docs/artifacts/dea_l1_stage2_autodocs.tar.gz" \
+  DIST_RESULT="/absolute/path/to/result.json"
+make smoke-dist ARCHIVE="/absolute/archive_path/from/result.json"
+```
+
+`make dist` uses the public install builder with private staging outside the source/build trees. It requires an existing
+verified Stage 2 HTML/full-PDF bundle; it never invokes documentation generators. The bundle is snapshotted before
+bootstrap, validated against the checkout, and included under `share/doc/dea/l1/autodocs/stage2/`. Stage 1, compiler
+implementation/tests, caches, native support profiles, generated C, and docs intermediates are excluded.
+
+Archives live in `l1/dist/` and contain exactly one `dea-l1/` root. Names are
+`dea-l1-lang_<version>_<os>-<arch>_<YYYYMMDD-HHMMSS>.tar.gz` on Linux/macOS and `.zip` on Windows UCRT64. The timestamp
+comes from the payload's UTC build provenance. Supported tokens are `linux-x86_64`, `macos-x86_64`, `macos-arm64`, and
+`windows-x86_64`. The version defaults to `dev`; every package retains Stage 2 development maturity. Existing archive
+names are rejected rather than overwritten. Archives are closed, extracted privately, and verified against the complete
+inventory and documentation contract before atomic publication. Packaging changes no development alias.
+
+`DIST_RESULT` is optional; successful commands also print the absolute archive path. When supplied, it must be an
+absolute `.json` destination outside the checkout or directly in `l1/dist/`. Symlink destinations/parents, hard-linked
+files, and overlaps with inputs are rejected without deleting them. After destination preflight, any previous result is
+removed before validating docs or building. A new complete JSON record is closed in a sibling temporary file and
+atomically replaces the destination only after archive publication and scratch cleanup. A failed result publication can
+leave a verified archive, but never a success result. This is process-interruption handling, not power-loss durability
+or concurrent invocation coordination; callers must use distinct result paths and serialize identical artifact names.
+
+The schema-1 result contains exactly these fields:
+
+| Field                            | Meaning                                                                                                                      |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `schema_version`                 | Integer `1`.                                                                                                                 |
+| `archive_path`                   | Absolute path of this invocation's newly published archive.                                                                  |
+| `archive_sha256`, `archive_size` | SHA-256 hex digest and byte count of that archive.                                                                           |
+| `level`, `stage`, `maturity`     | `l1`, integer `2`, and `development`.                                                                                        |
+| `package_version`, `os`, `arch`  | Identity tokens matching `VERSION` and the installation inventory.                                                           |
+| `provenance`                     | Exact inventory provenance: source, bootstrap chain, native compiler/options, build time/ID, and shipped preparation inputs. |
+| `docs_bundle_sha256`             | SHA-256 of the snapshotted input docs bundle.                                                                                |
+| `docs_source`                    | Docs manifest source revision, tree state, and selected-input digest.                                                        |
+
+Workflow consumers must check command success before reading their unique result, verify the archive digest, and pass
+its exact `archive_path` to smoke validation. Do not glob old archives or parse build logs. Hosted aggregation, tags,
+release notes, and publication remain owned by the separate release/snapshot workflow plan.
+
+`make smoke-dist` requires an absolute `ARCHIVE` and neither bootstraps nor prepares a Python environment. Its Python
+harness preflights all tar/zip members before extraction, rejecting traversal, duplicate/case-colliding paths, hard
+links, devices, escaping/dangling aliases, and file/parent collisions. It verifies inventory digests/modes, exact
+file/directory membership, curated content, `VERSION`, shipped-input provenance, full docs identity, and offline links.
+
+The extracted prefix moves to a path containing spaces. From an unrelated directory, smoke checks all launcher/native
+help/version forms, semantic operations with no compiler tools on PATH, compile-only output, standalone link without
+`-I`, cold preparation, build/run, warm no-auto reuse, checking/trace configuration switching, forced preparation, and
+cache disposal. A private cache and controlled native-tool PATH exclude repository aliases and bootstrap tooling. POSIX
+prefixes become read-only during execution, and all hosts verify unchanged payload bytes afterward. Select a supported C
+compiler with `L1_CC`; native execution is valid only on the archive's host family/architecture. Windows retains the
+UCRT64 tool and Windows system directories for DLLs and host commands. Native macOS and Windows acceptance is still
+required before closing the productization plan.
 
 ## Public install workflow
 

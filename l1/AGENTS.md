@@ -48,6 +48,8 @@ make venv
 make use-dev-stage2
 make install PREFIX=/path/to/l1
 make list-installed PREFIX=/path/to/l1
+make dist DOCS_ARTIFACT=/absolute/stage2-bundle.tar.gz DIST_RESULT=/absolute/result.json
+make smoke-dist ARCHIVE=/absolute/archive.tar.gz
 source build/dea/bin/l1-env.sh
 l1c --help
 l1c --version
@@ -69,7 +71,8 @@ make test-ci
 `make test` is the fast local development gate. It runs representative Stage 1 and Stage 2 smoke tests, parity,
 examples, Stage 2 tooling, and Docker/Wine runner regressions. Use it after ordinary implementation work. It also
 includes fixture-based prefix inventory/recovery and installed-context launcher checks through
-`make test-productization`, including public install orchestration and inventory-only listing.
+`make test-productization`, including public install orchestration, inventory-only listing, safe archive extraction, and
+atomic dist results.
 
 `make test-extended` is the broad local-normal gate for subsystem work and refactors. It runs both Stage 1 and Stage 2
 normal suites, parity, examples, Stage 2 tooling, and Docker/Wine runner regressions. Normal runner discovery excludes
@@ -116,8 +119,9 @@ exhaustive L1 container path.
 - This subtree supports local self-hosted development and Stage 2 installation with optional offline HTML/PDF through
   `make install PREFIX=...`. Installation builds a private bootstrap chain and preserves development artifacts/aliases.
 - `make list-installed PREFIX=...` reads only the complete installation inventory; it has no build/venv prerequisite.
-- `DOCS_ARTIFACT` optionally installs a verified Stage 2 HTML/PDF bundle; dist/release and docs-publish workflows remain
-  pending.
+- `DOCS_ARTIFACT` optionally installs a verified Stage 2 HTML/PDF bundle and is required by `make dist`.
+- `make dist` creates local archives; `make smoke-dist ARCHIVE=...` validates exact archives without bootstrap. Full
+  native platform acceptance, hosted releases, and docs publishing remain pending.
 - Keep root `README.md` and existing L0 user-facing docs unchanged unless the task explicitly requires a minimal
   consistency fix.
 
