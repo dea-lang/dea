@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import tarfile
 
 import pytest
 
@@ -14,7 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import install_toolchain as installer
 import build_stage1_l1c as stage1
-from productization_inventory import MANIFEST_PATH, install_payload, read_inventory
+from docs_artifacts import create_bundle, unpack_bundle, verify_tree
+from productization_inventory import MANIFEST_PATH, install_payload, list_installed, read_inventory
 from productization_provenance import PackageProvenance
 
 
@@ -34,8 +36,26 @@ def checkout(tmp_path, monkeypatch):
     return root
 
 
+DOCS_SOURCE = {"revision": "fixture", "tree_state": "clean", "input_digest": "a" * 64}
+DOCS_RELATIVE = Path("share/doc/dea/l1/autodocs/stage2")
+
+
+def docs_bundle(tmp_path):
+    """Create a small offline HTML/PDF bundle using the production writer."""
+    tree = tmp_path / "docs source"
+    (tree / "html").mkdir(parents=True)
+    (tree / "pdf").mkdir()
+    (tree / "html/index.html").write_text('<a href="../pdf/dea_l1_stage2_api_reference.pdf">PDF</a>')
+    (tree / "pdf/dea_l1_stage2_api_reference.pdf").write_bytes(b"%PDF-1.7\nfixture\n%%EOF\n")
+    bundle = tmp_path / "offline docs.tar.gz"
+    create_bundle(tree, bundle, stage="stage2", version="dev", source=DOCS_SOURCE,
+                  tools={name: "fixture" for name in ("doxygen", "pdflatex", "python", "mcss")})
+    return bundle
+
+
+@pytest.mark.parametrize("with_docs", [False, True])
 @pytest.mark.parametrize("failure", [None, "stage1", "seed", "interfaces", "payload"])
-def test_private_chain_preserves_development_artifacts(checkout, tmp_path, monkeypatch, failure):
+def test_private_chain_preserves_development_artifacts(checkout, tmp_path, monkeypatch, failure, with_docs):
     root = checkout
     build = root / "build/custom layout"
     (build / "bin").mkdir(parents=True)
@@ -71,19 +91,19 @@ def test_private_chain_preserves_development_artifacts(checkout, tmp_path, monke
 
     def build_seed(compiler, output, env):
         step("seed")
-        assert compiler == private[0] / "bin/l1c-stage1"
-        assert output == private[0] / "bin/l1c-stage2.native"
+        assert compiler == private[-1] / "bin/l1c-stage1"
+        assert output == private[-1] / "bin/l1c-stage2.native"
         output.parent.mkdir()
         output.write_bytes(b"seed")
 
     def verify(layout, seed, env):
         step("interfaces")
-        assert layout == private[0] and seed == layout / "bin/l1c-stage2"
+        assert layout == private[-1] and seed == layout / "bin/l1c-stage2"
 
     @contextmanager
     def payload(root, layout, seed, env, **kwargs):
         step("payload")
-        assert seed == private[0] / "bin/l1c-stage2"
+        assert seed == private[-1] / "bin/l1c-stage2"
         assert kwargs["upstream"] == upstream
         assert kwargs["stage1_options"] == stage1.stage1_build_options(stage1.normalize_l1_build_dir(str(layout)))
         tree = layout / "payload"
@@ -99,6 +119,9 @@ def test_private_chain_preserves_development_artifacts(checkout, tmp_path, monke
     monkeypatch.setattr(installer, "build_payload", payload)
     env = {"L1_BUILD_DIR": str(build), "L1_CFLAGS": "-Dcustom=1", "KEEP_C": "1",
            "L0_HOME": "stale", "L1_HOME": "stale", "L1_SYSTEM": "stale", "L1_STDLIB_CACHE": "stale"}
+    if with_docs:
+        env["DOCS_ARTIFACT"] = str(docs_bundle(tmp_path))
+        monkeypatch.setattr(installer, "source_identity", lambda *args: dict(DOCS_SOURCE))
     if failure:
         with pytest.raises(RuntimeError, match=failure):
             installer.install(str(prefix), env, make="selected-make")
@@ -107,6 +130,26 @@ def test_private_chain_preserves_development_artifacts(checkout, tmp_path, monke
         assert installer.install(str(prefix), env, make="selected-make") == prefix
         assert read_inventory(prefix)["state"] == "complete"
         assert calls == ["stage1", "seed", "interfaces", "payload"]
+        if with_docs:
+            docs = prefix / DOCS_RELATIVE
+            verify_tree(docs, stage="stage2", version="dev", source=DOCS_SOURCE)
+            assert (DOCS_RELATIVE / "html/index.html").as_posix() in list_installed(prefix)
+            # Reinstall without docs removes only owned docs, retaining unrelated files.
+            (docs / "personal-note.txt").write_text("preserve")
+            installer.install(str(prefix), {k: v for k, v in env.items() if k != "DOCS_ARTIFACT"}, make="selected-make")
+            assert not (docs / "html/index.html").exists()
+            assert (docs / "personal-note.txt").read_text() == "preserve"
+            assert not any(path.startswith(DOCS_RELATIVE.as_posix()) for path in list_installed(prefix))
+            installer.install(str(prefix), env, make="selected-make")
+            assert (docs / "html/index.html").is_file()
+            assert (docs / "personal-note.txt").read_text() == "preserve"
+            # Checkout changes during construction must leave the old installation intact.
+            before = {p.relative_to(prefix): p.read_bytes() for p in prefix.rglob("*") if p.is_file()}
+            identities = iter([dict(DOCS_SOURCE), {**DOCS_SOURCE, "input_digest": "b" * 64}])
+            monkeypatch.setattr(installer, "source_identity", lambda *args: next(identities))
+            with pytest.raises(ValueError, match="source identity changed"):
+                installer.install(str(prefix), env, make="selected-make")
+            assert before == {p.relative_to(prefix): p.read_bytes() for p in prefix.rglob("*") if p.is_file()}
     assert list(build.iterdir()) == [build / "bin"]
     assert all(path.read_bytes() == b"preserved development artifact" for path in (build / "bin").iterdir())
 
@@ -223,3 +266,51 @@ def test_public_make_invalid_override_fails_without_installing(tmp_path):
     assert "missing bootstrap compiler" in result.stderr
     assert "L1_BOOTSTRAP_L0C" in result.stderr
     assert not result.stdout and not prefix.exists()
+
+
+@pytest.mark.parametrize("problem", ["stage", "version", "revision", "dirty", "inputs", "incomplete", "tampered", "unsafe"])
+def test_invalid_docs_preserve_prefix_before_bootstrap(checkout, tmp_path, monkeypatch, problem):
+    bundle = docs_bundle(tmp_path)
+    extraction = tmp_path / "extracted"
+    unpack_bundle(bundle, extraction, stage="stage2", version="dev", source=DOCS_SOURCE)
+    tree = extraction / "dea-l1-stage2-autodocs"
+    manifest_path = tree / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    if problem == "stage":
+        manifest["stage"] = 1
+    elif problem == "version":
+        manifest["package_version"] = "other"
+    elif problem in {"revision", "dirty", "inputs"}:
+        field = {"revision": "revision", "dirty": "tree_state", "inputs": "input_digest"}[problem]
+        manifest["source"][field] = "different"
+    elif problem == "incomplete":
+        manifest["full_pdf"] = False
+    elif problem == "tampered":
+        (tree / "html/index.html").write_text("tampered")
+    manifest_path.write_text(json.dumps(manifest))
+    with tarfile.open(bundle, "w:gz") as archive:
+        archive.add(tree, arcname=tree.name)
+        if problem == "unsafe":
+            archive.add(manifest_path, arcname="../escape")
+    prefix = tmp_path / "existing install"
+    payload = tmp_path / "payload"
+    payload.mkdir()
+    (payload / "VERSION").write_text("previous")
+    install_payload(payload, prefix, metadata())
+    before = {p.relative_to(prefix): p.read_bytes() for p in prefix.rglob("*") if p.is_file()}
+    monkeypatch.setattr(installer, "source_identity", lambda *args: dict(DOCS_SOURCE))
+    monkeypatch.setattr(installer, "bootstrap_upstream", lambda *args: pytest.fail("must validate docs first"))
+    with pytest.raises(ValueError):
+        installer.install(str(prefix), {"DOCS_ARTIFACT": str(bundle)})
+    assert before == {p.relative_to(prefix): p.read_bytes() for p in prefix.rglob("*") if p.is_file()}
+    assert not list((checkout / "build/dea").iterdir())
+
+
+def test_docs_input_inside_destination_rejected(checkout, tmp_path, monkeypatch):
+    destination = tmp_path / "destination"
+    bundle = docs_bundle(destination)
+    monkeypatch.setattr(installer, "bootstrap_upstream", lambda *args: pytest.fail("must preflight first"))
+    before = bundle.read_bytes()
+    with pytest.raises(ValueError, match="overlap"):
+        installer.install(str(destination), {"DOCS_ARTIFACT": str(bundle)})
+    assert bundle.read_bytes() == before

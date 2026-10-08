@@ -1,6 +1,6 @@
 # Dea Project Status
 
-Version: 2026-09-30
+Version: 2026-10-08
 
 This document summarizes the current status of the Dea project at the monorepo level.
 
@@ -84,7 +84,8 @@ Its repository status today is:
   libraries, search paths, rpaths, and raw host-driver arguments in every link-involving mode,
 - shipping bootstrap-oriented stdlib growth such as `std.real`, wider integer I/O/math helpers, and the new `std.types`
   value-type helper surface,
-- not yet an install/dist/release-bearing product.
+- supporting self-built Stage 2 installation with optional verified offline HTML/PDF documentation; distribution
+  archives and release workflows remain pending.
 
 L1 bootstrap CI validation is now automated through the unified `ci.yml` GitHub Actions workflow, which routes
 L1-relevant changes into the reusable `l1-ci.yml` delegate. That path covers:

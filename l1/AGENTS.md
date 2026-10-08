@@ -113,10 +113,11 @@ exhaustive L1 container path.
 
 ## Current Scope
 
-- This subtree supports local self-hosted development and compiler-only Stage 2 installation through
+- This subtree supports local self-hosted development and Stage 2 installation with optional offline HTML/PDF through
   `make install PREFIX=...`. Installation builds a private bootstrap chain and preserves development artifacts/aliases.
 - `make list-installed PREFIX=...` reads only the complete installation inventory; it has no build/venv prerequisite.
-- Documentation-bundle integration, dist/release, and docs-publish workflows remain pending.
+- `DOCS_ARTIFACT` optionally installs a verified Stage 2 HTML/PDF bundle; dist/release and docs-publish workflows remain
+  pending.
 - Keep root `README.md` and existing L0 user-facing docs unchanged unless the task explicitly requires a minimal
   consistency fix.
 

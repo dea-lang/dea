@@ -103,8 +103,9 @@ A failed selected-stage invocation removes its old consumer bundle, retains prev
 preserves generation failures under `build/docs/stageS-failure/`. The other stage is untouched. Builds need separate
 output parents when invoked concurrently for the same stage.
 
-Productization will consume the explicit Stage 2 bundle through `DOCS_ARTIFACT` and place its verified files under
-`share/doc/dea/l1/autodocs/stage2/`; install/dist and hosted release attachment remain separate work. Local generation
-and verification do not publish documentation or dispatch workflows.
+Direct installation consumes the optional Stage 2 bundle through `make install PREFIX=... DOCS_ARTIFACT=<absolute-path>`
+and places verified files under `share/doc/dea/l1/autodocs/stage2/`. Use the same `DEA_DIST_VERSION` and checkout
+identity for generation and installation. Distribution integration and hosted release attachment remain pending. Local
+generation and verification do not publish documentation or dispatch workflows.
 
 [roadmap]: roadmap.md

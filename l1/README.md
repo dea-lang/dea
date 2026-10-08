@@ -26,8 +26,8 @@ bootstrap.
 Both compiler stages support per-module generated C, compile-only `.o + .l1m` artifact pairs, verified standalone
 linking with ordered interface discovery, and multi-compilation-unit build/run across mixed source/interface graphs.
 Link-involving modes also accept one ordered stream of explicit foreign objects, external libraries, search paths,
-rpaths, and raw host-driver words. Stage 2 is the mechanical L1 port of the Stage 1 oracle. L1 supports compiler-only
-Stage 2 installation; distribution archives and release workflows remain pending.
+rpaths, and raw host-driver words. Stage 2 is the mechanical L1 port of the Stage 1 oracle. L1 supports Stage 2
+installation with optional offline HTML/PDF references; distribution archives and release workflows remain pending.
 
 `make test-productization` validates prefix ownership/recovery, installed-context launchers, native startup guards,
 curated payload selection, and public install orchestration. It is included in the normal test gates.
@@ -53,7 +53,19 @@ prefix, while native support is prepared in the selected writable cache. Reinsta
 owned files, remove obsolete owned files, and preserve unrelated files. Serialize installation against other installers
 and compiler consumers. `list-installed` prints sorted recorded paths without building or scanning caches.
 
-Direct installs currently omit autodocs and reject `DOCS_ARTIFACT` until bundle integration lands. See
+To include the Stage 2 offline reference, generate a bundle from the same checkout and package version, then pass its
+absolute path to installation:
+
+```bash
+make docs-artifacts DOC_STAGE=stage2 DEA_DIST_VERSION=dev
+make install PREFIX="/path/to/l1" DEA_DIST_VERSION=dev DOCS_ARTIFACT="/absolute/path/to/dea_l1_stage2_autodocs.tar.gz"
+```
+
+Use the bundle path printed by `docs-artifacts`. Installation verifies stage, version, source revision/tree state,
+selected-source digest, HTML/PDF completeness, offline links, and file digests before bootstrap. It does not run Doxygen
+or TeX. Open `<PREFIX>/share/doc/dea/l1/autodocs/stage2/html/index.html` or the PDF in the adjacent `pdf/` directory.
+Omit `DOCS_ARTIFACT` for a compiler-only install; reinstalling without it removes previously owned docs and preserves
+unrelated files. Regenerate the bundle after changing checkout identity or documentation inputs. See
 [l1/docs/reference/productization-inventory.md][productization] for the install/recovery contract and
 [l1/docs/user/toolchain.md][installed-toolchain] for installed operation.
 

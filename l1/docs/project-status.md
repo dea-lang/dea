@@ -16,8 +16,9 @@ future language growth beyond L0.
 
 Stage-separated source references and verified offline HTML/full-PDF bundles are available locally through `make docs`,
 `make docs-pdf`, and `make docs-artifacts`. Each stage has an independent source inventory, navigation, search database,
-PDF, and provenance manifest. Stage 2 is the distribution handoff; install/dist consumption and hosted release
-attachment remain pending. See [l1/docs/README.md](README.md#generated-source-references).
+PDF, and provenance manifest. Stage 2 bundles can be included in direct installs through `DOCS_ARTIFACT`; distribution
+consumption and hosted release attachment remain pending. See
+[l1/docs/README.md](README.md#generated-source-references).
 
 ## Scope and Canonical References
 
@@ -192,11 +193,11 @@ Semantic-only commands do not probe a C compiler or access native cache state. R
 `$L1_BUILD_DIR/cache`; installed-context defaults use the platform per-user cache. Installed fixtures work from a
 read-only payload of semantic interfaces and rebuild inputs with an empty user cache. Productization now exposes
 `make install PREFIX=...` and inventory-only `make list-installed PREFIX=...`, using a private bootstrap chain, curated
-self-built Stage 2 payload, recoverable inventory publication, and native installed-state validation.
-`make test-productization` covers the helpers and public orchestration. Documentation-bundle integration, distribution
-commands, and full four-platform artifact acceptance remain pending. See
-[l1/docs/reference/productization-inventory.md](reference/productization-inventory.md) and
-[l1/docs/reference/stdlib-preparation.md](reference/stdlib-preparation.md).
+self-built Stage 2 payload, recoverable inventory publication, and native installed-state validation. `DOCS_ARTIFACT`
+optionally installs a verified Stage 2 offline HTML/PDF bundle. `make test-productization` covers the helpers and public
+orchestration, including docs ownership across reinstalls. Distribution commands and full four-platform artifact
+acceptance remain pending. See [l1/docs/reference/productization-inventory.md](reference/productization-inventory.md)
+and [l1/docs/reference/stdlib-preparation.md](reference/stdlib-preparation.md).
 
 These shared assets support both the bootstrap compiler and the self-hosted L1 compiler.
 

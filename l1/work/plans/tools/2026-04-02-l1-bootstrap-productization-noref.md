@@ -10,11 +10,11 @@
 - Severity: Medium
 - Stage: L1
 - Target status:
-  - Prefix installer, inventory, and launcher adaptation: Implemented (compiler-only public install/list targets and
-    private bootstrap orchestration; full four-platform artifact acceptance pending)
+  - Prefix installer, inventory, and launcher adaptation: Implemented (public install/list targets, optional Stage 2
+    docs, and private bootstrap orchestration; full four-platform artifact acceptance pending)
   - Native installed-state guard and package provenance: Implemented; four-platform acceptance pending
   - Distribution archive and reusable artifact smoke command: Pending
-  - Stage 2 HTML/PDF inclusion: Pending integration (documentation artifact generator implemented)
+  - Stage 2 HTML/PDF inclusion: Implemented for direct installs; distribution integration pending
   - Four-platform acceptance and documentation: Pending
 - Subsystem: Build workflow / install layout / distribution packaging / bootstrap docs
 - Modules:
@@ -93,7 +93,7 @@ Reviewed on 2026-10-08 against the local checkout:
     explicitly selected repo-local `L1_BUILD_DIR`.
 03. `make test-stage1` runs the complete local-normal Stage 1 suite. Installed preparation and recovery fixtures are
     CI-only unless selected explicitly. Stage 2 reuses the installed preparation Python test against its own compiler.
-04. `make install PREFIX=...` builds and installs a curated Stage 2 compiler-only payload;
+04. `make install PREFIX=...` builds and installs a curated Stage 2 payload with optional verified autodocs;
     `make list-installed PREFIX=...` reads its complete inventory without building. Distribution targets remain pending.
 05. Bootstrap correctness depends on the explicit upstream compiler contract:
     - local development defaults to `../l0/build/dea/bin/l0c-stage2`
@@ -237,11 +237,11 @@ absent repo-local L0 default without switching its alias. Disposable L1 Stage 1 
 the selected build root, with isolated native preparation and no changes to existing development compilers or aliases.
 The seed must reproduce all Stage 1 semantic interface bytes before self-building the curated marked compiler. The
 existing inventory helper publishes the payload and retains interrupted ownership for retry. Listing only reads the
-complete inventory. Direct installs currently omit autodocs and reject a supplied `DOCS_ARTIFACT` explicitly.
+complete inventory. Direct installs omit autodocs by default or consume an explicit verified `DOCS_ARTIFACT`.
 
 Focused orchestration regressions cover failed bootstrap/payload construction, cleanup, artifact/alias preservation,
 invalid destinations/overrides, semantic disagreement, literal prefix punctuation, missing/malformed/incomplete listing,
-and Make dry-run behavior. The productization plan remains open for docs integration, dist/result/smoke interfaces,
+and Make dry-run behavior. The productization plan remains open for dist/docs integration, result/smoke interfaces,
 four-platform artifact acceptance, and final ADR/documentation closure.
 
 Public workflow validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
@@ -266,6 +266,26 @@ Public workflow validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
 - Whitespace, copyright-header, Markdown-formatting, and ADR-impact checks passed.
 - Native macOS and Windows acceptance for this public workflow remains pending. Compiler ownership, runtime selection,
   and trace instrumentation are unchanged; the validation tier adds install/bootstrap integration to the normal gate.
+
+Optional Stage 2 docs installation reuses the completed artifact verifier before bootstrap. It retains a private
+extracted snapshot, rechecks source identity before publication, and includes HTML/PDF plus the documentation manifest
+in the ordinary payload inventory. Reinstalling without docs removes only previously owned files. Invalid stage,
+version, source identity, completeness, file digests, unsafe extraction, or overlapping destinations leave an existing
+prefix untouched. Bootstrap failures clean up docs scratch. Doxygen and TeX are not installation dependencies.
+
+Docs integration validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
+
+- `../.venv/bin/python -m pytest -q -n 0 tests/test_install_toolchain.py tests/test_docgen_artifacts.py`: 64 cases
+  passed, including docs/no-docs reinstalls, rejected bundles, source changes during construction, and scratch cleanup.
+- `make clean test L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc`: passed the normal gate, including 163 productization cases;
+  fourteen native Windows productization cases skipped. Compiler, runtime, and trace behavior are unchanged.
+- A real `make install` with `DOCS_ARTIFACT`, `DEA_DIST_VERSION=docs-install-test`, and the same GCC controls passed.
+  The input was a small verified HTML/PDF fixture carrying the current source identity, not a regenerated Doxygen
+  reference. The relocated read-only prefix passed native/launcher help, version, check, and generation; direct native
+  commands used an empty `PATH`. Full payload verification, docs/compiler metadata agreement, public inventory listing,
+  unchanged payload digests, and scratch cleanup passed. Docs/no-docs reinstallation is covered by the fixture suite.
+- Native macOS/Windows acceptance and full distribution-bundle acceptance remain pending. No compiler construction,
+  ownership, runtime, or trace implementation changed; no additional triple-bootstrap or trace rerun is required.
 
 ## Defaults Chosen
 

@@ -102,7 +102,7 @@ help:
 		'  build-stage2       Build the self-hosted Stage 2 compiler through the repo-local Stage 1 compiler.' \
 		'  use-dev-stage1     Build and switch the repo-local `l1c` alias to Stage 1.' \
 		'  use-dev-stage2     Build and switch the repo-local `l1c` alias to Stage 2.' \
-		'  install            Self-build and install Stage 2 (PREFIX required; DEA_DIST_VERSION defaults to dev).' \
+		'  install            Self-build and install Stage 2 (PREFIX required; optional DOCS_ARTIFACT; DEA_DIST_VERSION defaults to dev).' \
 		'  list-installed     Print sorted owned paths from the complete PREFIX inventory; no build.' \
 		'  test               Run Stage 1/2 smoke checks, parity, examples, Stage 2 tooling, and Docker/Wine runner regressions.' \
 		'  test-ci            Run test-extended with CI-only normal cases, environment/bootstrap, traces, child fixtures, and triple bootstrap.' \

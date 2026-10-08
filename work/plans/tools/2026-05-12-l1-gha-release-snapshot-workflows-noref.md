@@ -3,7 +3,7 @@
 ## Add L1 snapshot and release GHA workflows
 
 - Date: 2026-06-22
-- Last reviewed: 2026-10-05
+- Last reviewed: 2026-10-08
 - Status: In progress (Phase 1 complete; workflow implementation blocked on L1 productization)
 - Title: Add L1 snapshot and release GHA workflows
 - Kind: Tooling
@@ -20,10 +20,9 @@
 - Porting rule: Shared. Trigger, namespace, and publication policy belong here. L1 install layout, archive construction,
   launcher behavior, and installed smoke tests remain owned by the L1 productization plan.
 - Target status:
-  - L1 snapshot GHA workflow: Blocked on install/dist and artifact smoke; Stage 2 documentation generation is
-    implemented
+  - L1 snapshot GHA workflow: Blocked on dist and artifact smoke; Stage 2 documentation generation is implemented
   - L1 release GHA workflow: Blocked on the same prerequisites
-  - L1 docs build integration: HTML/PDF contract defined; generation implementation pending
+  - L1 docs build integration: HTML/PDF generation and bundle verification implemented; hosted integration pending
   - Monorepo release-line policy: Refined prerequisites and hosted acceptance implemented
 - Subsystem: GitHub Actions / release tagging / monorepo release-line policy
 - Modules:
@@ -68,7 +67,7 @@ check or an empty local tag list does not establish the current remote state.
 
 ## Current State
 
-Reviewed on 2026-10-05 against the local checkout:
+Reviewed on 2026-10-08 against the local checkout:
 
 1. `MONOREPO.md` contains the four release-line gating conditions. No L1 release or snapshot workflow exists.
 2. `l1-ci.yml` supports Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64. Its current default toolchains are GCC
@@ -76,8 +75,9 @@ Reviewed on 2026-10-05 against the local checkout:
 3. L1 supports both compiler stages and strict self-hosting validation. Productization follows L0's delivery model:
    install/dist ship self-built Stage 2 only, while Stage 1 remains a bootstrap/development tool. Packaging must not
    follow the active development alias.
-4. The productization plan remains Draft. `l1/Makefile` has no `install`, `list-installed`, or `dist` target. Its
-   documented archive and smoke contract is not yet an implemented workflow dependency.
+4. The productization plan is in progress. Public `install` and `list-installed` targets and optional verified Stage 2
+   docs installation are implemented. `dist`, `DIST_RESULT`, reusable archive smoke, and four-platform artifact
+   acceptance remain pending.
 5. L0 release/snapshot workflows provide examples for tag handling, matrix builds, artifact staging, and publication.
    Their docs-build pattern informs the new L1 Stage 2 job; Pages and blog machinery remain outside scope. L0 snapshot's
    empty `ref` input selects the repository default branch, rather than a hard-coded `main`.
@@ -190,16 +190,16 @@ they exist. It records the productization handoff, separate publication authoriz
 The prerequisite checklist for Phases 2 and 3 remains:
 
 - [ ] L1 install/dist is implemented and its artifact contract is stable.
-- [ ] Stage 2 strict HTML/full-PDF generation and docs-bundle verification are implemented under the defined contract.
+- [x] Stage 2 strict HTML/full-PDF generation and docs-bundle verification are implemented under the defined contract.
 - [ ] The exact archive-path output and reusable installed/archive smoke command are documented and work from a clean,
   relocated prefix on the supported host matrix.
 - [x] Version conversion, release-note baselines, tag validation, and publication behavior are documented as above.
 - [ ] The reserved namespaces remain dedicated to L1 and their authoritative remote state has been checked.
 
 Workflow review and manual dispatch are post-implementation checks, not conditions for writing the first workflow. The
-productization prerequisite remains in force: the install/dist targets and reusable artifact smoke command are still
-absent. Remote namespace verification remains pending until workflow activation. Existing project-status docs already
-describe L1 delivery as unavailable and need no claim change for this phase.
+productization prerequisite remains in force: distribution creation and reusable artifact smoke are still absent. Remote
+namespace verification remains pending until workflow activation. Local installation availability does not establish
+release readiness.
 
 ### Phase 2: Add `l1-snapshot.yml`
 

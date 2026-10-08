@@ -12,8 +12,8 @@ L1 carries post-L0 language growth and bootstrap compiler work.
 ## Current position
 
 - Independent Stage 1/Stage 2 source references and verified offline HTML/full-PDF bundles are implemented. Stage 2
-  artifact consumption remains in productization; hosted attachment remains in the root release-workflow plan. See
-  [l1/docs/README.md][autodocs-guide] and
+  bundles can be installed through `DOCS_ARTIFACT`; distribution consumption remains in productization, and hosted
+  attachment remains in the root release-workflow plan. See [l1/docs/README.md][autodocs-guide] and
   [l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md][source-docs-plan].
 
 - `compiler/stage1_l0/` is the bootstrap compiler and semantic/diagnostic oracle.
@@ -332,10 +332,9 @@ triple bootstrap. New stdlib APIs and delivery workflows remain separate work. S
   preparation compatibility, with persistent reuse gated on configuration isolation, discovery, identity, and
   invalidation validation, and private fallback when reuse cannot be authorized.
 - Tool [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][bootstrap-productization] implements the
-  first self-hosted L1 install/dist workflow. Public compiler-only install/list targets, private bootstrap
-  orchestration, curated Stage 2 construction, prefix recovery, launchers, and native installed-state validation are
-  implemented. Documentation-bundle integration, distribution commands, and full four-platform artifact acceptance
-  remain pending.
+  first self-hosted L1 install/dist workflow. Public install/list targets with optional verified Stage 2 HTML/PDF,
+  private bootstrap orchestration, curated Stage 2 construction, prefix recovery, launchers, and native installed-state
+  validation are implemented. Distribution commands and full four-platform artifact acceptance remain pending.
 - Feature [2026-06-21-cheap-string-slices-noref][cheap-string-slices] extends `dea::slice` to ARC-backed string views
   while preserving internal terminated copies for native runtime calls that require them.
 - Feature [2026-08-30-typed-formatting-noref][typed-formatting] is the Priority 2 replacement for the combinatorial
