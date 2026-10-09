@@ -1,6 +1,6 @@
 # L1 Bundled Interfaces and Native Preparation
 
-Version: 2026-09-27
+Version: 2026-10-09
 
 L1 supplies bundled semantic interfaces with the toolchain and derives native stdlib/runtime support when a command
 needs it. Preparation covers only compiler-owned `std.*` and `sys.*` modules and runtime implementation sources.
@@ -210,9 +210,12 @@ another persistent root. `--prepare-stdlib` requires a usable persistent destina
 private support. Installed preparation rejects cache `v1/` subtrees overlapping the active payload, including path
 aliases, and never writes into the installation.
 
-Installed payloads provide equivalent verified semantic interfaces plus compiler, stdlib/runtime sources, headers, and
-other rebuild inputs. This feature validates that contract with fixtures; installation, distribution, and relocation
-workflows remain future work in [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization].
+Installed payloads provide equivalent verified semantic interfaces plus the Stage 2 executable, stdlib/runtime sources,
+headers, and other rebuild inputs. Installation, distribution, and relocated standalone verification are implemented and
+passed native four-platform artifact acceptance under
+[l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization]. The delivery commands and
+immutable installed-payload boundary are documented in
+[l1/docs/reference/productization-inventory.md][delivery-contract].
 
 ### Internal construction boundary
 
@@ -358,5 +361,6 @@ developer workflow for standalone runtime archives/objects; its products are not
 users compiling outside `l1c` arrange their own matching runtime.
 
 [cli]: ../../../docs/specs/compiler/cli-contract.md
+[delivery-contract]: productization-inventory.md
 [legacy-clang-plan]: ../../work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md
 [productization]: ../../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md

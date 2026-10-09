@@ -19,7 +19,8 @@
   - Native artifact acceptance: Linux x86_64, macOS Intel/ARM, and Windows UCRT64 passed with full generated Stage 2
     docs
   - Architectural records: Completed (ADR-0042 delivery contract and ADR-0001 bootstrap amendment)
-  - Final documentation/release-workflow handoff and plan closure: Pending
+  - Final documentation/release-workflow handoff: Completed
+  - Formal plan closure: Pending
 - Subsystem: Build workflow / install layout / distribution packaging / bootstrap docs
 - Modules:
   - `l1/Makefile`
@@ -248,7 +249,7 @@ complete inventory. Direct installs omit autodocs by default or consume an expli
 
 Focused orchestration regressions cover failed bootstrap/payload construction, cleanup, artifact/alias preservation,
 invalid destinations/overrides, semantic disagreement, literal prefix punctuation, missing/malformed/incomplete listing,
-and Make dry-run behavior. The productization plan remains open for final ADR/documentation closure.
+and Make dry-run behavior. The productization plan remains open for formal lifecycle closure.
 
 Public workflow validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
 
@@ -312,8 +313,8 @@ tools on PATH. The harness verifies unchanged payload digests after execution.
 The exact public commands, archive names, result schema, and failure/consumer rules are documented in
 [l1/docs/reference/productization-inventory.md][inventory-reference]. The packaging regression suite is part of both
 normal gates. No compiler construction, native selection, runtime ownership, or trace implementation changes are
-introduced by this phase. Architectural records are complete in ADR-0042 and the ADR-0001 amendment; final documentation
-handoff and plan closure remain open. Hosted release/snapshot implementation remains a separate plan.
+introduced by this phase. Architectural records and documentation handoff are complete; formal plan closure remains.
+Hosted release/snapshot implementation remains a separate plan.
 
 Distribution validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
 
@@ -368,7 +369,7 @@ regression fixtures and compiler validation; it does not substitute for this art
 four native builds passed. On 2026-10-09, fresh-runner artifact verification passed on Linux x86_64, macOS Intel/ARM,
 and Windows UCRT64. All four retained schema-1 acceptance reports record `status: passed`, package version `dev`, the
 expected host identity, and the verified archive digest. This completes the four-platform artifact acceptance step. The
-final documentation/release-workflow handoff remains before overall plan closure. The delivery decision is recorded in
+documentation/release-workflow handoff is complete; formal plan closure remains. The delivery decision is recorded in
 [l1/docs/decisions/0042-self-hosted-toolchain-delivery.md][delivery], and the explicit bootstrap contract is recorded in
 the amended [l1/docs/decisions/0001-bootstrap-adaptation-strategy.md][bootstrap]. No release/snapshot publication
 implementation is included in this step.
@@ -406,6 +407,20 @@ Acceptance-gate validation:
   independently of hosted workflow execution.
 - Workflow `actionlint`, staged whitespace, ADR Impact validation, and repository pre-commit hooks passed. The gate adds
   artifact orchestration without changing compiler construction, runtime ownership, or trace implementation.
+
+## Documentation and Workflow Handoff
+
+The roadmap, L1 and monorepo status docs, installation contract, and preparation reference now describe implemented
+self-hosted Stage 2 delivery and passing four-platform standalone artifact acceptance. ADR-0042 and the ADR-0001
+amendment record the accepted delivery and bootstrap contracts. The
+[work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md][release-workflows] plan consumes the validated
+docs/build commands, schema-1 archive result, transported harness, separate fresh-host verification, and matching
+acceptance reports. Missing install/dist or smoke functionality no longer blocks workflow implementation.
+
+Hosted release/snapshot implementation, authoritative namespace verification before activation, and separately
+authorized publication acceptance stay in that root plan. Local documentation handoff does not activate a release line
+or establish stable language/toolchain maturity. Only formal productization closure and its final backlink updates
+remain here.
 
 ## Defaults Chosen
 
@@ -739,7 +754,7 @@ not assign those codes to the new startup inventory failure.
   - ADR: `l1/docs/decisions/0001-bootstrap-adaptation-strategy.md`
   - Rationale: The amended ADR-0001 distinguishes the explicit upstream compiler used to construct Stage 1 and the Stage
     2 seed from the self-built Stage 2 compiler used after installation. Both ADR backlinks will follow this plan when
-    it closes after the documentation handoff.
+    it closes.
 
 ## Non-Goals
 

@@ -1,12 +1,12 @@
 # Dea Project Status
 
-Version: 2026-10-08
+Version: 2026-10-09
 
 This document summarizes the current status of the Dea project at the monorepo level.
 
-Today the repository contains one active release line, Dea/L0, plus an active bootstrap subtree for Dea/L1. L0 remains
-the canonical user-facing toolchain and documentation set for current releases. L1 exists so post-L0 language evolution
-can continue inside the monorepo without changing the current L0 release target.
+Today the repository contains one active release line, Dea/L0, plus a self-hosted development subtree for Dea/L1. L0
+remains the canonical user-facing toolchain and documentation set for current releases. L1 exists so post-L0 language
+evolution can continue inside the monorepo without changing the current L0 release target.
 
 ## Scope and Canonical References
 
@@ -17,8 +17,8 @@ Use this file as the Dea-wide status snapshot. For more specific details, use:
 - [l0/docs/project-status.md](../l0/docs/project-status.md) for the current L0 implementation and release status.
 - [l0/docs/releases/2.0.0.md](../l0/docs/releases/2.0.0.md) for L0 2.0.0 changes and migration guidance.
 - [l0/docs/releases/2.1.1.md](../l0/docs/releases/2.1.1.md) for the current L0 2.1.1 release and compatibility guidance.
-- [l1/docs/project-status.md](../l1/docs/project-status.md) for the current L1 bootstrap implementation status.
-- [l1/README.md](../l1/README.md) for the current L1 bootstrap subtree entry point.
+- [l1/docs/project-status.md](../l1/docs/project-status.md) for the current L1 implementation and delivery status.
+- [l1/README.md](../l1/README.md) for the current L1 development and installation entry point.
 - [docs/specs/compiler/cli-contract.md](specs/compiler/cli-contract.md) for the shared compiler CLI contract.
 
 ## Current Repository Shape
@@ -34,10 +34,10 @@ The monorepo currently contains:
 - `work/` for Dea-wide and monorepo-wide plans/proposals.
 - `tools/` for vendored third-party dependencies.
 
-Inside `l1/`, the initial compiler layout is:
+Inside `l1/`, the compiler layout is:
 
 - `compiler/stage1_l0/` for the first L1 compiler implemented in L0,
-- `compiler/stage2_l1/` as a placeholder for the future self-hosted L1 stage,
+- `compiler/stage2_l1/` for the self-hosted L1 compiler,
 - `compiler/shared/runtime/` and `compiler/shared/l1/stdlib/` for copied shared bootstrap assets.
 
 ## Language-Level Status
@@ -64,14 +64,15 @@ minimum. The existing L0 language and CLI contract is unchanged from 2.0.0.
 
 ### Dea/L1
 
-L1 is in bootstrap development.
+L1 supports self-hosted development and standalone Stage 2 delivery; hosted releases remain pending.
 
 Its repository status today is:
 
-- maintained as a separate bootstrap compiler subtree under `l1/`,
-- built from the runnable L0 Stage 2 compiler and selectable as the repo-local `l1c` command,
-- validated through copied Stage 1 implementation tests written in `.l0` and run through the upstream L0 compiler,
-- using `.l1` as the current L1 source surface for the copied L1 stdlib, example programs, and bootstrap test fixtures,
+- maintained as a separate language subtree under `l1/`,
+- bootstrapped through an explicit L0 compiler into L1 Stage 1 and self-hosted Stage 2, with explicit repo-local `l1c`
+  selection and a self-built Stage 2 delivery chain,
+- validated through both stages' normal suites, parity, trace checks, and strict triple bootstrap,
+- using `.l1` for the self-hosted compiler, L1 stdlib, examples, and language fixtures,
 - carrying implemented post-L0 language work such as wider numeric types, real literals, bitwise operators, top-level
   `const` with checked scalar constant expressions, string value comparisons, nullable/pointer identity equality, named
   arguments, the `is(...)` enum tag intrinsic, function pointer and L1-defined variadic function types, `unsafe func`,
@@ -85,20 +86,24 @@ Its repository status today is:
 - shipping bootstrap-oriented stdlib growth such as `std.real`, wider integer I/O/math helpers, and the new `std.types`
   value-type helper surface,
 - supporting self-built Stage 2 installation and local distribution archives with verified offline HTML/PDF
-  documentation and reusable archive smoke validation; full platform acceptance and hosted releases remain pending.
+  documentation and reusable archive smoke validation; native artifact acceptance passed on Linux x86_64, macOS
+  Intel/ARM, and Windows UCRT64, including fresh verification hosts without checkout or bootstrap compilers.
 
 L1 bootstrap CI validation is now automated through the unified `ci.yml` GitHub Actions workflow, which routes
 L1-relevant changes into the reusable `l1-ci.yml` delegate. That path covers:
 
 - building the L1 Stage 1 compiler via an explicit upstream L0 Stage 2 compiler on Linux, macOS, and Windows,
-- running all normal L1 Stage 1 checks plus the default ARC/memory trace suite on Linux, macOS, and Windows,
+- running `make test-ci` for both compiler stages, including normal suites, environment/bootstrap integration,
+  ARC/memory trace sweeps, child fixtures, and strict triple bootstrap,
 - validating `examples/*.l1` sources, and
 - providing `workflow_dispatch` inputs for platform selection, manual C compiler selection, and explicit Make-target
   selection; the focused Windows-capable trace smoke target remains available for manual diagnostics.
 
-L1 release and snapshot workflows (`l1-v*` and `l1-snapshot-*`) are not yet active and will only be added when the L1
-install/dist artifact contract is defined, stable, and smoke-testable. See `MONOREPO.md` for the full release-line
-gating policy.
+L1 release and snapshot workflows (`l1-v*` and `l1-snapshot-*`) are not yet implemented or active. The install/dist
+contract and four-platform artifact acceptance are complete;
+[work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md](../work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md)
+now consumes the validated commands and artifacts and owns workflow implementation and separately authorized hosted
+publication acceptance. See [MONOREPO.md](../MONOREPO.md) for the release-line gating policy.
 
 ## Release Model
 
@@ -107,9 +112,9 @@ The Dea monorepo uses separate release lines for each language level:
 - L0 releases use `l0-v*` and `l0-snapshot-*`.
 - Future L1 releases will use `l1-v*` and `l1-snapshot-*`.
 
-L1 bootstrap development currently consumes L0 as an upstream compiler toolchain. Local development defaults to the
-repo-local L0 Stage 2 build, while reproducible CI/release-oriented bootstrap flows should use an explicit upstream L0
-compiler path.
+L1 construction consumes L0 as an upstream compiler toolchain; installed use is independent of that bootstrap chain.
+Local development defaults to the repo-local L0 Stage 2 build, while reproducible CI/release-oriented bootstrap flows
+should use an explicit upstream L0 compiler path.
 
 ## Shared Monorepo State
 
@@ -130,5 +135,6 @@ by the relevant level subtree.
 
 - Dea/L0 `2.1.1` is the stable release line. User-visible fixes and future compatibility changes remain governed by L0
   semantic versioning and Stage 1/Stage 2 parity.
-- Dea/L1 remains a bootstrap subtree rather than a release-bearing product. Its current direction is maintained in
+- Dea/L1 provides a validated self-built Stage 2 development toolchain. Hosted release/snapshot workflows and verified
+  publication remain pending; local productization awaits formal plan closure. Its current direction is maintained in
   [l1/docs/roadmap.md](../l1/docs/roadmap.md).

@@ -62,7 +62,7 @@ verification remain separate tooling operations. The delivery contract is record
 
 - [work/plans/refactors/closed/2026-04-02-l1-bootstrap-scaffold-noref.md][scaffold]
 - [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization]: bootstrap contract amendment;
-  documentation handoff and plan closure remain active.
+  documentation handoff is complete; formal plan closure remains active.
 
 ## Current Docs
 

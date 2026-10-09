@@ -1,10 +1,10 @@
 # L1 Project Status
 
-Version: 2026-10-08
+Version: 2026-10-09
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
-Dea/L1 currently supports local self-hosted development:
+Dea/L1 supports self-hosted development and standalone Stage 2 installation/distribution:
 
 - the bootstrap compiler is `compiler/stage1_l0/`, implemented in Dea/L0; Stage 2 is implemented in Dea/L1
 - the current shared assets are `compiler/shared/l1/stdlib/` plus the copied runtime sources under
@@ -197,7 +197,16 @@ self-built Stage 2 payload, recoverable inventory publication, and native instal
 optionally installs a verified Stage 2 offline HTML/PDF bundle. `make test-productization` covers the helpers and public
 orchestration, including docs ownership across reinstalls, curated tar/zip archives, and atomic `DIST_RESULT` metadata.
 `make dist` packages the required docs, and `make smoke-dist ARCHIVE=...` verifies extraction, relocation, and
-standalone operation. Full four-platform artifact acceptance remains pending. See
+standalone operation. Native artifact acceptance passed on 2026-10-09 on Linux x86_64, macOS Intel/ARM, and Windows
+UCRT64, including full Stage 2 HTML/PDF and fresh-runner verification without checkout or bootstrap compilers.
+`make test-productization-acceptance` supplies the separate build/verify gate and retained archive/result/harness
+evidence; ordinary `test-ci` does not replace it.
+
+[l1/docs/decisions/0042-self-hosted-toolchain-delivery.md](decisions/0042-self-hosted-toolchain-delivery.md) and the
+[l1/docs/decisions/0001-bootstrap-adaptation-strategy.md](decisions/0001-bootstrap-adaptation-strategy.md) amendment
+record the accepted delivery/bootstrap contracts. The validated commands and artifacts are handed off to
+[work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md](../../work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md);
+hosted workflow implementation and publication acceptance remain pending. Productization awaits formal plan closure. See
 [l1/docs/reference/productization-inventory.md](reference/productization-inventory.md) and
 [l1/docs/reference/stdlib-preparation.md](reference/stdlib-preparation.md).
 

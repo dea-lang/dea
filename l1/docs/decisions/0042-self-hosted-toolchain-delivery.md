@@ -121,12 +121,12 @@ handoff, and fresh-host acceptance demonstrates independence that checkout-local
 - Integrity digests and recorded provenance describe and verify payload agreement; they do not establish publisher
   authentication or reproducible archive bytes across builds.
 - Hosted release/snapshot workflows and docs publication consume these interfaces through their separate plan and
-  authorization gates. This ADR records the delivery decision while documentation handoff and plan closure remain open.
+  authorization gates. Documentation handoff is complete; formal productization plan closure remains open.
 
 ## Related Plans
 
 - [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization]: implemented delivery and native
-  acceptance; documentation handoff and closure remain active.
+  acceptance and completed documentation handoff; formal closure remains active.
 - [l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md][autodocs]: offline reference input
   contract.
 

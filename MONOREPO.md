@@ -81,6 +81,13 @@ The following prerequisites must be met before the first L1 release or snapshot 
    deliberately prepared L1 release or snapshot. Check the authoritative remote tag state before activation; historical
    checks and local tag lists are insufficient.
 
+The install/dist and four-platform standalone-artifact prerequisites passed on 2026-10-09, including full Stage 2
+HTML/PDF and fresh verification hosts without checkout or bootstrap compilers. The accepted contract is recorded in
+[l1/docs/decisions/0042-self-hosted-toolchain-delivery.md](l1/docs/decisions/0042-self-hosted-toolchain-delivery.md),
+and the release-workflow plan now consumes its validated commands and archive/result/harness handoff. Workflow
+implementation, authoritative namespace verification before activation, and hosted publication acceptance remain
+pending.
+
 An `l1-release.yml` or `l1-snapshot.yml` workflow that does not meet these conditions is not valid to add. L1 CI
 validation (via `l1-ci.yml`) covers both compiler stages and the strict self-hosting fixed point independently of these
 release prerequisites.

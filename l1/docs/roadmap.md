@@ -1,19 +1,20 @@
 # Dea/L1 Roadmap
 
-Version: 2026-10-08
+Version: 2026-10-09
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
 been promoted to initiatives or plans.
 
-L1 is currently a bootstrap subtree, not a release-bearing product. L0 remains the active user-facing release line while
-L1 carries post-L0 language growth and bootstrap compiler work.
+L1 supports self-hosted development, standalone Stage 2 installation, and validated local distribution archives. L0
+remains the active release line; L1 hosted releases and documentation publication remain separate follow-up work.
 
 ## Current position
 
 - Independent Stage 1/Stage 2 source references and verified offline HTML/full-PDF bundles are implemented. Stage 2
-  bundles can be installed and packaged through `DOCS_ARTIFACT`; full artifact acceptance remains in productization, and
-  hosted attachment remains in the root release-workflow plan. See [l1/docs/README.md][autodocs-guide] and
+  bundles can be installed and packaged through `DOCS_ARTIFACT`; native artifact acceptance passed on Linux x86_64,
+  macOS Intel/ARM, and Windows UCRT64. Hosted attachment remains in the root release-workflow plan. See
+  [l1/docs/README.md][autodocs-guide] and
   [l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md][source-docs-plan].
 
 - `compiler/stage1_l0/` is the bootstrap compiler and semantic/diagnostic oracle.
@@ -86,8 +87,8 @@ triple bootstrap. New stdlib APIs and delivery workflows remain separate work. S
   type components where needed, nominal types use `S` / `E`, and compiler-generated module lifecycle helpers use `I`.
   Runtime/public helper families retain their documented `dea_*`, `DEA_*`, `rt_*`, and `_rt_*` roles. Historical `l0_*`
   names are not part of the current L1 ABI.
-- The first L1 productization steps should remain bootstrap-oriented until a later plan explicitly makes L1 a release
-  line.
+- L1 packages remain Stage 2 development toolchains. Validated local delivery does not activate a hosted release line or
+  establish stable language/toolchain maturity.
 
 ## Completed milestones
 
@@ -332,10 +333,12 @@ triple bootstrap. New stdlib APIs and delivery workflows remain separate work. S
   preparation compatibility, with persistent reuse gated on configuration isolation, discovery, identity, and
   invalidation validation, and private fallback when reuse cannot be authorized.
 - Tool [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][bootstrap-productization] implements the
-  first self-hosted L1 install/dist workflow. Public install/list targets with optional verified Stage 2 HTML/PDF,
-  private bootstrap orchestration, curated Stage 2 construction, prefix recovery, launchers, and native installed-state
-  validation are implemented. Distribution commands, atomic result metadata, and archive smoke validation are
-  implemented; full four-platform artifact acceptance remains pending.
+  first self-hosted L1 install/dist workflow. Installation, archives, provenance, and standalone verification passed
+  four-platform artifact acceptance. ADR-0042 and the ADR-0001 amendment record the delivery and bootstrap contracts;
+  documentation and release-workflow handoff are complete. Formal plan closure remains.
+- Tool [work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md][release-workflows] consumes the
+  validated build/result/harness handoff for planned snapshot and release workflows. Implementation and separately
+  authorized hosted publication acceptance remain pending.
 - Feature [2026-06-21-cheap-string-slices-noref][cheap-string-slices] extends `dea::slice` to ARC-backed string views
   while preserving internal terminated copies for native runtime calls that require them.
 - Feature [2026-08-30-typed-formatting-noref][typed-formatting] is the Priority 2 replacement for the combinatorial
@@ -407,9 +410,10 @@ backlog does not imply missing work where L1 already has a narrower surface.
 
 - Self-hosted `stage2_l1` compiler implementation and Stage 1/Stage 2 parity validation are complete under Feature
   [2026-07-11-shared-l1-stage2-self-hosting-port-noref][stage2-self-hosting].
-- Release-bearing L1 install, distribution, release, and docs-publishing workflows after the bootstrap productization
-  plan lands.
-- Broader L1 CI/CD and tooling beyond bootstrap packaging, including validation matrices and published artifact checks.
+- Hosted L1 release/snapshot workflows consuming the validated Stage 2 distribution contract, followed by separately
+  authorized publication acceptance under the active release-workflow plan.
+- Hosted documentation publication and broader delivery tooling beyond the existing four-platform CI and isolated
+  artifact acceptance gates.
 
 ## Deferred direction
 
@@ -489,6 +493,7 @@ update to be promoted to an initiative or plan:
 [profile-artifacts]: ../work/plans/features/2026-09-30-explicit-profile-artifacts-noref.md
 [profile-boundary]: ../work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md
+[release-workflows]: ../../work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md
 [reuse-report]: ../work/plans/tools/closed/2026-09-13-native-reuse-capability-report-noref.md
 [runtime-library]: ../work/initiatives/closed/0002-runtime-static-library.md
 [runtime-pointer-validation]: ../work/plans/features/closed/2026-06-30-runtime-pointer-access-validation-noref.md

@@ -5,8 +5,8 @@ Version: 2026-10-09
 L1 exposes `make install PREFIX=...` and `make list-installed PREFIX=...` for a curated, self-built Stage 2 toolchain.
 Prefix ownership, recoverable payload copying, installed-context launchers, generated provenance, and native startup
 validation and optional Stage 2 documentation installation are implemented. `make dist` creates a local archive with
-required Stage 2 documentation, and `make smoke-dist` validates that exact artifact. Full platform acceptance remains in
-[l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization].
+required Stage 2 documentation, and `make smoke-dist` validates that exact artifact. Passing four-platform acceptance
+evidence is recorded in [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization].
 
 ## Local distribution workflow
 
@@ -111,8 +111,13 @@ independence when the hosted jobs pass. The workflow has read-only repository pe
 publication steps. It is separate from `test-ci`; running ordinary CI does not run this gate.
 
 Native artifact acceptance passed on all four platforms on 2026-10-09, including full Stage 2 HTML/PDF and fresh-runner
-verification without checkout or bootstrap compilers. The remaining productization work is the delivery decision record,
-bootstrap ADR amendment, and final documentation handoff; hosted release and documentation publication remain separate.
+verification without checkout or bootstrap compilers.
+[l1/docs/decisions/0042-self-hosted-toolchain-delivery.md][delivery] records the accepted delivery contract, with the
+explicit bootstrap selection in [l1/docs/decisions/0001-bootstrap-adaptation-strategy.md][bootstrap]. Documentation
+handoff is complete; formal productization plan closure remains. Hosted release/snapshot implementation consumes these
+commands and artifacts through
+[work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md][release-workflows]. Hosted publication remains
+separate work.
 
 ## Public install workflow
 
@@ -154,8 +159,8 @@ installed native compiler startup itself does not require Python or Make.
 
 ## Inventory schema
 
-[l1/scripts/productization_inventory.py][inventory] defines schema version 1. The same format will be consumed by the
-native startup reader. A complete record requires exactly these fields:
+[l1/scripts/productization_inventory.py][inventory] defines schema version 1. The native startup reader consumes the
+same format. A complete record requires exactly these fields:
 
 | Field             | Value                                                                                                               |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------- |
@@ -334,9 +339,12 @@ preparation/run, and warm standalone linking while preserving installed digests.
 and run through `test-productization`; platform-specific cases skip explicitly when their host prerequisites are absent.
 
 [acceptance-workflow]: ../../../.github/workflows/l1-productization-acceptance.yml
+[bootstrap]: ../decisions/0001-bootstrap-adaptation-strategy.md
+[delivery]: ../decisions/0042-self-hosted-toolchain-delivery.md
 [installation]: ../../compiler/stage1_l0/support/installation.h
 [inventory]: ../../scripts/productization_inventory.py
 [launchers]: ../../scripts/productization_launchers.py
 [productization]: ../../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
 [provenance]: ../../scripts/productization_provenance.py
+[release-workflows]: ../../../work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md
 [stage2-builder]: ../../scripts/build_stage2_l1c.py
