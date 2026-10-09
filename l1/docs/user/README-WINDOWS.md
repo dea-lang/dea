@@ -8,7 +8,9 @@ UCRT64 shell:
 pacman -S mingw-w64-ucrt-x86_64-gcc
 ```
 
-The installed Dea compiler does not require Python, Make, upstream L0, or a bootstrap L1 compiler.
+The installed Dea compiler does not require Python, Make, upstream L0, or a bootstrap L1 compiler. Its executable still
+requires the UCRT64 runtime DLLs, including `libwinpthread-1.dll`, for semantic-only commands such as `--check` and
+`--gen`. Keep the UCRT64 `bin` directory on `PATH` even when no C compilation is needed.
 
 ## Using the package
 

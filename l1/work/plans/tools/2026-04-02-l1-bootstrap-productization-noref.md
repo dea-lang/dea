@@ -14,9 +14,9 @@
     docs, and private bootstrap orchestration; full four-platform artifact acceptance pending)
   - Native installed-state guard and package provenance: Implemented; four-platform acceptance pending
   - Distribution archive, atomic result metadata, and reusable artifact smoke command: Implemented
-  - Acceptance target and isolated four-platform workflow: Implemented; hosted execution pending
+  - Acceptance target and isolated four-platform workflow: Implemented; hosted Windows verification pending
   - Stage 2 HTML/PDF inclusion: Implemented for direct installs and required distributions
-  - Native artifact acceptance: Linux x86_64 and macOS Intel passed with full generated Stage 2 docs; macOS ARM and
+  - Native artifact acceptance: Linux x86_64, macOS Intel, and macOS ARM passed with full generated Stage 2 docs;
     Windows UCRT64 pending
   - Final documentation, delivery ADR, and plan closure: Pending
 - Subsystem: Build workflow / install layout / distribution packaging / bootstrap docs
@@ -312,8 +312,8 @@ tools on PATH. The harness verifies unchanged payload digests after execution.
 The exact public commands, archive names, result schema, and failure/consumer rules are documented in
 [l1/docs/reference/productization-inventory.md][inventory-reference]. The packaging regression suite is part of both
 normal gates. No compiler construction, native selection, runtime ownership, or trace implementation changes are
-introduced by this phase. Native macOS ARM and Windows UCRT64 artifact acceptance, the delivery ADR/ADR-0001 amendment,
-and final plan closure remain open. Hosted release/snapshot implementation remains a separate plan.
+introduced by this phase. Native Windows UCRT64 artifact acceptance, the delivery ADR/ADR-0001 amendment, and final plan
+closure remain open. Hosted release/snapshot implementation remains a separate plan.
 
 Distribution validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
 
@@ -364,15 +364,29 @@ verification hosts; the default combined local run does not claim checkout unava
 The manual `L1 Productization Acceptance` workflow builds one full Stage 2 docs bundle and all four native archives from
 the selected source/version. Verification runs in separate fresh jobs that never check out sources or download bootstrap
 artifacts. Build and smoke logs are retained with artifact evidence. Ordinary four-platform `test-ci` success covers
-regression fixtures and compiler validation; it does not substitute for this artifact gate. Hosted execution of the new
-workflow remains pending. No release/snapshot publication implementation is included in this change.
+regression fixtures and compiler validation; it does not substitute for this artifact gate. Hosted documentation and all
+four native builds passed. Fresh-runner artifact verification passed on Linux x86_64 and macOS Intel/ARM; Windows
+verification remains pending. No release/snapshot publication implementation is included in this change.
 
-Acceptance-gate validation on macOS Intel with `/usr/bin/clang`, Apple Clang 17.0.0 (`clang-1700.6.4.2`):
+Windows UCRT64 verification exposed a smoke-harness isolation error: clearing PATH for semantic-only commands also hid
+`libwinpthread-1.dll`, imported by the packaged executable. Help/version checks passed with the controlled host PATH,
+but the empty-PATH semantic check could not load the compiler. Semantic checks now copy only UCRT64 DLLs into a private
+runtime directory on PATH and set both C compiler selectors to an absent executable. Compiler, Python, and Make tools
+remain unavailable through PATH. POSIX semantic checks retain an empty PATH. Portable regression coverage checks both
+host branches, copied DLL bytes (including uppercase extensions), paths with spaces, unavailable tools, and preservation
+of the original environment. Native Windows acceptance still requires a fresh hosted run with this fix.
 
-- `make test L0_CC=/usr/bin/clang L1_CC=/usr/bin/clang L1_RUNTIME_CC=/usr/bin/clang` passed, including 247
-  productization checks and fourteen native Windows skips. After the final result-schema type checks were tightened,
-  `../.venv/bin/python -m pytest -q -n 0 tests/test_productization_acceptance.py` passed all 22 cases. Compiler/runtime
-  inputs and the other normal-gate components remained unchanged, so their successful results were reused.
+Acceptance-gate validation:
+
+- `make test L0_CC=/usr/bin/clang L1_CC=/usr/bin/clang L1_RUNTIME_CC=/usr/bin/clang` passed on macOS Intel with Apple
+  Clang 17.0.0 (`clang-1700.6.4.2`), including 252 productization checks and fourteen native Windows skips. Focused
+  `../.venv/bin/python -m pytest -q -n 0 tests/test_distribution.py tests/test_productization_acceptance.py` passed all
+  89 cases, including the Windows/POSIX semantic-environment regressions. These checks include simulated Windows inputs;
+  they do not establish native Windows execution.
+- The hosted Windows archive, original result, and corrected standalone harness passed relocated help/version and
+  semantic check/generation under Wine/MSYS2 with GCC 16.2.0 (Rev3), without repository sources mounted. The verifier
+  reached native linking/preparation before the optional emulation run was stopped; this is focused evidence for the DLL
+  isolation fix, not completed Windows artifact acceptance.
 - `make docs-artifacts DOC_STAGE=stage2 DEA_DIST_VERSION=dev` generated and verified full Stage 2 HTML and indexed PDF
   with Doxygen 1.18.0 and TeX Live 2026.
 - `make test-productization-acceptance DEA_DIST_VERSION=dev DOCS_ARTIFACT=<full-bundle> ACCEPTANCE_DIR=<new-directory>`

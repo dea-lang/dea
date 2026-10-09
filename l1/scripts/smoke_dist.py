@@ -51,6 +51,33 @@ def smoke_environment(root: Path, source: dict[str, str]) -> dict[str, str]:
     return env
 
 
+def semantic_environment(work: Path, env: dict[str, str]) -> dict[str, str]:
+    """Hide native tools while preserving Windows compiler runtime DLLs.
+
+    Args:
+        work: Private smoke working directory.
+        env: Controlled smoke environment with an absolute native compiler path.
+
+    Returns:
+        A separate environment with unavailable C compiler selectors and either
+        an empty PATH or a private directory containing only UCRT64 DLLs.
+
+    Raises:
+        OSError: The private DLL directory cannot be created or populated.
+    """
+    path = ""
+    if os.name == "nt":
+        # Clearing PATH also hides libwinpthread, needed before Dea can start.
+        # Copy only DLLs so semantic checks still cannot discover host tools.
+        runtime = work / "host-runtime"
+        runtime.mkdir()
+        for library in Path(env["L1_CC"]).parent.iterdir():
+            if library.is_file() and library.suffix.lower() == ".dll":
+                shutil.copy2(library, runtime / library.name)
+        path = str(runtime)
+    return {**env, "PATH": path, "L1_CC": str(work / "no-cc"), "L1_RUNTIME_CC": str(work / "no-cc")}
+
+
 def run_smoke(prefix: Path, work: Path, env: dict[str, str]) -> None:
     """Exercise relocated, read-only compiler operation and cold/warm native support."""
     record = verify_distribution(prefix)
@@ -99,7 +126,7 @@ def run_smoke(prefix: Path, work: Path, env: dict[str, str]) -> None:
                 raise ValueError(f"native version disagrees with package metadata: {version}")
             invoke("--help", executable=executable)
         native = prefix / "bin/l1c-stage2.native"
-        semantic_env = {**env, "PATH": "", "L1_CC": str(work / "no-cc")}
+        semantic_env = semantic_environment(work, env)
         invoke("--check", source, executable=native, child_env=semantic_env)
         invoke("--gen", source, "-o", str(work / "hello.c"), executable=native, child_env=semantic_env)
         invoke("--compile", source, "-o", str(work / "hello.o"))

@@ -68,8 +68,10 @@ help/version forms, semantic operations with no compiler tools on PATH, compile-
 cache disposal. A private cache and controlled native-tool PATH exclude repository aliases and bootstrap tooling. POSIX
 prefixes become read-only during execution, and all hosts verify unchanged payload bytes afterward. Select a supported C
 compiler with `L1_CC`; native execution is valid only on the archive's host family/architecture. Windows retains the
-UCRT64 tool and Windows system directories for DLLs and host commands. Native macOS and Windows acceptance is still
-required before closing the productization plan.
+UCRT64 tool and Windows system directories for DLLs and host commands during native compilation. Windows semantic-only
+checks instead use a private PATH directory containing only copied UCRT64 runtime DLLs, with both C compiler selectors
+pointing to an absent executable. This permits compiler startup without exposing compiler, Python, or Make tools. Native
+Windows acceptance is still required before closing the productization plan.
 
 ## Productization acceptance gate
 

@@ -335,6 +335,39 @@ def test_windows_smoke_environment_ignores_variable_name_case(tmp_path, monkeypa
     assert all(key == key.upper() for key in env)
 
 
+@pytest.mark.parametrize("host", ["nt", "posix"])
+def test_semantic_smoke_hides_tools_but_preserves_windows_runtime(tmp_path, monkeypatch, host):
+    """DLL search must survive isolation without exposing the compiler directory."""
+    tools = tmp_path / "host compiler with spaces"
+    tools.mkdir()
+    libraries = {"libwinpthread-1.dll": b"pthread runtime", "other.DLL": b"another runtime"}
+    for name, content in {**libraries, "gcc.exe": b"compiler", "python.exe": b"python",
+                          "make.exe": b"make", "helper.cmd": b"command"}.items():
+        (tools / name).write_bytes(content)
+    work = tmp_path / "unrelated working directory"
+    work.mkdir()
+    env = {"PATH": str(tools), "L1_CC": str(tools / "gcc.exe"),
+           "L1_RUNTIME_CC": str(tools / "gcc.exe"), "SYSTEMROOT": "system root"}
+    original = dict(env)
+    monkeypatch.setattr(smoke_dist, "os", SimpleNamespace(name=host))
+
+    semantic = smoke_dist.semantic_environment(work, env)
+
+    assert env == original
+    assert semantic["L1_CC"] == semantic["L1_RUNTIME_CC"] == str(work / "no-cc")
+    assert not Path(semantic["L1_CC"]).exists()
+    assert semantic["SYSTEMROOT"] == env["SYSTEMROOT"]
+    if host == "nt":
+        runtime = Path(semantic["PATH"])
+        assert runtime.parent == work and runtime != tools
+        assert {p.name: p.read_bytes() for p in runtime.iterdir()} == libraries
+        for name in ("gcc.exe", "python.exe", "make.exe", "helper.cmd"):
+            assert not (runtime / name).exists()
+    else:
+        assert semantic["PATH"] == ""
+        assert not (work / "host-runtime").exists()
+
+
 def test_smoke_relocates_and_rejects_corruption_before_execution(package, tmp_path, monkeypatch):
     _, prefix, _, _ = package
     path = tmp_path / "dist.tar.gz"
