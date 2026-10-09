@@ -127,8 +127,9 @@ exhaustive L1 container path.
   `make install PREFIX=...`. Installation builds a private bootstrap chain and preserves development artifacts/aliases.
 - `make list-installed PREFIX=...` reads only the complete installation inventory; it has no build/venv prerequisite.
 - `DOCS_ARTIFACT` optionally installs a verified Stage 2 HTML/PDF bundle and is required by `make dist`.
-- `make dist` creates local archives; `make smoke-dist ARCHIVE=...` validates exact archives without bootstrap. Full
-  native platform acceptance, hosted releases, and docs publishing remain pending.
+- `make dist` creates local archives; `make smoke-dist ARCHIVE=...` validates exact archives without bootstrap. Native
+  artifact acceptance passed on Linux x86_64, macOS Intel/ARM, and Windows UCRT64. Hosted releases and docs publishing
+  remain pending.
 - Keep root `README.md` and existing L0 user-facing docs unchanged unless the task explicitly requires a minimal
   consistency fix.
 

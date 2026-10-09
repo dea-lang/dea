@@ -70,8 +70,7 @@ prefixes become read-only during execution, and all hosts verify unchanged paylo
 compiler with `L1_CC`; native execution is valid only on the archive's host family/architecture. Windows retains the
 UCRT64 tool and Windows system directories for DLLs and host commands during native compilation. Windows semantic-only
 checks instead use a private PATH directory containing only copied UCRT64 runtime DLLs, with both C compiler selectors
-pointing to an absent executable. This permits compiler startup without exposing compiler, Python, or Make tools. Native
-Windows acceptance is still required before closing the productization plan.
+pointing to an absent executable. This permits compiler startup without exposing compiler, Python, or Make tools.
 
 ## Productization acceptance gate
 
@@ -110,6 +109,10 @@ fresh verification jobs download only the archive/result/harness evidence, with 
 retain the acceptance report and smoke log; build jobs retain archives and build logs. This establishes checkout
 independence when the hosted jobs pass. The workflow has read-only repository permissions and no release, tag, or Pages
 publication steps. It is separate from `test-ci`; running ordinary CI does not run this gate.
+
+Native artifact acceptance passed on all four platforms on 2026-10-09, including full Stage 2 HTML/PDF and fresh-runner
+verification without checkout or bootstrap compilers. The remaining productization work is the delivery decision record,
+bootstrap ADR amendment, and final documentation handoff; hosted release and documentation publication remain separate.
 
 ## Public install workflow
 

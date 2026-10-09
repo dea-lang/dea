@@ -28,7 +28,8 @@ linking with ordered interface discovery, and multi-compilation-unit build/run a
 Link-involving modes also accept one ordered stream of explicit foreign objects, external libraries, search paths,
 rpaths, and raw host-driver words. Stage 2 is the mechanical L1 port of the Stage 1 oracle. L1 supports Stage 2
 installation with optional offline HTML/PDF references and local distribution archives with required Stage 2 docs.
-Hosted release workflows remain pending.
+Native artifact acceptance passed on Linux x86_64, macOS Intel/ARM, and Windows UCRT64 with full offline docs and
+fresh-runner verification without checkout or bootstrap compilers. Hosted release workflows remain pending.
 
 `make test-productization` validates prefix ownership/recovery, installed-context launchers, native startup guards,
 curated payload selection, public install orchestration, safe archives, and atomic distribution results. It is included

@@ -11,13 +11,13 @@
 - Stage: L1
 - Target status:
   - Prefix installer, inventory, and launcher adaptation: Implemented (public install/list targets, optional Stage 2
-    docs, and private bootstrap orchestration; full four-platform artifact acceptance pending)
-  - Native installed-state guard and package provenance: Implemented; four-platform acceptance pending
+    docs, and private bootstrap orchestration; four-platform artifact acceptance passed)
+  - Native installed-state guard and package provenance: Implemented; four-platform acceptance passed
   - Distribution archive, atomic result metadata, and reusable artifact smoke command: Implemented
-  - Acceptance target and isolated four-platform workflow: Implemented; hosted Windows verification pending
+  - Acceptance target and isolated four-platform workflow: Completed; all hosted build and verification jobs passed
   - Stage 2 HTML/PDF inclusion: Implemented for direct installs and required distributions
-  - Native artifact acceptance: Linux x86_64, macOS Intel, and macOS ARM passed with full generated Stage 2 docs;
-    Windows UCRT64 pending
+  - Native artifact acceptance: Linux x86_64, macOS Intel/ARM, and Windows UCRT64 passed with full generated Stage 2
+    docs
   - Final documentation, delivery ADR, and plan closure: Pending
 - Subsystem: Build workflow / install layout / distribution packaging / bootstrap docs
 - Modules:
@@ -101,7 +101,7 @@ Reviewed on 2026-10-09 against the local checkout:
     CI-only unless selected explicitly. Stage 2 reuses the installed preparation Python test against its own compiler.
 04. `make install PREFIX=...` builds and installs a curated Stage 2 payload with optional verified autodocs;
     `make list-installed PREFIX=...` reads its complete inventory without building. Distribution and smoke targets are
-    implemented; full platform acceptance remains pending.
+    implemented; four-platform artifact acceptance passed.
 05. Bootstrap correctness depends on the explicit upstream compiler contract:
     - local development defaults to `../l0/build/dea/bin/l0c-stage2`
     - reproducible overrides must use `L1_BOOTSTRAP_L0C`
@@ -182,14 +182,14 @@ Validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
 - `make -o build-stage1 -o build-stage2 -o runtime test-stage1-trace test-stage2-trace TESTS="l1c_lib_test preparation_test" L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc`:
   both stages passed both focused trace cases with zero leaked object/string pointers, reusing the validated compilers.
 - Runtime ownership and trace instrumentation are unchanged; validation scope adds focused startup/preparation trace
-  checks and real installed-mode self-build acceptance. Native Windows and macOS acceptance remain pending.
+  checks and real installed-mode self-build acceptance.
 
 Curated payload assembly now snapshots the selected semantic/runtime inputs, verifies the complete captured interface
 graph, and self-builds a separate marked Stage 2 executable. It includes launcher/activation scripts, notices, package
 identity, standalone instructions, and a stdlib smoke module. The internal context-managed helper cleans up private
 scratch on success/failure and leaves bootstrap outputs unchanged. Public install integration is implemented below;
-artifact fixtures and dist targets are implemented below. Native Windows execution and four-platform artifact acceptance
-remain pending for the revised helpers; local shell/inventory fixture success is not installed-compiler acceptance.
+artifact fixtures and dist targets are implemented below. Four-platform installed-compiler evidence is recorded under
+Repeatable artifact acceptance; local shell/inventory fixture success alone is insufficient.
 
 Curated payload milestone validation uses the same Linux/GCC toolchain:
 
@@ -204,7 +204,7 @@ Curated payload milestone validation uses the same Linux/GCC toolchain:
   automatic preparation disabled, preparation/run, warm standalone linking, and unchanged payload digests. The separate
   private-overlay self-build case also passed through `test-productization-build`.
 - Compiler sources, ownership behavior, trace instrumentation, and self-build implementation are unchanged. Validation
-  adds curated-payload acceptance to the existing self-build test; four-platform package acceptance remains pending.
+  adds curated-payload acceptance to the existing self-build test.
 
 Verification on macOS Intel with `/usr/bin/clang`, Apple Clang 17.0.0 (`clang-1700.6.4.2`):
 
@@ -247,8 +247,7 @@ complete inventory. Direct installs omit autodocs by default or consume an expli
 
 Focused orchestration regressions cover failed bootstrap/payload construction, cleanup, artifact/alias preservation,
 invalid destinations/overrides, semantic disagreement, literal prefix punctuation, missing/malformed/incomplete listing,
-and Make dry-run behavior. The productization plan remains open for four-platform artifact acceptance and final
-ADR/documentation closure.
+and Make dry-run behavior. The productization plan remains open for final ADR/documentation closure.
 
 Public workflow validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
 
@@ -270,8 +269,8 @@ Public workflow validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
   unchanged prerequisites. All 137 generated C translation units and normalized native executables matched; the final
   compiler passed all 65 normal tests, examples, and the executable smoke check.
 - Whitespace, copyright-header, Markdown-formatting, and ADR-impact checks passed.
-- Native macOS and Windows acceptance for this public workflow remains pending. Compiler ownership, runtime selection,
-  and trace instrumentation are unchanged; the validation tier adds install/bootstrap integration to the normal gate.
+- Compiler ownership, runtime selection, and trace instrumentation are unchanged; the validation tier adds
+  install/bootstrap integration to the normal gate.
 
 Optional Stage 2 docs installation reuses the completed artifact verifier before bootstrap. It retains a private
 extracted snapshot, rechecks source identity before publication, and includes HTML/PDF plus the documentation manifest
@@ -290,8 +289,8 @@ Docs integration validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
   reference. The relocated read-only prefix passed native/launcher help, version, check, and generation; direct native
   commands used an empty `PATH`. Full payload verification, docs/compiler metadata agreement, public inventory listing,
   unchanged payload digests, and scratch cleanup passed. Docs/no-docs reinstallation is covered by the fixture suite.
-- Native macOS/Windows acceptance and full distribution-bundle acceptance remain pending. No compiler construction,
-  ownership, runtime, or trace implementation changed; no additional triple-bootstrap or trace rerun is required.
+- No compiler construction, ownership, runtime, or trace implementation changed; no additional triple-bootstrap or trace
+  rerun is required.
 
 ## Distribution packaging implementation
 
@@ -312,8 +311,8 @@ tools on PATH. The harness verifies unchanged payload digests after execution.
 The exact public commands, archive names, result schema, and failure/consumer rules are documented in
 [l1/docs/reference/productization-inventory.md][inventory-reference]. The packaging regression suite is part of both
 normal gates. No compiler construction, native selection, runtime ownership, or trace implementation changes are
-introduced by this phase. Native Windows UCRT64 artifact acceptance, the delivery ADR/ADR-0001 amendment, and final plan
-closure remain open. Hosted release/snapshot implementation remains a separate plan.
+introduced by this phase. The delivery ADR, ADR-0001 amendment, final documentation handoff, and plan closure remain
+open. Hosted release/snapshot implementation remains a separate plan.
 
 Distribution validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
 
@@ -365,8 +364,11 @@ The manual `L1 Productization Acceptance` workflow builds one full Stage 2 docs 
 the selected source/version. Verification runs in separate fresh jobs that never check out sources or download bootstrap
 artifacts. Build and smoke logs are retained with artifact evidence. Ordinary four-platform `test-ci` success covers
 regression fixtures and compiler validation; it does not substitute for this artifact gate. Hosted documentation and all
-four native builds passed. Fresh-runner artifact verification passed on Linux x86_64 and macOS Intel/ARM; Windows
-verification remains pending. No release/snapshot publication implementation is included in this change.
+four native builds passed. On 2026-10-09, fresh-runner artifact verification passed on Linux x86_64, macOS Intel/ARM,
+and Windows UCRT64. All four retained schema-1 acceptance reports record `status: passed`, package version `dev`, the
+expected host identity, and the verified archive digest. This completes the four-platform artifact acceptance step. The
+delivery ADR, ADR-0001 amendment, and final documentation/release-workflow handoff remain before overall plan closure.
+No release/snapshot publication implementation is included in this step.
 
 Windows UCRT64 verification exposed a smoke-harness isolation error: clearing PATH for semantic-only commands also hid
 `libwinpthread-1.dll`, imported by the packaged executable. Help/version checks passed with the controlled host PATH,
@@ -374,7 +376,7 @@ but the empty-PATH semantic check could not load the compiler. Semantic checks n
 runtime directory on PATH and set both C compiler selectors to an absent executable. Compiler, Python, and Make tools
 remain unavailable through PATH. POSIX semantic checks retain an empty PATH. Portable regression coverage checks both
 host branches, copied DLL bytes (including uppercase extensions), paths with spaces, unavailable tools, and preservation
-of the original environment. Native Windows acceptance still requires a fresh hosted run with this fix.
+of the original environment. Native Windows acceptance passed with this isolation policy.
 
 Acceptance-gate validation:
 
@@ -383,10 +385,11 @@ Acceptance-gate validation:
   `../.venv/bin/python -m pytest -q -n 0 tests/test_distribution.py tests/test_productization_acceptance.py` passed all
   89 cases, including the Windows/POSIX semantic-environment regressions. These checks include simulated Windows inputs;
   they do not establish native Windows execution.
-- The hosted Windows archive, original result, and corrected standalone harness passed relocated help/version and
-  semantic check/generation under Wine/MSYS2 with GCC 16.2.0 (Rev3), without repository sources mounted. The verifier
-  reached native linking/preparation before the optional emulation run was stopped; this is focused evidence for the DLL
-  isolation fix, not completed Windows artifact acceptance.
+- The hosted workflow passed `make test-productization-acceptance ACCEPTANCE_PHASE=build` on all four platforms, then
+  ran `python -I <harness>/productization_acceptance.py --phase verify` on fresh native runners without source checkout
+  or bootstrap compilers. Every platform passed archive/result and offline docs verification, relocated launcher/native
+  identity, semantic check/generation without compiler tools, compile/link/build/run, cold/warm preparation, checking
+  and trace configurations, cache disposal, invalid-selector rejection, and unchanged payload digests.
 - `make docs-artifacts DOC_STAGE=stage2 DEA_DIST_VERSION=dev` generated and verified full Stage 2 HTML and indexed PDF
   with Doxygen 1.18.0 and TeX Live 2026.
 - `make test-productization-acceptance DEA_DIST_VERSION=dev DOCS_ARTIFACT=<full-bundle> ACCEPTANCE_DIR=<new-directory>`
@@ -397,7 +400,7 @@ Acceptance-gate validation:
   directory. macOS sandbox rules denied reads of the source worktrees and main checkout; a control read of `AGENTS.md`
   failed under those same rules. The verifier used external Python without site packages, and the installed compiler
   could not read repository sources or bootstrap binaries. This supplies native macOS Intel artifact acceptance,
-  independently of future hosted workflow execution.
+  independently of hosted workflow execution.
 - Workflow `actionlint`, staged whitespace, ADR Impact validation, and repository pre-commit hooks passed. The gate adds
   artifact orchestration without changing compiler construction, runtime ownership, or trace implementation.
 
@@ -681,8 +684,8 @@ Add `make dist` using the same payload builder, selected archive naming, version
 each archive to an unrelated directory and run the installed smoke workflow there. Implement the `DIST_RESULT` record
 and `make smoke-dist ARCHIVE=...` interface, including stale-result failure checks. Integrate the completed Stage 2
 docs-bundle contract and require its HTML/PDF contents in each distribution. Validate actual host archives on Linux
-x86_64, macOS Intel/ARM, and Windows UCRT64. Keep archive creation local; this phase creates no release tags, workflows,
-or published assets.
+x86_64, macOS Intel/ARM, and Windows UCRT64. Archive creation and verification may run locally or through the manual
+acceptance workflow. Release workflows, tags, and published assets remain outside this phase.
 
 ### Phase 4: Update documentation and contributor guidance
 
