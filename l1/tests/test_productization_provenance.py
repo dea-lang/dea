@@ -11,6 +11,7 @@ import sys
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import build_stage2_l1c
 import productization_provenance as provenance
 from productization_inventory import inventory_payload
 
@@ -19,7 +20,7 @@ from productization_inventory import inventory_payload
 def capture(tmp_path, monkeypatch):
     monkeypatch.setattr(provenance.platform, "system", lambda: "Linux")
     monkeypatch.setattr(provenance.platform, "machine", lambda: "x86_64")
-    monkeypatch.setattr(provenance, "compiler_build_env", lambda env: (
+    monkeypatch.setattr(build_stage2_l1c, "compiler_build_env", lambda env: (
         {**env, "L1_CC": "/native compiler/gcc", "L1_CFLAGS": "-O2 -D_RT_QUARANTINE_MAX_COUNT=256"},
         ["--check-basic"]))
     calls = []

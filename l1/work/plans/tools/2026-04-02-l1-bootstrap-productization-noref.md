@@ -14,9 +14,10 @@
     docs, and private bootstrap orchestration; full four-platform artifact acceptance pending)
   - Native installed-state guard and package provenance: Implemented; four-platform acceptance pending
   - Distribution archive, atomic result metadata, and reusable artifact smoke command: Implemented
+  - Acceptance target and isolated four-platform workflow: Implemented; hosted execution pending
   - Stage 2 HTML/PDF inclusion: Implemented for direct installs and required distributions
-  - Native artifact acceptance: Linux x86_64 passed with full generated Stage 2 docs; macOS Intel/ARM and Windows UCRT64
-    pending
+  - Native artifact acceptance: Linux x86_64 and macOS Intel passed with full generated Stage 2 docs; macOS ARM and
+    Windows UCRT64 pending
   - Final documentation, delivery ADR, and plan closure: Pending
 - Subsystem: Build workflow / install layout / distribution packaging / bootstrap docs
 - Modules:
@@ -27,6 +28,8 @@
   - `l1/scripts/productization_provenance.py`
   - `l1/scripts/productization_payload.py`
   - `l1/scripts/install_toolchain.py`
+  - `l1/scripts/productization_acceptance.py`
+  - `.github/workflows/l1-productization-acceptance.yml`
   - `l1/scripts/package/`
   - `l1/docs/user/`
   - `l1/compiler/stage1_l0/support/installation.h`
@@ -54,6 +57,7 @@
   - `l1/tests/test_installation_guard.py`
   - `l1/tests/test_productization_payload.py`
   - `l1/tests/test_install_toolchain.py`
+  - `l1/tests/test_productization_acceptance.py`
   - `l1/tests/test_bootstrap_identity.py`
   - `l1/compiler/stage1_l0/tests/compiler_runtime_build_env_test.py`
   - `l1/compiler/stage1_l0/tests/runtime_build_config_test.py`
@@ -87,7 +91,7 @@ release-workflow plan.
 
 ## Current State
 
-Reviewed on 2026-10-08 against the local checkout:
+Reviewed on 2026-10-09 against the local checkout:
 
 01. `l1/` supports both compiler stages, observable stage parity, and strict triple bootstrap. `make test` exercises
     representative suites in both stages; full hosted validation uses `make test-ci`.
@@ -96,7 +100,8 @@ Reviewed on 2026-10-08 against the local checkout:
 03. `make test-stage1` runs the complete local-normal Stage 1 suite. Installed preparation and recovery fixtures are
     CI-only unless selected explicitly. Stage 2 reuses the installed preparation Python test against its own compiler.
 04. `make install PREFIX=...` builds and installs a curated Stage 2 payload with optional verified autodocs;
-    `make list-installed PREFIX=...` reads its complete inventory without building. Distribution targets remain pending.
+    `make list-installed PREFIX=...` reads its complete inventory without building. Distribution and smoke targets are
+    implemented; full platform acceptance remains pending.
 05. Bootstrap correctness depends on the explicit upstream compiler contract:
     - local development defaults to `../l0/build/dea/bin/l0c-stage2`
     - reproducible overrides must use `L1_BOOTSTRAP_L0C`
@@ -151,7 +156,7 @@ UTC build identity, normalized supported host tokens, and supplied preparation-i
 and inventory consume one immutable snapshot; documentation bundles share the same validated package-version selection.
 The collector does not infer a preparation identity or serialize the process environment. Installed mode is an explicit
 overlay-generation option, disabled by default. The standalone Stage 2 documentation generator is implemented;
-distribution integration remains pending.
+distribution integration is implemented below.
 
 The native startup milestone implements the physical-executable prefix check, schema/state validation, installed context
 selection, and `L1C-9515` before command dispatch in both stages. It reuses preparation's native helpers while
@@ -183,9 +188,8 @@ Curated payload assembly now snapshots the selected semantic/runtime inputs, ver
 graph, and self-builds a separate marked Stage 2 executable. It includes launcher/activation scripts, notices, package
 identity, standalone instructions, and a stdlib smoke module. The internal context-managed helper cleans up private
 scratch on success/failure and leaves bootstrap outputs unchanged. Public install integration is implemented below;
-complete artifact fixtures and dist targets remain pending. Native Windows execution and four-platform artifact
-acceptance remain pending for the revised helpers; local shell/inventory fixture success is not installed-compiler
-acceptance.
+artifact fixtures and dist targets are implemented below. Native Windows execution and four-platform artifact acceptance
+remain pending for the revised helpers; local shell/inventory fixture success is not installed-compiler acceptance.
 
 Curated payload milestone validation uses the same Linux/GCC toolchain:
 
@@ -243,8 +247,8 @@ complete inventory. Direct installs omit autodocs by default or consume an expli
 
 Focused orchestration regressions cover failed bootstrap/payload construction, cleanup, artifact/alias preservation,
 invalid destinations/overrides, semantic disagreement, literal prefix punctuation, missing/malformed/incomplete listing,
-and Make dry-run behavior. The productization plan remains open for dist/docs integration, result/smoke interfaces,
-four-platform artifact acceptance, and final ADR/documentation closure.
+and Make dry-run behavior. The productization plan remains open for four-platform artifact acceptance and final
+ADR/documentation closure.
 
 Public workflow validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
 
@@ -308,8 +312,8 @@ tools on PATH. The harness verifies unchanged payload digests after execution.
 The exact public commands, archive names, result schema, and failure/consumer rules are documented in
 [l1/docs/reference/productization-inventory.md][inventory-reference]. The packaging regression suite is part of both
 normal gates. No compiler construction, native selection, runtime ownership, or trace implementation changes are
-introduced by this phase. Native macOS Intel/ARM and Windows UCRT64 artifact acceptance, the delivery ADR/ADR-0001
-amendment, and final plan closure remain open. Hosted release/snapshot implementation remains a separate plan.
+introduced by this phase. Native macOS ARM and Windows UCRT64 artifact acceptance, the delivery ADR/ADR-0001 amendment,
+and final plan closure remain open. Hosted release/snapshot implementation remains a separate plan.
 
 Distribution validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
 
@@ -349,6 +353,39 @@ Portability validation:
 Regression coverage includes synthesized Windows stat modes, archive round trips, environment-name casing, explicit
 compiler selection, and inherited-selector filtering. Wine/MSYS2 path assertions must account for Python reporting
 `os.sep` as `/` while native diagnostics contain backslashes.
+
+## Repeatable artifact acceptance
+
+The dedicated `test-productization-acceptance` target builds through the existing distribution helper, validates the
+exact schema-1 result against its archive, and invokes the reusable native smoke checks. It retains the archive,
+original result, portable Python harness, and a success report. Separate build and verification phases support fresh
+verification hosts; the default combined local run does not claim checkout unavailability.
+
+The manual `L1 Productization Acceptance` workflow builds one full Stage 2 docs bundle and all four native archives from
+the selected source/version. Verification runs in separate fresh jobs that never check out sources or download bootstrap
+artifacts. Build and smoke logs are retained with artifact evidence. Ordinary four-platform `test-ci` success covers
+regression fixtures and compiler validation; it does not substitute for this artifact gate. Hosted execution of the new
+workflow remains pending. No release/snapshot publication implementation is included in this change.
+
+Acceptance-gate validation on macOS Intel with `/usr/bin/clang`, Apple Clang 17.0.0 (`clang-1700.6.4.2`):
+
+- `make test L0_CC=/usr/bin/clang L1_CC=/usr/bin/clang L1_RUNTIME_CC=/usr/bin/clang` passed, including 247
+  productization checks and fourteen native Windows skips. After the final result-schema type checks were tightened,
+  `../.venv/bin/python -m pytest -q -n 0 tests/test_productization_acceptance.py` passed all 22 cases. Compiler/runtime
+  inputs and the other normal-gate components remained unchanged, so their successful results were reused.
+- `make docs-artifacts DOC_STAGE=stage2 DEA_DIST_VERSION=dev` generated and verified full Stage 2 HTML and indexed PDF
+  with Doxygen 1.18.0 and TeX Live 2026.
+- `make test-productization-acceptance DEA_DIST_VERSION=dev DOCS_ARTIFACT=<full-bundle> ACCEPTANCE_DIR=<new-directory>`
+  with the same three compiler selectors passed private bootstrap, all 23 semantic interface pairs, installed Stage 2
+  self-build, archive/result verification, and complete native smoke execution.
+- The transported archive and six-file harness also passed
+  `python3 -I -S <harness>/productization_acceptance.py --phase verify --directory <evidence>` from an unrelated
+  directory. macOS sandbox rules denied reads of the source worktrees and main checkout; a control read of `AGENTS.md`
+  failed under those same rules. The verifier used external Python without site packages, and the installed compiler
+  could not read repository sources or bootstrap binaries. This supplies native macOS Intel artifact acceptance,
+  independently of future hosted workflow execution.
+- Workflow `actionlint`, staged whitespace, ADR Impact validation, and repository pre-commit hooks passed. The gate adds
+  artifact orchestration without changing compiler construction, runtime ownership, or trace implementation.
 
 ## Defaults Chosen
 

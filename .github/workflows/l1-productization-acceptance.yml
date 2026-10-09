@@ -1,0 +1,251 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 gwz
+
+name: L1 Productization Acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_version:
+        description: Development package version used by docs and all native archives
+        required: true
+        default: dev
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  DEA_DIST_VERSION: ${{ inputs.package_version }}
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out selected source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+      - name: Install full documentation toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y doxygen graphviz make texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended
+      - name: Sync documentation dependencies
+        run: uv sync --all-groups
+      - name: Validate package version
+        run: |
+          python3 -c 'import os, sys; sys.path.insert(0, "l1/scripts"); from productization_provenance import package_version; package_version(dict(os.environ))'
+      - name: Build verified Stage 2 HTML and full PDF
+        run: make -C l1 docs-artifacts DOC_STAGE=stage2
+      - name: Upload shared documentation bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: l1-acceptance-docs
+          path: l1/build/docs/artifacts/dea_l1_stage2_autodocs.tar.gz
+          if-no-files-found: error
+
+  build:
+    needs: docs
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux-x86_64
+            cc: gcc
+          - runner: macos-15-intel
+            platform: macos-x86_64
+            cc: clang
+          - runner: macos-latest
+            platform: macos-arm64
+            cc: clang
+          - runner: windows-latest
+            platform: windows-x86_64
+            cc: gcc
+    runs-on: ${{ matrix.runner }}
+    env:
+      L0_CC: ${{ matrix.cc }}
+      L1_CC: ${{ matrix.cc }}
+      L1_RUNTIME_CC: ${{ matrix.cc }}
+      ACCEPTANCE_PHASE: build
+    steps:
+      - name: Preserve source bytes on Windows
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+      - name: Check out selected source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - name: Set up Python
+        if: runner.os != 'Windows'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - name: Install Linux native tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential make
+      - name: Set up UCRT64 native tools
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          path-type: inherit
+          install: >-
+            make
+            diffutils
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-python-pip
+            mingw-w64-ucrt-x86_64-uv
+      - name: Record native compiler
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          command -v "$L1_CC"
+          "$L1_CC" --version
+      - name: Record native compiler (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          command -v "$L1_CC"
+          "$L1_CC" --version
+      - name: Set up uv
+        if: runner.os != 'Windows'
+        uses: astral-sh/setup-uv@v7
+      - name: Download shared documentation bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: l1-acceptance-docs
+          path: ${{ runner.temp }}/l1-docs
+      - name: Build native acceptance evidence
+        env:
+          ACCEPTANCE_DIR: ${{ runner.temp }}/l1-acceptance
+          DOCS_ARTIFACT: ${{ runner.temp }}/l1-docs/dea_l1_stage2_autodocs.tar.gz
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -o pipefail
+          make -C l1 test-productization-acceptance 2>&1 | tee "$RUNNER_TEMP/l1-acceptance-build.log"
+      - name: Build native acceptance evidence (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          PYTHON: python
+          ACCEPTANCE_DIR: ${{ runner.temp }}/l1-acceptance
+          DOCS_ARTIFACT: ${{ runner.temp }}/l1-docs/dea_l1_stage2_autodocs.tar.gz
+        run: |
+          set -o pipefail
+          make -C l1 test-productization-acceptance 2>&1 | tee "$(cygpath -u "$RUNNER_TEMP")/l1-acceptance-build.log"
+      - name: Upload archive, original result, and portable harness
+        uses: actions/upload-artifact@v6
+        with:
+          name: l1-acceptance-${{ matrix.platform }}
+          path: ${{ runner.temp }}/l1-acceptance
+          if-no-files-found: error
+      - name: Retain build log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: l1-acceptance-build-log-${{ matrix.platform }}
+          path: ${{ runner.temp }}/l1-acceptance-build.log
+          if-no-files-found: warn
+
+  verify:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux-x86_64
+            cc: gcc
+          - runner: macos-15-intel
+            platform: macos-x86_64
+            cc: clang
+          - runner: macos-latest
+            platform: macos-arm64
+            cc: clang
+          - runner: windows-latest
+            platform: windows-x86_64
+            cc: gcc
+    runs-on: ${{ matrix.runner }}
+    env:
+      L1_CC: ${{ matrix.cc }}
+      L1_RUNTIME_CC: ${{ matrix.cc }}
+    steps:
+      # Deliberately no checkout or compiler build artifacts on these fresh runners.
+      - name: Set up Python
+        if: runner.os != 'Windows'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - name: Install Linux native tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential make
+      - name: Set up UCRT64 native tools
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          path-type: strict
+          install: >-
+            make
+            diffutils
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-python-pip
+            mingw-w64-ucrt-x86_64-uv
+      - name: Record native compiler
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          command -v "$L1_CC"
+          "$L1_CC" --version
+      - name: Record native compiler (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          command -v "$L1_CC"
+          "$L1_CC" --version
+      - name: Download exact archive and portable harness
+        uses: actions/download-artifact@v8
+        with:
+          name: l1-acceptance-${{ matrix.platform }}
+          path: ${{ runner.temp }}/l1-acceptance
+      - name: Verify without source checkout or bootstrap compilers
+        env:
+          ACCEPTANCE_DIR: ${{ runner.temp }}/l1-acceptance
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -o pipefail
+          cd "$RUNNER_TEMP"
+          python3 -I "$ACCEPTANCE_DIR/harness/productization_acceptance.py" --phase verify 2>&1 | tee "$RUNNER_TEMP/l1-acceptance-smoke.log"
+      - name: Verify without source checkout or bootstrap compilers (Windows)
+        env:
+          ACCEPTANCE_DIR: ${{ runner.temp }}/l1-acceptance
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          set -o pipefail
+          cd "$(cygpath -u "$RUNNER_TEMP")"
+          python -I "$ACCEPTANCE_DIR/harness/productization_acceptance.py" --phase verify 2>&1 | tee "$(cygpath -u "$RUNNER_TEMP")/l1-acceptance-smoke.log"
+      - name: Retain acceptance report and log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: l1-acceptance-verification-${{ matrix.platform }}
+          path: |
+            ${{ runner.temp }}/l1-acceptance/acceptance.json
+            ${{ runner.temp }}/l1-acceptance-smoke.log
+          if-no-files-found: warn

@@ -12,8 +12,6 @@ import platform
 import re
 import subprocess
 
-from build_stage2_l1c import compiler_build_env
-from dea_tooling.bootstrap import wrapper_command
 from productization_inventory import MANIFEST_PATH, validate_inventory
 
 SOURCE_URL = "https://github.com/dea-lang/dea"
@@ -64,6 +62,8 @@ def host_target(system: str, machine: str, env: dict[str, str]) -> tuple[str, st
 
 def _version(path: Path, env: dict[str, str], cwd: Path, identity: str | None = None) -> str:
     """Probe an explicitly selected compiler and reject missing or wrong identities."""
+    from dea_tooling.bootstrap import wrapper_command
+
     output = subprocess.check_output([*wrapper_command(path), "--version"], cwd=cwd, env=env, text=True).strip()
     if not output or "\x00" in output or (identity is not None and identity not in output.splitlines()[0]):
         raise ValueError(f"unexpected compiler identity from {path}")
@@ -160,6 +160,9 @@ def collect_provenance(
         OSError: A selected compiler cannot be invoked.
         subprocess.CalledProcessError: A selected compiler version probe fails.
     """
+    # Verification of delivered archives needs only the standard library.
+    from build_stage2_l1c import compiler_build_env
+
     version = package_version(env)
     os_name, arch = host_target(platform.system(), platform.machine(), env)
     timestamp = now if now is not None else datetime.now(timezone.utc)

@@ -75,6 +75,12 @@ unrelated files. Regenerate the bundle after changing checkout identity or docum
 
 ## Build and validate a distribution
 
+For a combined build-and-smoke gate, run `make test-productization-acceptance` with `DOCS_ARTIFACT`, `DEA_DIST_VERSION`,
+and a new absolute `ACCEPTANCE_DIR`. The separate manual `L1 Productization Acceptance` workflow builds all four host
+archives and verifies them on fresh runners without a checkout. See
+[l1/docs/reference/productization-inventory.md][productization] for the retained evidence and separate build/verify
+phases. Ordinary `test-ci` remains separate from this artifact acceptance gate.
+
 Run from `l1/`. Building requires Python, Make, and a supported host C toolchain; generating the required offline
 HTML/full-PDF reference also requires Doxygen and TeX. See [l1/docs/README.md][docs-guide] for documentation tooling.
 Prepare the shared Python environment with `make venv` if needed.

@@ -50,6 +50,7 @@ make install PREFIX=/path/to/l1
 make list-installed PREFIX=/path/to/l1
 make dist DOCS_ARTIFACT=/absolute/stage2-bundle.tar.gz DIST_RESULT=/absolute/result.json
 make smoke-dist ARCHIVE=/absolute/archive.tar.gz
+make test-productization-acceptance DOCS_ARTIFACT=/absolute/stage2-bundle.tar.gz ACCEPTANCE_DIR=/absolute/new-evidence
 source build/dea/bin/l1-env.sh
 l1c --help
 l1c --version
@@ -85,6 +86,12 @@ compiler, and representative managed preparation. Embedded-driver overflow compi
 (`l1c_stage1_installed_preparation_test.py`) and preparation recovery/concurrency matrix
 (`l1c_stage1_preparation_test.py`) are CI-only in both stages. Run either directly with
 `make test-stage1 TESTS="<test-name>"` or `make test-stage2 TESTS="<test-name>"` when changing those behaviors.
+
+`make test-productization-acceptance` is the separate artifact gate: it builds a documented distribution and smoke-tests
+its exact result, retaining archive/result/harness evidence in a new `ACCEPTANCE_DIR`. Use `ACCEPTANCE_PHASE=build` for
+the build half of the manual `L1 Productization Acceptance` workflow. That workflow verifies the evidence on fresh
+four-platform runners without checkout or bootstrap artifacts. A local combined invocation does not establish checkout
+unavailability. This gate is not part of `test`, `test-extended`, or `test-ci`.
 
 `make test-ci` is the exhaustive hosted gate. It runs `test-extended` with CI-only normal cases included, followed by
 environment/bootstrap integration, both default Stage 1 and Stage 2 ARC/memory trace suites, both child-fixture suites,

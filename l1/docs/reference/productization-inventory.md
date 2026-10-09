@@ -1,6 +1,6 @@
 # L1 Installation and Distribution Contract
 
-Version: 2026-10-08
+Version: 2026-10-09
 
 L1 exposes `make install PREFIX=...` and `make list-installed PREFIX=...` for a curated, self-built Stage 2 toolchain.
 Prefix ownership, recoverable payload copying, installed-context launchers, generated provenance, and native startup
@@ -70,6 +70,44 @@ prefixes become read-only during execution, and all hosts verify unchanged paylo
 compiler with `L1_CC`; native execution is valid only on the archive's host family/architecture. Windows retains the
 UCRT64 tool and Windows system directories for DLLs and host commands. Native macOS and Windows acceptance is still
 required before closing the productization plan.
+
+## Productization acceptance gate
+
+`make test-productization-acceptance` orchestrates distribution construction and smoke verification using the same
+helpers as `dist` and `smoke-dist`. Supply the matching verified docs bundle and a new absolute evidence directory:
+
+```bash
+make test-productization-acceptance DEA_DIST_VERSION=dev \
+  DOCS_ARTIFACT="/absolute/path/to/dea_l1_stage2_autodocs.tar.gz" \
+  ACCEPTANCE_DIR="/absolute/path/to/new-acceptance-evidence"
+```
+
+The directory must not already exist, including after an interrupted attempt. The gate retains the exact archive,
+original schema-1 `result.json`, and a small standard-library-only `harness/`. It verifies archive size/digest and
+payload/docs identity against the result before invoking native smoke checks. `acceptance.json` is written only after
+successful smoke execution; an earlier report is removed before retrying verification. Build evidence is retained on
+verification failure. The original result's absolute `archive_path` remains provenance of construction; verification
+locates the transported archive by that path's basename inside the evidence directory and checks its digest.
+
+The default `ACCEPTANCE_PHASE=all` builds and verifies locally. `ACCEPTANCE_PHASE=build` prepares evidence for a
+separate verification host. Copy the whole evidence directory to a host of the matching platform, then run:
+
+```bash
+python3 -I /absolute/evidence/harness/productization_acceptance.py \
+  --phase verify --directory /absolute/evidence
+```
+
+Use native UCRT64 `python` on Windows. The verifier needs only Python's standard library and supported native host
+tools; it does not need the repository, Make, documentation generators, or bootstrap compilers. Select the native
+compiler with `L1_CC`. A combined local run does not establish that the checkout is unavailable.
+
+The manual `L1 Productization Acceptance` workflow in
+[.github/workflows/l1-productization-acceptance.yml][acceptance-workflow] builds one full Stage 2 docs bundle, then
+builds Linux x86_64, macOS Intel/ARM, and Windows UCRT64 archives from the same selected source and version. Separate
+fresh verification jobs download only the archive/result/harness evidence, with no checkout or bootstrap artifacts. They
+retain the acceptance report and smoke log; build jobs retain archives and build logs. This establishes checkout
+independence when the hosted jobs pass. The workflow has read-only repository permissions and no release, tag, or Pages
+publication steps. It is separate from `test-ci`; running ordinary CI does not run this gate.
 
 ## Public install workflow
 
@@ -290,6 +328,7 @@ metadata. Its curated payload also covers compile-only use, a cold cache with au
 preparation/run, and warm standalone linking while preserving installed digests. The guard fixtures use real native code
 and run through `test-productization`; platform-specific cases skip explicitly when their host prerequisites are absent.
 
+[acceptance-workflow]: ../../../.github/workflows/l1-productization-acceptance.yml
 [installation]: ../../compiler/stage1_l0/support/installation.h
 [inventory]: ../../scripts/productization_inventory.py
 [launchers]: ../../scripts/productization_launchers.py
