@@ -18,7 +18,8 @@
   - Stage 2 HTML/PDF inclusion: Implemented for direct installs and required distributions
   - Native artifact acceptance: Linux x86_64, macOS Intel/ARM, and Windows UCRT64 passed with full generated Stage 2
     docs
-  - Final documentation, delivery ADR, and plan closure: Pending
+  - Architectural records: Completed (ADR-0042 delivery contract and ADR-0001 bootstrap amendment)
+  - Final documentation/release-workflow handoff and plan closure: Pending
 - Subsystem: Build workflow / install layout / distribution packaging / bootstrap docs
 - Modules:
   - `l1/Makefile`
@@ -311,8 +312,8 @@ tools on PATH. The harness verifies unchanged payload digests after execution.
 The exact public commands, archive names, result schema, and failure/consumer rules are documented in
 [l1/docs/reference/productization-inventory.md][inventory-reference]. The packaging regression suite is part of both
 normal gates. No compiler construction, native selection, runtime ownership, or trace implementation changes are
-introduced by this phase. The delivery ADR, ADR-0001 amendment, final documentation handoff, and plan closure remain
-open. Hosted release/snapshot implementation remains a separate plan.
+introduced by this phase. Architectural records are complete in ADR-0042 and the ADR-0001 amendment; final documentation
+handoff and plan closure remain open. Hosted release/snapshot implementation remains a separate plan.
 
 Distribution validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
 
@@ -367,8 +368,10 @@ regression fixtures and compiler validation; it does not substitute for this art
 four native builds passed. On 2026-10-09, fresh-runner artifact verification passed on Linux x86_64, macOS Intel/ARM,
 and Windows UCRT64. All four retained schema-1 acceptance reports record `status: passed`, package version `dev`, the
 expected host identity, and the verified archive digest. This completes the four-platform artifact acceptance step. The
-delivery ADR, ADR-0001 amendment, and final documentation/release-workflow handoff remain before overall plan closure.
-No release/snapshot publication implementation is included in this step.
+final documentation/release-workflow handoff remains before overall plan closure. The delivery decision is recorded in
+[l1/docs/decisions/0042-self-hosted-toolchain-delivery.md][delivery], and the explicit bootstrap contract is recorded in
+the amended [l1/docs/decisions/0001-bootstrap-adaptation-strategy.md][bootstrap]. No release/snapshot publication
+implementation is included in this step.
 
 Windows UCRT64 verification exposed a smoke-harness isolation error: clearing PATH for semantic-only commands also hid
 `libwinpthread-1.dll`, imported by the packaged executable. Help/version checks passed with the controlled host PATH,
@@ -724,17 +727,19 @@ not assign those codes to the new startup inventory failure.
 
 - Decision: Ship the self-hosted L1 Stage 2 compiler through one relocatable install-prefix and distribution contract.
   - Scope: L1
-  - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
-  - Rationale: The relocatable prefix, curated semantic/source payload, inventory, native installed-state boundary,
-    archive/result schema, Stage 2-only payload, self-built delivery requirement, and smoke command become toolchain
-    interfaces consumed by later release workflows. Cache algorithms remain governed by the existing preparation ADRs.
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0042-self-hosted-toolchain-delivery.md`
+  - Rationale: ADR-0042 now records the relocatable prefix, curated semantic/source payload, inventory, native
+    installed-state boundary, archive/result schema, Stage 2-only payload, self-built delivery requirement, and smoke
+    command as toolchain interfaces consumed by later release workflows. Cache algorithms remain governed by the
+    existing preparation ADRs.
 - Decision: Choose the L1 bootstrap compiler from repo-local L0 Stage 2 or `L1_BOOTSTRAP_L0C`, never ambient `PATH`.
   - Scope: L1
-  - Disposition: Amend ADR
+  - Disposition: Covered by ADR
   - ADR: `l1/docs/decisions/0001-bootstrap-adaptation-strategy.md`
-  - Rationale: ADR-0001 owns bootstrap adaptation and must distinguish the explicit upstream compiler used to construct
-    Stage 1 and the Stage 2 seed from the self-built Stage 2 compiler used after installation.
+  - Rationale: The amended ADR-0001 distinguishes the explicit upstream compiler used to construct Stage 1 and the Stage
+    2 seed from the self-built Stage 2 compiler used after installation. Both ADR backlinks will follow this plan when
+    it closes after the documentation handoff.
 
 ## Non-Goals
 
@@ -817,6 +822,8 @@ requires them under `l1/AGENTS.md`; do not repeat preparation benchmarks or run 
 installer edit.
 
 [autodocs]: closed/2026-10-05-l1-stage-separated-autodocs-noref.md
+[bootstrap]: ../../../docs/decisions/0001-bootstrap-adaptation-strategy.md
+[delivery]: ../../../docs/decisions/0042-self-hosted-toolchain-delivery.md
 [installed-inputs]: ../../../docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md
 [inventory-contract]: ../../../docs/reference/productization-inventory.md
 [inventory-reference]: ../../../docs/reference/productization-inventory.md
