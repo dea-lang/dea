@@ -34,9 +34,7 @@ Hosted release workflows remain pending.
 curated payload selection, public install orchestration, safe archives, and atomic distribution results. It is included
 in the normal test gates.
 
-Use `make dist DOCS_ARTIFACT=/absolute/stage2-bundle.tar.gz DIST_RESULT=/absolute/result.json` to create a curated
-archive in `l1/dist/`. Run `make smoke-dist ARCHIVE=/absolute/archive.tar.gz` against the exact resulting archive. See
-[l1/docs/reference/productization-inventory.md][productization] for naming, result schema, and validation.
+## Install a toolchain
 
 To install a self-built Stage 2 compiler outside the development layout, run from `l1/`:
 
@@ -74,6 +72,59 @@ Omit `DOCS_ARTIFACT` for a compiler-only install; reinstalling without it remove
 unrelated files. Regenerate the bundle after changing checkout identity or documentation inputs. See
 [l1/docs/reference/productization-inventory.md][productization] for the install/recovery contract and
 [l1/docs/user/toolchain.md][installed-toolchain] for installed operation.
+
+## Build and validate a distribution
+
+Run from `l1/`. Building requires Python, Make, and a supported host C toolchain; generating the required offline
+HTML/full-PDF reference also requires Doxygen and TeX. See [l1/docs/README.md][docs-guide] for documentation tooling.
+Prepare the shared Python environment with `make venv` if needed.
+
+Run the commands below in bash or zsh. They stop if any step fails and read `dist/result.json` only after `make dist`
+succeeds, so the smoke check uses the archive produced by that build.
+
+```bash
+(
+  set -eu
+  make docs-artifacts DOC_STAGE=stage2 DEA_DIST_VERSION=dev
+  make dist DEA_DIST_VERSION=dev \
+    DOCS_ARTIFACT="$PWD/build/docs/artifacts/dea_l1_stage2_autodocs.tar.gz" \
+    DIST_RESULT="$PWD/dist/result.json"
+  archive=$(python3 -c 'import json; print(json.load(open("dist/result.json"))["archive_path"])')
+  make smoke-dist ARCHIVE="$archive"
+)
+```
+
+Use the same checkout and `DEA_DIST_VERSION` for documentation and packaging; regenerate the docs bundle after changing
+checkout identity or documentation inputs. To select GCC explicitly, append `L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc` to
+`make dist` and `L1_CC=gcc` to `make smoke-dist`. An explicit `L1_BOOTSTRAP_L0C` selects the upstream bootstrap
+compiler, as for installation.
+
+`make dist` privately bootstraps and self-builds Stage 2 without changing the development compiler alias. It creates
+`dist/dea-l1-lang_<version>_<os>-<arch>_<UTC-timestamp>.tar.gz`, or `.zip` on Windows UCRT64. `dist/result.json` records
+the exact archive path, checksums, and provenance. `make smoke-dist` checks safe extraction, inventory integrity,
+offline docs, relocation, and standalone compiler operation with a private native-support cache. Run it on a host
+compatible with the archive; it needs a supported C toolchain for native operations.
+
+After successful validation, extract the archive on a compatible machine. For a Linux/macOS tarball:
+
+```bash
+mkdir -p /path/to/toolchains
+tar -xzf /absolute/path/to/archive.tar.gz -C /path/to/toolchains
+/path/to/toolchains/dea-l1/bin/l1c --version
+/path/to/toolchains/dea-l1/bin/l1c --run \
+  /path/to/toolchains/dea-l1/share/dea/l1/smoke/hello.l1
+```
+
+The smoke program prints `hello from Dea L1`. Keep the complete `dea-l1/` directory together when moving it. Activation
+is optional: `source /path/to/toolchains/dea-l1/bin/l1-env.sh`. On Windows, extract the zip and follow its
+`README-WINDOWS.md`. Offline references are under `dea-l1/share/doc/dea/l1/autodocs/stage2/html/index.html` and
+`dea-l1/share/doc/dea/l1/autodocs/stage2/pdf/dea_l1_stage2_api_reference.pdf`.
+
+Everything generated under `l1/dist/` is ignored by Git and should not be committed. These commands create and validate
+local artifacts; they do not publish releases. See [l1/docs/reference/productization-inventory.md][productization] for
+the exact archive contract, result schema, and workflow-consumer rules.
+
+## Local development and validation
 
 `make build-stage1` supplies public runtime headers and the complete verified bundled interface set under
 `$L1_BUILD_DIR/interfaces/`. Build/run/link prepare matching native stdlib/runtime support on demand in one local cache.
@@ -125,6 +176,7 @@ running `make build-stage1`.
 [agents]: AGENTS.md
 [docker-wine]: docker/wine/README.md
 [docs]: docs/
+[docs-guide]: docs/README.md
 [examples]: examples/
 [installed-toolchain]: docs/user/toolchain.md
 [legacy-clang-plan]: work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md

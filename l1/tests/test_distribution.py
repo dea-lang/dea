@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+from types import SimpleNamespace
 import zipfile
 
 import pytest
@@ -77,8 +78,29 @@ def test_archive_roundtrip_curated_contents_and_modes(package, tmp_path, windows
     archives.write_archive(prefix, path, windows=windows)
     extracted = archives.extract_archive(path, tmp_path / "unrelated extraction")
     assert read_inventory(extracted) == read_inventory(prefix)
-    assert (extracted / "bin/l1c").stat().st_mode & 0o111
+    if os.name != "nt":
+        assert (extracted / "bin/l1c").stat().st_mode & 0o111
     assert not (extracted / "bin/l1c-stage1").exists()
+
+
+def test_tar_modes_come_from_inventory_not_host_stat(package, tmp_path, monkeypatch):
+    """Windows synthesizes writable modes even after chmod to portable modes."""
+    _, prefix, _, _ = package
+    original = tarfile.TarFile.gettarinfo
+
+    def windows_modes(self, *args, **kwargs):
+        info = original(self, *args, **kwargs)
+        info.mode = 0o777 if info.isdir() else 0o666
+        return info
+
+    monkeypatch.setattr(tarfile.TarFile, "gettarinfo", windows_modes)
+    path = tmp_path / "portable.tar.gz"
+    archives.write_archive(prefix, path, windows=False)
+    expected = {entry["path"]: entry["mode"] for entry in read_inventory(prefix)["entries"]}
+    with tarfile.open(path) as archive:
+        for member in archive.getmembers():
+            assert member.mode == (0o755 if member.isdir() else expected[member.name.removeprefix("dea-l1/")])
+    archives.extract_archive(path, tmp_path / "extracted")
 
 
 @pytest.mark.parametrize("problem", ["extra", "directory", "excluded", "digest", "mode", "incomplete", "version",
@@ -284,6 +306,33 @@ def test_result_preflight_preserves_unsafe_destinations(builder, tmp_path, targe
     assert source.read_text() == "preserve"
     if result.exists():
         assert result.read_text() == "preserve"
+
+
+@pytest.mark.parametrize("key_style", [str.upper, str.lower, str.title])
+def test_windows_smoke_environment_ignores_variable_name_case(tmp_path, monkeypatch, key_style):
+    """Copied Windows environments retain case-insensitive selector semantics."""
+    compiler = tmp_path / "host compiler/bin/gcc.exe"
+    system_root = tmp_path / "Windows directory"
+    source = {key_style(key): value for key, value in {
+        "SYSTEMROOT": str(system_root), "PATH": "checkout/l1/build/dea/bin",
+        "L1_CC": str(compiler), "L1_HOME": "checkout/l1", "L0_HOME": "checkout/l0",
+        "PYTHONPATH": "checkout/python", "VIRTUAL_ENV": "checkout/.venv",
+        "MAKEFLAGS": "inherited", "COMSPEC": "cmd.exe",
+    }.items()}
+    original = dict(source)
+    monkeypatch.setattr(smoke_dist, "os", SimpleNamespace(name="nt", pathsep=";"))
+    monkeypatch.setattr(smoke_dist.shutil, "which", lambda name: str(compiler) if name == str(compiler) else None)
+
+    env = smoke_dist.smoke_environment(tmp_path, source)
+
+    assert source == original
+    assert env["SYSTEMROOT"] == str(system_root)
+    assert env["PATH"].split(";") == [str(compiler.resolve().parent), str(system_root / "System32")]
+    assert env["L1_CC"] == env["L1_RUNTIME_CC"] == str(compiler.resolve())
+    assert env["L1_HOME"] == str(tmp_path / "absent-source")
+    assert env["COMSPEC"] == "cmd.exe"
+    assert not {"L0_HOME", "PYTHONPATH", "VIRTUAL_ENV", "MAKEFLAGS"} & env.keys()
+    assert all(key == key.upper() for key in env)
 
 
 def test_smoke_relocates_and_rejects_corruption_before_execution(package, tmp_path, monkeypatch):

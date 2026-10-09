@@ -3,7 +3,7 @@
 ## Define the self-hosted L1 Stage 2 install and distribution workflow
 
 - Date: 2026-04-02
-- Last reviewed: 2026-10-08
+- Last reviewed: 2026-10-09
 - Status: In progress
 - Title: Define the self-hosted L1 Stage 2 install and distribution workflow
 - Kind: Tooling
@@ -331,6 +331,24 @@ Distribution validation on Linux x86_64 with `/usr/bin/gcc`, GCC 14.2.0:
   `ldd`/`readelf` on Linux and `otool` on macOS, required by managed toolchain identity checks.
 - ADR Impact validation, staged whitespace checks, and the repository pre-commit hooks passed. Compiler construction and
   runtime implementations are unchanged, so triple-bootstrap and broad trace suites were not repeated.
+
+Tar and zip archives take file modes from the portable inventory and normalize directory/alias modes. Windows filesystem
+modes cannot represent this contract reliably; extracted execute-bit assertions apply only on POSIX, while archive
+metadata is validated on every host. Windows smoke setup canonicalizes environment names before filtering inherited
+selectors and resolving the compiler because copying `os.environ` into a plain dictionary loses case-insensitive lookup.
+`SYSTEMROOT` supplies the Windows system-command directory.
+
+Portability validation:
+
+- Hosted Windows UCRT64 CI passed with the archive-mode and smoke-environment fixes.
+- `make clean test` passed on macOS Intel with `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC` set to `/usr/bin/clang` (Apple
+  Clang 17), including 228 productization cases and 14 platform skips.
+- `python -m pytest -q -n 0 tests/test_distribution.py -k "windows_smoke_environment or smoke_relocates"` passed all
+  four cases under Wine/MSYS2 with GCC 16.2.0. This is focused emulation coverage, not full runner acceptance.
+
+Regression coverage includes synthesized Windows stat modes, archive round trips, environment-name casing, explicit
+compiler selection, and inherited-selector filtering. Wine/MSYS2 path assertions must account for Python reporting
+`os.sep` as `/` while native diagnostics contain backslashes.
 
 ## Defaults Chosen
 

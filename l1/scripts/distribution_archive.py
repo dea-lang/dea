@@ -135,7 +135,13 @@ def write_archive(prefix: Path, output: Path, *, windows: bool) -> None:
     else:
         with tarfile.open(output, "w:gz", dereference=False) as archive:
             for path in paths:
-                archive.add(prefix / path, arcname="dea-l1" + ("/" + path if path else ""), recursive=False)
+                def portable_mode(info: tarfile.TarInfo) -> tarfile.TarInfo:
+                    # Windows stat modes do not express the inventory contract.
+                    info.mode = (0o777 if info.issym() else entries[path]["mode"]
+                                 if path in entries else 0o755)
+                    return info
+                archive.add(prefix / path, arcname="dea-l1" + ("/" + path if path else ""),
+                            recursive=False, filter=portable_mode)
 
 
 def extract_archive(archive_path: Path, destination: Path) -> Path:

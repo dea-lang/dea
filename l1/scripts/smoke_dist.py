@@ -22,6 +22,9 @@ from productization_provenance import host_target
 
 def smoke_environment(root: Path, source: dict[str, str]) -> dict[str, str]:
     """Select host native tools and private cache, excluding development tooling."""
+    if os.name == "nt":
+        # A plain dict loses os.environ's case-insensitive Windows lookups.
+        source = {key.upper(): value for key, value in source.items()}
     env = {k: v for k, v in source.items() if not k.startswith(("L0_", "L1_", "PYTHON", "VIRTUAL_ENV", "MAKE"))}
     cc = source.get("L1_CC") or shutil.which("gcc") or shutil.which("clang")
     if not cc or not shutil.which(cc):
@@ -31,7 +34,7 @@ def smoke_environment(root: Path, source: dict[str, str]) -> dict[str, str]:
     tools.mkdir()
     if os.name == "nt":
         # Native UCRT64 tools need their sibling DLLs and Windows system commands.
-        env["PATH"] = os.pathsep.join((str(Path(cc).parent), str(Path(env["SystemRoot"]) / "System32")))
+        env["PATH"] = os.pathsep.join((str(Path(cc).parent), str(Path(env["SYSTEMROOT"]) / "System32")))
     else:
         for name in ("sh", "dirname", "readlink", "realpath", "uname", "ar", "as", "ld", "nm", "ranlib",
                      "gcc", "clang", "cc", "ldd", "readelf", "otool", "xcrun", "xcodebuild", "sw_vers"):
