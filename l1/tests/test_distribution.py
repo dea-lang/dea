@@ -169,7 +169,11 @@ def test_hostile_members_rejected_before_any_extraction(package, tmp_path, windo
             info.create_system = 3
             kind = 0o120777 if problem in {"alias", "parent-alias"} else 0o020644 if problem == "device" else 0o100644
             info.external_attr = kind << 16
-            archive.writestr(info, "../../escape" if problem in {"alias", "parent-alias"} else "data")
+            if problem == "duplicate":
+                with pytest.warns(UserWarning, match=r"^Duplicate name: 'dea-l1/VERSION'$"):
+                    archive.writestr(info, "data")
+            else:
+                archive.writestr(info, "../../escape" if problem in {"alias", "parent-alias"} else "data")
     else:
         original = tmp_path / "original.tar.gz"
         path.rename(original)
