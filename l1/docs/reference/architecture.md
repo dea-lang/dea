@@ -1,19 +1,15 @@
 # L1 Compiler Architecture
 
-Version: 2026-10-04
+Version: 2026-10-10
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
-Both compiler stages implement the same pipeline:
+L1 has one canonical compiler implemented in L0:
 
-- `compiler/stage1_l0/` contains the runnable L1 compiler implemented in Dea/L0.
-- `compiler/stage2_l1/` is the self-hosted L1 implementation, initially ported from Stage 1 and using the same pass
-  structure and shared assets.
-- `compiler/shared/l1/stdlib/` and `compiler/shared/runtime/` are the current copied stdlib/runtime source inputs
-  consumed by the bootstrap toolchain.
-- `$L1_BUILD_DIR/include/` and `$L1_BUILD_DIR/interfaces/` contain bootstrap-owned public headers and verified bundled
-  semantic interfaces. Native stdlib/runtime support is derived on demand in one local cache; `make runtime` is a
-  separate developer workflow.
+- `compiler/src/` contains its `.l0` implementation; `compiler/support/` contains its native support.
+- `compiler/shared/l1/stdlib/` and `compiler/shared/runtime/` are physically owned L1 target inputs.
+- `$L1_BUILD_DIR/include/` and `$L1_BUILD_DIR/interfaces/` contain public headers and verified bundled semantic
+  interfaces. Native stdlib/runtime support is derived on demand in a separate writable cache.
 
 Related canonical docs:
 
@@ -26,41 +22,20 @@ Related canonical docs:
 - Shared CLI behavior: [docs/specs/compiler/cli-contract.md](../../../docs/specs/compiler/cli-contract.md)
 - External native-library workflow: [l1/docs/user/linking.md](../user/linking.md)
 
-## Stage 2 Development
+## Canonical Compiler Development
 
-`make build-stage2` builds the L1 source port through the explicit repo-local Stage 1 artifact. `use-dev-stage2` selects
-it as `l1c`; `use-dev-stage1` selects the bootstrap compiler. Ordinary builds and tests preserve that selection. The
-port reuses common compiler support and native preparation support; the runtime supplies fingerprint bridge symbols.
+`make build` constructs `l1c` with the explicitly selected upstream L0 compiler. `make use-dev` installs development
+launchers. The former L1 implementation in `.l1` now belongs to L2; it is not an alternative L1 compiler.
 
-Stage 2's shared utility/model review uses typed scalar constants, existing unsigned text conversion, and named AST
-constructor fields without changing the pass structure or ownership model. The frontend/semantic review adds native
-token matching, guarded constant operations and typed cleanup flow while preserving diagnostic order, owned semantic
-models, interface bytes and fingerprints. The current tree has 119 production modules after removing an unused
-path-wrapper module. The ledger in
-[l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/review.md][native-review] preserves the
-original 120-module inventory, phase assignments, ownership rationale, and validation evidence. Backend/build modules
-use native byte arithmetic and scalar process-status storage. CLI option defaults and parse results use named fields
-while retaining ordered validation and explicit ownership transfer. The audit records retained compatibility helpers and
-the temporary-parent snapshot bridge added during the review. All 119 current production modules and 1,749 function
-bodies are accounted for. Typed growable containers, explicit recursive teardown, owned string copies, and native
-filesystem/process/preparation bridges retain their ownership and portability contracts. The review identified no
-separate semantic defect or unfinished in-scope follow-up; its L2 observations are not accepted language proposals.
+`make test` is the fast gate, `make test-extended` the complete normal gate, and `make test-ci` the exhaustive gate with
+CI-only normal cases, environment integration, traces, and child fixtures. Slow trace cases remain explicit through
+`test-compiler-trace-all`. No L1 parity or triple-bootstrap gate exists. Implementation tests remain `.l0`; `.l1`
+fixtures exercise accepted L1 programs. Fixture productization and real exact-artifact acceptance remain separate.
 
-`make test` is the fast development gate: selected Stage 1 and Stage 2 smoke tests, parity, examples, Stage 2 tooling,
-and Docker/Wine runner regressions. `make test-extended` runs the Stage 1 and Stage 2 normal suites with CI-only cases
-excluded, plus parity, examples, and tooling. It omits environment reconstruction, dedicated trace sweeps, child
-fixtures, and triple bootstrap. `make test-ci` adds CI-only normal cases, environment/bootstrap integration, both
-default trace suites, child fixtures, and triple bootstrap; the normal runners report their CI-only cases explicitly.
-Local normal coverage retains arithmetic and all six multiplication overflow fixtures using the already-built subject,
-plus representative managed preparation. Installed read-only inputs and preparation recovery/concurrency are CI-only
-normal cases in both stages, as is embedded-driver overflow compilation in `mul_runtime_compile_test`. Dedicated trace
-discovery applies its own slow-case policy and retains normal CI-only cases. Slow trace cases remain opt-in through the
-`*-trace-all` targets. `make triple-test` builds three Stage 2 generations and requires identical relative retained-C
-inventories and bytes, including the lifecycle wrapper, between the second and third generations. Native comparison
-follows the L0 platform policy; the complete Stage 2 normal suite and example checks then run through the final
-compiler. `test-ci` includes this fixed-point gate; local `test-extended` leaves it explicit. `KEEP_ARTIFACTS=1` retains
-successful bootstrap evidence; failures always retain their artifacts. No install, distribution, or release interface is
-added.
+`make install` privately builds the canonical installed-mode compiler with verified semantic inputs. `make dist` also
+requires matching strict offline HTML/full PDF. Fresh acceptance of the retargeted artifact remains required; historical
+Stage 2 acceptance is not transferable. See
+[l1/docs/reference/productization-inventory.md](productization-inventory.md).
 
 ## 1. High-Level Pipeline
 
@@ -187,7 +162,7 @@ whole-module SipHash-1-3 fingerprint, and rejects a mismatch before registration
 replay. Source projection computes its own fingerprint from the exported surface, then fills each dependency entry with
 the corresponding provider module fingerprint; dependency records do not feed back into the consumer's own digest.
 
-Current CLI entry point: `compiler/stage1_l0/src/l1c.l0`.
+Current CLI entry point: `compiler/src/l1c.l0`.
 
 The CLI implements `--gen` and `-c` / `--compile` with repeatable `-I` / `--interface-path` roots. Generated-C resolves
 one source-backed target, prefers selected interfaces for imports, falls back to source only when no interface is
@@ -258,18 +233,17 @@ order.
 Normal developer workflow:
 
 ```bash
-make use-dev-stage2
+make use-dev
 source build/dea/bin/l1-env.sh
 l1c --help
 ```
 
-`make use-dev-stage2` auto-prepares the default repo-local upstream `../l0/build/dea/bin/l0c-stage2` when needed.
+`make use-dev` auto-prepares the default repo-local upstream `../l0/build/dea/bin/l0c-stage2` when needed.
 
 ## 2. Pass Responsibilities
 
-Stage 1 implementation modules live under `compiler/stage1_l0/src/`; their Stage 2 counterparts live under
-`compiler/stage2_l1/src/` with `.l1` extensions. The pass descriptions below use Stage 1 filenames as the semantic
-reference.
+Canonical implementation modules live under `compiler/src/` with `.l0` extensions. The pass descriptions below refer to
+those implementation files.
 
 ### 2.1 Lexer (`lexer.l0`, `tokens.l0`)
 
@@ -393,7 +367,7 @@ reference.
   semantic source provenance and the independent final sibling checks.
 - `preparation.l0` owns frontend/native orchestration, progress, repair guidance, per-key preparation and finalization.
   Its `pr_construct` operation consumes frozen construction inputs and the verified dependency order, with no ambient
-  compiler-option reads during module generation. Stage 2 uses the same boundary.
+  compiler-option reads during module generation.
 - `preparation_support.c` and `support/preparation/` implement one local cache, installed-payload protection,
   compiler-input identity, conservative native adapters, process locks, complete inventories and digest memoization.
   `construction.h` owns a copied construction configuration and payload inventory while borrowing an already owned
@@ -435,8 +409,7 @@ Important analysis tables include:
 
 ## 4. Invariants
 
-01. Stage 1 is implemented in Dea/L0 and remains the behavioral oracle for the self-hosted Stage 2 implementation in
-    Dea/L1.
+01. The sole canonical L1 compiler is implemented in Dea/L0.
 02. Import closure construction is explicit and checked before later semantic passes; each canonical module has one
     source, interface, registry, or virtual origin in the module graph.
 03. Source locations are propagated for diagnostics.
@@ -465,14 +438,13 @@ Important analysis tables include:
     selected entry bridge is the only Dea entry invoked, and the wrapper owns process `main`.
 14. External host dependencies are explicit CLI/build-tool inputs, not module identities or `.l1m` dependency metadata.
     The selected runtime follows the user stream by exact path.
-15. The `stage2_l1` implementation must match the public L1 language/runtime behavior documented here and in the other
-    L1 reference documents.
+15. The canonical compiler implements the public L1 language/runtime contract documented in the L1 references.
 
 ## 5. File/Module Layout
 
-The production tree under `l1/compiler/stage1_l0/src/` contains 119 modules. Modules are organized by owned state,
-compiler phase, and output contract. Imports expose only locally declared symbols: callers import a shared state/model
-owner explicitly, and implementation children never import their command/pass facade.
+The production tree under `l1/compiler/src/` contains 119 modules. Modules are organized by owned state, compiler phase,
+and output contract. Imports expose only locally declared symbols: callers import a shared state/model owner explicitly,
+and implementation children never import their command/pass facade.
 
 | Family                        | Coarse entrypoints                 | Implementation owners                                                                                                                                             |
 | ----------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -507,13 +479,11 @@ re-enter expression lowering. Splitting that group would require an algorithm ch
 remain below it; function-body setup and output orchestration enter it from above. `cleanup` and `module` are reserved
 L0 words, so those module responsibilities use the names `lifetime` and `output`.
 
-The L1-owned support directory under `compiler/stage1_l0/support/` separates three compiler-private C translation units.
-`interface_fingerprint.c` supplies the fingerprint bridge for the L0-built Stage 1; an L1-built compiler obtains those
-symbols from the runtime archive. `compiler_support.c` supplies filesystem and process helpers for both stages,
-including canonical native temporary-parent validation, build/run workspaces, compile-only publication, and standalone
-link transactions. `preparation_support.c` supplies native cache storage, hashing, supported toolchain observation and
-preparation subprocess primitives through private `preparation/` helpers. Stage 1 links all three source files; the
-L1-built Stage 2 compiler needs common compiler and preparation support alongside the runtime. `compiler_filesystem.l0`
+The L1-owned support directory under `compiler/support/` separates three compiler-private C translation units.
+`interface_fingerprint.c` supplies the fingerprint bridge for the L0-built compiler. `compiler_support.c` supplies
+filesystem/process helpers, native temporary-parent validation, build/run workspaces, compile-only publication, and
+standalone-link transactions. `preparation_support.c` supplies native cache storage, hashing, toolchain observation, and
+subprocess primitives through private `preparation/` helpers. The compiler links all three. `compiler_filesystem.l0`
 wraps the general filesystem primitives; `preparation.l0` wraps preparation-specific services. Neither extends the
 public runtime or standard library.
 
@@ -525,5 +495,3 @@ public runtime or standard library.
 - The bootstrap compiler implementation remains `.l0` source code.
 - `--compile`, `--link`, `--build`, `--run`, and `--prepare-stdlib` require a host C99 toolchain.
 - Local bootstrap builds use `../l0/build/dea/bin/l0c-stage2` by default unless overridden with `L1_BOOTSTRAP_L0C`.
-
-[native-review]: ../../work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/review.md

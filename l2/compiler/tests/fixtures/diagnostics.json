@@ -1,0 +1,1765 @@
+[
+  {
+    "name": "LEX-0010",
+    "target": "main",
+    "files": {
+      "main.l2": "\"unterminated"
+    },
+    "expected": "[LEX-0010]"
+  },
+  {
+    "name": "LEX-0020",
+    "target": "main",
+    "files": {
+      "main.l2": "'"
+    },
+    "expected": "[LEX-0020]"
+  },
+  {
+    "name": "LEX-0021",
+    "target": "main",
+    "files": {
+      "main.l2": "'a"
+    },
+    "expected": "[LEX-0021]"
+  },
+  {
+    "name": "LEX-0030",
+    "target": "main",
+    "files": {
+      "main.l2": "'\\u0100'"
+    },
+    "expected": "[LEX-0030]"
+  },
+  {
+    "name": "LEX-0031",
+    "target": "main",
+    "files": {
+      "main.l2": "'\\x0FFF'"
+    },
+    "expected": "[LEX-0031]"
+  },
+  {
+    "name": "LEX-0040",
+    "target": "main",
+    "files": {
+      "main.l2": "@"
+    },
+    "expected": "[LEX-0040]"
+  },
+  {
+    "name": "LEX-0050",
+    "target": "main",
+    "files": {
+      "main.l2": "\"\\xGG\""
+    },
+    "expected": "[LEX-0050]"
+  },
+  {
+    "name": "LEX-0051",
+    "target": "main",
+    "files": {
+      "main.l2": "\"\\u12\""
+    },
+    "expected": "[LEX-0051]"
+  },
+  {
+    "name": "LEX-0052",
+    "target": "main",
+    "files": {
+      "main.l2": "\"\\U1234567\""
+    },
+    "expected": "[LEX-0052]"
+  },
+  {
+    "name": "LEX-0053",
+    "target": "main",
+    "files": {
+      "main.l2": "\"\\777\""
+    },
+    "expected": "[LEX-0053]"
+  },
+  {
+    "name": "LEX-0054",
+    "target": "main",
+    "files": {
+      "main.l2": "\"\\UDEADBEEF\""
+    },
+    "expected": "[LEX-0054]"
+  },
+  {
+    "name": "LEX-0059",
+    "target": "main",
+    "files": {
+      "main.l2": "\"\\q\""
+    },
+    "expected": "[LEX-0059]"
+  },
+  {
+    "name": "LEX-0061",
+    "target": "main",
+    "files": {
+      "main.l2": "23423abc"
+    },
+    "expected": "[LEX-0061]"
+  },
+  {
+    "name": "LEX-0070",
+    "target": "main",
+    "files": {
+      "main.l2": "/* unterminated"
+    },
+    "expected": "[LEX-0070]"
+  },
+  {
+    "name": "PAR-0010",
+    "target": "main",
+    "files": {
+      "main.l2": "\nmodule main;\n\nfunc main() -> int {\n    let __dea__future__keyword__: int = 0;\n    return 0;\n}\n"
+    },
+    "expected": "[PAR-0010]"
+  },
+  {
+    "name": "PAR-0011",
+    "target": "main",
+    "files": {
+      "main.l2": "\nmodule main;\n\nfunc main() -> int {\n    let int: int = 0;\n    return 0;\n}\n"
+    },
+    "expected": "[PAR-0011]"
+  },
+  {
+    "name": "PAR-0020",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; +;"
+    },
+    "expected": "[PAR-0020]"
+  },
+  {
+    "name": "PAR-0041",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func () -> int { return 0; }"
+    },
+    "expected": "[PAR-0041]"
+  },
+  {
+    "name": "PAR-0042",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func foo -> int { return 0; }"
+    },
+    "expected": "[PAR-0042]"
+  },
+  {
+    "name": "PAR-0043",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func foo(: int) -> int { return 0; }"
+    },
+    "expected": "[PAR-0043]"
+  },
+  {
+    "name": "PAR-0044",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func foo(a int) -> int { return 0; }"
+    },
+    "expected": "[PAR-0044]"
+  },
+  {
+    "name": "PAR-0045",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func foo(a: int -> int { return a; }"
+    },
+    "expected": "[PAR-0045]"
+  },
+  {
+    "name": "PAR-0046",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; extern func foo() -> int"
+    },
+    "expected": "[PAR-0046]"
+  },
+  {
+    "name": "PAR-0051",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; struct { x: int; }"
+    },
+    "expected": "[PAR-0051]"
+  },
+  {
+    "name": "PAR-0052",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; struct Point x: int; }"
+    },
+    "expected": "[PAR-0052]"
+  },
+  {
+    "name": "PAR-0053",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; struct Point { : int; }"
+    },
+    "expected": "[PAR-0053]"
+  },
+  {
+    "name": "PAR-0054",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; struct Point { x int; }"
+    },
+    "expected": "[PAR-0054]"
+  },
+  {
+    "name": "PAR-0055",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; struct Point { x: int }"
+    },
+    "expected": "[PAR-0055]"
+  },
+  {
+    "name": "PAR-0061",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; enum { None; }"
+    },
+    "expected": "[PAR-0061]"
+  },
+  {
+    "name": "PAR-0062",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; enum Option None; }"
+    },
+    "expected": "[PAR-0062]"
+  },
+  {
+    "name": "PAR-0063",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; enum Option { ; }"
+    },
+    "expected": "[PAR-0063]"
+  },
+  {
+    "name": "PAR-0064",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; enum Option { Some(: int); }"
+    },
+    "expected": "[PAR-0064]"
+  },
+  {
+    "name": "PAR-0065",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; enum Option { Some(v int); }"
+    },
+    "expected": "[PAR-0065]"
+  },
+  {
+    "name": "PAR-0066",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; enum Option { Some(v: int; }"
+    },
+    "expected": "[PAR-0066]"
+  },
+  {
+    "name": "PAR-0067",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; enum Option { None }"
+    },
+    "expected": "[PAR-0067]"
+  },
+  {
+    "name": "PAR-0071",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; type = int;"
+    },
+    "expected": "[PAR-0071]"
+  },
+  {
+    "name": "PAR-0072",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; type Alias int;"
+    },
+    "expected": "[PAR-0072]"
+  },
+  {
+    "name": "PAR-0073",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; type Alias = int"
+    },
+    "expected": "[PAR-0073]"
+  },
+  {
+    "name": "PAR-0081",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; let : int = 1;"
+    },
+    "expected": "[PAR-0081]"
+  },
+  {
+    "name": "PAR-0082",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; let x: int 1;"
+    },
+    "expected": "[PAR-0082]"
+  },
+  {
+    "name": "PAR-0083",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; let x: int = 1"
+    },
+    "expected": "[PAR-0083]"
+  },
+  {
+    "name": "PAR-0090",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int return 0; }"
+    },
+    "expected": "[PAR-0090]"
+  },
+  {
+    "name": "PAR-0100",
+    "target": "main",
+    "files": {
+      "main.l2": "\nmodule main;\n\nfunc main() -> int {\n    let x: int = 0\n    return x;\n}\n"
+    },
+    "expected": "[PAR-0100]"
+  },
+  {
+    "name": "PAR-0111",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { let : int = 0; return 0; }"
+    },
+    "expected": "[PAR-0111]"
+  },
+  {
+    "name": "PAR-0112",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { let x: int 0; return 0; }"
+    },
+    "expected": "[PAR-0112]"
+  },
+  {
+    "name": "PAR-0121",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { if true { return 1; } return 0; }"
+    },
+    "expected": "[PAR-0121]"
+  },
+  {
+    "name": "PAR-0122",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { if (true { return 1; } }"
+    },
+    "expected": "[PAR-0122]"
+  },
+  {
+    "name": "PAR-0123",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { else return 0; }"
+    },
+    "expected": "[PAR-0123]"
+  },
+  {
+    "name": "PAR-0131",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { while true { return 1; } return 0; }"
+    },
+    "expected": "[PAR-0131]"
+  },
+  {
+    "name": "PAR-0132",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { while (true { return 1; } }"
+    },
+    "expected": "[PAR-0132]"
+  },
+  {
+    "name": "PAR-0141",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { for let i: int = 0; i < 3; i = i + 1 { return 0; } }"
+    },
+    "expected": "[PAR-0141]"
+  },
+  {
+    "name": "PAR-0142",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { for (let i: int = 0 i < 3; i = i + 1) { return 0; } }"
+    },
+    "expected": "[PAR-0142]"
+  },
+  {
+    "name": "PAR-0143",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { for (let i: int = 0; i < 3 i = i + 1) { return 0; } }"
+    },
+    "expected": "[PAR-0143]"
+  },
+  {
+    "name": "PAR-0144",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { for (let i: int = 0; i < 3; i = i + 1 { return 0; } }"
+    },
+    "expected": "[PAR-0144]"
+  },
+  {
+    "name": "PAR-0145",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { for (let i: int = 0; i < 3; let j: int = i) { return 0; } }"
+    },
+    "expected": "[PAR-0145]"
+  },
+  {
+    "name": "PAR-0161",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { drop ; return 0; }"
+    },
+    "expected": "[PAR-0161]"
+  },
+  {
+    "name": "PAR-0171",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; enum Option { None; } func main(opt: Option) -> int { match opt { None => { return 0; } } }"
+    },
+    "expected": "[PAR-0171]"
+  },
+  {
+    "name": "PAR-0172",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; enum Option { None; } func main(opt: Option) -> int { match (opt { None => { return 0; } } }"
+    },
+    "expected": "[PAR-0172]"
+  },
+  {
+    "name": "PAR-0173",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; enum Option { None; } func main(opt: Option) -> int { match (opt) None => { return 0; } }"
+    },
+    "expected": "[PAR-0173]"
+  },
+  {
+    "name": "PAR-0174",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; enum Option { None; } func main(opt: Option) -> int { match (opt) { None { return 0; } } }"
+    },
+    "expected": "[PAR-0174]"
+  },
+  {
+    "name": "PAR-0176",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; enum Option { None; } func main(opt: Option) -> int { match (opt) { None => { return 0; } None => { return 1; } } }"
+    },
+    "expected": "[PAR-0176]"
+  },
+  {
+    "name": "PAR-0177",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; enum Option { None; } func main(opt: Option) -> int { match (opt) { } }"
+    },
+    "expected": "[PAR-0177]"
+  },
+  {
+    "name": "PAR-0181",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; enum Option { Some(v: int); } func main(opt: Option) -> int { match (opt) { Some(x => { return 0; } } }"
+    },
+    "expected": "[PAR-0181]"
+  },
+  {
+    "name": "PAR-0182",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; enum Option { None; } func main(opt: Option) -> int { match (opt) { 123 => { return 0; } } }"
+    },
+    "expected": "[PAR-0182]"
+  },
+  {
+    "name": "PAR-0210",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func add(a: int, b: int) -> int { return a + b; } func main() -> int { return add(1, 2; }"
+    },
+    "expected": "[PAR-0210]"
+  },
+  {
+    "name": "PAR-0211",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { let v: int = arr[0; return v; }"
+    },
+    "expected": "[PAR-0211]"
+  },
+  {
+    "name": "PAR-0212",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { let v: int = arr.; return v; }"
+    },
+    "expected": "[PAR-0212]"
+  },
+  {
+    "name": "PAR-0223",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; struct S { x: int; } func main() -> int { let p: S* = new S(1; return 0; }"
+    },
+    "expected": "[PAR-0223]"
+  },
+  {
+    "name": "PAR-0224",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { let x: int = (1 + 2; return x; }"
+    },
+    "expected": "[PAR-0224]"
+  },
+  {
+    "name": "PAR-0225",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { let x: int = ; return 0; }"
+    },
+    "expected": "[PAR-0225]"
+  },
+  {
+    "name": "PAR-0231",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { case 42 { } return 0; }"
+    },
+    "expected": "[PAR-0231]"
+  },
+  {
+    "name": "PAR-0232",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { case (42 { } return 0; }"
+    },
+    "expected": "[PAR-0232]"
+  },
+  {
+    "name": "PAR-0233",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { case (42) 1 => { return 1; } return 0; }"
+    },
+    "expected": "[PAR-0233]"
+  },
+  {
+    "name": "PAR-0234",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { case (42) { _ => { return 0; } 1 => { return 1; } } }"
+    },
+    "expected": "[PAR-0234]"
+  },
+  {
+    "name": "PAR-0235",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { case (42) { 1 { return 1; } } }"
+    },
+    "expected": "[PAR-0235]"
+  },
+  {
+    "name": "PAR-0236",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { case (42) { _ => { return 0; } _ => { return 1; } } }"
+    },
+    "expected": "[PAR-0236]"
+  },
+  {
+    "name": "PAR-0240",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { case (42) { } return 0; }"
+    },
+    "expected": "[PAR-0240]"
+  },
+  {
+    "name": "PAR-0241",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { case (42) { + => { return 1; } _ => { return 0; } } }"
+    },
+    "expected": "[PAR-0241]"
+  },
+  {
+    "name": "PAR-0300",
+    "target": "main",
+    "files": {
+      "main.l2": "module main.; func main() -> int { return 0; }"
+    },
+    "expected": "[PAR-0300]"
+  },
+  {
+    "name": "PAR-0310",
+    "target": "main",
+    "files": {
+      "main.l2": "import std.io;"
+    },
+    "expected": "[PAR-0310]"
+  },
+  {
+    "name": "PAR-0311",
+    "target": "main",
+    "files": {
+      "main.l2": "module ;"
+    },
+    "expected": "[PAR-0311]"
+  },
+  {
+    "name": "PAR-0312",
+    "target": "main",
+    "files": {
+      "main.l2": "module main\nfunc main() -> int { return 0; }"
+    },
+    "expected": "[PAR-0312]"
+  },
+  {
+    "name": "PAR-0320",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; import ;"
+    },
+    "expected": "[PAR-0320]"
+  },
+  {
+    "name": "PAR-0321",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; import std.io"
+    },
+    "expected": "[PAR-0321]"
+  },
+  {
+    "name": "PAR-0400",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; type Alias = ;"
+    },
+    "expected": "[PAR-0400]"
+  },
+  {
+    "name": "PAR-0401",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func foo(x: main::) -> int { return 0; }"
+    },
+    "expected": "[PAR-0401]"
+  },
+  {
+    "name": "PAR-0501",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { with let x: int = 1 => x = 0 { return 0; } return 0; }"
+    },
+    "expected": "[PAR-0501]"
+  },
+  {
+    "name": "PAR-0502",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { with (let x: int = 1 => x = 0 { return 0; } return 0; }"
+    },
+    "expected": "[PAR-0502]"
+  },
+  {
+    "name": "PAR-0503",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nextern func open(name: string) -> int;\nextern func close(f: int);\nfunc main() -> int {\n    with (let f: int = open(\"a\") => close(f),\n          let g: int = open(\"b\")) {\n        return f;\n    }\n}\n"
+    },
+    "expected": "[PAR-0503]"
+  },
+  {
+    "name": "PAR-0504",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nextern func open(name: string) -> int;\nextern func close(f: int);\nfunc main() -> int {\n    with (let f: int = open(\"a\") => close(f)) {\n        return f;\n    } cleanup {\n        close(f);\n    }\n}\n"
+    },
+    "expected": "[PAR-0504]"
+  },
+  {
+    "name": "PAR-0505",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nextern func open(name: string) -> int;\nfunc main() -> int {\n    with (let f: int = open(\"a\")) {\n        return f;\n    }\n}\n"
+    },
+    "expected": "[PAR-0505]"
+  },
+  {
+    "name": "PAR-0506",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func main() -> int { cleanup return 0; }"
+    },
+    "expected": "[PAR-0506]"
+  },
+  {
+    "name": "DRV-0010",
+    "target": "missing",
+    "files": {},
+    "expected": "[DRV-0010]"
+  },
+  {
+    "name": "DRV-0020",
+    "target": "foo",
+    "files": {
+      "foo.l2": "module bar;\n"
+    },
+    "expected": "[DRV-0020]"
+  },
+  {
+    "name": "DRV-0030",
+    "target": "a",
+    "files": {
+      "a.l2": "module a;\nimport b;\n",
+      "b.l2": "module b;\nimport a;\n"
+    },
+    "expected": "[DRV-0030]"
+  },
+  {
+    "name": "DRV-0040",
+    "target": "main",
+    "files": {},
+    "expected": "[DRV-0040]",
+    "binary_files": {
+      "main.l2": "6d6f64756c65206d61696e3b0a66756e63206d61696e2829202d3e20696e74207b2072657475726e20303b207d0aff"
+    }
+  },
+  {
+    "name": "RES-0010",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { return 1; }\nfunc foo() -> int { return 2; }\n"
+    },
+    "expected": "[RES-0010]"
+  },
+  {
+    "name": "RES-0020",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nimport helper;\nextern func ext_fn(x: int) -> int;\nfunc foo() -> int { return ext_fn(1); }\n",
+      "helper.l2": "module helper;\nextern func ext_fn(x: int) -> int;\n"
+    },
+    "expected": "[RES-0020]"
+  },
+  {
+    "name": "RES-0021",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nimport helper;\nfunc foo() -> int { return 2; }\n",
+      "helper.l2": "module helper;\nfunc foo() -> int { return 1; }\n"
+    },
+    "expected": "[RES-0021]"
+  },
+  {
+    "name": "RES-0022",
+    "target": "main",
+    "files": {
+      "a.l2": "module a;\nfunc foo() -> int { return 1; }\n",
+      "main.l2": "module main;\nimport a;\nimport b;\nfunc bar() -> int { return 0; }\n",
+      "b.l2": "module b;\nfunc foo() -> int { return 2; }\n"
+    },
+    "expected": "[RES-0022]"
+  },
+  {
+    "name": "RES-0036",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nimport helper;\nimport helper;\nfunc bar() -> int { return foo(); }\n",
+      "helper.l2": "module helper;\nfunc foo() -> int { return 1; }\n"
+    },
+    "expected": "[RES-0036]"
+  },
+  {
+    "name": "SIG-0010",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func foo() -> int { return 0; } func bar(x: foo) -> int { return 0; }"
+    },
+    "expected": "[SIG-0010]"
+  },
+  {
+    "name": "SIG-0011",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func foo(x: void?) -> int { return 0; }"
+    },
+    "expected": "[SIG-0011]"
+  },
+  {
+    "name": "SIG-0018",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nenum Color { Red(); }\nfunc foo(x: main::Color::Red) -> int { return 0; }\n"
+    },
+    "expected": "[SIG-0018]"
+  },
+  {
+    "name": "SIG-0019",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; func foo(x: NoSuchType) -> int { return 0; }"
+    },
+    "expected": "[SIG-0019]"
+  },
+  {
+    "name": "SIG-0020",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; type A = B; type B = A; func foo(x: A) -> int { return 0; }"
+    },
+    "expected": "[SIG-0020]"
+  },
+  {
+    "name": "SIG-0030",
+    "target": "main",
+    "files": {
+      "main.l2": "module main; let x = foo();"
+    },
+    "expected": "[SIG-0030]"
+  },
+  {
+    "name": "SIG-0040",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nstruct A { b: B; }\nstruct B { a: A; }\nfunc foo() -> int { return 0; }\n"
+    },
+    "expected": "[SIG-0040]"
+  },
+  {
+    "name": "TYP-0010",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo(flag: bool) -> int { if (flag) { return 1; } }\n"
+    },
+    "expected": "[TYP-0010]"
+  },
+  {
+    "name": "TYP-0020",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { let x: int = 1; let x: int = 2; return x; }\n"
+    },
+    "expected": "[TYP-0020]"
+  },
+  {
+    "name": "TYP-0021",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int {\n    let x: int = 1;\n    if (true) { let x: int = 2; return x; }\n    return x;\n}\n"
+    },
+    "expected": "[TYP-0021]"
+  },
+  {
+    "name": "TYP-0022",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nenum E { Red(); }\nfunc foo() -> int { let Red: int = 1; return Red; }\n"
+    },
+    "expected": "[TYP-0022]"
+  },
+  {
+    "name": "TYP-0023",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nimport colors;\nfunc foo() -> int { let Red: int = 1; return Red; }\n",
+      "colors.l2": "module colors;\nenum Color { Red(); Green(); }\n"
+    },
+    "expected": "[TYP-0023]"
+  },
+  {
+    "name": "TYP-0024",
+    "target": "main",
+    "files": {
+      "a.l2": "module a;\nenum E1 { Red(); }\n",
+      "main.l2": "module main;\nimport a;\nimport b;\nfunc foo() -> int { let Red: int = 1; return Red; }\n",
+      "b.l2": "module b;\nenum E2 { Red(); }\n"
+    },
+    "expected": "[TYP-0024]"
+  },
+  {
+    "name": "TYP-0025",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc bar() -> int { return 0; }\nfunc foo() -> int { let bar: int = 1; return bar; }\n"
+    },
+    "expected": "[TYP-0025]"
+  },
+  {
+    "name": "TYP-0030",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int {\n    while (true) { break; let x: int = 0; }\n    return 0;\n}\n"
+    },
+    "expected": "[TYP-0030]"
+  },
+  {
+    "name": "TYP-0031",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { return 1; let x: int = 0; }\n"
+    },
+    "expected": "[TYP-0031]"
+  },
+  {
+    "name": "TYP-0040",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { let x: Unknown = 0; return 0; }\n"
+    },
+    "expected": "[TYP-0040]"
+  },
+  {
+    "name": "TYP-0050",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { let x: void = 0; return 0; }\n"
+    },
+    "expected": "[TYP-0050]"
+  },
+  {
+    "name": "TYP-0051",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { let x = unknown_func(); return 0; }\n"
+    },
+    "expected": "[TYP-0051]"
+  },
+  {
+    "name": "TYP-0052",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { let x = null; return 0; }\n"
+    },
+    "expected": "[TYP-0052]"
+  },
+  {
+    "name": "TYP-0053",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc v() -> void {}\nfunc foo() -> int { let x = v(); return 0; }\n"
+    },
+    "expected": "[TYP-0053]"
+  },
+  {
+    "name": "TYP-0060",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { drop unknown; return 0; }\n"
+    },
+    "expected": "[TYP-0060]"
+  },
+  {
+    "name": "TYP-0061",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { let x: int = 1; drop x; return 0; }\n"
+    },
+    "expected": "[TYP-0061]"
+  },
+  {
+    "name": "TYP-0062",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nstruct S { v: int; }\nfunc foo() -> int { let p: S* = new S(1); drop p; drop p; return 0; }\n"
+    },
+    "expected": "[TYP-0062]"
+  },
+  {
+    "name": "TYP-0063",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nstruct S { v: int; }\nlet gp: S*? = null;\nfunc foo() -> int { drop gp; return 0; }\n"
+    },
+    "expected": "[TYP-0063]"
+  },
+  {
+    "name": "TYP-0070",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { if (1) { return 1; } return 0; }\n"
+    },
+    "expected": "[TYP-0070]"
+  },
+  {
+    "name": "TYP-0080",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { while (1) { return 1; } return 0; }\n"
+    },
+    "expected": "[TYP-0080]"
+  },
+  {
+    "name": "TYP-0090",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { for (let i: int = 0; 1; i = i + 1) { return 0; } return 0; }\n"
+    },
+    "expected": "[TYP-0090]"
+  },
+  {
+    "name": "TYP-0100",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int {\n    let x: int = 1;\n    match (x) { _ => { return 0; } }\n}\n"
+    },
+    "expected": "[TYP-0100]"
+  },
+  {
+    "name": "TYP-0101",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nenum E { Some(v: int); }\nfunc foo(e: E) -> int {\n    match (e) { Some(a, b) => { return 0; } }\n}\n"
+    },
+    "expected": "[TYP-0101]"
+  },
+  {
+    "name": "TYP-0102",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nenum E { Some(v: int); }\nfunc foo(e: E) -> int {\n    match (e) { Unknown => { return 0; } }\n}\n"
+    },
+    "expected": "[TYP-0102]"
+  },
+  {
+    "name": "TYP-0104",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nenum E { A(); B(); }\nfunc foo(e: E) -> int {\n    match (e) { A => { return 0; } }\n}\n"
+    },
+    "expected": "[TYP-0104]"
+  },
+  {
+    "name": "TYP-0105",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nenum E { A(); B(); }\nfunc foo(e: E) -> int {\n    match (e) { A => { return 0; } B => { return 1; } _ => { return 2; } }\n}\n"
+    },
+    "expected": "[TYP-0105]"
+  },
+  {
+    "name": "TYP-0106",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nstruct Point { x: int; y: int; }\nfunc foo() -> int {\nlet p: Point = Point(1, 2);\ncase (p) {\n_ => { return 0; }\n}\n}\n"
+    },
+    "expected": "[TYP-0106]"
+  },
+  {
+    "name": "TYP-0107",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int {\nlet x: int = 1;\ncase (x) {\n\"hello\" => { return 1; }\n_ => { return 0; }\n}\n}\n"
+    },
+    "expected": "[TYP-0107]"
+  },
+  {
+    "name": "TYP-0108",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int {\nlet x: int = 1;\ncase (x) {\n1 => { return 1; }\n1 => { return 1; }\n_ => { return 0; }\n}\n}\n"
+    },
+    "expected": "[TYP-0108]"
+  },
+  {
+    "name": "TYP-0110",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { break; return 0; }\n"
+    },
+    "expected": "[TYP-0110]"
+  },
+  {
+    "name": "TYP-0120",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { continue; return 0; }\n"
+    },
+    "expected": "[TYP-0120]"
+  },
+  {
+    "name": "TYP-0150",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nstruct S { v: int; }\nfunc foo() -> int {\n    let p: S* = new S(1);\n    drop p;\n    let q: S* = p;\n    return 0;\n}\n"
+    },
+    "expected": "[TYP-0150]"
+  },
+  {
+    "name": "TYP-0151",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nstruct S { v: int; }\nfunc foo() -> int { let x: int = S; return 0; }\n"
+    },
+    "expected": "[TYP-0151]"
+  },
+  {
+    "name": "TYP-0152",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nenum E { Some(v: int); }\nfunc foo() -> int { let x: int = Some; return 0; }\n"
+    },
+    "expected": "[TYP-0152]"
+  },
+  {
+    "name": "TYP-0154",
+    "target": "main",
+    "files": {
+      "other.l2": "module other;\nlet bar: int = 1;\n",
+      "main.l2": "module main;\nfunc foo() -> int { let x: int = other::bar; return x; }\n"
+    },
+    "expected": "[TYP-0154]"
+  },
+  {
+    "name": "TYP-0155",
+    "target": "main",
+    "files": {
+      "a.l2": "module a;\nlet foo: int = 1;\n",
+      "main.l2": "module main;\nimport a;\nimport b;\nfunc bar() -> int { let x: int = foo; return x; }\n",
+      "b.l2": "module b;\nlet foo: int = 2;\n"
+    },
+    "expected": "[TYP-0155]"
+  },
+  {
+    "name": "TYP-0156",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nimport std.io;\nfunc ok() -> int? { return 1 as int?; }\nfunc fail() -> int? { return null; }\nfunc foo() -> int? {\n    with (let q: int = ok()?,\n          let p: int = fail()?) {\n    } cleanup {\n        printl_si(\"q\", q);\n        printl_si(\"p\", p);\n    }\n    return 0 as int?;\n}\nfunc main() -> int { return 0; }\n"
+    },
+    "expected": "[TYP-0156]"
+  },
+  {
+    "name": "TYP-0158",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { let x: int = a::B::C::D; return 0; }\n"
+    },
+    "expected": "[TYP-0158]"
+  },
+  {
+    "name": "TYP-0159",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { let x: int = unknown; return 0; }\n"
+    },
+    "expected": "[TYP-0159]"
+  },
+  {
+    "name": "TYP-0160",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { let x: int = -true; return 0; }\n"
+    },
+    "expected": "[TYP-0160]"
+  },
+  {
+    "name": "TYP-0161",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { let x: bool = !1; return false; }\n"
+    },
+    "expected": "[TYP-0161]"
+  },
+  {
+    "name": "TYP-0162",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { let x: int = *1; return 0; }\n"
+    },
+    "expected": "[TYP-0162]"
+  },
+  {
+    "name": "TYP-0170",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { let x: int = true + 1; return 0; }\n"
+    },
+    "expected": "[TYP-0170]"
+  },
+  {
+    "name": "TYP-0171",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> bool { let x: bool = 1 && 2; return x; }\n"
+    },
+    "expected": "[TYP-0171]"
+  },
+  {
+    "name": "TYP-0172",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> bool { let x: bool = 1 == true; return x; }\n"
+    },
+    "expected": "[TYP-0172]"
+  },
+  {
+    "name": "TYP-0173",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nstruct S { v: int; }\nfunc foo(a: S, b: S) -> bool { return a == b; }\n"
+    },
+    "expected": "[TYP-0173]"
+  },
+  {
+    "name": "TYP-0180",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { return (1 + 2)(3); }\n"
+    },
+    "expected": "[TYP-0180]"
+  },
+  {
+    "name": "TYP-0181",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nenum E { A(); }\nfunc foo() -> int { let x: int = E(1); return 0; }\n"
+    },
+    "expected": "[TYP-0181]"
+  },
+  {
+    "name": "TYP-0183",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc bar(x: int) -> int { return x; }\nfunc foo() -> int { return bar(1, 2); }\n"
+    },
+    "expected": "[TYP-0183]"
+  },
+  {
+    "name": "TYP-0189",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { return unknown(1); }\n"
+    },
+    "expected": "[TYP-0189]"
+  },
+  {
+    "name": "TYP-0191",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nstruct S { a: int; b: int; }\nfunc foo() -> int { let s: S = S(1); return 0; }\n"
+    },
+    "expected": "[TYP-0191]"
+  },
+  {
+    "name": "TYP-0201",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nenum E { Some(v: int); }\nfunc foo(e: E) -> int { let e: E = Some(1, 2); return 0; }\n"
+    },
+    "expected": "[TYP-0201]"
+  },
+  {
+    "name": "TYP-0210",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo(arr: int*) -> int { return arr[true]; }\n"
+    },
+    "expected": "[TYP-0210]"
+  },
+  {
+    "name": "TYP-0211",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nextern func maybe_buf() -> int*?;\nfunc foo(i: int) -> int {\n    let buf: int*? = maybe_buf();\n    return buf[i];\n}\n"
+    },
+    "expected": "[TYP-0211]"
+  },
+  {
+    "name": "TYP-0220",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nstruct S { v: int; }\nfunc foo(p: S?) -> int { return p.v; }\n"
+    },
+    "expected": "[TYP-0220]"
+  },
+  {
+    "name": "TYP-0221",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nstruct S { x: int; }\nfunc foo(s: S) -> int { return s.y; }\n"
+    },
+    "expected": "[TYP-0221]"
+  },
+  {
+    "name": "TYP-0222",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { let x: int = 1; return x.field; }\n"
+    },
+    "expected": "[TYP-0222]"
+  },
+  {
+    "name": "TYP-0230",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { let s: string = \"hello\"; let x: int = s as int; return x; }\n"
+    },
+    "expected": "[TYP-0230]"
+  },
+  {
+    "name": "TYP-0240",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { return sizeof(void); }\n"
+    },
+    "expected": "[TYP-0240]"
+  },
+  {
+    "name": "TYP-0241",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { return sizeof(int, bool); }\n"
+    },
+    "expected": "[TYP-0241]"
+  },
+  {
+    "name": "TYP-0242",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { return ord(1, 2); }\n"
+    },
+    "expected": "[TYP-0242]"
+  },
+  {
+    "name": "TYP-0243",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { return ord(42); }\n"
+    },
+    "expected": "[TYP-0243]"
+  },
+  {
+    "name": "TYP-0250",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc bar() -> int { return 1; }\nfunc foo() -> int? { return bar()?; }\n"
+    },
+    "expected": "[TYP-0250]"
+  },
+  {
+    "name": "TYP-0251",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc bar() -> int? { return null; }\nfunc foo() -> int { return bar()?; }\n"
+    },
+    "expected": "[TYP-0251]"
+  },
+  {
+    "name": "TYP-0270",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\ntype A = B;\ntype B = A;\nfunc foo() -> int { let x: int = 1 as A; return x; }\n"
+    },
+    "expected": "[TYP-0270]"
+  },
+  {
+    "name": "TYP-0271",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc bar() -> int { return 0; }\nfunc foo() -> int { return 1 as bar; }\n"
+    },
+    "expected": "[TYP-0271]"
+  },
+  {
+    "name": "TYP-0278",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { let x: void? = null; return 0; }\n"
+    },
+    "expected": "[TYP-0278]"
+  },
+  {
+    "name": "TYP-0279",
+    "target": "main",
+    "files": {
+      "a.l2": "module a;\nstruct T { v: int; }\n",
+      "main.l2": "module main;\nimport a;\nimport b;\nfunc foo() -> int { let x: T = 0; return 0; }\n",
+      "b.l2": "module b;\nstruct T { v: int; }\n"
+    },
+    "expected": "[TYP-0279]"
+  },
+  {
+    "name": "TYP-0280",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { let p: int* = new Unknown(1); return 0; }\n"
+    },
+    "expected": "[TYP-0280]"
+  },
+  {
+    "name": "TYP-0281",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nenum Color { Red(); Green(); }\nfunc foo() -> int { let p: Color* = new Color(); return 0; }\n"
+    },
+    "expected": "[TYP-0281]"
+  },
+  {
+    "name": "TYP-0283",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nstruct S { a: int; b: int; }\nfunc foo() -> int { let p: S* = new S(1); return 0; }\n"
+    },
+    "expected": "[TYP-0283]"
+  },
+  {
+    "name": "TYP-0285",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { let p: int* = new int(1, 2); return 0; }\n"
+    },
+    "expected": "[TYP-0285]"
+  },
+  {
+    "name": "TYP-0286",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { let p: int* = new int(true); return 0; }\n"
+    },
+    "expected": "[TYP-0286]"
+  },
+  {
+    "name": "TYP-0290",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc bar(x: int) -> int { return x; }\nfunc foo() -> int { return bar(int); }\n"
+    },
+    "expected": "[TYP-0290]"
+  },
+  {
+    "name": "TYP-0301",
+    "target": "main",
+    "files": {
+      "other.l2": "module other;\nstruct T { v: int; }\n",
+      "main.l2": "module main;\nfunc foo() -> int { return sizeof(other::T); }\n"
+    },
+    "expected": "[TYP-0301]"
+  },
+  {
+    "name": "TYP-0303",
+    "target": "main",
+    "files": {
+      "a.l2": "module a;\nstruct T { v: int; }\n",
+      "main.l2": "module main;\nimport a;\nimport b;\nfunc foo() -> int { return sizeof(T); }\n",
+      "b.l2": "module b;\nstruct T { v: int; }\n"
+    },
+    "expected": "[TYP-0303]"
+  },
+  {
+    "name": "TYP-0310",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { let x: int = true; return 0; }\n"
+    },
+    "expected": "[TYP-0310]"
+  },
+  {
+    "name": "TYP-0311",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { let x: int = 0; x = true; return x; }\n"
+    },
+    "expected": "[TYP-0311]"
+  },
+  {
+    "name": "TYP-0312",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc bar(x: int) -> int { return x; }\nfunc foo() -> int { return bar(true); }\n"
+    },
+    "expected": "[TYP-0312]"
+  },
+  {
+    "name": "TYP-0313",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nstruct S { v: int; }\nfunc foo() -> int { let s: S = S(true); return 0; }\n"
+    },
+    "expected": "[TYP-0313]"
+  },
+  {
+    "name": "TYP-0314",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nenum E { Some(v: int); }\nfunc foo() -> int { let e: E = Some(true); return 0; }\n"
+    },
+    "expected": "[TYP-0314]"
+  },
+  {
+    "name": "TYP-0315",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int { return true; }\n"
+    },
+    "expected": "[TYP-0315]"
+  },
+  {
+    "name": "TYP-0316",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nstruct S { v: int; }\nfunc foo() -> int { let p: S* = new S(true); return 0; }\n"
+    },
+    "expected": "[TYP-0316]"
+  },
+  {
+    "name": "TYP-0700",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> byte { return 300 as byte; }\n"
+    },
+    "expected": "[TYP-0700]"
+  },
+  {
+    "name": "TYP-0701",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int* { return (null as int*?) as int*; }\n"
+    },
+    "expected": "[TYP-0701]"
+  },
+  {
+    "name": "LEX-0062",
+    "target": "main",
+    "files": {
+      "main.l2": "0x"
+    },
+    "expected": "[LEX-0062]"
+  },
+  {
+    "name": "LEX-0063",
+    "target": "main",
+    "files": {
+      "main.l2": "0b"
+    },
+    "expected": "[LEX-0063]"
+  },
+  {
+    "name": "LEX-0064",
+    "target": "main",
+    "files": {
+      "main.l2": "0o"
+    },
+    "expected": "[LEX-0064]"
+  },
+  {
+    "name": "LEX-0065",
+    "target": "main",
+    "files": {
+      "main.l2": "1e"
+    },
+    "expected": "[LEX-0065]"
+  },
+  {
+    "name": "LEX-0066",
+    "target": "main",
+    "files": {
+      "main.l2": "1.0x"
+    },
+    "expected": "[LEX-0066]"
+  },
+  {
+    "name": "LEX-0067",
+    "target": "main",
+    "files": {
+      "main.l2": "1.0d"
+    },
+    "expected": "[LEX-0067]"
+  },
+  {
+    "name": "LEX-0068",
+    "target": "main",
+    "files": {
+      "main.l2": "123f"
+    },
+    "expected": "[LEX-0068]"
+  },
+  {
+    "name": "SIG-0201",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nconst A: int = B;\nconst B: int = A;\nfunc foo() -> int { return 0; }\n"
+    },
+    "expected": "[SIG-0201]"
+  },
+  {
+    "name": "TYP-0112",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nlet OK: int = 1;\nfunc foo(x: int) -> int {\ncase (x) {\nOK => { return 1; }\n_ => { return 0; }\n}\n}\n"
+    },
+    "expected": "[TYP-0112]"
+  },
+  {
+    "name": "TYP-0113",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nstruct Point { x: int; }\nconst ORIGIN: Point = Point(0);\nfunc foo(x: int) -> int {\ncase (x) {\nORIGIN => { return 1; }\n_ => { return 0; }\n}\n}\n"
+    },
+    "expected": "[TYP-0113]"
+  },
+  {
+    "name": "TYP-0213",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nunsafe func foo(i: int) -> int {\n    let value: int = 1;\n    return value[i];\n}\n"
+    },
+    "expected": "[TYP-0213]"
+  },
+  {
+    "name": "TYP-0214",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nextern func buf() -> int*;\nfunc foo(i: int) -> int { return buf()[i]; }\n"
+    },
+    "expected": "[TYP-0214]"
+  },
+  {
+    "name": "TYP-0215",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nextern func raw_bytes() -> void*;\nunsafe func foo(i: int) -> void {\n    let value = raw_bytes()[i];\n}\n"
+    },
+    "expected": "[TYP-0215]"
+  },
+  {
+    "name": "TYP-0244",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nimport dea;\nfunc foo() -> int { let f = sizeof; return 0; }\n"
+    },
+    "expected": "[TYP-0244]"
+  },
+  {
+    "name": "TYP-0815",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nlet N: int = 3;\nlet xs: int[N] = [1, 2, 3];\n"
+    },
+    "expected": "[TYP-0815]"
+  },
+  {
+    "name": "TYP-0816",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nconst N: string = \"3\";\nlet xs: int[N] = [1, 2, 3];\n"
+    },
+    "expected": "[TYP-0816]"
+  },
+  {
+    "name": "TYP-0817",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nconst N: int = 0;\nlet xs: int[N] = [];\n"
+    },
+    "expected": "[TYP-0817]"
+  },
+  {
+    "name": "sig-0010-not-a-type",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc bar() -> int { return 0; }\nfunc foo() -> int { return 1 as bar; }\n"
+    },
+    "expected": "[SIG-0010] symbol 'bar' in module 'main' is not a type (kind=FUNC)",
+    "requires_failure": true
+  },
+  {
+    "name": "sig-0018-qualified-type-path",
+    "target": "main",
+    "files": {
+      "color.l2": "module color;\nenum Color { Red(); }\n",
+      "main.l2": "module main;\nimport color;\nfunc foo(x: color::Color::Red) -> int { return 0; }\n"
+    },
+    "expected": "[SIG-0018] nested symbol path 'color::Color::Red': paths must have the form 'module::symbol' (did you mean 'color::Red'?)",
+    "requires_failure": true
+  },
+  {
+    "name": "typ-0158-nested-symbol-path",
+    "target": "main",
+    "files": {
+      "color.l2": "module color;\nenum Color { Red(); }\n",
+      "main.l2": "module main;\nimport color;\nfunc foo() -> int { let x: int = color::Color::Red; return 0; }\n"
+    },
+    "expected": "[TYP-0158] nested symbol path 'color::Color::Red': paths must have the form 'module::symbol' (did you mean 'color::Red'?)",
+    "requires_failure": true
+  },
+  {
+    "name": "sig-0019-ambiguous-type",
+    "target": "main",
+    "files": {
+      "a.l2": "module a;\nstruct T { value: int; }\n",
+      "b.l2": "module b;\nstruct T { value: int; }\n",
+      "main.l2": "module main;\nimport a;\nimport b;\nfunc foo(x: T) -> int { return 0; }\n"
+    },
+    "expected": "[SIG-0019] ambiguous type 'T' (imported from modules 'a', 'b'); use 'a::T' or 'b::T' to disambiguate",
+    "requires_failure": true
+  },
+  {
+    "name": "sig-0020-alias-cycle",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\ntype A = B;\ntype B = A;\nfunc foo(x: A) -> int { return 0; }\n"
+    },
+    "expected": "[SIG-0020] cyclic type alias involving 'A' in module 'main'",
+    "requires_failure": true
+  },
+  {
+    "name": "par-0620-array-type-syntax",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int {\n    let x: int[+] = 0;\n    return x;\n}\n"
+    },
+    "expected": "[PAR-0620] expected constant integer expression in array type",
+    "requires_failure": true
+  },
+  {
+    "name": "par-0624-reserved-inferred-length-array",
+    "target": "main",
+    "files": {
+      "main.l2": "module main;\nfunc foo() -> int {\n    let x: int[_] = 0;\n    return x;\n}\n"
+    },
+    "expected": "[PAR-0624] inferred-length array type '[_]' is reserved for future use",
+    "requires_failure": true
+  }
+]

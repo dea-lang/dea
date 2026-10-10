@@ -1,0 +1,416 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+/**
+ * Runtime support functions for string manipulation, I/O, and system operations.
+ */
+module sys.rt;
+
+/**
+ * Represents components of wall or monotonic time.
+ */
+struct RtTimeParts {
+    sec: int;
+    nsec: int;
+}
+
+/**
+ * Represents basic file metadata used by bootstrap tooling.
+ */
+struct RtFileInfo {
+    exists: bool;
+    is_file: bool;
+    is_dir: bool;
+    size: long?;
+    mtime_sec: long?;
+    mtime_nsec: int?;
+}
+
+/**
+ * Return the character at the given index in the string as a byte (0-255).
+ *
+ * @param s The string.
+ * @param index The index.
+ * @return The character byte.
+ */
+extern func rt_string_get(s: string, index: int) -> byte;
+
+/**
+ * Return a pointer to the raw byte data of a string.
+ *
+ * @param s The string.
+ * @return Pointer to the first byte.
+ */
+extern func rt_string_bytes_ptr(s: string) -> byte*;
+
+/**
+ * Return the length of the string.
+ *
+ * @param str The string.
+ * @return The length.
+ */
+extern func rt_strlen(str: string) -> int;
+
+/**
+ * Return whether two strings are equal.
+ *
+ * @param a The first string.
+ * @param b The second string.
+ * @return True if equal, false otherwise.
+ */
+extern func rt_string_equals(a: string, b: string) -> bool;
+
+/**
+ * Compare two strings lexicographically.
+ *
+ * @param a The first string.
+ * @param b The second string.
+ * @return A negative value if a < b, zero if a == b, positive if a > b.
+ */
+extern func rt_string_compare(a: string, b: string) -> int;
+
+/**
+ * Concatenate two strings and return the result.
+ *
+ * @param a The first string.
+ * @param b The second string.
+ * @return The combined string.
+ */
+extern func rt_string_concat(a: string, b: string) -> string;
+
+/**
+ * Return a slice of the string from start to end (exclusive).
+ *
+ * @param s The string.
+ * @param start The starting index.
+ * @param end The ending index.
+ * @return The string slice.
+ */
+extern func rt_string_slice(s: string, start: int, end: int) -> string;
+
+/**
+ * Create a string from a byte array of given length.
+ *
+ * @param bytes The pointer to the byte array.
+ * @param len The length of the array.
+ * @return New string containing the provided bytes.
+ */
+extern func rt_string_from_byte_array(bytes: byte*, len: int) -> string;
+
+/**
+ * Create a string from a single byte value.
+ *
+ * @param b The byte value.
+ * @return A string containing the byte.
+ */
+extern func rt_string_from_byte(b: byte) -> string;
+
+/**
+ * Increment reference count for heap strings.
+ * No-op for static or non-reference-counted strings.
+ *
+ * @param s The string to retain.
+ */
+extern func rt_string_retain(s: string) -> void;
+
+/**
+ * Decrement reference count for heap strings and free if count reaches zero.
+ * No-op for static or non-reference-counted strings.
+ *
+ * @param s The string to release.
+ */
+extern func rt_string_release(s: string) -> void;
+
+/**
+ * Read a file’s entire contents into a string.
+ *
+ * @param path The path to the file.
+ * @return The file content, or null on error.
+ */
+extern func rt_read_file_all(path: string) -> string?;
+
+/**
+ * Write a string completely to a file.
+ *
+ * @param path The path to the file.
+ * @param data The string content.
+ * @return True on success, false otherwise.
+ */
+extern func rt_write_file_all(path: string, data: string) -> bool;
+
+/**
+ * Flush the standard output buffer.
+ */
+extern func rt_flush_stdout() -> void;
+
+/**
+ * Flush the standard error buffer.
+ */
+extern func rt_flush_stderr() -> void;
+
+/**
+ * Print a string to standard output without newline.
+ *
+ * @param s The string to print.
+ */
+extern func rt_print(s: string) -> void;
+
+/**
+ * Print a string to standard error without newline.
+ *
+ * @param s The string to print.
+ */
+extern func rt_print_stderr(s: string) -> void;
+
+/**
+ * Print a newline to standard output.
+ */
+extern func rt_println() -> void;
+
+/**
+ * Print a newline to standard error.
+ */
+extern func rt_println_stderr() -> void;
+
+/**
+ * Print an integer to standard output.
+ *
+ * @param x The integer to print.
+ */
+extern func rt_print_int(x: int) -> void;
+
+/**
+ * Print an unsigned integer to standard output.
+ *
+ * @param x The unsigned integer to print.
+ */
+extern func rt_print_uint(x: uint) -> void;
+
+/**
+ * Print a long integer to standard output.
+ *
+ * @param x The long integer to print.
+ */
+extern func rt_print_long(x: long) -> void;
+
+/**
+ * Print an unsigned long integer to standard output.
+ *
+ * @param x The unsigned long integer to print.
+ */
+extern func rt_print_ulong(x: ulong) -> void;
+
+/**
+ * Print a float to standard output.
+ *
+ * @param x The float to print.
+ */
+extern func rt_print_float(x: float) -> void;
+
+/**
+ * Print a double to standard output.
+ *
+ * @param x The double to print.
+ */
+extern func rt_print_double(x: double) -> void;
+
+/**
+ * Print an integer to standard error.
+ *
+ * @param x The integer to print.
+ */
+extern func rt_print_int_stderr(x: int) -> void;
+
+/**
+ * Print an unsigned integer to standard error.
+ *
+ * @param x The unsigned integer to print.
+ */
+extern func rt_print_uint_stderr(x: uint) -> void;
+
+/**
+ * Print a long integer to standard error.
+ *
+ * @param x The long integer to print.
+ */
+extern func rt_print_long_stderr(x: long) -> void;
+
+/**
+ * Print an unsigned long integer to standard error.
+ *
+ * @param x The unsigned long integer to print.
+ */
+extern func rt_print_ulong_stderr(x: ulong) -> void;
+
+/**
+ * Print a float to standard error.
+ *
+ * @param x The float to print.
+ */
+extern func rt_print_float_stderr(x: float) -> void;
+
+/**
+ * Print a double to standard error.
+ *
+ * @param x The double to print.
+ */
+extern func rt_print_double_stderr(x: double) -> void;
+
+/**
+ * Print a boolean to standard output.
+ *
+ * @param x The boolean to print.
+ */
+extern func rt_print_bool(x: bool) -> void;
+
+/**
+ * Print a boolean to standard error.
+ *
+ * @param x The boolean to print.
+ */
+extern func rt_print_bool_stderr(x: bool) -> void;
+
+/**
+ * Read a line from standard input, returning null if EOF.
+ *
+ * @return The line read, or null.
+ */
+extern func rt_read_line() -> string?;
+
+/**
+ * Read a single character from standard input.
+ *
+ * @return The character read as an integer, or -1 on EOF.
+ */
+extern func rt_read_char() -> int;
+
+/**
+ * Abort program execution with a message.
+ *
+ * @param message The abort message.
+ */
+extern func rt_abort(message: string) -> void;
+
+/**
+ * Exit the program with the provided code.
+ *
+ * @param code The exit code.
+ */
+extern func rt_exit(code: int) -> void;
+
+/**
+ * Seed the runtime random number generator.
+ *
+ * @param seed The integer seed.
+ */
+extern func rt_srand(seed: int) -> void;
+
+/**
+ * Generate a random integer less than the given maximum.
+ *
+ * @param max The upper bound (exclusive).
+ * @return A random integer.
+ */
+extern func rt_rand(max: int) -> int;
+
+/**
+ * Get the last runtime error number.
+ *
+ * @return The errno value.
+ */
+extern func rt_errno() -> int;
+
+/**
+ * Get the value of an environment variable, or null if not set.
+ *
+ * @param name The name of the environment variable.
+ * @return The value of the variable, or null.
+ */
+extern func rt_get_env_var(name: string) -> string?;
+
+/**
+ * Get the number of command-line arguments.
+ *
+ * @return The argc value.
+ */
+extern func rt_get_argc() -> int;
+
+/**
+ * Get the current process identifier.
+ *
+ * @return The process identifier.
+ */
+extern func rt_get_pid() -> int;
+
+/**
+ * Get the command-line argument at the given index.
+ *
+ * @param i The index.
+ * @return The argument string.
+ */
+extern func rt_get_argv(i: int) -> string;
+
+/**
+ * Capture current unix wall time into `out`.
+ *
+ * @param out Pointer to the RtTimeParts to fill.
+ * @return True on success, false otherwise.
+ */
+extern func rt_time_unix(out: RtTimeParts*) -> bool;
+
+/**
+ * Capture monotonic time into `out`.
+ *
+ * @param out Pointer to the RtTimeParts to fill.
+ * @return True on success, false otherwise.
+ */
+extern func rt_time_monotonic(out: RtTimeParts*) -> bool;
+
+/**
+ * Returns true if monotonic clock is supported by the runtime.
+ *
+ * @return True if supported.
+ */
+extern func rt_time_monotonic_supported() -> bool;
+
+/**
+ * Returns local UTC offset in seconds for the given unix second, or null on error.
+ *
+ * @param unix_sec The Unix timestamp in seconds.
+ * @return The offset in seconds, or null.
+ */
+extern func rt_time_local_offset_sec(unix_sec: int) -> int?;
+
+/**
+ * Returns whether local time is in DST for the given unix second, or null on error.
+ *
+ * @param unix_sec The Unix timestamp in seconds.
+ * @return True if DST, false if not, or null.
+ */
+extern func rt_time_local_is_dst(unix_sec: int) -> bool?;
+
+/**
+ * Execute a system command and return its normalized status code.
+ *
+ * @param cmd The command string to execute.
+ * @return The command exit code, or a normalized signal-style status.
+ */
+extern func rt_system(cmd: string) -> int;
+
+/**
+ * Return basic metadata for a path.
+ *
+ * @param path The file-system path.
+ * @return File metadata with nullable size and timestamp fields.
+ */
+extern func rt_file_info(path: string) -> RtFileInfo;
+
+/**
+ * Delete the file at the given path, returning true on success.
+ *
+ * @param path The file path.
+ * @return True if deleted, false otherwise.
+ */
+extern func rt_delete_file(path: string) -> bool;

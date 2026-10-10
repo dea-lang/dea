@@ -17,26 +17,28 @@ make clean-all  # run each level's full cleanup entrypoint plus root caches/arti
 
 The root `Makefile` is not a dispatcher for focused level-specific targets. Root `make test` and `make test-extended`
 delegate to each registered level. Extended coverage varies by level: L0 adds its dedicated Stage 2 trace sweep; L1 runs
-its Stage 1 and Stage 2 normal suites. Use `make -C l1 test-ci` for exhaustive L1 coverage. Build, targeted test, docs,
-and compiler workflows should be run inside the relevant level directory.
+its canonical compiler normal suite. L2 has the corresponding single-compiler gates. Use `make -C l1 test-ci` for
+exhaustive L1 coverage. Build, targeted test, docs, and compiler workflows should be run inside the relevant level
+directory.
 
-The repository is a single `uv` workspace: the root `pyproject.toml` declares `l0/` and `l1/` as members, owns the
-shared dev/docs dependency groups, and produces a single root `uv.lock`. Level Makefiles' `venv` targets delegate to the
-root, so `make venv` from any of `./`, `l0/`, or `l1/` converges on the same `./.venv`. `uv` is an optional accelerator:
-when absent, `make venv` falls back to `python -m venv` plus `pip install` of the dependency-group specifiers extracted
-from the root `pyproject.toml`.
+The repository is a single `uv` workspace: the root `pyproject.toml` declares `l0/`, `l1/`, and `l2/` as members, owns
+the shared dev/docs dependency groups, and produces a single root `uv.lock`. Level Makefiles' `venv` targets delegate to
+the root, so `make venv` from any level directory converges on the same `./.venv`. `uv` is an optional accelerator: when
+absent, `make venv` falls back to `python -m venv` plus `pip install` of the dependency-group specifiers extracted from
+the root `pyproject.toml`.
 
 ## Language Levels
 
-| Directory  | Description                                                   |
-| ---------- | ------------------------------------------------------------- |
-| `l0/`      | Dea/L0 language, compiler, runtime, docs, examples, and tests |
-| `l1/`      | Dea/L1 compiler stages, runtime, docs, examples, and tests    |
-| `editors/` | Shared editor grammars, fallback modes, tags, and tests       |
-| `scripts/` | Monorepo-owned automation and shared helper modules           |
-| `docs/`    | Dea-wide and monorepo-wide stable documentation               |
-| `work/`    | Dea-wide and monorepo-wide plans and proposals                |
-| `tools/`   | Vendored third-party dependencies                             |
+| Directory  | Description                                                        |
+| ---------- | ------------------------------------------------------------------ |
+| `l0/`      | Dea/L0 language, compiler, runtime, docs, examples, and tests      |
+| `l1/`      | Dea/L1 canonical L0-implemented compiler, runtime, docs, and tests |
+| `l2/`      | Dea/L2 canonical L1-implemented compiler, runtime, docs, and tests |
+| `editors/` | Shared editor grammars, fallback modes, tags, and tests            |
+| `scripts/` | Monorepo-owned automation and shared helper modules                |
+| `docs/`    | Dea-wide and monorepo-wide stable documentation                    |
+| `work/`    | Dea-wide and monorepo-wide plans and proposals                     |
+| `tools/`   | Vendored third-party dependencies                                  |
 
 Root-level stable documentation under [`docs/`](docs/) is reserved for Dea-wide and monorepo-wide reference/spec
 material. Root-level lifecycle artifacts such as shared plans live under [`work/`](work/). Shared editor integrations,
@@ -71,9 +73,10 @@ The following prerequisites must be met before the first L1 release or snapshot 
 2. The exact archive-path output and reusable installed/archive smoke command must be documented and validated from a
    clean, relocated prefix on Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64. The installed `l1c` must work
    without source-worktree dependencies, preparing native support in a separate writable cache. Distribution archives
-   must include verified Stage 2 HTML/PDF from
+   must include verified canonical L1 HTML/PDF under
    [l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md](l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md),
-   built from the same source/version; Stage 1 autodocs remain separate developer outputs.
+   retargeted by the shared split plan and built from the same source/version. Historical Stage 2 docs cannot be
+   relabeled.
 3. Tag validation, conversion to `DEA_DIST_VERSION`, release-note baselines, publication behavior, and the smoke-test
    flow must be documented and reproducible in CI. These contracts are specified in
    [work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md](work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md).
@@ -81,16 +84,11 @@ The following prerequisites must be met before the first L1 release or snapshot 
    deliberately prepared L1 release or snapshot. Check the authoritative remote tag state before activation; historical
    checks and local tag lists are insufficient.
 
-The install/dist and four-platform standalone-artifact prerequisites passed on 2026-10-09, including full Stage 2
-HTML/PDF and fresh verification hosts without checkout or bootstrap compilers. The accepted contract is recorded in
-[l1/docs/decisions/0042-self-hosted-toolchain-delivery.md](l1/docs/decisions/0042-self-hosted-toolchain-delivery.md),
-and the release-workflow plan now consumes its validated commands and archive/result/harness handoff. Workflow
-implementation, authoritative namespace verification before activation, and hosted publication acceptance remain
-pending.
-
-An `l1-release.yml` or `l1-snapshot.yml` workflow that does not meet these conditions is not valid to add. L1 CI
-validation (via `l1-ci.yml`) covers both compiler stages and the strict self-hosting fixed point independently of these
-release prerequisites.
+The 2026-10-09 acceptance established the former Stage 2 product only. The canonical L0-implemented L1 artifact must
+receive fresh four-platform exact-artifact acceptance before hosted release workflows are implemented. The existing
+`l1-productization-acceptance.yml` remains the separate build/fresh-host verification gate. Namespace reservations and
+compiler CI do not establish publication readiness. The current delivery contract is
+[l1/docs/decisions/0043-canonical-compiler-toolchain-delivery.md](l1/docs/decisions/0043-canonical-compiler-toolchain-delivery.md).
 
 Workflow review, local syntax/policy validation, and hosted acceptance follow implementation. A successful manual
 dispatch is not a prerequisite for writing the workflow. GitHub manual dispatch requires the workflow to exist on the
@@ -103,12 +101,19 @@ in [AGENTS.md](AGENTS.md); implementing the plan does not authorize those action
 hosted acceptance is deferred, record implementation and pending acceptance separately and leave the workflow plan open.
 Do not create a dummy stable tag to close it.
 
-Delivery documentation must distinguish workflow availability, verified publication, and product maturity. Initial L1
-archives contain only the self-built Stage 2 compiler, its toolchain assets, and Stage 2 HTML/PDF documentation,
-including `VERSION` and the install manifest. Release assets also include the Stage 2 docs bundle, matching PDF, and
-checksums. Stage 1 remains a bootstrap/development tool. Both GitHub release types retain Stage 2 development
-identification and set `make_latest=false`, preserving L0's latest-release selection. Publishing an L1 GitHub Release
-does not by itself declare language or toolchain stability.
+Delivery documentation distinguishes implementation, fresh acceptance, publication, and language maturity. L1 0.1.0 will
+contain the canonical L0-implemented `l1c`, matching toolchain inputs and canonical offline HTML/full PDF, `VERSION`,
+and the inventory. The release handoff retains seven assets: four native archives, the matching docs bundle and PDF, and
+`SHA256SUMS`. Source/version/docs identities must agree, and release types use `make_latest=false` to preserve L0's
+latest selection. L1 scope is not frozen; release does not imply language stability.
+
+## Working In `l2/`
+
+L2 has one `.l1` compiler implementation and physically owned `.l2` stdlib/runtime inputs. Supply an installed
+compatible `L2_BOOTSTRAP_L1C=/absolute/prefix/bin/l1c` before `make -C l2 build` or root aggregate tests. L2 never
+resolves bootstrap inputs from sibling checkouts. Run
+`L2_ISOLATION_BOOTSTRAP_PREFIX=/absolute/installed-bookworm-l1 make -C l2 test-isolation` to prove this boundary and
+target execution without L1. L2 release productization is outside the split. See [l2/AGENTS.md](l2/AGENTS.md).
 
 ## Working In `l0/`
 
@@ -135,8 +140,8 @@ Third-party notices for shared vendored assets live at [`THIRD_PARTY_NOTICES`](T
 
 ## Working In `l1/`
 
-Dea/L1 currently provides bootstrap and self-hosted compiler stages inside [`l1/`](l1/). From the monorepo root, `cd l1`
-before running L1 bootstrap commands.
+Dea/L1 provides the canonical L0-implemented compiler inside [`l1/`](l1/). From the monorepo root, `cd l1` before
+running L1 bootstrap commands.
 
 - L1 subtree pointer: [`l1/README.md`](l1/README.md)
 - L1 AI guidance: [`l1/AGENTS.md`](l1/AGENTS.md)
@@ -146,6 +151,6 @@ Typical local bootstrap flow:
 ```bash
 make venv
 cd l1
-make use-dev-stage2
+make use-dev
 source build/dea/bin/l1-env.sh
 ```

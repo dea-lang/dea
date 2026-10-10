@@ -1,0 +1,1037 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+module std.hashmap;
+
+import sys.rt;
+import sys.memory;
+
+import std.assert;
+import std.string;
+import sys.hash;
+
+import std.array;
+import std.vector;
+
+/* =================================
+   Shared constants and helpers
+   ================================= */
+
+let HM_EMPTY: byte = 0;
+let HM_OCCUPIED: byte = 1;
+let HM_TOMBSTONE: byte = 2;
+
+let HM_DEFAULT_CAP: int = 16;
+
+/**
+ * Compute a non-negative slot index from a hash and a power-of-2 capacity.
+ *
+ * @param h The hash value.
+ * @param cap The capacity of the hash table.
+ * @return The calculated slot index.
+ */
+func _hm_slot(h: int, cap: int) -> int {
+    let r = h % cap;
+    if (r < 0) {
+        return r + cap;
+    }
+    return r;
+}
+
+/* =================================
+   StringPtrMap: string -> void*
+   ================================= */
+
+/**
+ * StringPtrMap is an open-addressing hash table with linear probing.
+ * Keys are ARC-managed strings (manual retain/release).
+ * Values are caller-managed void pointers.
+ *
+ * Struct-of-arrays layout:
+ *   states  — byte per slot (EMPTY / OCCUPIED / TOMBSTONE)
+ *   hashes  — int per slot (cached hash code)
+ *   keys    — string per slot (ARC-managed)
+ *   values  — void* per slot
+ */
+struct StringPtrMap {
+    capacity: int;
+    count: int;
+    tomb_count: int;
+    states: ArrayBase*;
+    hashes: ArrayBase*;
+    keys: ArrayBase*;
+    values: ArrayBase*;
+}
+
+/* ---------------------------------
+   Construction
+   --------------------------------- */
+
+/**
+ * Creates a new StringPtrMap with default capacity.
+ *
+ * @return A pointer to the newly created StringPtrMap.
+ */
+func spm_create() -> StringPtrMap* {
+    return _spm_alloc(HM_DEFAULT_CAP);
+}
+
+/**
+ * Creates a new StringPtrMap with at least the specified capacity.
+ *
+ * @param min_cap The minimum capacity for the map.
+ * @return A pointer to the newly created StringPtrMap.
+ */
+func spm_create_with_capacity(min_cap: int) -> StringPtrMap* {
+    let cap = HM_DEFAULT_CAP;
+    while (cap < min_cap) {
+        cap = cap * 2;
+    }
+    return _spm_alloc(cap);
+}
+
+/**
+ * Internal allocator for StringPtrMap.
+ *
+ * @param cap The capacity to allocate.
+ * @return A pointer to the newly allocated StringPtrMap.
+ */
+func _spm_alloc(cap: int) -> StringPtrMap* {
+    let states = arr_create(sizeof(byte), cap);
+    let hashes = arr_create(sizeof(int), cap);
+    let keys   = arr_create(sizeof(string), cap);
+    let values = arr_create(sizeof(void*), cap);
+    return new StringPtrMap(cap, 0, 0, states, hashes, keys, values);
+}
+
+/* ---------------------------------
+   Slot accessors (internal)
+   --------------------------------- */
+
+/**
+ * Returns the state of the specified slot.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @param i The slot index.
+ * @return The state byte of the slot.
+ */
+func _spm_get_state(self: StringPtrMap*, i: int) -> byte {
+    let p = arr_get(self.states, i) as byte*;
+    return *p;
+}
+
+/**
+ * Sets the state of the specified slot.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @param i The slot index.
+ * @param s The state byte to set.
+ */
+func _spm_set_state(self: StringPtrMap*, i: int, s: byte) {
+    let p = arr_get(self.states, i) as byte*;
+    *p = s;
+}
+
+/**
+ * Returns the hash value of the specified slot.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @param i The slot index.
+ * @return The hash value of the slot.
+ */
+func _spm_get_hash(self: StringPtrMap*, i: int) -> int {
+    let p = arr_get(self.hashes, i) as int*;
+    return *p;
+}
+
+/**
+ * Sets the hash value of the specified slot.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @param i The slot index.
+ * @param h The hash value to set.
+ */
+func _spm_set_hash(self: StringPtrMap*, i: int, h: int) {
+    let p = arr_get(self.hashes, i) as int*;
+    *p = h;
+}
+
+/**
+ * Returns the key string of the specified slot.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @param i The slot index.
+ * @return The key string of the slot.
+ */
+func _spm_get_key(self: StringPtrMap*, i: int) -> string {
+    let p = arr_get(self.keys, i) as string*;
+    return *p;
+}
+
+/**
+ * Sets the key string of the specified slot and retains it.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @param i The slot index.
+ * @param k The key string to set.
+ */
+func _spm_set_key_retain(self: StringPtrMap*, i: int, k: string) {
+    let p = arr_get(self.keys, i) as string*;
+    *p = k;
+}
+
+/**
+ * Releases the key string of the specified slot and zaps it.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @param i The slot index.
+ */
+func _spm_release_key(self: StringPtrMap*, i: int) {
+    let p = arr_get(self.keys, i) as string*;
+    rt_string_release(*p);
+    arr_zap(self.keys, i);
+}
+
+/**
+ * Returns the value associated with the specified slot.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @param i The slot index.
+ * @return The value pointer of the slot.
+ */
+func _spm_get_value(self: StringPtrMap*, i: int) -> void* {
+    let p = arr_get(self.values, i) as void**;
+    return *p;
+}
+
+/**
+ * Sets the value associated with the specified slot.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @param i The slot index.
+ * @param v The value pointer to set.
+ */
+func _spm_set_value(self: StringPtrMap*, i: int, v: void*) {
+    let p = arr_get(self.values, i) as void**;
+    *p = v;
+}
+
+/* ---------------------------------
+   Probing (internal)
+   --------------------------------- */
+
+/**
+ * Find the slot index of an existing key.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @param key The key string to find.
+ * @param h The hash value of the key.
+ * @return The slot index if found, or -1 if not in the map.
+ */
+func _spm_find(self: StringPtrMap*, key: string, h: int) -> int {
+    let cap = self.capacity;
+    let idx = _hm_slot(h, cap);
+
+    for (let i: int = 0; i < cap; i = i + 1) {
+        let state = _spm_get_state(self, idx);
+        if (state == HM_EMPTY) {
+            return -1;
+        }
+        if (state == HM_OCCUPIED) {
+            if (_spm_get_hash(self, idx) == h) {
+                if (_spm_get_key(self, idx) == key) {
+                    return idx;
+                }
+            }
+        }
+        /* TOMBSTONE: keep probing */
+        idx = (idx + 1) % cap;
+    }
+    return -1;
+}
+
+/**
+ * Find the first non-occupied slot for insertion.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @param h The hash value of the key.
+ * @return The available slot index.
+ */
+func _spm_find_insert(self: StringPtrMap*, h: int) -> int {
+    let cap = self.capacity;
+    let idx = _hm_slot(h, cap);
+
+    for (let i: int = 0; i < cap; i = i + 1) {
+        let state = _spm_get_state(self, idx);
+        if (state != HM_OCCUPIED) {
+            return idx;
+        }
+        idx = (idx + 1) % cap;
+    }
+    assert(false, "hashmap: no free slot found during insert probe");
+    return -1;
+}
+
+/* ---------------------------------
+   Rehash (internal)
+   --------------------------------- */
+
+/**
+ * Checks if the map needs to grow.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @return True if growth is needed, false otherwise.
+ */
+func _spm_needs_grow(self: StringPtrMap*) -> bool {
+    return (self.count + self.tomb_count) * 4 > self.capacity * 3;
+}
+
+/**
+ * Rehashes the map to a larger capacity.
+ *
+ * @param self The pointer to the StringPtrMap.
+ */
+func _spm_rehash(self: StringPtrMap*) {
+    let old_cap    = self.capacity;
+    let old_states = self.states;
+    let old_hashes = self.hashes;
+    let old_keys   = self.keys;
+    let old_values = self.values;
+
+    let new_cap = old_cap * 2;
+    self.capacity   = new_cap;
+    self.count      = 0;
+    self.tomb_count = 0;
+    self.states = arr_create(sizeof(byte), new_cap);
+    self.hashes = arr_create(sizeof(int), new_cap);
+    self.keys   = arr_create(sizeof(string), new_cap);
+    self.values = arr_create(sizeof(void*), new_cap);
+
+    for (let i: int = 0; i < old_cap; i = i + 1) {
+        let sp = arr_get(old_states, i) as byte*;
+        if (*sp == HM_OCCUPIED) {
+            let h  = *(arr_get(old_hashes, i) as int*);
+            let kp = arr_get(old_keys, i) as string*;
+            let vp = arr_get(old_values, i) as void**;
+
+            let idx = _hm_slot(h, new_cap);
+            while (_spm_get_state(self, idx) != HM_EMPTY) {
+                idx = (idx + 1) % new_cap;
+            }
+
+            _spm_set_state(self, idx, HM_OCCUPIED);
+            _spm_set_hash(self, idx, h);
+            _spm_set_value(self, idx, *vp);
+
+            /* Move key ownership: raw byte copy, no retain/release pair */
+            let dest_kp = arr_get(self.keys, idx) as string*;
+            rt_memcpy(dest_kp as void*, kp as void*, sizeof(string));
+
+            self.count = self.count + 1;
+        }
+    }
+
+    /* Free old arrays — keys already moved, no release needed */
+    arr_free(old_states);
+    arr_free(old_hashes);
+    arr_free(old_keys);
+    arr_free(old_values);
+}
+
+/* =================================
+   StringPtrMap: public API
+   ================================= */
+
+/**
+ * Insert or update a key-value pair.
+ * Key is retained on first insertion. On update, only the value changes.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @param key The key string.
+ * @param value The value pointer.
+ */
+func spm_put(self: StringPtrMap*, key: string, value: void*) {
+    if (_spm_needs_grow(self)) {
+        _spm_rehash(self);
+    }
+
+    let h = rt_hash_string(key);
+    let found_idx = _spm_find(self, key, h);
+
+    if (found_idx >= 0) {
+        _spm_set_value(self, found_idx, value);
+    } else {
+        let idx = _spm_find_insert(self, h);
+        let state = _spm_get_state(self, idx);
+        if (state == HM_TOMBSTONE) {
+            self.tomb_count = self.tomb_count - 1;
+        }
+        _spm_set_state(self, idx, HM_OCCUPIED);
+        _spm_set_hash(self, idx, h);
+        _spm_set_key_retain(self, idx, key);
+        _spm_set_value(self, idx, value);
+        self.count = self.count + 1;
+    }
+}
+
+/**
+ * Look up a key. Returns the associated value, or null if not found.
+ *
+ * Note: if null is a valid stored value, use spm_has() to disambiguate.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @param key The key string to look up.
+ * @return The associated value pointer, or null if not found.
+ */
+func spm_get(self: StringPtrMap*, key: string) -> void*? {
+    if (self.count == 0) {
+        return null;
+    }
+    let h = rt_hash_string(key);
+    let idx = _spm_find(self, key, h);
+    if (idx < 0) {
+        return null;
+    }
+    return _spm_get_value(self, idx);
+}
+
+/**
+ * Check whether a key exists in the map.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @param key The key string to check.
+ * @return True if the key exists, false otherwise.
+ */
+func spm_has(self: StringPtrMap*, key: string) -> bool {
+    if (self.count == 0) {
+        return false;
+    }
+    let h = rt_hash_string(key);
+    return _spm_find(self, key, h) >= 0;
+}
+
+/**
+ * Remove a key. Returns true if the key was found and removed.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @param key The key string to remove.
+ * @return True if found and removed, false otherwise.
+ */
+func spm_remove(self: StringPtrMap*, key: string) -> bool {
+    if (self.count == 0) {
+        return false;
+    }
+    let h = rt_hash_string(key);
+    let idx = _spm_find(self, key, h);
+    if (idx < 0) {
+        return false;
+    }
+
+    _spm_release_key(self, idx);
+    _spm_set_state(self, idx, HM_TOMBSTONE);
+    self.count = self.count - 1;
+    self.tomb_count = self.tomb_count + 1;
+    return true;
+}
+
+/**
+ * Returns the number of entries in the map.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @return The count of elements.
+ */
+func spm_size(self: StringPtrMap*) -> int {
+    return self.count;
+}
+
+/**
+ * Returns the current capacity of the map.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @return The capacity.
+ */
+func spm_capacity(self: StringPtrMap*) -> int {
+    return self.capacity;
+}
+
+/**
+ * Remove all entries. Releases all key strings.
+ *
+ * @param self The pointer to the StringPtrMap.
+ */
+func spm_clear(self: StringPtrMap*) {
+    for (let i: int = 0; i < self.capacity; i = i + 1) {
+        if (_spm_get_state(self, i) == HM_OCCUPIED) {
+            _spm_release_key(self, i);
+        }
+    }
+    rt_memset(self.states.data, 0, self.capacity * sizeof(byte));
+    rt_memset(self.hashes.data, 0, self.capacity * sizeof(int));
+    rt_memset(self.keys.data,   0, self.capacity * sizeof(string));
+    rt_memset(self.values.data, 0, self.capacity * sizeof(void*));
+    self.count = 0;
+    self.tomb_count = 0;
+}
+
+/**
+ * Collect all keys into a new StringVector.
+ * Caller owns the result and must sv_free() it.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @return A new StringVector containing all keys.
+ */
+func spm_keys(self: StringPtrMap*) -> StringVector* {
+    let result = sv_create(self.count);
+    for (let i: int = 0; i < self.capacity; i = i + 1) {
+        if (_spm_get_state(self, i) == HM_OCCUPIED) {
+            sv_push(result, _spm_get_key(self, i));
+        }
+    }
+    return result;
+}
+
+/**
+ * Free the map and all backing storage.
+ * Releases all key strings. Does NOT free values (caller-managed).
+ *
+ * @param self The pointer to the StringPtrMap to free.
+ */
+func spm_free(self: StringPtrMap*) {
+    for (let i: int = 0; i < self.capacity; i = i + 1) {
+        if (_spm_get_state(self, i) == HM_OCCUPIED) {
+            _spm_release_key(self, i);
+        }
+    }
+    arr_free(self.states);
+    arr_free(self.hashes);
+    arr_free(self.keys);
+    arr_free(self.values);
+    drop self;
+}
+
+/* ---------------------------------
+   Iteration support
+   --------------------------------- */
+
+/**
+ * Checks if a slot is occupied.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @param i The slot index.
+ * @return True if occupied, false otherwise.
+ */
+func spm_slot_occupied(self: StringPtrMap*, i: int) -> bool {
+    return _spm_get_state(self, i) == HM_OCCUPIED;
+}
+
+/**
+ * Returns the key at the specified slot.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @param i The slot index.
+ * @return The key string.
+ */
+func spm_slot_key(self: StringPtrMap*, i: int) -> string {
+    return _spm_get_key(self, i);
+}
+
+/**
+ * Returns the value at the specified slot.
+ *
+ * @param self The pointer to the StringPtrMap.
+ * @param i The slot index.
+ * @return The value pointer.
+ */
+func spm_slot_value(self: StringPtrMap*, i: int) -> void* {
+    return _spm_get_value(self, i);
+}
+
+
+/* =================================
+   StringIntMap: string -> int
+   ================================= */
+
+/**
+ * StringIntMap stores associations between strings and integers.
+ * Same layout and probing as StringPtrMap, but values are int instead of void*.
+ */
+struct StringIntMap {
+    capacity: int;
+    count: int;
+    tomb_count: int;
+    states: ArrayBase*;
+    hashes: ArrayBase*;
+    keys: ArrayBase*;
+    values: ArrayBase*;
+}
+
+/* ---------------------------------
+   Construction
+   --------------------------------- */
+
+/**
+ * Creates a new StringIntMap with default capacity.
+ *
+ * @return A pointer to the newly created StringIntMap.
+ */
+func sim_create() -> StringIntMap* {
+    return _sim_alloc(HM_DEFAULT_CAP);
+}
+
+/**
+ * Creates a new StringIntMap with at least the specified capacity.
+ *
+ * @param min_cap The minimum capacity for the map.
+ * @return A pointer to the newly created StringIntMap.
+ */
+func sim_create_with_capacity(min_cap: int) -> StringIntMap* {
+    let cap = HM_DEFAULT_CAP;
+    while (cap < min_cap) {
+        cap = cap * 2;
+    }
+    return _sim_alloc(cap);
+}
+
+/**
+ * Internal allocator for StringIntMap.
+ *
+ * @param cap The capacity to allocate.
+ * @return A pointer to the newly allocated StringIntMap.
+ */
+func _sim_alloc(cap: int) -> StringIntMap* {
+    let states = arr_create(sizeof(byte), cap);
+    let hashes = arr_create(sizeof(int), cap);
+    let keys   = arr_create(sizeof(string), cap);
+    let values = arr_create(sizeof(int), cap);
+    return new StringIntMap(cap, 0, 0, states, hashes, keys, values);
+}
+
+/* ---------------------------------
+   Slot accessors (internal)
+   --------------------------------- */
+
+/**
+ * Returns the state of the specified slot.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @param i The slot index.
+ * @return The state byte of the slot.
+ */
+func _sim_get_state(self: StringIntMap*, i: int) -> byte {
+    return *(arr_get(self.states, i) as byte*);
+}
+
+/**
+ * Sets the state of the specified slot.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @param i The slot index.
+ * @param s The state byte to set.
+ */
+func _sim_set_state(self: StringIntMap*, i: int, s: byte) {
+    let p = arr_get(self.states, i) as byte*;
+    *p = s;
+}
+
+/**
+ * Returns the hash value of the specified slot.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @param i The slot index.
+ * @return The hash value of the slot.
+ */
+func _sim_get_hash(self: StringIntMap*, i: int) -> int {
+    return *(arr_get(self.hashes, i) as int*);
+}
+
+/**
+ * Sets the hash value of the specified slot.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @param i The slot index.
+ * @param h The hash value to set.
+ */
+func _sim_set_hash(self: StringIntMap*, i: int, h: int) {
+    let p = arr_get(self.hashes, i) as int*;
+    *p = h;
+}
+
+/**
+ * Returns the key string of the specified slot.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @param i The slot index.
+ * @return The key string of the slot.
+ */
+func _sim_get_key(self: StringIntMap*, i: int) -> string {
+    return *(arr_get(self.keys, i) as string*);
+}
+
+/**
+ * Sets the key string of the specified slot and retains it.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @param i The slot index.
+ * @param k The key string to set.
+ */
+func _sim_set_key_retain(self: StringIntMap*, i: int, k: string) {
+    let p = arr_get(self.keys, i) as string*;
+    *p = k;
+}
+
+/**
+ * Releases the key string of the specified slot and zaps it.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @param i The slot index.
+ */
+func _sim_release_key(self: StringIntMap*, i: int) {
+    let p = arr_get(self.keys, i) as string*;
+    rt_string_release(*p);
+    arr_zap(self.keys, i);
+}
+
+/**
+ * Returns the value associated with the specified slot.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @param i The slot index.
+ * @return The value of the slot.
+ */
+func _sim_get_value(self: StringIntMap*, i: int) -> int {
+    return *(arr_get(self.values, i) as int*);
+}
+
+/**
+ * Sets the value associated with the specified slot.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @param i The slot index.
+ * @param v The value to set.
+ */
+func _sim_set_value(self: StringIntMap*, i: int, v: int) {
+    let p = arr_get(self.values, i) as int*;
+    *p = v;
+}
+
+/* ---------------------------------
+   Probing (internal)
+   --------------------------------- */
+
+/**
+ * Find the slot index of an existing key.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @param key The key string to find.
+ * @param h The hash value of the key.
+ * @return The slot index if found, or -1 if not in the map.
+ */
+func _sim_find(self: StringIntMap*, key: string, h: int) -> int {
+    let cap = self.capacity;
+    let idx = _hm_slot(h, cap);
+
+    for (let i: int = 0; i < cap; i = i + 1) {
+        let state = _sim_get_state(self, idx);
+        if (state == HM_EMPTY) {
+            return -1;
+        }
+        if (state == HM_OCCUPIED) {
+            if (_sim_get_hash(self, idx) == h) {
+                if (_sim_get_key(self, idx) == key) {
+                    return idx;
+                }
+            }
+        }
+        idx = (idx + 1) % cap;
+    }
+    return -1;
+}
+
+/**
+ * Find the first non-occupied slot for insertion.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @param h The hash value of the key.
+ * @return The available slot index.
+ */
+func _sim_find_insert(self: StringIntMap*, h: int) -> int {
+    let cap = self.capacity;
+    let idx = _hm_slot(h, cap);
+
+    for (let i: int = 0; i < cap; i = i + 1) {
+        if (_sim_get_state(self, idx) != HM_OCCUPIED) {
+            return idx;
+        }
+        idx = (idx + 1) % cap;
+    }
+    assert(false, "hashmap: no free slot found during insert probe");
+    return -1;
+}
+
+/**
+ * Checks if the map needs to grow.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @return True if growth is needed, false otherwise.
+ */
+func _sim_needs_grow(self: StringIntMap*) -> bool {
+    return (self.count + self.tomb_count) * 4 > self.capacity * 3;
+}
+
+/**
+ * Rehashes the map to a larger capacity.
+ *
+ * @param self The pointer to the StringIntMap.
+ */
+func _sim_rehash(self: StringIntMap*) {
+    let old_cap    = self.capacity;
+    let old_states = self.states;
+    let old_hashes = self.hashes;
+    let old_keys   = self.keys;
+    let old_values = self.values;
+
+    let new_cap = old_cap * 2;
+    self.capacity   = new_cap;
+    self.count      = 0;
+    self.tomb_count = 0;
+    self.states = arr_create(sizeof(byte), new_cap);
+    self.hashes = arr_create(sizeof(int), new_cap);
+    self.keys   = arr_create(sizeof(string), new_cap);
+    self.values = arr_create(sizeof(int), new_cap);
+
+    for (let i: int = 0; i < old_cap; i = i + 1) {
+        let sp = arr_get(old_states, i) as byte*;
+        if (*sp == HM_OCCUPIED) {
+            let h  = *(arr_get(old_hashes, i) as int*);
+            let kp = arr_get(old_keys, i) as string*;
+            let vp = arr_get(old_values, i) as int*;
+
+            let idx = _hm_slot(h, new_cap);
+            while (_sim_get_state(self, idx) != HM_EMPTY) {
+                idx = (idx + 1) % new_cap;
+            }
+
+            _sim_set_state(self, idx, HM_OCCUPIED);
+            _sim_set_hash(self, idx, h);
+            _sim_set_value(self, idx, *vp);
+
+            let dest_kp = arr_get(self.keys, idx) as string*;
+            rt_memcpy(dest_kp as void*, kp as void*, sizeof(string));
+
+            self.count = self.count + 1;
+        }
+    }
+
+    arr_free(old_states);
+    arr_free(old_hashes);
+    arr_free(old_keys);
+    arr_free(old_values);
+}
+
+/* =================================
+   StringIntMap: public API
+   ================================= */
+
+/**
+ * Insert or update a key-value pair.
+ * Key is retained on first insertion. On update, only the value changes.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @param key The key string.
+ * @param value The value to set.
+ */
+func sim_put(self: StringIntMap*, key: string, value: int) {
+    if (_sim_needs_grow(self)) {
+        _sim_rehash(self);
+    }
+
+    let h = rt_hash_string(key);
+    let found_idx = _sim_find(self, key, h);
+
+    if (found_idx >= 0) {
+        _sim_set_value(self, found_idx, value);
+    } else {
+        let idx = _sim_find_insert(self, h);
+        let state = _sim_get_state(self, idx);
+        if (state == HM_TOMBSTONE) {
+            self.tomb_count = self.tomb_count - 1;
+        }
+        _sim_set_state(self, idx, HM_OCCUPIED);
+        _sim_set_hash(self, idx, h);
+        _sim_set_key_retain(self, idx, key);
+        _sim_set_value(self, idx, value);
+        self.count = self.count + 1;
+    }
+}
+
+/**
+ * Look up a key. Returns the associated value, or null if not found.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @param key The key string to look up.
+ * @return The associated value, or null if not found.
+ */
+func sim_get(self: StringIntMap*, key: string) -> int? {
+    if (self.count == 0) {
+        return null;
+    }
+    let h = rt_hash_string(key);
+    let idx = _sim_find(self, key, h);
+    if (idx < 0) {
+        return null;
+    }
+    return _sim_get_value(self, idx);
+}
+
+/**
+ * Check whether a key exists in the map.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @param key The key string to check.
+ * @return True if the key exists, false otherwise.
+ */
+func sim_has(self: StringIntMap*, key: string) -> bool {
+    if (self.count == 0) {
+        return false;
+    }
+    let h = rt_hash_string(key);
+    return _sim_find(self, key, h) >= 0;
+}
+
+/**
+ * Remove a key. Returns true if the key was found and removed.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @param key The key string to remove.
+ * @return True if found and removed, false otherwise.
+ */
+func sim_remove(self: StringIntMap*, key: string) -> bool {
+    if (self.count == 0) {
+        return false;
+    }
+    let h = rt_hash_string(key);
+    let idx = _sim_find(self, key, h);
+    if (idx < 0) {
+        return false;
+    }
+
+    _sim_release_key(self, idx);
+    _sim_set_state(self, idx, HM_TOMBSTONE);
+    self.count = self.count - 1;
+    self.tomb_count = self.tomb_count + 1;
+    return true;
+}
+
+/**
+ * Returns the number of entries in the map.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @return The count of elements.
+ */
+func sim_size(self: StringIntMap*) -> int {
+    return self.count;
+}
+
+/**
+ * Returns the current capacity of the map.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @return The capacity.
+ */
+func sim_capacity(self: StringIntMap*) -> int {
+    return self.capacity;
+}
+
+/**
+ * Remove all entries. Releases all key strings.
+ *
+ * @param self The pointer to the StringIntMap.
+ */
+func sim_clear(self: StringIntMap*) {
+    for (let i: int = 0; i < self.capacity; i = i + 1) {
+        if (_sim_get_state(self, i) == HM_OCCUPIED) {
+            _sim_release_key(self, i);
+        }
+    }
+    rt_memset(self.states.data, 0, self.capacity * sizeof(byte));
+    rt_memset(self.hashes.data, 0, self.capacity * sizeof(int));
+    rt_memset(self.keys.data,   0, self.capacity * sizeof(string));
+    rt_memset(self.values.data, 0, self.capacity * sizeof(int));
+    self.count = 0;
+    self.tomb_count = 0;
+}
+
+/**
+ * Collect all keys into a new StringVector.
+ * Caller owns the result and must sv_free() it.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @return A new StringVector containing all keys.
+ */
+func sim_keys(self: StringIntMap*) -> StringVector* {
+    let result = sv_create(self.count);
+    for (let i: int = 0; i < self.capacity; i = i + 1) {
+        if (_sim_get_state(self, i) == HM_OCCUPIED) {
+            sv_push(result, _sim_get_key(self, i));
+        }
+    }
+    return result;
+}
+
+/**
+ * Free the map and all backing storage.
+ * Releases all key strings.
+ *
+ * @param self The pointer to the StringIntMap to free.
+ */
+func sim_free(self: StringIntMap*) {
+    for (let i: int = 0; i < self.capacity; i = i + 1) {
+        if (_sim_get_state(self, i) == HM_OCCUPIED) {
+            _sim_release_key(self, i);
+        }
+    }
+    arr_free(self.states);
+    arr_free(self.hashes);
+    arr_free(self.keys);
+    arr_free(self.values);
+    drop self;
+}
+
+/* ---------------------------------
+   Iteration support
+   --------------------------------- */
+
+/**
+ * Checks if a slot is occupied.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @param i The slot index.
+ * @return True if occupied, false otherwise.
+ */
+func sim_slot_occupied(self: StringIntMap*, i: int) -> bool {
+    return _sim_get_state(self, i) == HM_OCCUPIED;
+}
+
+/**
+ * Returns the key at the specified slot.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @param i The slot index.
+ * @return The key string.
+ */
+func sim_slot_key(self: StringIntMap*, i: int) -> string {
+    return _sim_get_key(self, i);
+}
+
+/**
+ * Returns the value at the specified slot.
+ *
+ * @param self The pointer to the StringIntMap.
+ * @param i The slot index.
+ * @return The value.
+ */
+func sim_slot_value(self: StringIntMap*, i: int) -> int {
+    return _sim_get_value(self, i);
+}

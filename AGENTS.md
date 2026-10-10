@@ -6,15 +6,16 @@ Guidance for AI agents working in this monorepo.
 
 This is a monorepo for the Dea language family. Each language level is a self-contained subtree.
 
-| Directory  | Description                                           |
-| ---------- | ----------------------------------------------------- |
-| `l0/`      | L0 language, compiler, stdlib, docs, and tests        |
-| `l1/`      | L1 bootstrap scaffold, compiler seed, and local tests |
-| `editors/` | Shared editor grammars, modes, tags, docs, and tests  |
-| `scripts/` | Shared monorepo automation and helper modules         |
-| `tools/`   | Vendored third-party dependencies                     |
-| `docs/`    | Dea-wide and monorepo-wide stable docs                |
-| `work/`    | Dea-wide and monorepo-wide plans/proposals            |
+| Directory  | Description                                                         |
+| ---------- | ------------------------------------------------------------------- |
+| `l0/`      | L0 language, compiler, stdlib, docs, and tests                      |
+| `l1/`      | L1 canonical compiler implemented in L0, stdlib, runtime, and tests |
+| `l2/`      | L2 canonical compiler implemented in L1, stdlib, runtime, and tests |
+| `editors/` | Shared editor grammars, modes, tags, docs, and tests                |
+| `scripts/` | Shared monorepo automation and helper modules                       |
+| `tools/`   | Vendored third-party dependencies                                   |
+| `docs/`    | Dea-wide and monorepo-wide stable docs                              |
+| `work/`    | Dea-wide and monorepo-wide plans/proposals                          |
 
 The official public repository for Dea is [dea-lang/dea](https://github.com/dea-lang/dea). Use this canonical URL in
 every other technical file or document that links to Dea's public repository.
@@ -24,6 +25,8 @@ every other technical file or document that links to Dea's public repository.
 For L0-specific guidance, read `l0/AGENTS.md`.
 
 For L1-specific guidance, read `l1/AGENTS.md`.
+
+For L2-specific guidance, read `l2/AGENTS.md`.
 
 For human-facing monorepo structure and root workflow guidance, read `MONOREPO.md`.
 
@@ -42,15 +45,16 @@ The monorepo root `Makefile` is intentionally minimal. Use it only for monorepo 
 
 Do not treat the root `Makefile` as a dispatcher for focused level-local build, test, or docs targets. Root `make test`
 runs each registered level's normal validation, and root `make test-extended` runs each level's extended gate. Their
-contents vary by level: L0 `test-extended` includes its Stage 2 trace sweep, while L1 `test-extended` covers both Stage
-1 and Stage 2 normal suites without CI-only cases. Use `make -C l1 test-ci` for exhaustive L1 validation, including
-CI-only normal tests, environment and bootstrap integration, trace sweeps, child fixtures, and triple bootstrap. For
-targeted level work, enter that level's directory first.
+contents vary by level: L0 `test-extended` includes its Stage 2 trace sweep, while L1/L2 `test-extended` cover their
+canonical compiler normal suites without CI-only cases. Use level-local `test-ci` for exhaustive compiler validation,
+including applicable environment, trace, and child fixtures. L1 artifact acceptance remains a separate gate; L2
+additionally provides `test-isolation`. L2 requires an explicitly supplied installed `L2_BOOTSTRAP_L1C`, including when
+root aggregate tests enter L2. For targeted level work, enter that level's directory first.
 
 ## Shared Environment
 
-- The monorepo is a single `uv` workspace rooted at the repository root, with `l0/` and `l1/` as workspace members (see
-  `pyproject.toml`).
+- The monorepo is a single `uv` workspace rooted at the repository root, with `l0/`, `l1/`, and `l2/` as workspace
+  members (see `pyproject.toml`).
 - One shared virtual environment lives at `./.venv`. One lockfile lives at `./uv.lock`.
 - The root `Makefile` owns `make venv`. It prefers `uv sync --all-groups` and falls back to `python -m venv` plus
   `pip install` of the dev/docs dependency-group specifiers when `uv` is not on `PATH`. `uv` is therefore an optional
@@ -104,9 +108,9 @@ targeted level work, enter that level's directory first.
   file using the repo-root path. Standalone plans omit this field. Keep `Open plans:` / `Closed plans:` in the
   initiative in sync whenever a plan is opened or closed.
 - ADR-style decision records live in `docs/decisions/` (Dea-wide), `l0/docs/decisions/` (L0-specific), and
-  `l1/docs/decisions/` (L1-specific). Each ADR links the decision to the closed plans that shaped it and the current
-  docs where it is normatively recorded. ADR numbers are never reused; superseded ADRs stay in place with updated
-  status.
+  `l1/docs/decisions/` (L1-specific), and `l2/docs/decisions/` (L2-specific). Each ADR links the decision to the closed
+  plans that shaped it and the current docs where it is normatively recorded. ADR numbers are never reused; superseded
+  ADRs stay in place with updated status.
 
 ### ADR Impact In Plans And Initiatives
 

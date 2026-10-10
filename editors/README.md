@@ -1,6 +1,6 @@
 # Dea Editor Support
 
-Version: 2026-08-29
+Version: 2026-10-10
 
 This directory contains syntax highlighting, editing configuration, and top-level navigation indexes for Dea/L0 and
 Dea/L1. The compiler remains authoritative: these integrations deliberately accept incomplete code and do not attempt
@@ -208,3 +208,10 @@ STRICT_EDITOR_TOOLS=1 make -C editors test
 
 The checked-in editor workflow also packages the VS Code extension and performs a dry-run npm package check for the
 Tree-sitter grammar, catching missing or invalid package assets.
+
+## L2 identity
+
+`.l2` files use VS Code `dea-l2`, TextMate `source.dea.l2`, and Vim `dea_l2`. Emacs and Ctags recognize `.l2`;
+Tree-sitter uses the existing compatible structural grammar. L2 initially shares L1 syntax but remains a distinct
+compiler language identity. `.l1` implementation files under L2 still use the L1 editor identity. Compiler diagnostics
+remain authoritative; editor grammar acceptance does not establish validity.

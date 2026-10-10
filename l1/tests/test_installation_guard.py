@@ -14,7 +14,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from build_stage2_l1c import host_compiler
+from build_l1c import host_compiler
 from productization_inventory import MANIFEST_PATH, InventoryError, install_payload, validate_inventory
 
 
@@ -36,7 +36,7 @@ int main(void) {
 }
 ''')
     executable = root / ("probe.exe" if os.name == "nt" else "probe")
-    support = ROOT / "compiler/stage1_l0/support"
+    support = ROOT / "compiler/support"
     subprocess.run([host_compiler(dict(os.environ)), "-std=c99", "-O2", "-Wall", "-Wextra", "-Werror", "-pedantic",
                     str(source), str(support / "compiler_support.c"), str(support / "preparation_support.c"),
                     "-o", str(executable)], check=True)
@@ -80,7 +80,7 @@ def test_valid_inventory_relocation_and_context(installed):
 
 
 @pytest.mark.parametrize("change", ["missing", "garbage", "duplicate-key", "duplicate-path", "incomplete", "version",
-                                    "float-version", "bool-stage", "extra", "empty-provenance", "unsafe-path", "mode",
+                                    "old-stage2", "float-version", "bool-stage", "extra", "empty-provenance", "unsafe-path", "mode",
                                     "digest", "alias-escape", "alias-cycle", "alias-dangling", "parent", "manifest",
                                     "invalid-utf8", "nul", "fifo", "metadata-link", "parent-link"])
 def test_invalid_inventory_fails_closed(installed, tmp_path, change):
@@ -111,8 +111,9 @@ def test_invalid_inventory_fails_closed(installed, tmp_path, change):
         file = record["entries"][0]
         if change == "duplicate-path": record["entries"].append(copy.deepcopy(file))
         elif change == "incomplete": record["state"] = "incomplete"
-        elif change == "version": record["schema_version"] = 2
-        elif change == "float-version": record["schema_version"] = 1.0
+        elif change == "version": record["schema_version"] = 1
+        elif change == "old-stage2": record.update(schema_version=1, stage=2)
+        elif change == "float-version": record["schema_version"] = 2.0
         elif change == "bool-stage": record["stage"] = True
         elif change == "extra": record["unexpected"] = "value"
         elif change == "empty-provenance": record["provenance"] = {}

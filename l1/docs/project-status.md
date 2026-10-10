@@ -1,24 +1,17 @@
 # L1 Project Status
 
-Version: 2026-10-09
+Version: 2026-10-10
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
-Dea/L1 supports self-hosted development and standalone Stage 2 installation/distribution:
+Dea/L1 has one canonical compiler, `l1c`, implemented in `.l0` under `compiler/src/`. It owns L1 stdlib/runtime inputs
+under `compiler/shared/`. The former L1 Stage 2 is transplanted into L2 and no longer selects the L1 product.
 
-- the bootstrap compiler is `compiler/stage1_l0/`, implemented in Dea/L0; Stage 2 is implemented in Dea/L1
-- the current shared assets are `compiler/shared/l1/stdlib/` plus the copied runtime sources under
-  `compiler/shared/runtime/`
-- `compiler/stage2_l1/` contains the self-hosted L1 compiler and its validation workflow
-
-L0 remains the active release line. The L1 subtree is the current home for bootstrap compiler work, library surface, and
-future language growth beyond L0.
-
-Stage-separated source references and verified offline HTML/full-PDF bundles are available locally through `make docs`,
-`make docs-pdf`, and `make docs-artifacts`. Each stage has an independent source inventory, navigation, search database,
-PDF, and provenance manifest. Stage 2 bundles can be included in direct installs and are required by local distributions
-through `DOCS_ARTIFACT`; hosted release attachment remains pending. See
-[l1/docs/README.md](README.md#generated-source-references).
+Installation/distribution and offline HTML/full PDF are being retargeted to the canonical compiler. Recorded native
+Stage 2 acceptance on 2026-10-09 is historical; fresh four-platform exact-artifact acceptance is required for the new
+product. Hosted L1 release workflows remain deferred. L1 0.1.0 is intended as the canonical development toolchain,
+without freezing its feature scope or requiring its entire backlog. See the shared split plan in
+[work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md).
 
 ## Scope and Canonical References
 
@@ -46,12 +39,11 @@ The live L1 roadmap lives at [l1/docs/roadmap.md](roadmap.md).
 
 ### Compiler
 
-`compiler/stage1_l0/` is the bootstrap compiler and semantic/diagnostic oracle. It provides the bootstrap frontend,
-semantic analysis, C generation, compile-only artifact production, interface-authoritative standalone linking, and host
-build/run integration for `.l1` inputs.
+`compiler/` contains the sole canonical compiler. It provides the bootstrap frontend, semantic analysis, C generation,
+compile-only artifact production, interface-authoritative standalone linking, and host build/run integration for `.l1`
+inputs.
 
-Stage 1 implementation sources remain `.l0`; Stage 2 implementation sources, L1 inputs, examples, and stdlib modules use
-`.l1`.
+Compiler implementation sources remain `.l0`; L1 inputs, examples, and stdlib modules use `.l1`.
 
 The current compiler also synthesizes the implicit `dea` prelude module for language intrinsics. Unqualified
 `sizeof(...)`, `ord(...)`, `is(...)`, `len(...)`, and `slice(...)` remain ergonomic bootstrap-stage spellings, while
@@ -187,30 +179,31 @@ The current L1 tree includes:
   not reusable, and explicit `--prepare-stdlib`, `--no-auto-prepare` and preparation-only `--force` controls
 - separate `make runtime` developer artifacts with content-sensitive per-variant build stamps; ordinary managed
   preparation does not use those archives or legacy Make settings implicitly
-- the current bootstrap test suite under `compiler/stage1_l0/tests/`
+- the current bootstrap test suite under `compiler/tests/`
 
 Semantic-only commands do not probe a C compiler or access native cache state. Repo-local cache defaults use
 `$L1_BUILD_DIR/cache`; installed-context defaults use the platform per-user cache. Installed fixtures work from a
 read-only payload of semantic interfaces and rebuild inputs with an empty user cache. Productization now exposes
 `make install PREFIX=...` and inventory-only `make list-installed PREFIX=...`, using a private bootstrap chain, curated
-self-built Stage 2 payload, recoverable inventory publication, and native installed-state validation. `DOCS_ARTIFACT`
-optionally installs a verified Stage 2 offline HTML/PDF bundle. `make test-productization` covers the helpers and public
-orchestration, including docs ownership across reinstalls, curated tar/zip archives, and atomic `DIST_RESULT` metadata.
-`make dist` packages the required docs, and `make smoke-dist ARCHIVE=...` verifies extraction, relocation, and
-standalone operation. Native artifact acceptance passed on 2026-10-09 on Linux x86_64, macOS Intel/ARM, and Windows
-UCRT64, including full Stage 2 HTML/PDF and fresh-runner verification without checkout or bootstrap compilers.
-`make test-productization-acceptance` supplies the separate build/verify gate and retained archive/result/harness
-evidence; ordinary `test-ci` does not replace it.
+privately built canonical payload, recoverable inventory publication, and native installed-state validation.
+`DOCS_ARTIFACT` optionally installs a verified canonical offline HTML/PDF bundle. `make test-productization` covers the
+helpers and public orchestration, including docs ownership across reinstalls, curated tar/zip archives, and atomic
+`DIST_RESULT` metadata. `make dist` packages the required docs, and `make smoke-dist ARCHIVE=...` verifies extraction,
+relocation, and standalone operation. Historical artifact acceptance of the former Stage 2 product passed on 2026-10-09
+on Linux x86_64, macOS Intel/ARM, and Windows UCRT64, including full Stage 2 HTML/PDF and fresh-runner verification
+without checkout or bootstrap compilers. `make test-productization-acceptance` supplies the separate build/verify gate
+and retained archive/result/harness evidence; ordinary `test-ci` does not replace it.
 
-[l1/docs/decisions/0042-self-hosted-toolchain-delivery.md](decisions/0042-self-hosted-toolchain-delivery.md) and the
-[l1/docs/decisions/0001-bootstrap-adaptation-strategy.md](decisions/0001-bootstrap-adaptation-strategy.md) amendment
-record the accepted delivery/bootstrap contracts. The validated commands and artifacts are handed off to
+[l1/docs/decisions/0043-canonical-compiler-toolchain-delivery.md](decisions/0043-canonical-compiler-toolchain-delivery.md)
+and the [l1/docs/decisions/0001-bootstrap-adaptation-strategy.md](decisions/0001-bootstrap-adaptation-strategy.md)
+amendment record the current delivery/bootstrap contracts. Fresh canonical artifact acceptance remains pending before
+handoff to
 [work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md](../../work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md);
 hosted workflow implementation and publication acceptance remain pending. Productization awaits formal plan closure. See
 [l1/docs/reference/productization-inventory.md](reference/productization-inventory.md) and
 [l1/docs/reference/stdlib-preparation.md](reference/stdlib-preparation.md).
 
-These shared assets support both the bootstrap compiler and the self-hosted L1 compiler.
+These owned assets support the canonical L1 compiler and L1 programs.
 
 ## Language and Library Coverage
 
@@ -266,97 +259,76 @@ empty paths as failures without host calls; whole-file writes also report stream
 The practical local workflow today is:
 
 ```bash
-make use-dev-stage2
+make use-dev
 source build/dea/bin/l1-env.sh
 l1c --version
 make runtime
-make test-stage1
-make test-stage2
-make test-stage2-trace
-make triple-test
+make test-compiler
+make test-compiler
+make test-compiler-trace
+make test-ci
 make test
-make test-stage1-trace
-make test-stage1-trace-smoke
-make test-stage1-trace-all
-make test-stage1-trace-children
+make test-compiler-trace
+make test-compiler-trace-smoke
+make test-compiler-trace-all
+make test-compiler-trace-children
 make test-extended
 make test-ci
 ```
 
-`make use-dev-stage2` auto-prepares the default repo-local upstream `../l0/build/dea/bin/l0c-stage2` when needed.
+`make use-dev` auto-prepares the default repo-local upstream `../l0/build/dea/bin/l0c-stage2` when needed.
 `make runtime` rebuilds the repo-local runtime archives and public headers used by `--build` / `--run`. The runtime
 archive compiler is controlled by `L1_RUNTIME_CC` (defaulting to `L1_CC`, then `clang` / `gcc` / `cc`, then `CC` as a
 last resort); run `make clean-runtime runtime L1_RUNTIME_CC=<compiler>` when switching runtime compiler families so
 cached runtime objects are rebuilt, or `make clean-all` for the broader repo-local cleanup. The additional repo-local
 tcc object set used by the build driver for tcc links is controlled by `L1_TCC_OBJ_CC` (defaulting to `tcc`, then
 `TCC`). If no `tcc` is available and no explicit `L1_TCC_OBJ_CC` override is set, `make runtime` prints a notice and
-skips the specialized tcc object build. `make test-stage1-trace` runs the default ARC/memory trace suite and skips
+skips the specialized tcc object build. `make test-compiler-trace` runs the default ARC/memory trace suite and skips
 intentionally slow trace cases such as `math_runtime_compile_test`; pass the test name explicitly or use
-`make test-stage1-trace-all` when that slow trace coverage is needed. `make check-examples` adds warning-free
-latest-stage `--check` coverage for `examples/*.l1`. `make test` runs selected Stage 1 and Stage 2 smoke suites, parity,
-examples, Stage 2 tooling, and Docker/Wine runner regressions. `make test-extended` runs the Stage 1 and Stage 2 normal
-suites, parity, examples, and tooling while excluding CI-only normal tests, environment reconstruction, dedicated trace
-sweeps, child fixtures, and triple bootstrap. `make test-ci` adds those CI-only normal tests, environment/bootstrap
-integration, the default ARC/memory trace suites, both child-fixture suites, and triple bootstrap. Linux portability is
-exercised via `make test-docker`, which runs `test-extended` inside the repo-owned Docker image with GCC selected for
-`L0_CC`, `L1_CC`, and `L1_RUNTIME_CC`. Full L1 support with upstream Clang currently requires Clang 16 or newer; the
-repo-owned Bookworm image supplies unsupported Clang 14. Use `DOCKER_CC=clang` to switch all three roles together only
-in a separately verified environment providing supported Clang. Clang 14/15 compatibility remains planned in
-[l1/work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md][legacy-clang-plan].
-`make test-stage1-trace-smoke` retains a focused ARC/memory subset for quick developer diagnostics. Hosted
-`make test-ci` runs the complete local-normal suites with CI-only cases, environment/bootstrap integration, both default
-trace suites, child fixtures, and the strict fixed point on Windows, Linux, and macOS. The legacy `DOCKER_L0_CC`
-selector remains a compatibility fallback when `DOCKER_CC` is unset. Run the Docker lane after runtime, Makefile, or
-build-driver changes.
-
-`make test-stage1-trace-children` builds the declared successful math runtime fixtures with ARC and memory tracing, runs
-each executable directly, and analyzes each child stderr file independently. `TESTS="wide_math_main"` selects one
-fixture. `make test-ci` always runs both children for each compiler stage, independently of parent `TESTS` selectors.
-The child suite retains its build, output, trace, and report files when a fixture fails.
-
-Stage 2 provides the same trace-target suffixes and selectors as Stage 1. `make triple-test` compares complete
-retained-C inventories and bytes, applies the native platform policy, and exercises the complete normal suite and
-examples through the final self-built compiler. It is required by `test-ci`, and stays separate from local
-`test-extended`.
+`make test-compiler-trace-all` when that slow trace coverage is needed. `make check-examples` adds warning-free
+canonical `--check` coverage for `examples/*.l1`. `make test` runs representative canonical tests, examples, and
+tooling; `test-extended` runs the complete local-normal suite. `test-ci` adds CI-only normal cases, environment checks,
+default traces, and child fixtures. There is no L1 fixed-point or stage-parity gate. Linux Docker uses supported GCC;
+upstream Clang 16+ or capability-verified Apple Clang is required for full managed preparation. Child trace fixtures are
+analyzed separately, and failures retain evidence. Product artifact acceptance remains a distinct gate.
 
 Validation is currently centered on:
 
 - automated CI via `.github/workflows/ci.yml`, which routes L1-relevant `push`/`pull_request` changes into the reusable
   `l1-ci.yml` workflow; `workflow_dispatch` remains available for platform selection, manual C compiler selection, and
   explicit Make-target selection. Hosted CI defaults to `make test-ci`, which runs full normal suites with CI-only
-  cases, environment/bootstrap integration, default trace suites, child fixtures, and triple bootstrap on Linux, macOS,
-  and Windows. Each selected compiler is applied to `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC`, and the resolved executable
-  plus version is logged before the Make target runs.
+  cases, environment/bootstrap integration, default trace suites, and child fixtures on Linux, macOS, and Windows. Each
+  selected compiler is applied to `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC`, and the resolved executable plus version is
+  logged before the Make target runs.
 
-- `make test-stage1` and the `.l0` implementation tests under `compiler/stage1_l0/tests/`
+- `make test-compiler` and the `.l0` implementation tests under `compiler/tests/`
 
-- `make test-stage1-trace` for default ARC/memory trace validation across the `.l0` implementation tests
+- `make test-compiler-trace` for default ARC/memory trace validation across the `.l0` implementation tests
 
-- `make test-stage1-trace-smoke` for quick focused ARC/memory diagnostics
+- `make test-compiler-trace-smoke` for quick focused ARC/memory diagnostics
 
-- `make test-stage1-trace-all` for opt-in slow trace coverage, including nested-compiler cases such as
+- `make test-compiler-trace-all` for opt-in slow trace coverage, including nested-compiler cases such as
   `math_runtime_compile_test`
 
-- `make test-stage1-trace-children` for focused, isolated trace checks of successful L1 runtime fixtures, also included
-  in `test-ci`
+- `make test-compiler-trace-children` for focused, isolated trace checks of successful L1 runtime fixtures, also
+  included in `test-ci`
 
-- `make check-examples` for warning-free latest-stage `--check` coverage across `examples/*.l1`
+- `make check-examples` for warning-free canonical compiler `--check` coverage across `examples/*.l1`
 
 - `make test-env` for generated launcher and environment-stackability coverage
 
-- `make test` as the fast local gate with representative compiler checks, parity, examples, and inexpensive tooling
-  regressions
+- `make test` as the fast local gate with representative compiler checks, examples, and inexpensive tooling regressions
 
-- `make test-extended` as the broad local-normal gate with both stage normal suites, parity, examples, and tooling
+- `make test-extended` as the broad local-normal gate with the complete canonical normal suite, examples, and tooling
 
 - `make test-ci` as the exhaustive hosted gate with CI-only normal cases, environment/bootstrap, trace suites, child
-  fixtures, and triple bootstrap
+  fixtures
 
 - `make test-docker` as the Linux container reference path for runtime/build-driver portability
 
 - keeping the stdlib/runtime tree usable by the bootstrap compiler
 
-Current Stage 1 validation covers exact generated-C identity across `--gen`, compile-only retention, and build/run
+Canonical compiler validation covers exact generated-C identity across `--gen`, compile-only retention, and build/run
 retained trees for identical resolved inputs and settings.
 
 ## Platform Support
@@ -373,16 +345,10 @@ bootstrap path:
 
 These remain true today:
 
-1. The Stage 2 port, supported-host validation, and native-source review are complete. All 119 current production
-   modules and 1,749 function bodies are reviewed; consolidated normal, parity, trace, child-fixture, environment, and
-   strict triple-bootstrap validation passed. Stage 1 remains the semantic and diagnostic oracle. Review outcomes and
-   retained constraints are recorded in
-   [l1/work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/review.md][native-review].
+1. The former Stage 2 implementation/review evidence belongs to the transplanted L2 lineage. L1 now has one canonical
+   compiler; fresh retargeted artifact acceptance is required independently of that historical evidence.
 2. Standalone linking consumes explicit object paths plus derived sibling interfaces; it does not discover implicit Dea
    objects, compile sources, or infer external-library dependencies from modules or manifests.
 3. Fixed-size arrays `T[N]` and escape-restricted non-owning slices `T[]` are implemented; owning dynamic buffers,
    shared buffers, and general escape-capable slices are not language features.
 4. Address-of (`&`) and generics are not part of the current active language surface.
-
-[legacy-clang-plan]: ../work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md
-[native-review]: ../work/plans/refactors/attachments/2026-09-28-stage2-native-source-review/review.md

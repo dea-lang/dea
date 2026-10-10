@@ -1,6 +1,6 @@
 # Dea/L1 Binary Interface (LBI)
 
-Version: 2026-09-07
+Version: 2026-10-10
 
 Status: Finalized
 
@@ -260,14 +260,12 @@ void l1c_interface_fingerprint_sip13_hex(
 ```
 
 The bridge writes exactly 16 lowercase digest bytes to caller-owned storage, with no NUL terminator or allocation. It is
-available in each L1 runtime variant for bootstrap/compiler parity but adds no L1 source-language or standard-library
-API.
+available in each L1 runtime variant for compiler construction but adds no L1 source-language or standard-library API.
 
-An L0-built Stage 1 links the bridge from `compiler/stage1_l0/support/interface_fingerprint.c` and the shared filesystem
-and process helpers from `compiler/stage1_l0/support/compiler_support.c`. An L1-built source port links only the common
-support unit and obtains fingerprinting from the L1 runtime archive. Source-file selection gives each bridge symbol one
-owner without conditional compilation. Both fingerprint implementations use the same const-input internal hashing
-helper, fixed key, and output encoding.
+The canonical L0-implemented compiler links the bridge from `compiler/support/interface_fingerprint.c` and the shared
+filesystem and process helpers from `compiler/support/compiler_support.c`. The L1 runtime also provides the compatible
+bridge for L1-implemented consumers such as the L2 compiler. Each construction path selects exactly one bridge owner.
+Both implementations retain the same const-input internal hashing helper, fixed key, and output encoding.
 
 ## Standalone Link Authority and Native Payloads
 

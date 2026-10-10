@@ -68,6 +68,8 @@ class DockerWineTests(unittest.TestCase):
             return subprocess.CompletedProcess(command, 0 if command[3] in self.images else 1)
         self.assertEqual(command[1], "build")
         self.assertTrue((Path(command[-1]) / "Dockerfile").is_file())
+        if "-environment:" in command[command.index("-t") + 1]:
+            self.assertTrue((Path(command[-1]) / "l2/pyproject.toml").is_file())
         self.assertNotIn("--no-cache", command)
         self.builds.append(command)
         self.images.add(command[command.index("-t") + 1])
@@ -128,7 +130,7 @@ class DockerWineTests(unittest.TestCase):
     def test_snapshot_excludes_host_builds_and_keeps_current_sources(self) -> None:
         """The snapshot includes untracked sources without copying host environments."""
         for name in ("l0/build/host.exe", "l1/build/host.exe", "l1/.venv/bin/python",
-                     "l1/__pycache__/host.pyc", "l1/source file.l0", "l0/input.l0"):
+                     "l1/__pycache__/host.pyc", "l1/source file.l0", "l0/input.l0", "l2/compiler/private.l1"):
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(name)
@@ -138,6 +140,8 @@ class DockerWineTests(unittest.TestCase):
             names = archive.getnames()
             self.assertIn("l1/source file.l0", names)
             self.assertIn("l0/input.l0", names)
+            self.assertIn("l2/pyproject.toml", names)
+            self.assertNotIn("l2/compiler/private.l1", names)
             self.assertFalse(any("host" in name or ".venv" in name for name in names))
             self.assertEqual(archive.extractfile("l1/source file.l0").read(), b"l1/source file.l0")
 
@@ -146,7 +150,7 @@ class DockerWineTests(unittest.TestCase):
         artifacts = self.root / "trace artifacts"
         environment = {"TESTS": "one two", "L1_TEST_JOBS": "2", "L1_TRACE_TEST_JOBS": "1",
                        "L1_TRACE_ARTIFACT_DIR": str(artifacts), "L0_CC": "/host/compiler"}
-        targets = ["test-stage1", "LABEL=spaces;$(literal)"]
+        targets = ["test-compiler", "LABEL=spaces;$(literal)"]
         with patch.dict(os.environ, environment, clear=True):
             with patch.object(runner.subprocess, "run", return_value=subprocess.CompletedProcess([], 23)) as run:
                 self.assertEqual(runner.run_image("prepared-image", targets), 23)
@@ -179,14 +183,14 @@ class DockerWineTests(unittest.TestCase):
         interpreter = f"{shlex.quote(Path(sys.executable).as_posix())} {shlex.quote(probe.as_posix())}"
         result = subprocess.run(
             ["make", "-C", str(Path(__file__).resolve().parents[1]), "docker-wine",
-             f"HOST_PYTHON={interpreter}", 'CMD=test-stage1 "LABEL=two words"',
+             f"HOST_PYTHON={interpreter}", 'CMD=test-compiler "LABEL=two words"',
              "TESTS=one two", "L1_TEST_JOBS=3", "L1_TRACE_TEST_JOBS=2",
              "L1_TRACE_ARTIFACT_DIR=trace directory"],
             capture_output=True, text=True, check=True,
         )
         payload = next(line.removeprefix("PROBE:") for line in result.stdout.splitlines() if line.startswith("PROBE:"))
         environment = json.loads(payload)
-        self.assertEqual(shlex.split(environment["CMD"]), ["test-stage1", "LABEL=two words"])
+        self.assertEqual(shlex.split(environment["CMD"]), ["test-compiler", "LABEL=two words"])
         self.assertEqual(environment["TESTS"], "one two")
         self.assertEqual(environment["L1_TEST_JOBS"], "3")
         self.assertEqual(environment["L1_TRACE_ARTIFACT_DIR"], "trace directory")

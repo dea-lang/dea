@@ -153,49 +153,29 @@ def _label_match_keys(label: str) -> list[str]:
 
 def _preferred_scope_prefix(current_page: Path) -> str | None:
     posix = current_page.as_posix()
-    if posix.startswith("compiler/stage1_l0/src/"):
-        return "compiler/stage1_l0/"
-    if posix.startswith("compiler/stage2_l1/"):
-        return "compiler/stage2_l1/"
+    if posix.startswith("compiler/src/"):
+        return "compiler/src/"
     return None
 
 
-def _stage_scope_prefix(path: Path) -> str | None:
-    posix = path.as_posix()
-    if posix.startswith("compiler/stage1_l0/src/"):
-        return "compiler/stage1_l0/"
-    if posix.startswith("compiler/stage2_l1/"):
-        return "compiler/stage2_l1/"
-    return None
-
-
-def _resolve_stage1_label_target(
+def _resolve_compiler_label_target(
     target: LinkTarget | None,
     label: str,
     current_page: Path,
-    stage1_label_targets: dict[str, LinkTarget] | None,
+    compiler_label_targets: dict[str, LinkTarget] | None,
 ) -> LinkTarget | None:
     """Prefer same-scope symbol targets for ambiguous labels in scoped docs."""
     preferred_scope = _preferred_scope_prefix(current_page)
     if preferred_scope is None:
         return target
-    if not stage1_label_targets:
+    if not compiler_label_targets:
         return target
     if target is not None and target.path.as_posix().startswith(preferred_scope):
         return target
     for key in _label_match_keys(label):
-        candidate = stage1_label_targets.get(key)
+        candidate = compiler_label_targets.get(key)
         if candidate is not None:
             return candidate
-    # Prevent Stage 2 docs from leaking Stage 1 symbol links when no Stage 2 match exists.
-    if target is not None:
-        target_scope = _stage_scope_prefix(target.path)
-        if (
-            preferred_scope == "compiler/stage2_l1/"
-            and target_scope is not None
-            and target_scope != preferred_scope
-        ):
-            return None
     return target
 
 
@@ -217,7 +197,7 @@ def _render_inline(
     element: ET.Element | None,
     ref_targets: dict[str, LinkTarget],
     current_page: Path,
-    stage1_label_targets: dict[str, LinkTarget] | None = None,
+    compiler_label_targets: dict[str, LinkTarget] | None = None,
 ) -> str:
     if element is None:
         return ""
@@ -229,7 +209,7 @@ def _render_inline(
                 label = _inner_text(child)
                 refid = child.attrib.get("refid", "")
                 target = ref_targets.get(refid)
-                target = _resolve_stage1_label_target(target, label, current_page, stage1_label_targets)
+                target = _resolve_compiler_label_target(target, label, current_page, compiler_label_targets)
                 if target is not None:
                     out += f"[{label}]({_ref_href(target, current_page)})"
                 elif label:
@@ -259,7 +239,7 @@ def _extract_params(
     desc: ET.Element | None,
     ref_targets: dict[str, LinkTarget],
     current_page: Path,
-    stage1_label_targets: dict[str, LinkTarget] | None = None,
+    compiler_label_targets: dict[str, LinkTarget] | None = None,
 ) -> list[tuple[str, str]]:
     items: list[tuple[str, str]] = []
     if desc is None:
@@ -267,7 +247,7 @@ def _extract_params(
     for plist in desc.findall(".//parameterlist[@kind='param']"):
         for item in plist.findall("parameteritem"):
             name = item.findtext("parameternamelist/parametername", default="").strip()
-            description = _render_inline(item.find("parameterdescription"), ref_targets, current_page, stage1_label_targets)
+            description = _render_inline(item.find("parameterdescription"), ref_targets, current_page, compiler_label_targets)
             items.append((name, description))
     return items
 
@@ -276,12 +256,12 @@ def _extract_returns(
     desc: ET.Element | None,
     ref_targets: dict[str, LinkTarget],
     current_page: Path,
-    stage1_label_targets: dict[str, LinkTarget] | None = None,
+    compiler_label_targets: dict[str, LinkTarget] | None = None,
 ) -> str:
     if desc is None:
         return ""
     sections = [
-        _render_inline(section, ref_targets, current_page, stage1_label_targets)
+        _render_inline(section, ref_targets, current_page, compiler_label_targets)
         for section in desc.findall(".//simplesect[@kind='return']")
     ]
     return "\n\n".join(section for section in sections if section)
@@ -291,7 +271,7 @@ def _extract_body(
     desc: ET.Element | None,
     ref_targets: dict[str, LinkTarget],
     current_page: Path,
-    stage1_label_targets: dict[str, LinkTarget] | None = None,
+    compiler_label_targets: dict[str, LinkTarget] | None = None,
 ) -> str:
     if desc is None:
         return ""
@@ -364,13 +344,13 @@ def _extract_body(
                 label = _inner_text(child)
                 refid = child.attrib.get("refid", "")
                 target = ref_targets.get(refid)
-                target = _resolve_stage1_label_target(target, label, current_page, stage1_label_targets)
+                target = _resolve_compiler_label_target(target, label, current_page, compiler_label_targets)
                 if target is not None:
                     fragments.append(f"[{label}]({_ref_href(target, current_page)})")
                 elif label:
                     fragments.append(f"`{label}`")
             else:
-                rendered = _render_inline(child, ref_targets, current_page, stage1_label_targets)
+                rendered = _render_inline(child, ref_targets, current_page, compiler_label_targets)
                 if rendered:
                     fragments.append(rendered)
             if child.tail and child.tail.strip():
@@ -390,14 +370,14 @@ def _extract_simplesects(
     kind: str,
     ref_targets: dict[str, LinkTarget],
     current_page: Path,
-    stage1_label_targets: dict[str, LinkTarget] | None = None,
+    compiler_label_targets: dict[str, LinkTarget] | None = None,
 ) -> list[str]:
     if desc is None:
         return []
     return [
         rendered
         for rendered in (
-            _render_inline(section, ref_targets, current_page, stage1_label_targets)
+            _render_inline(section, ref_targets, current_page, compiler_label_targets)
             for section in desc.findall(f".//simplesect[@kind='{kind}']")
         )
         if rendered
@@ -553,19 +533,19 @@ def _render_member(
     heading_level: int,
     ref_targets: dict[str, LinkTarget],
     current_page: Path,
-    stage1_label_targets: dict[str, LinkTarget] | None = None,
+    compiler_label_targets: dict[str, LinkTarget] | None = None,
     owner: ET.Element | None = None,
 ) -> str:
     anchor = member_anchor(memberdef, owner)
     heading = _member_heading(memberdef, owner)
     name = memberdef.findtext("name", default=memberdef.attrib["id"])
     signature = _member_signature(memberdef, owner)
-    brief = _extract_body(memberdef.find("briefdescription"), ref_targets, current_page, stage1_label_targets)
-    detail = _extract_body(memberdef.find("detaileddescription"), ref_targets, current_page, stage1_label_targets)
-    params = _extract_params(memberdef.find("detaileddescription"), ref_targets, current_page, stage1_label_targets)
-    returns = _extract_returns(memberdef.find("detaileddescription"), ref_targets, current_page, stage1_label_targets)
+    brief = _extract_body(memberdef.find("briefdescription"), ref_targets, current_page, compiler_label_targets)
+    detail = _extract_body(memberdef.find("detaileddescription"), ref_targets, current_page, compiler_label_targets)
+    params = _extract_params(memberdef.find("detaileddescription"), ref_targets, current_page, compiler_label_targets)
+    returns = _extract_returns(memberdef.find("detaileddescription"), ref_targets, current_page, compiler_label_targets)
     see_also = _extract_simplesects(
-        memberdef.find("detaileddescription"), "see", ref_targets, current_page, stage1_label_targets
+        memberdef.find("detaileddescription"), "see", ref_targets, current_page, compiler_label_targets
     )
     enum_values: list[str] = []
     if memberdef.attrib.get("kind") == "enum":
@@ -597,17 +577,17 @@ def _render_compound_section(
     heading_level: int,
     ref_targets: dict[str, LinkTarget],
     current_page: Path,
-    stage1_label_targets: dict[str, LinkTarget] | None = None,
+    compiler_label_targets: dict[str, LinkTarget] | None = None,
 ) -> str:
     heading = _compound_heading(compounddef)
     parts = [
         f'<a id="{compound_anchor(compounddef)}"></a>',
         f'{"#" * heading_level} {heading}',
     ]
-    body = _extract_body(compounddef.find("briefdescription"), ref_targets, current_page, stage1_label_targets)
-    detail = _extract_body(compounddef.find("detaileddescription"), ref_targets, current_page, stage1_label_targets)
+    body = _extract_body(compounddef.find("briefdescription"), ref_targets, current_page, compiler_label_targets)
+    detail = _extract_body(compounddef.find("detaileddescription"), ref_targets, current_page, compiler_label_targets)
     see_also = _extract_simplesects(
-        compounddef.find("detaileddescription"), "see", ref_targets, current_page, stage1_label_targets
+        compounddef.find("detaileddescription"), "see", ref_targets, current_page, compiler_label_targets
     )
     if body:
         parts.extend(["", body])
@@ -626,7 +606,7 @@ def _render_compound_section(
                     heading_level + 1,
                     ref_targets,
                     current_page,
-                    stage1_label_targets,
+                    compiler_label_targets,
                     owner=compounddef,
                 )
             )
@@ -801,7 +781,7 @@ def _build_scope_compound_id_targets(compounds: dict[str, ET.Element], scope_pre
     return {key: next(iter(values)) for key, values in candidates.items() if len(values) == 1}
 
 
-def render_markdown_site(xml_dir: Path, output_dir: Path, templates_dir: Path, *, stage: str = "all") -> None:
+def render_markdown_site(xml_dir: Path, output_dir: Path, templates_dir: Path) -> None:
     """Render a Markdown API site from Doxygen XML."""
     env = Environment(loader=FileSystemLoader(str(templates_dir)))
     file_template = env.get_template("markdown_file.md.j2")
@@ -829,11 +809,9 @@ def render_markdown_site(xml_dir: Path, output_dir: Path, templates_dir: Path, *
         if compounddef.attrib["kind"] == "file" and source_path and not source_path.endswith("docs-mainpage.md"):
             file_compounds.append(compounddef)
 
-    stage1_label_targets = _build_scope_label_targets(compounds, "compiler/stage1_l0/")
-    stage2_label_targets = _build_scope_label_targets(compounds, "compiler/stage2_l1/")
+    compiler_label_targets = _build_scope_label_targets(compounds, "compiler/src/")
 
-    stage1_pages: list[dict[str, str]] = []
-    stage2_pages: list[dict[str, str]] = []
+    compiler_pages: list[dict[str, str]] = []
     shared_pages: list[dict[str, str]] = []
 
     for compounddef in file_compounds:
@@ -845,10 +823,8 @@ def render_markdown_site(xml_dir: Path, output_dir: Path, templates_dir: Path, *
         page_path = output_dir / current_page
         page_path.parent.mkdir(parents=True, exist_ok=True)
         preferred_label_targets: dict[str, LinkTarget] | None = None
-        if source_path.startswith("compiler/stage1_l0/src/"):
-            preferred_label_targets = stage1_label_targets
-        elif source_path.startswith("compiler/stage2_l1/"):
-            preferred_label_targets = stage2_label_targets
+        if source_path.startswith("compiler/src/"):
+            preferred_label_targets = compiler_label_targets
 
         includes = [include.text or "" for include in compounddef.findall("includes")]
         toc: list[dict[str, str]] = []
@@ -900,19 +876,15 @@ def render_markdown_site(xml_dir: Path, output_dir: Path, templates_dir: Path, *
         page_path.write_text(page_content, encoding="utf-8")
 
         page_entry = {"href": current_page.as_posix(), "label": source_path}
-        if page_entry["href"].startswith("compiler/stage1_l0/src/"):
-            stage1_pages.append(page_entry)
-        elif page_entry["href"].startswith("compiler/stage2_l1/"):
-            stage2_pages.append(page_entry)
+        if page_entry["href"].startswith("compiler/src/"):
+            compiler_pages.append(page_entry)
         else:
             shared_pages.append(page_entry)
 
     index_path = output_dir / "index.md"
     index_path.write_text(
         index_template.render(
-            stage=stage,
-            stage1=sorted(stage1_pages, key=lambda page: page["href"]),
-            stage2=sorted(stage2_pages, key=lambda page: page["href"]),
+            compiler=sorted(compiler_pages, key=lambda page: page["href"]),
             shared=sorted(shared_pages, key=lambda page: page["href"]),
         ).strip()
         + "\n",
@@ -1137,7 +1109,7 @@ def _collect_browse_entries(
     html_root: Path,
     page_refs: dict[str, list[HtmlReferenceLink]],
 ) -> dict[str, list[HtmlBrowseEntry]]:
-    groups: dict[str, list[HtmlBrowseEntry]] = {"stage1": [], "stage2": [], "shared": []}
+    groups: dict[str, list[HtmlBrowseEntry]] = {"compiler": [], "shared": []}
 
     for markdown_path in sorted(markdown_root.rglob("*.md")):
         if markdown_path.name == "index.md":
@@ -1154,11 +1126,9 @@ def _collect_browse_entries(
             reference_links=page_refs.get(rel.as_posix(), []),
         )
         rel_posix = rel.as_posix()
-        if rel_posix.startswith("compiler/stage1_l0/src/"):
-            groups["stage1"].append(entry)
-        elif rel_posix.startswith("compiler/stage2_l1/"):
-            groups["stage2"].append(entry)
-        elif rel_posix.startswith(("compiler/shared/", "compiler/stage1_l0/support/")):
+        if rel_posix.startswith("compiler/src/"):
+            groups["compiler"].append(entry)
+        elif rel_posix.startswith(("compiler/shared/", "compiler/support/")):
             groups["shared"].append(entry)
     return groups
 
@@ -1166,8 +1136,7 @@ def _collect_browse_entries(
 def render_raw_reference_backlinks(xml_dir: Path, markdown_root: Path, html_root: Path) -> None:
     """Add backlinks from raw Doxygen symbol pages to curated source overviews."""
     compounds_by_id = _collect_compounds_by_id(xml_dir)
-    stage1_ids = _build_scope_compound_id_targets(compounds_by_id, "compiler/stage1_l0/")
-    stage2_ids = _build_scope_compound_id_targets(compounds_by_id, "compiler/stage2_l1/")
+    compiler_ids = _build_scope_compound_id_targets(compounds_by_id, "compiler/src/")
 
     for xml_path in sorted(xml_dir.glob("*.xml")):
         if xml_path.name == "index.xml":
@@ -1210,10 +1179,8 @@ def render_raw_reference_backlinks(xml_dir: Path, markdown_root: Path, html_root
 
         preferred_scope = _preferred_scope_prefix(Path(source_path).with_suffix(".md"))
         preferred_ids: dict[str, str] | None = None
-        if preferred_scope == "compiler/stage1_l0/":
-            preferred_ids = stage1_ids
-        elif preferred_scope == "compiler/stage2_l1/":
-            preferred_ids = stage2_ids
+        if preferred_scope == "compiler/src/":
+            preferred_ids = compiler_ids
 
         if preferred_ids:
             link_pattern = re.compile(r'<a href="([^"]+)" class="m-doc">([^<]+)</a>')
@@ -1282,11 +1249,9 @@ def _collect_file_compound_targets(xml_dir: Path, markdown_root: Path, html_root
 
 def _scope_hub_target(source_path: str, html_root: Path) -> Path | None:
     normalized = source_path.replace("\\", "/").rstrip("/")
-    if normalized.startswith("compiler/stage1_l0/src/"):
-        return html_root / "stage1.html"
-    if normalized.startswith("compiler/stage2_l1/"):
-        return html_root / "stage2.html"
-    if normalized.startswith(("compiler/shared/", "compiler/stage1_l0/support/")):
+    if normalized.startswith("compiler/src/"):
+        return html_root / "compiler.html"
+    if normalized.startswith(("compiler/shared/", "compiler/support/")):
         return html_root / "shared.html"
     return None
 
@@ -1384,10 +1349,9 @@ def normalize_search_result_urls(html_root: Path) -> None:
         search_js_path.write_text(updated, encoding="utf-8")
 
 
-def render_curated_html_site(xml_dir: Path, markdown_root: Path, html_root: Path, templates_dir: Path, *, stage: str = "all") -> None:
+def render_curated_html_site(xml_dir: Path, markdown_root: Path, html_root: Path, templates_dir: Path) -> None:
     """Render curated HTML browse pages and HTML equivalents of generated Markdown."""
     env = Environment(loader=FileSystemLoader(str(templates_dir)))
-    env.globals.update(stage=stage)
     page_template = env.get_template("html_api_page.j2")
     group_template = env.get_template("html_api_group.j2")
     page_refs = _collect_reference_pages(xml_dir, markdown_root, html_root)
@@ -1425,10 +1389,8 @@ def render_curated_html_site(xml_dir: Path, markdown_root: Path, html_root: Path
         )
 
     groups = _collect_browse_entries(markdown_root, html_root, page_refs)
-    page_titles = {"stage1": "Stage 1", "stage2": "Stage 2", "shared": "Shared"}
+    page_titles = {"compiler": "Compiler", "shared": "Shared"}
     for group_name, entries in groups.items():
-        if stage != "all" and group_name not in {stage, "shared"}:
-            continue
         page_path = html_root / f"{group_name}.html"
         page_path.write_text(
             group_template.render(

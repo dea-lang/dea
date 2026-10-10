@@ -1,0 +1,192 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+/**
+ * Low-level runtime bindings for direct memory management and operations.
+ *
+ * Most functions in this module are `unsafe` and may lead to undefined
+ * behavior if used incorrectly. Use with caution and ensure proper memory
+ * management.
+ *
+ * Note: Allocation wrappers register returned storage with the runtime pointer
+ * access tracker. Dereferences performed by checked generated L2 code validate
+ * the target pointer before accessing memory.
+ *
+ * Low-level byte operations in this module still operate on raw pointers and do
+ * not perform full semantic bounds checking on their own. It is the caller's
+ * responsibility to ensure that pointers are valid and that memory is managed correctly.
+ * Misuse of these functions can lead to memory corruption, leaks, or crashes.
+ * Always validate inputs and handle memory carefully when using these
+ * functions.
+ */
+module sys.memory;
+
+export rt_alloc, rt_calloc, rt_realloc, rt_free, rt_register_foreign, rt_unregister_foreign, rt_memcpy,
+    _rt_byte_span_offset, _rt_byte_spans_overlap, rt_memset, rt_memcmp, rt_array_element, rt_stdin_read, rt_stdout_write,
+    rt_stderr_write;
+
+/* =================================
+   Memory operations
+   ================================= */
+
+/**
+ * Allocate a new block of memory of the given size.
+ * Panics if `bytes` is zero or negative.
+ *
+ * @param bytes The number of bytes to allocate.
+ * @return A pointer to the newly allocated memory, or null on failure.
+ */
+extern func rt_alloc(bytes: int) -> void*?;
+
+/**
+ * Allocate zero-initialized memory for multiple elements.
+ * Panics if `count` or `elem_size` is zero or negative, or if their
+ * product overflows.
+ *
+ * @param count The number of elements.
+ * @param elem_size The size of each element in bytes.
+ * @return A pointer to the newly allocated memory, or null on failure.
+ */
+extern func rt_calloc(count: int, elem_size: int) -> void*?;
+
+/**
+ * Resize an existing raw allocation to a new size. Pointers returned by
+ * `new`, ARC storage, and registered foreign storage are rejected in checked builds.
+ * Panics if `new_bytes` is zero or negative or in case of overflow.
+ * If `ptr` is null, this behaves like `rt_alloc`.
+ *
+ * @param ptr The pointer to the existing memory block, or null to allocate fresh.
+ * @param new_bytes The new size in bytes.
+ * @return A pointer to the resized memory block, or null on failure.
+ */
+unsafe extern func rt_realloc(ptr: void*?, new_bytes: int) -> void*?;
+
+/**
+ * Free a raw allocation returned by `rt_alloc`, `rt_calloc`, or `rt_realloc`.
+ * Pointers returned by `new` must use `drop` instead.
+ *
+ * @param ptr The pointer to the memory block to free.
+ */
+unsafe extern func rt_free(ptr: void*?) -> void;
+
+/**
+ * Register externally owned storage with the checked pointer runtime.
+ * Repeating an identical live registration is a no-op. The caller must
+ * unregister the storage before its external lifetime ends.
+ *
+ * @param ptr Exact base pointer of the external storage.
+ * @param bytes Accessible byte extent, which must be positive.
+ * @param read_only Whether checked writes must be rejected.
+ */
+unsafe extern func rt_register_foreign(ptr: void*, bytes: int, read_only: bool) -> void;
+
+/**
+ * Remove a live foreign-storage registration without freeing its payload.
+ *
+ * @param ptr Exact base pointer previously passed to `rt_register_foreign`.
+ */
+unsafe extern func rt_unregister_foreign(ptr: void*) -> void;
+
+/**
+ * Copy bytes from one memory location to another.
+ *
+ * @param dest The destination pointer.
+ * @param src The source pointer.
+ * @param bytes The number of bytes to copy.
+ * @return The destination pointer.
+ */
+unsafe extern func rt_memcpy(dest: void*, src: void*, bytes: int) -> void*;
+
+/**
+ * INTERNAL: Return `candidate`'s byte offset within the half-open span
+ * `[base, base + span_bytes)`, or `-1` when it is outside the span.
+ * This compares integer addresses without dereferencing either pointer.
+ * Null pointers and non-positive spans are outside the span.
+ *
+ * @param base Base address of the byte span.
+ * @param span_bytes Positive byte extent of the span.
+ * @param candidate Address to classify.
+ * @return Byte offset within the span, or `-1` when not contained.
+ */
+unsafe extern func _rt_byte_span_offset(base: void*?, span_bytes: int, candidate: void*?) -> int;
+
+/**
+ * INTERNAL: Return whether two positive half-open byte spans overlap.
+ * This compares integer addresses without dereferencing either pointer or
+ * computing an end address. Null pointers and non-positive spans do not
+ * overlap.
+ *
+ * @param first Base address of the first byte span.
+ * @param first_bytes Byte extent of the first span.
+ * @param second Base address of the second byte span.
+ * @param second_bytes Byte extent of the second span.
+ * @return Whether the two spans overlap.
+ */
+unsafe extern func _rt_byte_spans_overlap(
+    first: void*?, first_bytes: int, second: void*?, second_bytes: int
+) -> bool;
+
+/**
+ * Set a block of memory to a specific byte value.
+ * Panics if `bytes` is negative.
+ *
+ * @param dest The destination pointer.
+ * @param value The byte value to set.
+ * @param bytes The number of bytes to set.
+ * @return The destination pointer.
+ */
+unsafe extern func rt_memset(dest: void*, value: int, bytes: int) -> void*;
+
+/**
+ * Compare two blocks of memory.
+ * Panics if `bytes` is negative.
+ *
+ * @param a The first pointer.
+ * @param b The second pointer.
+ * @param bytes The number of bytes to compare.
+ * @return Zero if equal, non-zero otherwise.
+ */
+unsafe extern func rt_memcmp(a: void*, b: void*, bytes: int) -> int;
+
+/**
+ * Get a pointer to an element in an array given its index.
+ * Panics if `element_size` is zero or negative, or if `index` is negative.
+ *
+ * @param array_data The pointer to the base of the array.
+ * @param element_size The size of each element in bytes.
+ * @param index The element index.
+ * @return A pointer to the requested element.
+ */
+unsafe extern func rt_array_element(array_data: void*, element_size: int, index: int) -> void*;
+
+/**
+ * Read up to `capacity` bytes from standard input into `buf`.
+ *
+ * @param buf Destination buffer. A null buffer is reported as `-1`.
+ * @param capacity Maximum number of bytes to read.
+ * @return Bytes read, `0` on EOF, or `-1` on error (including a null `buf`
+ *         when `capacity > 0`).
+ */
+unsafe extern func rt_stdin_read(buf: byte*?, capacity: int) -> int;
+
+/**
+ * Write up to `len` bytes from `buf` to standard output.
+ *
+ * @param buf Source buffer. A null buffer is reported as `-1`.
+ * @param len Maximum number of bytes to write.
+ * @return Bytes written, or `-1` on error (including a null `buf`
+ *         when `len > 0`).
+ */
+unsafe extern func rt_stdout_write(buf: byte*?, len: int) -> int;
+
+/**
+ * Write up to `len` bytes from `buf` to standard error.
+ *
+ * @param buf Source buffer. A null buffer is reported as `-1`.
+ * @param len Maximum number of bytes to write.
+ * @return Bytes written, or `-1` on error (including a null `buf`
+ *         when `len > 0`).
+ */
+unsafe extern func rt_stderr_write(buf: byte*?, len: int) -> int;

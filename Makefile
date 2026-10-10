@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-DEA_LEVEL_DIRS ?= l0 l1
+DEA_LEVEL_DIRS ?= l0 l1 l2
 ROOT_CLEAN_PATHS := build .pytest_cache __pycache__ pytest-of-*
 
 VENV_DIR := $(abspath ./.venv)
@@ -34,7 +34,7 @@ help:
 		'  help               Show this help text.' \
 		'  venv               Create or sync the shared monorepo `./.venv` (prefer `uv`, fall back to `python -m venv` + `pip`).' \
 		'  test               Run `make test` in each registered level without dedicated trace sweeps.' \
-		'  test-extended      Run the extended gate for each level; use L1 `test-ci` for exhaustive L1 validation.' \
+		'  test-extended      Run the extended gate for each level; use level `test-ci` for exhaustive L1/L2 validation.' \
 		'  clean              Run `make clean` in each registered level, then remove root caches/artifacts.' \
 		'  clean-all          Run `make clean-all` in each registered level, then remove root caches/artifacts.' \
 		'' \

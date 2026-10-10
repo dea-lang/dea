@@ -15,11 +15,11 @@ Start with live docs only:
 - root `README*.md`
 - `docs/**`
 - `l0/docs/**`
-- `l1/docs/**`
+- `l1/docs/**` and `l2/docs/**` (discover future `l[0-9]*/docs/**` too)
 - subtree `README.md` files
 - internal guidance files such as `AGENTS.md` and `.github/copilot-instructions.md` when the task includes internal docs
-- `docs/decisions/INDEX.md`, `l0/docs/decisions/INDEX.md`, `l1/docs/decisions/INDEX.md`: verify each table row matches
-  an ADR file present in the directory; flag any gap or orphan row
+- `docs/decisions/INDEX.md`, `l0/docs/decisions/INDEX.md`, `l1/docs/decisions/INDEX.md`, `l2/docs/decisions/INDEX.md`:
+  verify each table row matches an ADR file present in the directory; flag any gap or orphan row
 - ADR `Related Plans` sections: verify newly closed source documents have resolvable links and their final ADR Impact
   dispositions agree with the ADR and scope
 
@@ -27,7 +27,7 @@ Do not sweep `work/plans/**` or archived docs unless the task explicitly asks fo
 
 ## Repo-specific workflow
 
-1. Read `AGENTS.md` first. If the audit touches `l0/` or `l1/`, read the matching subtree `AGENTS.md` too.
+1. Read `AGENTS.md` first. If the audit touches `l0/`, `l1/`, or `l2/`, read the matching subtree `AGENTS.md` too.
 2. Inventory recent landed changes before editing docs. Prefer:
 
 - `git --no-pager log --since='<date>' --date=short --pretty=format:'%ad %h %s' --name-only -- '*.md' '.github/workflows/*'`
@@ -37,7 +37,7 @@ Do not sweep `work/plans/**` or archived docs unless the task explicitly asks fo
 
 - L1 numeric/bootstrap changes: `l1/docs/project-status.md`, `l1/docs/reference/design-decisions.md`,
   `l1/docs/reference/standard-library.md`, `l1/docs/reference/architecture.md`, `l1/README.md`, and
-  `l1/compiler/stage1_l0/README.md`
+  `l1/compiler/README.md`
 - L0 workflow/release/docs changes: `README.md`, `l0/README.md`, `l0/README-WINDOWS.md`, `l0/docs/user/**`,
   `l0/docs/project-status.md`, `CONTRIBUTING.md`, and relevant `l0/docs/specs/**`
 - shared compiler or diagnostic changes: `docs/specs/compiler/**` and root `docs/reference/**`
@@ -67,7 +67,7 @@ import subprocess
 
 root = Path(".").resolve()
 
-for base in [root / "docs", root / "l0" / "docs", root / "l1" / "docs"]:
+for base in [root / "docs", *sorted(root.glob("l[0-9]*/docs"))]:
     for path in sorted(base.rglob("*.md")):
         text = path.read_text(encoding="utf-8")
         match = re.search(r"^Version:\\s*(\\d{4}-\\d{2}-\\d{2})\\s*$", text, re.M)

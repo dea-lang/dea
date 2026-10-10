@@ -41,7 +41,7 @@ class EditorSupportTests(unittest.TestCase):
 
     def test_representative_and_incomplete_fixtures_are_present(self) -> None:
         fixture_names = {
-            path.name for path in FIXTURE_ROOT.iterdir() if path.suffix in {".l0", ".l1"}
+            path.name for path in FIXTURE_ROOT.iterdir() if path.suffix in {".l0", ".l1", ".l2"}
         }
         self.assertEqual(
             fixture_names,
@@ -52,6 +52,7 @@ class EditorSupportTests(unittest.TestCase):
                 "l1_incomplete.l1",
                 "l1_slices.l1",
                 "l1_surface.l1",
+                "l2_surface.l2",
             },
         )
 
@@ -105,16 +106,19 @@ class EditorSupportTests(unittest.TestCase):
 
         self.assertIn("*.l0 setfiletype dea_l0", vim_detect)
         self.assertIn("*.l1 setfiletype dea_l1", vim_detect)
-        self.assertIn(r"\\.l1\\'", emacs_mode)
-        self.assertIn(r"\\.l[01]\\'", emacs_mode)
+        self.assertIn("*.l2 setfiletype dea_l2", vim_detect)
+        self.assertIn(r"\\.l[12]\\'", emacs_mode)
+        self.assertIn(r"\\.l[012]\\'", emacs_mode)
         self.assertIn("--map-Dea=+.l0", ctags)
         self.assertIn("--map-Dea=+.l1", ctags)
+        self.assertIn("--map-Dea=+.l2", ctags)
 
     def test_vim_detects_and_loads_both_syntaxes(self) -> None:
         vim = self._optional_tool("vim")
         for fixture_name, expected_filetype in (
             ("l0_hello.l0", "dea_l0"),
             ("l1_surface.l1", "dea_l1"),
+            ("l2_surface.l2", "dea_l2"),
         ):
             fixture = FIXTURE_ROOT / fixture_name
             runtime = EDITORS_ROOT / "vim"

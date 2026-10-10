@@ -25,7 +25,7 @@ import unicodedata
 
 L1_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = "share/dea/l1/install-manifest.json"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 _TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*\Z")
 _TARGET = re.compile(r"[a-z0-9][a-z0-9_-]*\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -188,7 +188,7 @@ def _validate_native_json(record: Any) -> None:
 
 
 def validate_inventory(record: Any, *, require_complete: bool = False) -> None:
-    """Validate schema 1 metadata without reading or hashing payload files.
+    """Validate schema 2 metadata without reading or hashing payload files.
 
     Args:
         record: Decoded JSON record.
@@ -197,7 +197,7 @@ def validate_inventory(record: Any, *, require_complete: bool = False) -> None:
     Raises:
         InventoryError: Required metadata, ownership, or state is invalid.
     """
-    required = {"schema_version", "level", "stage", "state", "package_version", "maturity",
+    required = {"schema_version", "level", "state", "package_version", "maturity",
                 "os", "arch", "provenance", "entries"}
     if not isinstance(record, dict):
         raise InventoryError("inventory must be an object")
@@ -206,8 +206,8 @@ def validate_inventory(record: Any, *, require_complete: bool = False) -> None:
     if set(record) != expected:
         raise InventoryError("inventory has missing or unsupported fields")
     if (type(record["schema_version"]) is not int or record["schema_version"] != SCHEMA_VERSION
-            or record["level"] != "l1" or type(record["stage"]) is not int or record["stage"] != 2):
-        raise InventoryError("inventory requires schema_version=1, level=l1, stage=2")
+            or record["level"] != "l1"):
+        raise InventoryError("inventory requires schema_version=2, level=l1")
     if state not in ("complete", "incomplete") or record["maturity"] != "development":
         raise InventoryError("invalid installation state or package maturity")
     for name, pattern in (("package_version", _TOKEN), ("os", _TARGET), ("arch", _TARGET)):
@@ -306,7 +306,7 @@ def inventory_payload(payload: Path, metadata: dict[str, Any]) -> dict[str, Any]
         metadata: Package version, maturity, OS, architecture, and provenance.
 
     Returns:
-        Complete schema 1 inventory suitable for verification/publication.
+        Complete schema 2 inventory suitable for verification/publication.
 
     Raises:
         InventoryError: A source, alias, or metadata field is unsafe or unsupported.
@@ -329,7 +329,7 @@ def inventory_payload(payload: Path, metadata: dict[str, Any]) -> dict[str, Any]
                                 "sha256": _digest(source)})
             elif not stat.S_ISDIR(mode):
                 raise InventoryError(f"unsupported payload file type: {path}")
-    record = {**metadata, "schema_version": SCHEMA_VERSION, "level": "l1", "stage": 2,
+    record = {**metadata, "schema_version": SCHEMA_VERSION, "level": "l1",
               "state": "complete", "entries": sorted(entries, key=lambda entry: entry["path"])}
     validate_inventory(record, require_complete=True)
     return record

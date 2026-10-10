@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: Low
 - Priority: 4
-- Stage: L1
+- Stage: Canonical
 - Parent Initiative: `l1/work/initiatives/0009-safe-concurrency.md`
 - Subsystem: Language semantics / runtime / ARC / concurrency stdlib
 - Modules:
@@ -22,8 +22,8 @@
   - `l1/compiler/shared/runtime/src/dea_rt_trace.c`
   - `l1/compiler/shared/runtime/src/dea_rt_thread.c`
 - Test modules:
-  - `l1/compiler/stage1_l0/tests/concurrency_runtime_test.l0`
-  - `l1/compiler/stage1_l0/tests/analysis_trace_test.l0`
+  - `l1/compiler/tests/concurrency_runtime_test.l0`
+  - `l1/compiler/tests/analysis_trace_test.l0`
 - Related:
   - `l1/work/initiatives/0009-safe-concurrency.md`
   - `l1/work/plans/features/closed/2026-06-30-runtime-pointer-access-validation-noref.md`

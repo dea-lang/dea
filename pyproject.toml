@@ -1,7 +1,7 @@
 [project]
 name = "dea-monorepo"
 version = "0.0.0"
-description = "Dea language family monorepo (workspace root for l0 and l1)"
+description = "Dea language family monorepo (workspace root for l0, l1, and l2)"
 authors = [{ name = "gwz (googlielmo)", email = "googlielmo@gmail.com" }]
 requires-python = ">=3.14"
 dependencies = []
@@ -10,7 +10,7 @@ dependencies = []
 package = false
 
 [tool.uv.workspace]
-members = ["l0", "l1"]
+members = ["l0", "l1", "l2"]
 
 [dependency-groups]
 dev = [

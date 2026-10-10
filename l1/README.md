@@ -1,196 +1,21 @@
-# Dea/L<sub>1</sub>
+# Dea/L1
 
-This subtree contains the bootstrap and self-hosted compilers for Dea/L1 inside the Dea monorepo.
+L1 provides one canonical `l1c` implemented in L0, with separate compilation/linking, verified `.l1m` interfaces, owned
+stdlib/runtime support, and managed native preparation. It accepts `.l1` programs. The former L1 Stage 2 is now L2.
 
-The canonical project overview lives in [README.md][root-readme]. Run L1 development commands from this directory.
-L1-local stable documentation lives under [l1/docs/][docs], while L1-local plans and other lifecycle artifacts live
-under [l1/work/][work].
-
-The subtree also includes minimal example programs at [examples/][examples].
-
-Useful local documents:
-
-- [l1/docs/project-status.md][project-status] for the current L1 implementation status
-- [l1/docs/roadmap.md][roadmap] for the live L1 direction document
-- [l1/docs/user/linking.md][linking] for external native-library and foreign-object linking
-- [l1/docs/reference/stdlib-preparation.md][preparation] for bundled interfaces and on-demand native support
-- [l1/docs/reference/productization-inventory.md][productization] for prefix ownership/recovery and launcher helpers
-- [l1/docker/wine/README.md][docker-wine] for the experimental cached Windows toolchain runner
-- [l1/AGENTS.md][agents] for repo-local AI guidance
-
-At the moment the Dea/L1 source surface is `.l1`, including the copied L1 stdlib under `compiler/shared/l1/stdlib/` and
-the L1-language fixture programs exercised by the bootstrap compiler tests. The `stage1_l0` compiler implementation and
-its implementation tests are `.l0` sources and are built or run with the upstream `l0c-stage2` toolchain during
-bootstrap.
-
-Both compiler stages support per-module generated C, compile-only `.o + .l1m` artifact pairs, verified standalone
-linking with ordered interface discovery, and multi-compilation-unit build/run across mixed source/interface graphs.
-Link-involving modes also accept one ordered stream of explicit foreign objects, external libraries, search paths,
-rpaths, and raw host-driver words. Stage 2 is the mechanical L1 port of the Stage 1 oracle. L1 supports Stage 2
-installation with optional offline HTML/PDF references and local distribution archives with required Stage 2 docs.
-Native artifact acceptance passed on Linux x86_64, macOS Intel/ARM, and Windows UCRT64 with full offline docs and
-fresh-runner verification without checkout or bootstrap compilers. Hosted release workflows remain pending.
-
-`make test-productization` validates prefix ownership/recovery, installed-context launchers, native startup guards,
-curated payload selection, public install orchestration, safe archives, and atomic distribution results. It is included
-in the normal test gates.
-
-## Install a toolchain
-
-To install a self-built Stage 2 compiler outside the development layout, run from `l1/`:
-
-```bash
-make install PREFIX="/path/to/l1" L0_CC=gcc L1_CC=gcc
-make list-installed PREFIX="/path/to/l1"
-"/path/to/l1/bin/l1c" --version
-"/path/to/l1/bin/l1c" --run "/path/to/l1/share/dea/l1/smoke/hello.l1"
-```
-
-`PREFIX` is required; relative paths resolve against `l1/`. Installation prepares missing repo-local upstream L0 Stage
-2, or honors an explicit `L1_BOOTSTRAP_L0C`. It builds private L1 Stage 1 and Stage 2 seed artifacts beneath
-`L1_BUILD_DIR`, then self-builds the delivered Stage 2 executable. Development compiler artifacts and the selected `l1c`
-alias are preserved. `DEA_DIST_VERSION` defaults to `dev`; every package remains a development toolchain.
-
-The prefix is relocatable and needs no activation to run. Optionally source `<PREFIX>/bin/l1-env.sh` in bash/zsh or
-MSYS2 bash, or call `<PREFIX>\\bin\\l1-env.cmd` in native Windows cmd.exe. Installed compiler operations need no L0,
-Python, or Make; native output still requires a host C compiler and preparation tools. Semantic inputs remain in the
-prefix, while native support is prepared in the selected writable cache. Reinstall with the same command to replace
-owned files, remove obsolete owned files, and preserve unrelated files. Serialize installation against other installers
-and compiler consumers. `list-installed` prints sorted recorded paths without building or scanning caches.
-
-To include the Stage 2 offline reference, generate a bundle from the same checkout and package version, then pass its
-absolute path to installation:
-
-```bash
-make docs-artifacts DOC_STAGE=stage2 DEA_DIST_VERSION=dev
-make install PREFIX="/path/to/l1" DEA_DIST_VERSION=dev DOCS_ARTIFACT="/absolute/path/to/dea_l1_stage2_autodocs.tar.gz"
-```
-
-Use the bundle path printed by `docs-artifacts`. Installation verifies stage, version, source revision/tree state,
-selected-source digest, HTML/PDF completeness, offline links, and file digests before bootstrap. It does not run Doxygen
-or TeX. Open `<PREFIX>/share/doc/dea/l1/autodocs/stage2/html/index.html` or the PDF in the adjacent `pdf/` directory.
-Omit `DOCS_ARTIFACT` for a compiler-only install; reinstalling without it removes previously owned docs and preserves
-unrelated files. Regenerate the bundle after changing checkout identity or documentation inputs. See
-[l1/docs/reference/productization-inventory.md][productization] for the install/recovery contract and
-[l1/docs/user/toolchain.md][installed-toolchain] for installed operation.
-
-## Build and validate a distribution
-
-For a combined build-and-smoke gate, run `make test-productization-acceptance` with `DOCS_ARTIFACT`, `DEA_DIST_VERSION`,
-and a new absolute `ACCEPTANCE_DIR`. The separate manual `L1 Productization Acceptance` workflow builds all four host
-archives and verifies them on fresh runners without a checkout. See
-[l1/docs/reference/productization-inventory.md][productization] for the retained evidence and separate build/verify
-phases. Ordinary `test-ci` remains separate from this artifact acceptance gate.
-
-Run from `l1/`. Building requires Python, Make, and a supported host C toolchain; generating the required offline
-HTML/full-PDF reference also requires Doxygen and TeX. See [l1/docs/README.md][docs-guide] for documentation tooling.
-Prepare the shared Python environment with `make venv` if needed.
-
-Run the commands below in bash or zsh. They stop if any step fails and read `dist/result.json` only after `make dist`
-succeeds, so the smoke check uses the archive produced by that build.
-
-```bash
-(
-  set -eu
-  make docs-artifacts DOC_STAGE=stage2 DEA_DIST_VERSION=dev
-  make dist DEA_DIST_VERSION=dev \
-    DOCS_ARTIFACT="$PWD/build/docs/artifacts/dea_l1_stage2_autodocs.tar.gz" \
-    DIST_RESULT="$PWD/dist/result.json"
-  archive=$(python3 -c 'import json; print(json.load(open("dist/result.json"))["archive_path"])')
-  make smoke-dist ARCHIVE="$archive"
-)
-```
-
-Use the same checkout and `DEA_DIST_VERSION` for documentation and packaging; regenerate the docs bundle after changing
-checkout identity or documentation inputs. To select GCC explicitly, append `L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc` to
-`make dist` and `L1_CC=gcc` to `make smoke-dist`. An explicit `L1_BOOTSTRAP_L0C` selects the upstream bootstrap
-compiler, as for installation.
-
-`make dist` privately bootstraps and self-builds Stage 2 without changing the development compiler alias. It creates
-`dist/dea-l1-lang_<version>_<os>-<arch>_<UTC-timestamp>.tar.gz`, or `.zip` on Windows UCRT64. `dist/result.json` records
-the exact archive path, checksums, and provenance. `make smoke-dist` checks safe extraction, inventory integrity,
-offline docs, relocation, and standalone compiler operation with a private native-support cache. Run it on a host
-compatible with the archive; it needs a supported C toolchain for native operations.
-
-After successful validation, extract the archive on a compatible machine. For a Linux/macOS tarball:
-
-```bash
-mkdir -p /path/to/toolchains
-tar -xzf /absolute/path/to/archive.tar.gz -C /path/to/toolchains
-/path/to/toolchains/dea-l1/bin/l1c --version
-/path/to/toolchains/dea-l1/bin/l1c --run \
-  /path/to/toolchains/dea-l1/share/dea/l1/smoke/hello.l1
-```
-
-The smoke program prints `hello from Dea L1`. Keep the complete `dea-l1/` directory together when moving it. Activation
-is optional: `source /path/to/toolchains/dea-l1/bin/l1-env.sh`. On Windows, extract the zip and follow its
-`README-WINDOWS.md`. Offline references are under `dea-l1/share/doc/dea/l1/autodocs/stage2/html/index.html` and
-`dea-l1/share/doc/dea/l1/autodocs/stage2/pdf/dea_l1_stage2_api_reference.pdf`.
-
-Everything generated under `l1/dist/` is ignored by Git and should not be committed. These commands create and validate
-local artifacts; they do not publish releases. See [l1/docs/reference/productization-inventory.md][productization] for
-the exact archive contract, result schema, and workflow-consumer rules.
-
-## Local development and validation
-
-`make build-stage1` supplies public runtime headers and the complete verified bundled interface set under
-`$L1_BUILD_DIR/interfaces/`. Build/run/link prepare matching native stdlib/runtime support on demand in one local cache.
-`--prepare-stdlib` explicitly prepares a reusable profile; `--no-auto-prepare` requires a valid existing profile when
-bundled native support is needed.
-
-Full L1 support currently requires **upstream Clang 16 or newer** when selecting Clang as the C compiler. Clang 14/15
-lack `--no-default-config`, which managed stdlib/runtime preparation requires. The minimum version is necessary, not a
-guarantee that every toolchain configuration supports persistent reuse. Apple Clang uses separate version numbering; its
-selected installation must support the required configuration controls and pass L1 preparation validation.
-
-Use Clang 16+ or the supported GCC lane for normal builds, tests, benchmarks, and experiments. The repo-owned `l1-test`
-Bookworm image supplies Clang 14, so keep its default GCC selection; use a separately verified modern Clang environment
-when Clang coverage is needed. Older Clang is reserved for isolated compatibility validation under
-[l1/work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md][legacy-clang-plan]. That Draft plan
-does not yet provide legacy support; this requirement remains in effect until support is implemented and documented.
-
-Stage 1 validation combines the `.l0` implementation test suite under `compiler/stage1_l0/tests/` with warning-free
-latest-stage `--check` coverage for `examples/*.l1`. Exact generated-C golden-file parity is not part of the active L1
-Stage 1 contract.
-
-Stage 2 compiles and runs its own `.l1` implementation tests and shares compiler-facing Python integration coverage.
-`make test` is the fast local gate built from representative compiler checks, examples, parity, and inexpensive tooling
-regressions. `make test-extended` runs the Stage 1 and Stage 2 normal suites, parity, examples, and tooling while
-excluding CI-only normal cases and environment/trace/bootstrap integration. Hosted `make test-ci` adds those CI-only
-cases, environment/bootstrap checks, both default trace suites, child fixtures, and triple bootstrap. `make triple-test`
-also runs that fixed-point check directly. `make use-dev-stage1` switches back to the bootstrap compiler; ordinary
-builds and tests preserve the selected alias.
-
-Local normal suites retain multiplication arithmetic and all six overflow checks without rebuilding a compiler inside
-their harness, plus representative cold/warm managed preparation. Installed read-only inputs and the preparation
-recovery/concurrency matrix run in CI, as does embedded-driver overflow compilation in `mul_runtime_compile_test`. These
-checks remain selectable by name through `test-stage1` and `test-stage2`. Dedicated trace discovery includes CI-only
-normal cases; only the independent slow-trace policy filters its default set.
-
-Minimal local workflow:
-
-```bash
-make use-dev-stage2
+```sh
+make build
+make use-dev
 source build/dea/bin/l1-env.sh
-l1c --version
+l1c --run -Rp examples hello
+make test
 ```
 
-`make use-dev-stage2` auto-prepares the default repo-local upstream `../l0/build/dea/bin/l0c-stage2` when needed.
+The upstream L0 selection is explicit under [l1/AGENTS.md](AGENTS.md). Installed L1 does not require L0, checkout,
+Python, or Make. Local install/dist machinery and matching offline references are retargeted to canonical L1; fresh
+four-platform exact-artifact acceptance remains separate from compiler CI and historical Stage 2 acceptance.
 
-To use an explicit upstream L0 compiler instead of the repo-local default, set `L1_BOOTSTRAP_L0C=/path/to/l0c` when
-running `make build-stage1`.
-
-[agents]: AGENTS.md
-[docker-wine]: docker/wine/README.md
-[docs]: docs/
-[docs-guide]: docs/README.md
-[examples]: examples/
-[installed-toolchain]: docs/user/toolchain.md
-[legacy-clang-plan]: work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md
-[linking]: docs/user/linking.md
-[preparation]: docs/reference/stdlib-preparation.md
-[productization]: docs/reference/productization-inventory.md
-[project-status]: docs/project-status.md
-[roadmap]: docs/roadmap.md
-[root-readme]: ../README.md
-[work]: work/
+Use [l1/docs/roadmap.md](docs/roadmap.md), [l1/docs/project-status.md](docs/project-status.md), and
+[l1/docs/user/toolchain.md](docs/user/toolchain.md). L1 0.1.0 is the intended development release; L1 is not frozen and
+its feature backlog is not automatically assigned to L2. Hosted release workflows remain deferred until split
+acceptance.

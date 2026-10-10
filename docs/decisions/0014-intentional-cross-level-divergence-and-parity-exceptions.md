@@ -1,7 +1,7 @@
 # ADR-0014: Intentional Cross-Level Divergence and Parity Exceptions
 
 - Decision date: 2026-06-08
-- Last edited: 2026-08-25
+- Last edited: 2026-10-10
 - Status: Accepted
 
 ## Context
@@ -17,6 +17,12 @@ independent levels. Silently accepting the mismatch or disabling a broad parity 
 regressions indistinguishable from intended evolution.
 
 ## Decision
+
+This policy applies only where an explicit parity-oracle relationship exists, including L0's two implementations. L1/L2
+each have an independent canonical compiler under
+[docs/decisions/0022-single-compiler-level-lineage.md](0022-single-compiler-level-lineage.md). Initial transplant
+comparisons do not establish permanent cross-level source parity, automatic backporting, or a standing L0 oracle for
+L1/L2. Independently owned diagnostic contract fixtures retain relevant regression evidence.
 
 An unreleased downstream level may complete a forward-only language migration before the level or stage that currently
 acts as its parity oracle.
@@ -51,10 +57,15 @@ is removed.
 
 ## Related Plans
 
+- [work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md):
+  oracle applicability amendment.
+
 - [l1/work/plans/features/closed/2026-06-08-case-else-removal-l1-phase2-noref.md](../../l1/work/plans/features/closed/2026-06-08-case-else-removal-l1-phase2-noref.md):
   established the explicit L1-ahead-of-L0 parity exception for the `case` default migration
+
 - [l0/work/plans/features/closed/2026-06-08-case-else-removal-l0-phase2-noref.md](../../l0/work/plans/features/closed/2026-06-08-case-else-removal-l0-phase2-noref.md):
   retired the temporary parity exception once L0 reached the terminal wildcard-only grammar
+
 - [work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md](../../work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md):
   promoted the historical decision into the ADR catalog
 

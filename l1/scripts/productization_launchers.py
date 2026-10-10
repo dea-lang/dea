@@ -24,7 +24,7 @@ def _replace_once(text: str, original: str, replacement: str) -> str:
     return text.replace(original, replacement, 1)
 
 
-def native_wrapper(*, native_name: str = "l1c-stage2.native") -> str:
+def native_wrapper(*, native_name: str = "l1c.native") -> str:
     """Render a POSIX installed launcher that selects its own prefix.
 
     Args:
@@ -39,7 +39,7 @@ def native_wrapper(*, native_name: str = "l1c-stage2.native") -> str:
                          'export L1_HOME="${prefix_root}"\nunset L1_BUILD_DIR\n')
 
 
-def native_cmd_wrapper(*, native_name: str = "l1c-stage2.native") -> str:
+def native_cmd_wrapper(*, native_name: str = "l1c.native") -> str:
     """Render a scoped Windows launcher preserving the compiler exit status.
 
     Args:

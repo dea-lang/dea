@@ -92,7 +92,7 @@ def run_smoke(prefix: Path, work: Path, env: dict[str, str]) -> None:
     try:
         source_info = provenance["source"]
         commit = source_info["revision"] + ("+dirty" if source_info["tree_state"] == "dirty" else "")
-        expected_version = [f"Dea language / L1 compiler (Stage 2) {record['package_version']}",
+        expected_version = [f"Dea language / L1 compiler {record['package_version']}",
                             f"build: {provenance['build_id']}", f"build time: {provenance['build_time']}",
                             f"commit: {commit}", f"host: {record['os']}-{record['arch']}",
                             "maturity: development",
@@ -119,13 +119,13 @@ def run_smoke(prefix: Path, work: Path, env: dict[str, str]) -> None:
             for path, mode in modes.items():
                 path.chmod(mode & ~0o222)
         print("smoke-dist: checking relocated launchers, native identity, and semantic-only operation", flush=True)
-        for name in ("l1c", "l1c-stage2", "l1c-stage2.native"):
+        for name in ("l1c", "l1c.native"):
             executable = prefix / "bin" / (name + ".cmd" if os.name == "nt" and not name.endswith(".native") else name)
             version = invoke("--version", executable=executable).stdout
             if version.splitlines() != expected_version:
                 raise ValueError(f"native version disagrees with package metadata: {version}")
             invoke("--help", executable=executable)
-        native = prefix / "bin/l1c-stage2.native"
+        native = prefix / "bin/l1c.native"
         semantic_env = semantic_environment(work, env)
         invoke("--check", source, executable=native, child_env=semantic_env)
         invoke("--gen", source, "-o", str(work / "hello.c"), executable=native, child_env=semantic_env)

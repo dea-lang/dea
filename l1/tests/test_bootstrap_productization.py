@@ -7,7 +7,7 @@
 """Fixture-based ownership, interruption, and prefix launcher regressions.
 
 Shell probes stand in for the package compiler. Native installed-state and real
-self-hosted package acceptance belong to the later compiler/install milestones.
+canonical package acceptance use separate compiler and artifact gates.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ L1_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(L1_ROOT / "scripts"))
 import productization_inventory as inventory
 import productization_launchers as launchers
-from build_stage1_l1c import normalize_l1_build_dir
+from build_l1c import normalize_l1_build_dir
 from dea_tooling.launchers import render_repo_env_script, render_prefix_native_wrapper
 
 
@@ -374,9 +374,9 @@ def write_probe_prefix(prefix, label):
     """Generate a relocated shell fixture exercising wrapper environment selection."""
     bin_dir = prefix / "bin"
     bin_dir.mkdir(parents=True)
-    scripts = {"l1c": launchers.native_wrapper(), "l1c-stage2": launchers.native_wrapper(),
+    scripts = {"l1c": launchers.native_wrapper(), "l1c": launchers.native_wrapper(),
                "l1-env.sh": launchers.env_script(),
-               "l1c-stage2.native": '#!/bin/sh\nprintf "%s\\n" '
+               "l1c.native": '#!/bin/sh\nprintf "%s\\n" '
                f'"{label}" "$L1_HOME" "${{L1_BUILD_DIR-unset}}" '
                '"$L1_SYSTEM" "$L1_RUNTIME_LIB" "$L1_STDLIB_CACHE" "$@"\nexit "${PROBE_EXIT-0}"\n'}
     for name, text in scripts.items():
@@ -407,7 +407,7 @@ def test_relocated_launchers_and_activation(tmp_path, shell):
                                               home_var_name="L1_HOME", compiler_env_var="L1_CC"))
     env = {**os.environ, "L1_HOME": "stale repo", "L1_BUILD_DIR": "stale build", "L1_SYSTEM": "explicit system",
            "L1_RUNTIME_LIB": "explicit runtime", "L1_STDLIB_CACHE": "explicit cache"}
-    for name in ("l1c", "l1c-stage2"):
+    for name in ("l1c", "l1c"):
         result = subprocess.run([str(a / "bin" / name), "argument with spaces"], cwd=tmp_path,
                                 env=env, text=True, capture_output=True)
         assert result.returncode == 0, result.stderr
@@ -511,3 +511,17 @@ def test_native_cmd_activation_switches_prefixes(tmp_path, toolchain_position, b
     actual_path = next(line.removeprefix("PATH=") for line in result.stdout.splitlines() if line.startswith("PATH="))
     assert actual_path.split(";") == [a_bin, *remaining]
     assert "SCRIPT=sentinel script" in result.stdout
+
+
+def test_former_stage2_inventory_cannot_claim_canonical_ownership(tmp_path, payload, metadata):
+    """A fresh canonical prefix is required; old ownership is never migrated implicitly."""
+    prefix = tmp_path / "old prefix"
+    record = inventory.install_payload(payload, prefix, metadata)
+    record.update(schema_version=1, stage=2)
+    write_manifest(prefix, record)
+    before = tree_bytes(prefix)
+    with pytest.raises(inventory.InventoryError):
+        inventory.install_payload(payload, prefix, metadata)
+    with pytest.raises(inventory.InventoryError):
+        inventory.list_installed(prefix)
+    assert tree_bytes(prefix) == before

@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -168,7 +169,6 @@ def run_case(stage: str, compiler: Path, case_name: str, expected: str, files: d
             env["L0_HOME"] = str(cwd / "compiler")
         else:
             cwd = REPO_ROOT / "l1"
-            env["L0_HOME"] = str(REPO_ROOT / "l0" / "compiler")
             env["L1_HOME"] = str(cwd / "compiler")
         completed = subprocess.run(
             [*wrapper_command(compiler), "--project-root", str(root), "--check", "main"],
@@ -196,7 +196,11 @@ def main() -> int:
     parser.add_argument("--stage", choices=["l0", "l1"], required=True)
     parser.add_argument("--compiler", type=Path, required=True)
     args = parser.parse_args()
-    for case_name, spec in CASES.items():
+    cases = CASES
+    if args.stage == "l1":
+        fixture = REPO_ROOT / "l1/compiler/tests/fixtures/diagnostics/messages.json"
+        cases = json.loads(fixture.read_text(encoding="utf-8"))
+    for case_name, spec in cases.items():
         expected_spec = spec["expected"]
         if isinstance(expected_spec, dict):
             if args.stage not in expected_spec:
@@ -206,7 +210,7 @@ def main() -> int:
             expected = expected_spec
         files = spec.get("files_by_stage", {}).get(args.stage, spec["files"])
         run_case(args.stage, args.compiler.resolve(strict=True), case_name, expected, files)
-    print(f"{args.stage}: diagnostic message parity passed")
+    print(f"{args.stage}: diagnostic message contract passed")
     return 0
 
 

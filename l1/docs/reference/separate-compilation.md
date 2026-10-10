@@ -1,11 +1,12 @@
 # L1 Separate Compilation, Build, Run, and Standalone Linking
 
-Version: 2026-10-07
+Version: 2026-10-10
 
-This document describes the implemented Dea/L1 Stage 1 path from per-module generated C and one-module compilation to an
-interface-authoritative executable. It is the current behavioral reference for `l1c --gen`, `l1c --compile`,
-`l1c --build`, `l1c --run`, and `l1c --link`. Generated-C, compile-only, build, and run all consume the same per-module
-backend operation; build/run add graph fan-out and reuse the verified link planner, lifecycle wrapper, and executor.
+This document describes the implemented Dea/L1 canonical compiler path from per-module generated C and one-module
+compilation to an interface-authoritative executable. It is the current behavioral reference for `l1c --gen`,
+`l1c --compile`, `l1c --build`, `l1c --run`, and `l1c --link`. Generated-C, compile-only, build, and run all consume the
+same per-module backend operation; build/run add graph fan-out and reuse the verified link planner, lifecycle wrapper,
+and executor.
 
 Related canonical documents:
 

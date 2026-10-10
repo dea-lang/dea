@@ -1,0 +1,333 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module std.time;
+
+import sys.rt;
+import std.integer;
+
+/**
+ * Represents wall clock time in seconds and nanoseconds since the Unix epoch.
+ */
+struct WallTime {
+    sec: int;
+    nsec: int;
+}
+
+/**
+ * Represents monotonic time in seconds and nanoseconds.
+ */
+struct MonotonicTime {
+    sec: int;
+    nsec: int;
+}
+
+/**
+ * Represents a duration of time in seconds and nanoseconds.
+ */
+struct Duration {
+    sec: int;
+    nsec: int;
+}
+
+/**
+ * Represents a broken-down date and time.
+ */
+struct DateTime {
+    year: int;
+    month: int;
+    day: int;
+    hour: int;
+    minute: int;
+    second: int;
+    nanosecond: int;
+    weekday: int;
+    yearday: int;
+    utc_offset_sec: int;
+    is_dst: bool;
+}
+
+/**
+ * Represents a civil date without time components.
+ */
+struct CivilDate {
+    year: int;
+    month: int;
+    day: int;
+    weekday: int;
+    yearday: int;
+}
+
+/**
+ * Checks if the nanosecond component is within valid range [0, 1e9).
+ *
+ * @param nsec The nanosecond value.
+ * @return True if valid, false otherwise.
+ */
+func is_valid_nsec(nsec: int) -> bool {
+    return nsec >= 0 && nsec < 1000000000;
+}
+
+/**
+ * Determines if a given year is a leap year.
+ *
+ * @param year The year to check.
+ * @return True if leap year, false otherwise.
+ */
+func is_leap_year(year: int) -> bool {
+    if (year % 4 != 0) {
+        return false;
+    }
+    if (year % 100 != 0) {
+        return true;
+    }
+    return year % 400 == 0;
+}
+
+/**
+ * Returns the number of days in a given month of a given year.
+ *
+ * @param year The year.
+ * @param month The month (1-12).
+ * @return The number of days in the month.
+ */
+func days_in_month(year: int, month: int) -> int {
+    if (month == 1 || month == 3 || month == 5 || month == 7 || month == 8 || month == 10 || month == 12) {
+        return 31;
+    }
+    if (month == 4 || month == 6 || month == 9 || month == 11) {
+        return 30;
+    }
+    if (is_leap_year(year)) {
+        return 29;
+    }
+    return 28;
+}
+
+/**
+ * Calculates the day of the year for a given date.
+ *
+ * @param year The year.
+ * @param month The month.
+ * @param day The day of the month.
+ * @return The day of the year (1-366).
+ */
+func day_of_year(year: int, month: int, day: int) -> int {
+    let total = day;
+    let m = 1;
+    while (m < month) {
+        total = total + days_in_month(year, m);
+        m = m + 1;
+    }
+    return total;
+}
+
+/**
+ * Calculates civil date components from Unix days.
+ *
+ * @param days The number of days since the Unix epoch.
+ * @return The broken-down CivilDate.
+ */
+func civil_from_unix_days(days: int) -> CivilDate {
+    let z = days + 719468;
+    let era = 0;
+    if (z >= 0) {
+        era = z / 146097;
+    } else {
+        era = (z - 146096) / 146097;
+    }
+
+    let doe = z - (era * 146097);
+    let yoe = (doe - (doe / 1460) + (doe / 36524) - (doe / 146096)) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = 0;
+    if (mp < 10) {
+        month = mp + 3;
+    } else {
+        month = mp - 9;
+    }
+
+    let year = y;
+    if (month <= 2) {
+        year = y + 1;
+    }
+
+    let weekday = emod(days + 4, 7);
+    let yearday = day_of_year(year, month, day);
+    return CivilDate(year, month, day, weekday, yearday);
+}
+
+/**
+ * Creates a DateTime object from Unix seconds and other components.
+ *
+ * @param unix_sec Seconds since Unix epoch.
+ * @param nsec Nanoseconds component.
+ * @param utc_offset_sec Offset from UTC in seconds.
+ * @param is_dst True if daylight saving time is in effect.
+ * @return The broken-down DateTime, or null if invalid.
+ */
+func datetime_from_unix_sec(unix_sec: int, nsec: int, utc_offset_sec: int, is_dst: bool) -> DateTime? {
+    if (!is_valid_nsec(nsec)) {
+        return null;
+    }
+
+    let days = div_floor(unix_sec, 86400);
+    let sod = emod(unix_sec, 86400);
+
+    let hour = sod / 3600;
+    let rem = sod % 3600;
+    let minute = rem / 60;
+    let second = rem % 60;
+
+    let civil = civil_from_unix_days(days);
+    let out = DateTime(
+        civil.year,
+        civil.month,
+        civil.day,
+        hour,
+        minute,
+        second,
+        nsec,
+        civil.weekday,
+        civil.yearday,
+        utc_offset_sec,
+        is_dst
+    );
+    return out;
+}
+
+/**
+ * Returns the current wall clock time.
+ *
+ * @return The current WallTime, or null on error.
+ */
+func wall_now() -> WallTime? {
+    with (let parts = new RtTimeParts(0, 0) => drop parts) {
+        let ok = rt_time_unix(parts);
+        if (!ok) {
+            return null;
+        }
+        if (!is_valid_nsec(parts.nsec)) {
+            return null;
+        }
+        return WallTime(parts.sec, parts.nsec);
+    }
+}
+
+/**
+ * Checks if the monotonic clock is supported by the runtime.
+ *
+ * @return True if supported, false otherwise.
+ */
+func monotonic_supported() -> bool {
+    return rt_time_monotonic_supported();
+}
+
+/**
+ * Returns the current monotonic time.
+ *
+ * @return The current MonotonicTime, or null if not supported or error.
+ */
+func monotonic_now() -> MonotonicTime? {
+    if (!rt_time_monotonic_supported()) {
+        return null;
+    }
+
+    with (let parts = new RtTimeParts(0, 0) => drop parts) {
+        let ok = rt_time_monotonic(parts);
+        if (!ok) {
+            return null;
+        }
+        if (!is_valid_nsec(parts.nsec)) {
+            return null;
+        }
+        return MonotonicTime(parts.sec, parts.nsec);
+    }
+}
+
+/**
+ * Calculates the duration between two monotonic time points.
+ *
+ * @param start The starting time.
+ * @param end The ending time.
+ * @return The Duration difference, or null if end < start or overflow.
+ */
+func monotonic_diff(start: MonotonicTime, end: MonotonicTime) -> Duration? {
+    if (!is_valid_nsec(start.nsec) || !is_valid_nsec(end.nsec)) {
+        return null;
+    }
+
+    if (end.sec < start.sec) {
+        return null;
+    }
+    if (end.sec == start.sec && end.nsec < start.nsec) {
+        return null;
+    }
+
+    let sec_diff = checked_sub_int(end.sec, start.sec)?;
+
+    if (end.nsec >= start.nsec) {
+        let nsec_diff = end.nsec - start.nsec;
+        return Duration(sec_diff, nsec_diff);
+    }
+
+    if (sec_diff == 0) {
+        return null;
+    }
+
+    let nsec_diff = end.nsec + 1000000000 - start.nsec;
+    return Duration(sec_diff - 1, nsec_diff);
+}
+
+/**
+ * Converts wall clock time to UTC DateTime.
+ *
+ * @param t The wall clock time.
+ * @return The UTC DateTime, or null on error.
+ */
+func wall_to_utc_datetime(t: WallTime) -> DateTime? {
+    return datetime_from_unix_sec(t.sec, t.nsec, 0, false);
+}
+
+/**
+ * Converts wall clock time to local DateTime.
+ *
+ * @param t The wall clock time.
+ * @return The local DateTime, or null on error.
+ */
+func wall_to_local_datetime(t: WallTime) -> DateTime? {
+    if (!is_valid_nsec(t.nsec)) {
+        return null;
+    }
+
+    let offset = rt_time_local_offset_sec(t.sec)?;
+    let is_dst = rt_time_local_is_dst(t.sec)?;
+    let local_sec = checked_add_int(t.sec, offset)?;
+    return datetime_from_unix_sec(local_sec, t.nsec, offset, is_dst);
+}
+
+/**
+ * Returns the current date and time in UTC.
+ *
+ * @return The UTC DateTime, or null on error.
+ */
+func utc_now_datetime() -> DateTime? {
+    let now = wall_now()?;
+    return wall_to_utc_datetime(now);
+}
+
+/**
+ * Returns the current date and time in the local time zone.
+ *
+ * @return The local DateTime, or null on error.
+ */
+func local_now_datetime() -> DateTime? {
+    let now = wall_now()?;
+    return wall_to_local_datetime(now);
+}

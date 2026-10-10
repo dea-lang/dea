@@ -15,7 +15,7 @@ Dea/L0 is a small, safe, C-family systems language compiling to C99.
 - **Stage 2:** Self-hosting compiler (L0-in-L0) with frontend, backend, `--gen`, `--build`, and `--run` implemented.
 - **Subsystems:** Grammar/semantics, backend/codegen, driver/build/module layout, and stdlib.
 
-## Documentation — Read On Demand
+## Documentation : Read On Demand
 
 Detailed information lives in `docs/`. **Before answering questions about grammar, architecture, backend design, or
 implementation status, read the relevant doc file(s).**
@@ -104,9 +104,10 @@ Therefore:
 
 Run L0-specific commands from the `l0/` directory. The monorepo root `Makefile` only owns `help`, `venv`, `test`,
 `test-extended`, `clean`, and `clean-all`; root targets delegate to the corresponding target in each registered level.
-L0 `test-extended` includes the dedicated Stage 2 trace sweep. Root `test-extended` does not include L1's exhaustive
-`test-ci` categories; run `make -C l1 test-ci` when exhaustive L1 validation is required. For normal development, prefer
-the repo-local switchable `l0c` alias:
+L0 `test-extended` includes the dedicated Stage 2 trace sweep. Root `test-extended` does not include L1/L2 exhaustive
+`test-ci` categories; run each level's `test-ci` when required. L1/L2 each have one canonical compiler; only L0 retains
+stage selection and triple bootstrap. L2 requires an explicitly installed L1 bootstrap toolchain. For normal
+development, prefer the repo-local switchable `l0c` alias:
 
 ```bash
 make use-dev-stage2 # or `make use-dev-stage1`; each builds and installs the launcher automatically

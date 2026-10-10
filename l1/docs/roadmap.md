@@ -1,34 +1,28 @@
 # Dea/L1 Roadmap
 
-Version: 2026-10-09
+Version: 2026-10-10
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
 been promoted to initiatives or plans.
 
-L1 supports self-hosted development, standalone Stage 2 installation, and validated local distribution archives. L0
-remains the active release line; L1 hosted releases and documentation publication remain separate follow-up work.
+L1 has one canonical L0-implemented compiler and is being prepared as the L1 0.1.0 development toolchain. The former L1
+Stage 2 is now the L1-implemented L2 compiler. L0 remains the active release line. Fresh canonical artifact acceptance
+must complete before hosted L1 release workflows; historical Stage 2 acceptance does not satisfy that prerequisite. L1
+scope is not frozen and its feature backlog remains assigned here pending individual decisions.
 
 ## Current position
 
-- Independent Stage 1/Stage 2 source references and verified offline HTML/full-PDF bundles are implemented. Stage 2
-  bundles can be installed and packaged through `DOCS_ARTIFACT`; native artifact acceptance passed on Linux x86_64,
-  macOS Intel/ARM, and Windows UCRT64. Hosted attachment remains in the root release-workflow plan. See
-  [l1/docs/README.md][autodocs-guide] and
-  [l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md][source-docs-plan].
+- The canonical `.l0` implementation lives under `compiler/src/`; its support and tests are level-owned.
 
-- `compiler/stage1_l0/` is the bootstrap compiler and semantic/diagnostic oracle.
-
-- `compiler/stage2_l1/` implements the self-hosted L1 compiler, with explicit build, selection, test, and fixed-point
-  targets.
-
-- Stage 1 uses 119 phase/ownership modules with explicit canonical state imports. The settled layout and its two
-  recursive-kernel exceptions are documented in [l1/docs/reference/architecture.md][compiler-architecture].
+- Canonical references describe that compiler and L1 stdlib/runtime, with stage-free verified offline HTML/full PDF.
+  Direct installs may include docs; distribution archives require matching docs. Fresh four-platform exact-artifact
+  acceptance is pending for the retargeted product.
 
 - The current L1 runtime and stdlib inputs live under `compiler/shared/runtime/` and `compiler/shared/l1/stdlib/`.
 
-- The Stage 1 child fixture trace runner analyzes successful math runtime executables independently as part of `test-ci`
-  under Tool [2026-04-17-l1-child-process-trace-support-noref][child-trace].
+- Compiler and child-fixture trace validation remain part of exhaustive compiler CI. Intra-L1 stage parity and triple
+  bootstrap no longer apply. Artifact acceptance remains a separate gate.
 
 - `--gen` emits one source-backed module through the shared per-module backend; ordinary `--build` and `--run` compile
   one translation unit per source-backed graph node and reuse the verified common linker.
@@ -61,17 +55,15 @@ remains the active release line; L1 hosted releases and documentation publicatio
 - L1 local development defaults to the repo-local upstream L0 Stage 2 compiler at `../l0/build/dea/bin/l0c-stage2`, or
   an explicit `L1_BOOTSTRAP_L0C` override.
 
-- Strict L1 triple-bootstrap runs through `make triple-test` and is required by `make test-ci`.
+- `make test-compiler` and focused trace targets exercise the canonical compiler; `make test-ci` is exhaustive.
 
-## Stage 2 Source Review
+## Compiler-lineage split
 
-The mechanical Stage 2 port and supported-host validation are complete under the
-[work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md][stage2-self-hosting]. The completed
-[l1/work/plans/refactors/closed/2026-09-28-stage2-native-source-review-noref.md][stage2-native-review] reviewed all 119
-current production modules and adopted existing L1 facilities while preserving Stage 1 parity and the strict
-self-hosting fixed point. Consolidated exhaustive validation passed, including both stages' normal and trace suites and
-triple bootstrap. New stdlib APIs and delivery workflows remain separate work. Select Stage 2 with
-`make use-dev-stage2`; `make test-ci` runs both stages and strict triple bootstrap.
+The former self-hosted port and source review are completed historical milestones. Their compiler now belongs to L2; the
+closed plans and evidence remain unchanged. The immediate shared split implementation is tracked in
+[2026-10-10-shared-l1-l2-canonical-compiler-split-noref](../../work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md).
+Explicit profiles/composable builds remain intended for canonical L1 first and subsequent L2 porting, without adding a
+split dependency or implementing that work now.
 
 ## Roadmap assumptions
 
@@ -80,14 +72,13 @@ triple bootstrap. New stdlib APIs and delivery workflows remain separate work. S
 - L1 work stays in `l1/` unless it is genuinely Dea-wide or shared with L0; shared work belongs under root `work/`.
 - Closed plans document shipped L1 baseline decisions. Draft plans and active initiatives describe intended work, not
   implemented behavior.
-- The `stage2_l1` implementation must preserve the L1 language/runtime decisions documented in [design-decisions] unless
-  the reference set is deliberately updated.
+- The canonical compiler preserves L1 language/runtime decisions in [design-decisions] unless deliberately updated.
 - L1-defined source symbols use the unified recursive LBI grammar from
   [2026-05-11-unified-lbi-mangling-noref][unified-lbi-mangling]: value symbols use `N` terminals with trailing function
   type components where needed, nominal types use `S` / `E`, and compiler-generated module lifecycle helpers use `I`.
   Runtime/public helper families retain their documented `dea_*`, `DEA_*`, `rt_*`, and `_rt_*` roles. Historical `l0_*`
   names are not part of the current L1 ABI.
-- L1 packages remain Stage 2 development toolchains. Validated local delivery does not activate a hosted release line or
+- L1 packages remain development toolchains. Validated local delivery does not activate a hosted release line or
   establish stable language/toolchain maturity.
 
 ## Completed milestones
@@ -272,8 +263,8 @@ triple bootstrap. New stdlib APIs and delivery workflows remain separate work. S
 - Bug Fix
   [l1/work/plans/bug-fixes/closed/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md][fingerprint-blocker]
   repairs the compiler-private fingerprint declaration and splits Stage 1 fingerprint support from common filesystem and
-  process support. The filename-only port now builds and runs with Clang. Committed Stage 2 delivery and the strict
-  self-hosting fixed point remain pending in the self-hosting plan.
+  process support. The filename-only port now builds and runs with Clang. This work preceded Stage 2 delivery and the
+  strict self-hosting fixed point completed by the subsequent self-hosting plan.
 - Bug Fix [2026-09-07-fingerprint-adapter-gcc-array-parameter-noref][fingerprint-gcc] aligns the fingerprint adapter
   output declaration with generated C to repair strict GCC compilation on Linux and Windows.
 - Bug Fix
@@ -333,9 +324,10 @@ triple bootstrap. New stdlib APIs and delivery workflows remain separate work. S
   preparation compatibility, with persistent reuse gated on configuration isolation, discovery, identity, and
   invalidation validation, and private fallback when reuse cannot be authorized.
 - Tool [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][bootstrap-productization] implements the
-  first self-hosted L1 install/dist workflow. Installation, archives, provenance, and standalone verification passed
-  four-platform artifact acceptance. ADR-0042 and the ADR-0001 amendment record the delivery and bootstrap contracts;
-  documentation and release-workflow handoff are complete. Formal plan closure remains.
+  canonical L0-implemented L1 install/dist workflow. Stage-free schema-2 archives, provenance, strict HTML/full PDF, and
+  exact-artifact verification passed locally on Linux x86_64 and macOS Intel with source/bootstrap access unavailable.
+  ADR-0043 records the current delivery contract; former Stage 2 acceptance remains historical. Fresh hosted matrix
+  completion, macOS ARM and native Windows acceptance, release-workflow handoff, and formal plan closure remain.
 - Tool [work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md][release-workflows] consumes the
   validated build/result/harness handoff for planned snapshot and release workflows. Implementation and separately
   authorized hosted publication acceptance remain pending.
@@ -408,9 +400,8 @@ backlog does not imply missing work where L1 already has a narrower surface.
 
 ### Tooling and delivery
 
-- Self-hosted `stage2_l1` compiler implementation and Stage 1/Stage 2 parity validation are complete under Feature
-  [2026-07-11-shared-l1-stage2-self-hosting-port-noref][stage2-self-hosting].
-- Hosted L1 release/snapshot workflows consuming the validated Stage 2 distribution contract, followed by separately
+- Complete the canonical compiler split and fresh retargeted artifact acceptance.
+- Hosted L1 release/snapshot workflows consuming the retargeted canonical distribution contract, followed by separately
   authorized publication acceptance under the active release-workflow plan.
 - Hosted documentation publication and broader delivery tooling beyond the existing four-platform CI and isolated
   artifact acceptance gates.
@@ -430,7 +421,6 @@ update to be promoted to an initiative or plan:
 [abi-prefix]: ../work/plans/features/closed/2026-04-04-l1-dea-c-abi-prefix-migration-noref.md
 [arrays-unsafe]: ../work/initiatives/closed/0004-array-primitives-and-unsafe-marker.md
 [artifact-graph]: ../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
-[autodocs-guide]: README.md#generated-source-references
 [bitwise-operators]: ../work/plans/features/closed/2026-04-18-l1-bitwise-operators-noref.md
 [blocking-networking]: ../work/initiatives/0007-blocking-networking.md
 [bootstrap-productization]: ../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
@@ -439,10 +429,8 @@ update to be promoted to an initiative or plan:
 [case-builtin-literals]: ../work/plans/bug-fixes/closed/2026-06-08-stage1-case-builtin-literal-support-noref.md
 [case-else-recovery]: ../work/plans/bug-fixes/closed/2026-08-25-stage1-case-stray-else-recovery-boundary-noref.md
 [cheap-string-slices]: ../work/plans/features/2026-06-21-cheap-string-slices-noref.md
-[child-trace]: ../work/plans/tools/closed/2026-04-17-l1-child-process-trace-support-noref.md
 [compile-foundation]: ../work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md
 [compile-only]: ../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
-[compiler-architecture]: reference/architecture.md
 [const-declarations]: ../work/plans/features/closed/2026-04-18-l1-const-declarations-noref.md
 [const-scalar-casts]: ../work/plans/features/closed/2026-06-18-stage1-const-scalar-casts-noref.md
 [contextual-array-literals]: ../work/plans/bug-fixes/closed/2026-06-17-stage1-contextual-array-literals-noref.md
@@ -504,7 +492,6 @@ update to be promoted to an initiative or plan:
 [separate-compilation]: ../work/initiatives/closed/0001-separate-compilation-and-linking.md
 [single-statements]: ../work/plans/features/closed/2026-04-23-single-statement-loop-and-match-bodies-noref.md
 [small-int]: ../work/plans/features/closed/2026-04-04-l1-small-int-builtins-on-dea-abi-noref.md
-[source-docs-plan]: ../work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md
 [stage1-slices]: ../work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md
 [stage1-source-decomposition]: ../work/plans/refactors/closed/2026-07-08-stage1-source-decomposition-noref.md
 [stage2-native-review]: ../work/plans/refactors/closed/2026-09-28-stage2-native-source-review-noref.md

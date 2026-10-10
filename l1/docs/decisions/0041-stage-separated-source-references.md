@@ -1,8 +1,8 @@
 # ADR-0041: Stage-Separated Source References
 
 - Decision date: 2026-10-06
-- Last edited: 2026-10-06
-- Status: Accepted
+- Last edited: 2026-10-10
+- Status: Superseded by [ADR-0043](0043-canonical-compiler-toolchain-delivery.md) (2026-10-10)
 
 ## Context
 

@@ -1,8 +1,8 @@
 # L1 C Backend Design
 
-Version: 2026-09-27
+Version: 2026-10-10
 
-This is the canonical backend implementation document for both Dea/L1 compiler stages.
+This is the canonical backend implementation document for the canonical Dea/L1 compiler.
 
 Related docs:
 
@@ -15,8 +15,7 @@ Related docs:
 
 ## Overview
 
-Current code generation is implemented in `compiler/stage1_l0/src/` and its mechanical `.l1` port under
-`compiler/stage2_l1/src/`. The Stage 1 module names below identify the corresponding modules in both stages:
+Current code generation is implemented in `compiler/src/`:
 
 - the coarse generation API in `backend.l0` and implementation owners under `backend/`
 - C emission under `c_emitter/`
@@ -39,7 +38,7 @@ Input is a fully typed analysis result. The backend exposes one production bound
 `cg_options_from_cli(...)` is the single projection from CLI controls to byte-affecting code-generation settings, so
 pure generation, compile-only retention, and build/run retention call the same module operation with the same settings.
 
-`compiler/stage2_l1/` does not currently provide a second backend implementation.
+L1 has one canonical backend implementation.
 
 ## Responsibilities Split
 
@@ -231,7 +230,7 @@ exact archive and takes priority over automatic TinyCC raw-object selection. See
 under `$L1_BUILD_DIR/runtime/tcc/{default,traced,check_basic,unchecked}/`. Its content-sensitive configuration stamps
 track `L1_RUNTIME_CC`, runtime flags, mode defines and baked tuning, preserving incremental rebuilds. Those Make
 controls and products do not implicitly configure or supply managed native profiles. The test targets explicitly build
-these artifacts for the standalone runtime harnesses; `build-stage1` does not.
+these artifacts for the standalone runtime harnesses; `build` does not.
 
 ### Floating-point backend contract
 
@@ -369,7 +368,7 @@ result form before returning `0`. It does not initialize runtime arguments or ca
 ## Current Constraints
 
 1. Ordinary `--build` and `--run` compile one module C translation unit per source-backed graph node.
-2. Both compiler stages implement the same C backend; Stage 1 remains the semantic oracle.
+2. The canonical compiler implements the documented C backend contract.
 3. The runtime and ABI surface assume a C99-compatible host toolchain.
 4. Optimization is delegated to the host C compiler; backend priority is correctness and explicit lowering.
 5. Standalone link treats every caller and runtime native input as opaque. Native-format, architecture, symbol, and
@@ -377,7 +376,7 @@ result form before returning `0`. It does not initialize runtime arguments or ca
 
 ## Testing Coverage
 
-Current backend validation is centered on the copied bootstrap test suite under `compiler/stage1_l0/tests/`, especially:
+Current backend validation is centered on the copied bootstrap test suite under `compiler/tests/`, especially:
 
 - `backend_test.l0`
 - `c_emitter_test.l0`
@@ -389,9 +388,9 @@ Current backend validation is centered on the copied bootstrap test suite under 
 - `interface_replay_test.l0`
 - `link_driver_test.l0`
 - `wrapper_emitter_test.l0`
-- `l1c_stage1_generated_c_identity_test.py`
-- `l1c_stage1_link_set_test.py`
-- `l1c_stage1_build_run_multi_cu_test.py`
+- `l1c_generated_c_identity_test.py`
+- `l1c_link_set_test.py`
+- `l1c_build_run_multi_cu_test.py`
 
 Ownership and trace-oriented validation also uses:
 
@@ -399,7 +398,5 @@ Ownership and trace-oriented validation also uses:
 - `run_test_trace.py`
 - `check_trace_log.py`
 
-The Stage 2 suite ports the implementation tests to `.l1` under `compiler/stage2_l1/tests/` and runs the compiler-facing
-Python integration tests against its explicit artifact. Each stage has its own parent and child trace runners.
-`make triple-test` additionally checks exact retained C from consecutive self-builds and runs the normal Stage 2 suite
-through the final self-built compiler.
+`make test-compiler` runs canonical implementation and compiler-facing integration tests. Parent and child trace runners
+exercise ownership separately. No L1 fixed-point or intra-level stage-parity gate exists.

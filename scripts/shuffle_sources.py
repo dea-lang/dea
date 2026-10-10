@@ -21,7 +21,7 @@ class SourceGroup:
 
     Attributes:
         level: Canonical language-level name such as ``l0``.
-        stage: Compiler stage number, or ``None`` for level-shared sources.
+        stage: Compiler stage number, or ``None`` for canonical or level-shared sources.
         patterns: Repository-root-relative glob patterns for eligible files.
     """
 
@@ -51,20 +51,24 @@ SOURCE_GROUPS = (
     ),
     SourceGroup(
         "l1",
-        1,
-        (
-            "l1/compiler/stage1_l0/src/**/*.l0",
-            "l1/compiler/stage1_l0/support/**/*.c",
-        ),
-    ),
-    SourceGroup("l1", 2, ("l1/compiler/stage2_l1/src/**/*.l1",)),
-    SourceGroup(
-        "l1",
         None,
         (
+            "l1/compiler/src/**/*.l0",
+            "l1/compiler/support/**/*.c",
             "l1/compiler/shared/l1/stdlib/**/*.l1",
             "l1/compiler/shared/runtime/**/*.c",
             "l1/compiler/shared/runtime/**/*.h",
+        ),
+    ),
+    SourceGroup(
+        "l2",
+        None,
+        (
+            "l2/compiler/src/**/*.l1",
+            "l2/compiler/support/**/*.c",
+            "l2/compiler/shared/l2/stdlib/**/*.l2",
+            "l2/compiler/shared/runtime/**/*.c",
+            "l2/compiler/shared/runtime/**/*.h",
         ),
     ),
 )
@@ -201,6 +205,9 @@ def discover_sources(repo_root: Path, *, level: str | None = None, stage: int | 
     if stage is not None and level is None:
         raise ValueError("a stage scope requires a level")
 
+    if stage is not None and level != "l0":
+        raise ValueError(f"{level.upper()} has one canonical compiler; stage selectors are inapplicable")
+
     sources: set[Path] = set()
     for group in SOURCE_GROUPS:
         if not group_matches_scope(group, level, stage):
@@ -267,14 +274,14 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="LEVEL",
         nargs="?",
         type=parse_level,
-        help="Optional language level: L0 or L1.",
+        help="Optional language level: L0, L1, or L2.",
     )
     parser.add_argument(
         "stage",
         metavar="STAGE",
         nargs="?",
         type=parse_stage,
-        help="Optional compiler stage for LEVEL: S1 or S2.",
+        help="Optional L0 compiler stage: S1 or S2.",
     )
     return parser
 
@@ -291,7 +298,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     parser = build_parser()
     args = parser.parse_args(argv)
-    sources = discover_sources(repository_root(), level=args.level, stage=args.stage)
+    try:
+        sources = discover_sources(repository_root(), level=args.level, stage=args.stage)
+    except ValueError as error:
+        parser.error(str(error))
     if args.count > len(sources):
         parser.error(
             f"requested {args.count} source file(s) for {scope_label(args.level, args.stage)}, "

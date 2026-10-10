@@ -41,13 +41,13 @@ jobs:
       - name: Validate package version
         run: |
           python3 -c 'import os, sys; sys.path.insert(0, "l1/scripts"); from productization_provenance import package_version; package_version(dict(os.environ))'
-      - name: Build verified Stage 2 HTML and full PDF
-        run: make -C l1 docs-artifacts DOC_STAGE=stage2
+      - name: Build verified canonical L1 HTML and full PDF
+        run: make -C l1 docs-artifacts
       - name: Upload shared documentation bundle
         uses: actions/upload-artifact@v6
         with:
           name: l1-acceptance-docs
-          path: l1/build/docs/artifacts/dea_l1_stage2_autodocs.tar.gz
+          path: l1/build/docs/artifacts/dea_l1_autodocs.tar.gz
           if-no-files-found: error
 
   build:
@@ -128,7 +128,7 @@ jobs:
       - name: Build native acceptance evidence
         env:
           ACCEPTANCE_DIR: ${{ runner.temp }}/l1-acceptance
-          DOCS_ARTIFACT: ${{ runner.temp }}/l1-docs/dea_l1_stage2_autodocs.tar.gz
+          DOCS_ARTIFACT: ${{ runner.temp }}/l1-docs/dea_l1_autodocs.tar.gz
         if: runner.os != 'Windows'
         shell: bash
         run: |
@@ -140,7 +140,7 @@ jobs:
         env:
           PYTHON: python
           ACCEPTANCE_DIR: ${{ runner.temp }}/l1-acceptance
-          DOCS_ARTIFACT: ${{ runner.temp }}/l1-docs/dea_l1_stage2_autodocs.tar.gz
+          DOCS_ARTIFACT: ${{ runner.temp }}/l1-docs/dea_l1_autodocs.tar.gz
         run: |
           set -o pipefail
           make -C l1 test-productization-acceptance 2>&1 | tee "$(cygpath -u "$RUNNER_TEMP")/l1-acceptance-build.log"

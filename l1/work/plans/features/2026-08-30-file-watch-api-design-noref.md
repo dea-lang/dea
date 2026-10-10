@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: Low
 - Priority: 4
-- Stage: L1
+- Stage: Canonical
 - Parent Initiative: `l1/work/initiatives/0005-filesystem-and-stream-io.md`
 - Subsystem: Stdlib / runtime / filesystem watching
 - Modules:
@@ -16,7 +16,7 @@
   - `l1/compiler/shared/l1/stdlib/std/watch.l1`
   - `l1/compiler/shared/l1/stdlib/sys/watch.l1`
 - Test modules:
-  - `l1/compiler/stage1_l0/tests/file_watch_runtime_test.l0`
+  - `l1/compiler/tests/file_watch_runtime_test.l0`
 - Related:
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
   - `l1/docs/roadmap.md`

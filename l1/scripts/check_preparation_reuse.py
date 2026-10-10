@@ -233,13 +233,13 @@ class Probe:
         self.cc = os.path.abspath(resolved)
         self.report["compiler"]["resolved"] = self.cc
         home = self.root / "toolchain/compiler"
-        for relative in ("shared", "stage1_l0/src", "stage1_l0/support"):
+        for relative in ("shared", "src", "support"):
             shutil.copytree(L1_ROOT / "compiler" / relative, home / relative)
         build = self.root / "toolchain/build"
         for relative in ("interfaces", "include"):
             shutil.copytree(self.args.build_dir / relative, build / relative)
         self.native = self.root / "toolchain/l1c.native"
-        shutil.copy2(self.args.build_dir / "bin/l1c-stage1.native", self.native)
+        shutil.copy2(self.args.build_dir / "bin/l1c.native", self.native)
         self.env.update(L1_HOME=str(home), L1_BUILD_DIR=str(build))
         self.header = build / "include/dea_rt.h"
         self.report["module_inventory"] = len(list((home / "shared/l1/stdlib").rglob("*.l1")))
@@ -636,7 +636,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         require(args.timeout > 0, "timeout must be positive")
         inventory = list((L1_ROOT / "compiler/shared/l1/stdlib").rglob("*.l1"))
-        required = [args.build_dir / "bin/l1c-stage1.native", args.build_dir / "include/dea_rt.h",
+        required = [args.build_dir / "bin/l1c.native", args.build_dir / "include/dea_rt.h",
                     args.build_dir / "include/l1_real.h"]
         required.extend(args.build_dir / "interfaces" /
                         path.relative_to(L1_ROOT / "compiler/shared/l1/stdlib").with_suffix(".l1m") for path in inventory)

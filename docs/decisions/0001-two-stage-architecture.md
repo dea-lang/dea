@@ -1,8 +1,8 @@
 # ADR-0001: Two-Stage Compiler Architecture
 
 - Decision date: 2025-12-05
-- Last edited: 2026-09-28
-- Status: Accepted
+- Last edited: 2026-10-10
+- Status: Superseded by [ADR-0022](0022-single-compiler-level-lineage.md) (2026-10-10)
 
 ## Context
 

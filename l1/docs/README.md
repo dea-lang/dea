@@ -62,51 +62,29 @@ documents, a short document name such as `[project-status][project-status]` is p
 
 ## Generated source references
 
-From `l1/`, run `make docs` for independent Stage 1 and Stage 2 HTML, Markdown, XML, and LaTeX references.
-`DOC_STAGE=stage1` or `DOC_STAGE=stage2` selects one stage; the default is `all`. HTML generation requires Doxygen,
-Graphviz, the shared Python environment (`make venv`), and vendored m.css under `tools/m.css`. It needs neither an
-installed L1 compiler nor TeX. `make docs-pdf` additionally requires `pdflatex`, `makeindex`, and a complete TeX
-installation with Doxygen's packages (including `doxygen.sty` generation, `newunicodechar`, and `hanging`).
-
-Outputs live under `build/docs/stage1/` and `build/docs/stage2/`, each containing `html/index.html`, `markdown/`,
-`doxygen/xml/`, `doxygen/latex/`, and stage-local warning/coverage reports. Complete PDFs are
-`pdf/dea_l1_stage1_api_reference.pdf` and `pdf/dea_l1_stage2_api_reference.pdf`. Each successful selected stage updates
-its matching `build/preview/stageS/{html,markdown,pdf}/` tree. The wrapper's `--output-dir` selects the common output
-parent. `--pdf-fast` is a preview and cannot produce a distribution bundle.
-
-Each reference contains only its own compiler sources, the bundled L1 standard library, runtime API headers, and
-explicit native support inputs. Shared C support remains under `compiler/stage1_l0/support/` physically, but appears in
-the shared reference chapter of both documents. The Stage 1 fingerprint bridge is excluded from Stage 2.
-
-### Offline artifact handoff
+From `l1/`, `make docs` builds canonical HTML, Markdown, XML, and LaTeX references under `build/docs/reference/`. The
+source inventory includes the retained `.l0` compiler, L1 stdlib/runtime, and native support actually used by its
+builder. There is no stage selector. HTML requires Doxygen, Graphviz, the shared Python environment, and vendored m.css;
+`make docs-pdf` additionally requires a complete TeX toolchain and builds the full indexed
+`pdf/dea_l1_api_reference.pdf`. Preview PDF builds cannot produce distribution evidence.
 
 ```sh
-make docs-artifacts DOC_STAGE=stage2 DEA_DIST_VERSION=dev
+make docs-artifacts DEA_DIST_VERSION=dev
 ```
 
-This requires strict HTML and a full indexed PDF, then creates `build/docs/artifacts/dea_l1_stage2_autodocs.tar.gz`. Its
-single `dea-l1-stage2-autodocs/` root contains `html/`, `pdf/`, and `manifest.json`. Extract the whole root to keep
-relative PDF links working. The HTML is usable from the filesystem without checkout access or remote assets. Stage 1 can
-be built the same way for developer use; Stage 2 distributions consume only the Stage 2 bundle.
+This creates `build/docs/artifacts/dea_l1_autodocs.tar.gz` containing `dea-l1-autodocs/{html,pdf,manifest.json}`. The
+stage-free schema-2 manifest binds level, package version, source identity/dirty state, selected-input digest, tool
+provenance, strict/full-PDF success, and complete payload digests. Consumers reject old stage-selected bundles,
+mismatched identities, unsafe members, corruption, remote assets, missing files, and preview/partial evidence. The HTML
+and PDF work offline; extract the complete root to preserve relative links.
 
-The schema-1 manifest records level `l1`, numeric stage, package version, source revision/dirty state, a digest of the
-selected sources and generator inputs, tool provenance, strict/full-PDF success, and the exact payload file digests.
-`DEA_DIST_VERSION` defaults to `dev`; optional `L1_DOCS_RELEASE_TAG` maps `l1-vX.Y.Z` to `X.Y.Z` and `l1-snapshot-...`
-to `snapshot-...` (plain and `v`-prefixed versions also match). The standard-library-only consumer API in
-`scripts/docs_artifacts.py` provides `source_identity`, `package_version`, `unpack_bundle`, and `verify_tree`. Consumers
-supply the expected stage, version, and source identity, and extract into an empty destination. Validation rejects
-unsafe members, links outside the bundle, missing files, network assets, corruption, stale source identity, and
-preview/partial evidence. Run `make test-docgen` for focused regression coverage. This target prepares the shared
-virtual environment and runs its Python interpreter, independently of an explicit host `PYTHON` override.
+`DEA_DIST_VERSION` defaults to `dev`. `L1_DOCS_RELEASE_TAG` provides the reserved L1 tag/version mapping without
+granting publication authority. `make test-docgen` exercises generator/consumer coverage through the shared Python
+environment. Failed generation invalidates the consumer bundle while preserving diagnostic evidence; concurrent builds
+need distinct output parents.
 
-A failed selected-stage invocation removes its old consumer bundle, retains previous successful reference output, and
-preserves generation failures under `build/docs/stageS-failure/`. The other stage is untouched. Builds need separate
-output parents when invoked concurrently for the same stage.
-
-Direct installation consumes the optional Stage 2 bundle through `make install PREFIX=... DOCS_ARTIFACT=<absolute-path>`
-and places verified files under `share/doc/dea/l1/autodocs/stage2/`. Use the same `DEA_DIST_VERSION` and checkout
-identity for generation and installation. `make dist DOCS_ARTIFACT=<absolute-path>` requires the same bundle and
-`make smoke-dist ARCHIVE=<absolute-path>` verifies its offline contents after extraction. Hosted release attachment
-remains pending. Local generation, packaging, and verification do not publish documentation or dispatch workflows.
+Direct `make install PREFIX=... DOCS_ARTIFACT=/absolute/bundle.tar.gz` optionally includes the matching bundle under
+`share/doc/dea/l1/autodocs/`. `make dist` requires it and never generates documentation. `make smoke-dist ARCHIVE=...`
+checks the exact archive after extraction. Local generation and packaging do not publish or dispatch workflows.
 
 [roadmap]: roadmap.md

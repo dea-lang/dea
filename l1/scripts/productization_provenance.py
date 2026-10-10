@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # Copyright (c) 2026 gwz
-"""Capture and render one L1 Stage 2 package identity before construction."""
+"""Capture and render one canonical L1 package identity before construction."""
 
 from __future__ import annotations
 
@@ -94,9 +94,28 @@ class PackageProvenance:
         """Return an independent inventory metadata object."""
         return json.loads(self._json)
 
+    def with_installed_compiler_command(self, command: list[str]) -> "PackageProvenance":
+        """Return a snapshot including the successfully executed installed build.
+
+        Args:
+            command: Exact upstream compiler command returned after construction.
+
+        Returns:
+            New immutable snapshot; embedded basic version fields remain unchanged.
+
+        Raises:
+            ValueError: Construction did not return a nonempty string argument list.
+        """
+        if not isinstance(command, list) or not command or not all(
+                isinstance(argument, str) and "\x00" not in argument for argument in command):
+            raise ValueError("installed compiler command must be a nonempty argument list")
+        metadata = self.metadata()
+        metadata["provenance"]["installed_compiler_command"] = list(command)
+        return PackageProvenance(json.dumps(metadata, sort_keys=True, allow_nan=False))
+
     def version_text(self) -> str:
         """Render standalone VERSION metadata, including all construction evidence."""
-        return "Dea language / L1 compiler (Stage 2)\n" + json.dumps(self.metadata(), indent=2, sort_keys=True) + "\n"
+        return "Dea language / L1 compiler\n" + json.dumps(self.metadata(), indent=2, sort_keys=True) + "\n"
 
     def build_info_module(self, *, installed: bool = False) -> str:
         """Render provenance and optionally enable the native installation guard.
@@ -105,7 +124,7 @@ class PackageProvenance:
             installed: Require physical prefix metadata before every command.
 
         Returns:
-            L1 source suitable for the builder's private module overlay.
+            L0 source suitable for the builder's private module overlay.
 
         Raises:
             ValueError: The checked-in build-info interface no longer matches.
@@ -119,7 +138,7 @@ class PackageProvenance:
                   "host": f'{metadata["os"]}-{metadata["arch"]}',
                   "compiler": provenance["native_compiler"]["version"].splitlines()[0],
                   "release_version": metadata["package_version"]}
-        text = (L1_ROOT / "compiler/stage2_l1/src/build_info.l1").read_text(encoding="utf-8")
+        text = (L1_ROOT / "compiler/src/build_info.l0").read_text(encoding="utf-8")
         for name, value in values.items():
             literal = json.dumps(value, ensure_ascii=False)
             pattern = rf'(func build_info_{name}\(\) -> (?:bool|string) \{{\n)    return [^\n]+;\n\}}'
@@ -134,26 +153,25 @@ class PackageProvenance:
 
 
 def collect_provenance(
-    root: Path, env: dict[str, str], *, upstream: Path, stage1: Path, stage2: Path,
-    stage1_options: list[str], preparation_inputs: dict[str, str],
+    root: Path, env: dict[str, str], *, upstream: Path, compiler: Path,
+    compiler_options: list[str], preparation_inputs: dict[str, str],
     preparation_identity: str | None = None, now: datetime | None = None,
 ) -> tuple[PackageProvenance, dict[str, str]]:
-    """Capture explicit bootstrap and effective self-build inputs once.
+    """Capture explicit bootstrap and effective compiler-build inputs once.
 
     Args:
         root: L1 source root used for Git evidence and relative compiler paths.
         env: Calling environment; only selected build options enter provenance.
-        upstream: Explicit upstream L0 compiler used to build Stage 1.
-        stage1: Explicit L1 Stage 1 artifact used to build the Stage 2 seed.
-        stage2: Explicit repository-mode Stage 2 seed for the delivered generation.
-        stage1_options: Recorded arguments from the actual Stage 1 construction.
+        upstream: Explicit upstream L0 compiler used for canonical construction.
+        compiler: Private repository-mode compiler used to verify bundled inputs.
+        compiler_options: Recorded arguments from the actual canonical construction.
         preparation_inputs: Shipped prefix-relative input names and SHA-256 digests.
         preparation_identity: Optional identity exported by the preparation service.
         now: Aware build timestamp; defaults to current UTC.
 
     Returns:
         Immutable metadata snapshot and the effective environment to pass to the
-        Stage 2 builder. Compiler paths are evidence, never installed lookup roots.
+        canonical builder. Compiler paths are evidence, never installed lookup roots.
 
     Raises:
         ValueError: Version, host, timestamp, input digests, or identities are invalid.
@@ -161,7 +179,7 @@ def collect_provenance(
         subprocess.CalledProcessError: A selected compiler version probe fails.
     """
     # Verification of delivered archives needs only the standard library.
-    from build_stage2_l1c import compiler_build_env
+    from build_l1c import compiler_build_env
 
     version = package_version(env)
     os_name, arch = host_target(platform.system(), platform.machine(), env)
@@ -174,29 +192,32 @@ def collect_provenance(
     # Use the inventory's path/digest validation instead of a competing path policy.
     metadata = {"package_version": version, "maturity": "development", "os": os_name, "arch": arch,
                 "provenance": {"pending": True}}
-    validate_inventory({**metadata, "schema_version": 1, "level": "l1", "stage": 2, "state": "complete",
+    validate_inventory({**metadata, "schema_version": 2, "level": "l1", "state": "complete",
                         "entries": [{"path": MANIFEST_PATH, "kind": "manifest", "mode": 0o644},
                                     *[{"path": path, "kind": "file", "mode": 0o644, "sha256": digest}
                                       for path, digest in preparation_inputs.items()]]})
-    if not isinstance(stage1_options, list) or not all(
-            isinstance(option, str) and "\x00" not in option for option in stage1_options):
-        raise ValueError("Stage 1 options must be argument strings")
+    if not isinstance(compiler_options, list) or not all(
+            isinstance(option, str) and "\x00" not in option for option in compiler_options):
+        raise ValueError("Compiler options must be argument strings")
     if preparation_identity is not None and (not isinstance(preparation_identity, str) or not preparation_identity.strip()):
         raise ValueError("exported preparation identity must be nonempty")
     build_env, mode = compiler_build_env(env)
     bootstrap = {}
     for name, path, identity in (("upstream_l0", upstream, "Dea language / L0 compiler"),
-                                  ("l1_stage1", stage1, "Dea language / L1 compiler (Stage 1)"),
-                                  ("l1_stage2_seed", stage2, "Dea language / L1 compiler (Stage 2)")):
+                                  ("canonical_l1", compiler, "Dea language / L1 compiler")):
         absolute = (root / path).absolute()
-        bootstrap[name] = {"path": str(absolute), "version": _version(absolute, build_env, root, identity)}
-    native = Path(build_env["L1_CC"])
+        report = _version(absolute, build_env, root, identity)
+        if name == "canonical_l1" and not re.fullmatch(
+                r"Dea language / L1 compiler(?: [A-Za-z0-9][A-Za-z0-9._+-]*)?", report.splitlines()[0]):
+            raise ValueError(f"unexpected canonical L1 compiler identity from {absolute}")
+        bootstrap[name] = {"path": str(absolute), "version": report}
+    native = Path(build_env["L0_CC"])
     source = _source(root, env)
     stamp = timestamp.strftime("%Y%m%d-%H%M%S")
     provenance = {"source": source, "build_id": f'{source["revision"][:12]}-{stamp}',
                   "build_time": timestamp.isoformat().replace("+00:00", "Z"),
-                  "bootstrap": bootstrap, "stage1_options": list(stage1_options),
-                  "self_build": {"mode": mode, "cflags": build_env.get("L1_CFLAGS", "")},
+                  "bootstrap": bootstrap, "semantic_compiler_options": list(compiler_options),
+                  "compiler_build": {"implementation_language": "l0", "mode": mode, "cflags": build_env.get("L0_CFLAGS", "")},
                   "native_compiler": {"path": str(native), "version": _version(native, build_env, root)},
                   "preparation_inputs": dict(sorted(preparation_inputs.items()))}
     if preparation_identity is not None:

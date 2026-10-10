@@ -1,9 +1,9 @@
 # Dea Compiler CLI Contract
 
-Version: 2026-10-07
+Version: 2026-10-10
 
 This document defines the shared command-line contract for Dea compilers. It covers behavior common to the current L0
-Stage 1, L0 Stage 2, L1 Stage 1, and L1 Stage 2 implementations. A level may add a documented mode or option without
+Stage 1, L0 Stage 2, canonical L1, and canonical L2 implementations. A level may add a documented mode or option without
 changing the meaning of the shared surface.
 
 Canonical level-specific detail:
@@ -12,6 +12,16 @@ Canonical level-specific detail:
   contract
 - [l1/docs/project-status.md](../../../l1/docs/project-status.md): current L1 bootstrap scope and delivery status
 - [docs/specs/compiler/diagnostic-code-catalog.md](diagnostic-code-catalog.md): shared CLI and compiler diagnostic codes
+
+## L2 applicability
+
+Unless explicitly limited to L1 installation/productization, the L1 CLI capabilities in this document also describe the
+initial L2 contract with mechanical level identity substitutions: `l1c` becomes `l2c`, `.l1`/`.l1m` become `.l2`/`.l2m`,
+`L1_*` selectors become `L2_*`, and equivalent `L1C-xxxx` driver diagnostics become `L2C-xxxx`. Shared families retain
+their identifiers and meanings. L2's implementation `.l1` files and upstream `.l1m` inputs are build-time L1 inputs,
+never accepted L2 source programs. L2 accepts only `.l2` source-file suffixes; extensionless logical module names remain
+valid. It owns its target stdlib/runtime inputs. L2 installation and release productization are not provided by the
+split.
 
 ## 1. Operating Model
 
@@ -39,10 +49,10 @@ Canonical level-specific detail:
 | `--type`    | `--types`          | Dump resolved top-level types                                   |
 
 The dump modes are developer-facing; their text formats are not stable interfaces. All current compilers recognize
-`--compile` / `-c`. L0 Stage 1 and Stage 2 report `L0C-9510` without analysis or artifact production. Both L1 stages
-implement the endpoint-rollback compile-only artifact set in section 7 and additionally implements `--emit-interface` /
-`-Gi`, which emits the target module's textual `.l1m` interface. Both L1 stages also implement the standalone `--link` /
-`-k` mode in section 8 and target-free `--prepare-stdlib` in section 9.
+`--compile` / `-c`. L0 Stage 1 and Stage 2 report `L0C-9510` without analysis or artifact production. The canonical L1
+and L2 compilers implement the endpoint-rollback compile-only artifact set in section 7 and additionally implements
+`--emit-interface` / `-Gi`, which emits the target module's textual `.l1m` interface. The canonical L1 and L2 compilers
+also implement the standalone `--link` / `-k` mode in section 8 and target-free `--prepare-stdlib` in section 9.
 
 ### L1 generated-C mode
 
@@ -154,15 +164,15 @@ capture values are checked again before execution.
 
 Each compiler uses its level prefix for environment-backed defaults:
 
-| Purpose              | L0                   | L1                   |
-| -------------------- | -------------------- | -------------------- |
-| Compiler home        | `L0_HOME`            | `L1_HOME`            |
-| System/stdlib roots  | `L0_SYSTEM`          | `L1_SYSTEM`          |
-| C compiler           | `L0_CC`              | `L1_CC`              |
-| C compiler options   | `L0_CFLAGS`          | `L1_CFLAGS`          |
-| Runtime include path | `L0_RUNTIME_INCLUDE` | `L1_RUNTIME_INCLUDE` |
-| Runtime library path | `L0_RUNTIME_LIB`     | `L1_RUNTIME_LIB`     |
-| Managed native cache |                      | `L1_STDLIB_CACHE`    |
+| Purpose              | L0                   | L1                   | L2                   |
+| -------------------- | -------------------- | -------------------- | -------------------- |
+| Compiler home        | `L0_HOME`            | `L1_HOME`            | `L2_HOME`            |
+| System/stdlib roots  | `L0_SYSTEM`          | `L1_SYSTEM`          | `L2_SYSTEM`          |
+| C compiler           | `L0_CC`              | `L1_CC`              | `L2_CC`              |
+| C compiler options   | `L0_CFLAGS`          | `L1_CFLAGS`          | `L2_CFLAGS`          |
+| Runtime include path | `L0_RUNTIME_INCLUDE` | `L1_RUNTIME_INCLUDE` | `L2_RUNTIME_INCLUDE` |
+| Runtime library path | `L0_RUNTIME_LIB`     | `L1_RUNTIME_LIB`     | `L2_RUNTIME_LIB`     |
+| Managed native cache |                      | `L1_STDLIB_CACHE`    | `L2_STDLIB_CACHE`    |
 
 An explicit `--c-compiler` has highest precedence, followed by the level-specific C compiler variable. Automatic
 detection then tries `tcc`, `gcc`, `clang`, and `cc` from `PATH`, followed by `$CC`. C options from the level-specific
@@ -371,11 +381,11 @@ The detailed artifact, validation, ordering, transaction, and portability contra
 
 ## 9. L1 Bundled Support Preparation
 
-`make build-stage1` in `l1/` provides public headers under `$L1_BUILD_DIR/include/` and generates/verifies the complete
-bundled semantic interface set under `$L1_BUILD_DIR/interfaces/` with the new frontend and canonical bundled sources. It
-does not require native L1 program-runtime construction. Semantic-only commands do not probe native reuse or hash
-bundled source trees. Rebuild bootstrap after editing interface-generating toolchain inputs; missing/invalid bundled
-interfaces report `L1C-2158` with rebuild/repair guidance alongside normal semantic diagnostics.
+`make build` in `l1/` provides public headers under `$L1_BUILD_DIR/include/` and generates/verifies the complete bundled
+semantic interface set under `$L1_BUILD_DIR/interfaces/` with the new frontend and canonical bundled sources. It does
+not require native L1 program-runtime construction. Semantic-only commands do not probe native reuse or hash bundled
+source trees. Rebuild bootstrap after editing interface-generating toolchain inputs; missing/invalid bundled interfaces
+report `L1C-2158` with rebuild/repair guidance alongside normal semantic diagnostics.
 
 `l1c --prepare-stdlib` is an L1 primary mode without a target. It produces a persistently reusable complete native
 stdlib/runtime profile. Build/run/link ordinarily prepare matching support on demand and reuse valid profiles quietly.
@@ -439,6 +449,6 @@ identifies the metadata path or unresolved executable context, recommends repair
 1\. This check requires no external interpreter or build tool and does not hash the payload.
 
 After successful validation, the physical prefix replaces `L1_HOME` and inherited `L1_BUILD_DIR` is cleared. Explicit
-system, runtime, compiler, and cache selectors remain authoritative. Ordinary repository builds of both stages retain
-their existing startup behavior and require no inventory. The marker is an internal packaging input, not a public CLI
-option; its availability does not establish a complete install or distribution workflow.
+system, runtime, compiler, and cache selectors remain authoritative. Ordinary repository builds retain their existing
+startup behavior and require no inventory. The marker is an internal packaging input, not a public CLI option; its
+availability does not establish a complete install or distribution workflow.

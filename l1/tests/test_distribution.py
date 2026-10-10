@@ -51,14 +51,14 @@ def package(tmp_path):
     docs = tmp_path / "docs"
     (docs / "html").mkdir(parents=True)
     (docs / "pdf").mkdir()
-    (docs / "html/index.html").write_text('<a href="../pdf/dea_l1_stage2_api_reference.pdf">PDF</a>')
-    (docs / "pdf/dea_l1_stage2_api_reference.pdf").write_bytes(b"%PDF-1.7\nfixture\n%%EOF\n")
+    (docs / "html/index.html").write_text('<a href="../pdf/dea_l1_api_reference.pdf">PDF</a>')
+    (docs / "pdf/dea_l1_api_reference.pdf").write_bytes(b"%PDF-1.7\nfixture\n%%EOF\n")
     bundle = tmp_path / "docs.tar.gz"
     source = {**metadata["provenance"]["source"], "input_digest": "a" * 64}
-    create_bundle(docs, bundle, stage="stage2", version="dev", source=source,
+    create_bundle(docs, bundle, version="dev", source=source,
                   tools={key: "fixture" for key in ("doxygen", "pdflatex", "python", "mcss")})
-    unpack_bundle(bundle, tmp_path / "docs-unpacked", stage="stage2", version="dev", source=source)
-    shutil.copytree(tmp_path / "docs-unpacked/dea-l1-stage2-autodocs", payload / archives.DOCS_PATH)
+    unpack_bundle(bundle, tmp_path / "docs-unpacked", version="dev", source=source)
+    shutil.copytree(tmp_path / "docs-unpacked/dea-l1-autodocs", payload / archives.DOCS_PATH)
     prefix = tmp_path / "prefix"
     install_payload(payload, prefix, metadata)
     return payload, prefix, metadata, bundle
@@ -80,7 +80,7 @@ def test_archive_roundtrip_curated_contents_and_modes(package, tmp_path, windows
     assert read_inventory(extracted) == read_inventory(prefix)
     if os.name != "nt":
         assert (extracted / "bin/l1c").stat().st_mode & 0o111
-    assert not (extracted / "bin/l1c-stage1").exists()
+    assert not (extracted / "bin/l1c-stage2").exists()
 
 
 def test_tar_modes_come_from_inventory_not_host_stat(package, tmp_path, monkeypatch):
@@ -214,7 +214,7 @@ def test_distribution_result_matches_exact_archive(builder):
     path = dist.distribute(builder)
     assert path.name == "dea-l1-lang_dev_linux-x86_64_20261008-091011.tar.gz"
     result = json.loads(Path(builder["DIST_RESULT"]).read_text())
-    assert result["schema_version"] == 1 and result["stage"] == 2
+    assert result["schema_version"] == 2 and "stage" not in result
     assert result["archive_path"] == str(path)
     assert result["archive_sha256"] == archives.digest(path)
     assert result["archive_size"] == path.stat().st_size
@@ -402,7 +402,7 @@ def test_safe_relative_launcher_alias_survives_roundtrip(package, tmp_path, wind
     payload, prefix, metadata, _ = package
     (payload / "bin/l1c").unlink()
     try:
-        (payload / "bin/l1c").symlink_to("l1c-stage2")
+        (payload / "bin/l1c").symlink_to("l1c.native")
     except OSError:
         pytest.skip("symlink creation unavailable")
     install_payload(payload, prefix, metadata)
@@ -410,7 +410,7 @@ def test_safe_relative_launcher_alias_survives_roundtrip(package, tmp_path, wind
     archives.write_archive(prefix, path, windows=windows)
     extracted = archives.extract_archive(path, tmp_path / "extracted")
     assert (extracted / "bin/l1c").is_symlink()
-    assert os.readlink(extracted / "bin/l1c") == "l1c-stage2"
+    assert os.readlink(extracted / "bin/l1c") == "l1c.native"
 
 
 @pytest.mark.parametrize("target,variable", [("dist", "DOCS_ARTIFACT"), ("smoke-dist", "ARCHIVE")])

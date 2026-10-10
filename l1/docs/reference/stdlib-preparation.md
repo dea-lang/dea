@@ -1,6 +1,6 @@
 # L1 Bundled Interfaces and Native Preparation
 
-Version: 2026-10-09
+Version: 2026-10-10
 
 L1 supplies bundled semantic interfaces with the toolchain and derives native stdlib/runtime support when a command
 needs it. Preparation covers only compiler-owned `std.*` and `sys.*` modules and runtime implementation sources.
@@ -16,22 +16,19 @@ does not change the current support boundary.
 
 ## Bootstrap and semantic discovery
 
-From `l1/`, `make build-stage1` builds the Stage 1 compiler, provides `dea_rt.h` and `l1_real.h` under
+From `l1/`, `make build` builds the canonical compiler, provides `dea_rt.h` and `l1_real.h` under
 `$L1_BUILD_DIR/include/`, then generates and verifies all bundled `.l1m` files under `$L1_BUILD_DIR/interfaces/` using
 the new frontend and canonical bundled sources. Ambient source roots, native cache settings, and C compiler overrides do
 not redirect that semantic build. It does not build native L1 program-runtime archives. The upstream L0 inputs needed to
-construct Stage 1 are still required.
+construct the compiler are still required.
 
-`make build-stage2` first performs that Stage 1 bootstrap and builds the L1 runtime archives, then uses the explicit
-Stage 1 artifact to compile the self-hosted sources. Both stages consume the same bundled interfaces and preparation
-contract. Use `make use-dev-stage1` or `make use-dev-stage2` to select the development alias; ordinary builds preserve
-it.
+`make use-dev` installs the canonical development launcher. L1 has no stage selection.
 
 Ordinary semantic analysis, interface emission, generated C, and compile-only imported-provider resolution use those
 interfaces without preparing native support, probing a C compiler for reuse, or hashing the bundled source tree.
 Compile-only invokes the C compiler for its requested module, but does not compile imported providers. Rebuild the
-selected stage after editing compiler or bundled inputs that generate interfaces. Running an old semantic set after such
-edits is outside the supported development workflow. Missing or invalid bundled interfaces report `L1C-2158`
+canonical compiler after editing compiler or bundled inputs that generate interfaces. Running an old semantic set after
+such edits is outside the supported development workflow. Missing or invalid bundled interfaces report `L1C-2158`
 bootstrap/installation repair guidance alongside any normal semantic diagnostics.
 
 In source-resolving modes, explicit interfaces retain their existing authority. Managed interfaces occupy exactly the
@@ -210,9 +207,9 @@ another persistent root. `--prepare-stdlib` requires a usable persistent destina
 private support. Installed preparation rejects cache `v1/` subtrees overlapping the active payload, including path
 aliases, and never writes into the installation.
 
-Installed payloads provide equivalent verified semantic interfaces plus the Stage 2 executable, stdlib/runtime sources,
-headers, and other rebuild inputs. Installation, distribution, and relocated standalone verification are implemented and
-passed native four-platform artifact acceptance under
+Installed payloads provide equivalent verified semantic interfaces plus the canonical executable, stdlib/runtime
+sources, headers, and other rebuild inputs. Installation, distribution, and relocated standalone verification are
+implemented and passed native four-platform artifact acceptance under
 [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization]. The delivery commands and
 immutable installed-payload boundary are documented in
 [l1/docs/reference/productization-inventory.md][delivery-contract].

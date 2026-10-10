@@ -7,10 +7,10 @@ prints `42`.
 
 You need `l1c`, GNU Make 3.81 or later, and a C99 compiler.
 
-From the repository's `l1` directory, build and activate the Stage 1 compiler, then enter the example:
+From the repository's `l1` directory, build and activate the canonical compiler, then enter the example:
 
 ```sh
-make use-dev-stage1
+make use-dev
 source build/dea/bin/l1-env.sh
 cd examples/make
 make run

@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: Medium
 - Priority: 2
-- Stage: L1
+- Stage: Canonical
 - Subsystem: Stdlib / text / I/O / diagnostics
 - Modules:
   - `l1/compiler/shared/l1/stdlib/std/format.l1`
@@ -18,13 +18,13 @@
   - `l1/compiler/shared/l1/stdlib/std/text.l1`
   - `l1/docs/reference/standard-library.md`
 - Test modules:
-  - `l1/compiler/stage1_l0/tests/format_test.l0`
-  - `l1/compiler/stage1_l0/tests/diag_print_test.l0`
-  - `l1/compiler/stage1_l0/tests/analysis_trace_test.l0`
+  - `l1/compiler/tests/format_test.l0`
+  - `l1/compiler/tests/diag_print_test.l0`
+  - `l1/compiler/tests/analysis_trace_test.l0`
 - Related:
   - `l1/work/plans/features/closed/2026-04-22-variadic-functions-noref.md`
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
-- Repro: `make -C l1 test-stage1 TESTS="format_test diag_print_test analysis_trace_test"`
+- Repro: `make -C l1 test-compiler TESTS="format_test diag_print_test analysis_trace_test"`
 
 ## Summary
 

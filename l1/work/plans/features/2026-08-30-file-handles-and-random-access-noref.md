@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Priority: 1
-- Stage: L1
+- Stage: Canonical
 - Parent Initiative: `l1/work/initiatives/0005-filesystem-and-stream-io.md`
 - Subsystem: Stdlib / runtime / filesystem I/O
 - Modules:
@@ -23,14 +23,14 @@
   - `l1/docs/reference/standard-library.md`
   - `l1/docs/reference/design-decisions.md`
 - Test modules:
-  - `l1/compiler/stage1_l0/tests/file_runtime_test.l0`
-  - `l1/compiler/stage1_l0/tests/l0c_lib_test.l0`
-  - `l1/compiler/stage1_l0/tests/analysis_trace_test.l0`
+  - `l1/compiler/tests/file_runtime_test.l0`
+  - `l1/compiler/tests/l0c_lib_test.l0`
+  - `l1/compiler/tests/analysis_trace_test.l0`
 - Related:
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
   - `l1/work/plans/features/2026-08-30-os-error-and-io-results-noref.md`
   - `l1/work/plans/features/2026-08-30-dynamic-byte-buffers-noref.md`
-- Repro: `make -C l1 test-stage1 TESTS="file_runtime_test l0c_lib_test analysis_trace_test"`
+- Repro: `make -C l1 test-compiler TESTS="file_runtime_test l0c_lib_test analysis_trace_test"`
 
 ## Summary
 

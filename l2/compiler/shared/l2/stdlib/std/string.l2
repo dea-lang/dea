@@ -1,0 +1,416 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+/**
+ * Standard library module for string operations.
+ *
+ * This module provides basic string manipulation functions such as
+ * length retrieval, character access, comparison, concatenation,
+ * and slicing.
+ */
+module std.string;
+
+import sys.rt;
+
+import std.assert;
+
+/* ---------------------------------
+   Basic string operations
+   --------------------------------- */
+
+/**
+ * Returns the length of the given string.
+ *
+ * @param s The string.
+ * @return The length of the string.
+ */
+func len_s(s: string) -> int {
+    return rt_strlen(s);
+}
+
+/**
+ * Checks if the given string is empty.
+ *
+ * @param s The string to check.
+ * @return True if empty, false otherwise.
+ */
+func is_empty_s(s: string) -> bool {
+    return len_s(s) == 0;
+}
+
+/**
+ * Returns the character code (0-255) at the specified index in the string.
+ *
+ * @param s The string.
+ * @param index The index to access.
+ * @return The character byte.
+ */
+func char_at_s(s: string, index: int) -> byte {
+    return rt_string_get(s, index);
+}
+
+/**
+ * Compares two strings for equality.
+ *
+ * @param a The first string.
+ * @param b The second string.
+ * @return True if equal, false otherwise.
+ */
+func eq_s(a: string, b: string) -> bool {
+    return rt_string_equals(a, b);
+}
+
+/**
+ * Compares two strings lexicographically.
+ *
+ * @param a The first string.
+ * @param b The second string.
+ * @return A negative value if a < b, zero if a == b, positive if a > b.
+ */
+func cmp_s(a: string, b: string) -> int {
+    return rt_string_compare(a, b);
+}
+
+/**
+ * Concatenates two strings and returns the result.
+ *
+ * @param a The first string.
+ * @param b The second string.
+ * @return The combined string.
+ */
+func concat_s(a: string, b: string) -> string {
+    return rt_string_concat(a, b);
+}
+
+/**
+ * Returns a slice of the string from start to end (exclusive).
+ *
+ * @param s The string.
+ * @param start The starting index.
+ * @param end The ending index.
+ * @return The string slice.
+ */
+func slice_s(s: string, start: int, end: int) -> string {
+    return rt_string_slice(s, start, end);
+}
+
+/**
+ * Converts a single byte to a string.
+ *
+ * @param b The byte to convert.
+ * @return A string containing the byte.
+ */
+func byte_to_s(b: byte) -> string {
+    return rt_string_from_byte(b);
+}
+
+/**
+ * Creates a string from a byte array of a given length.
+ *
+ * @param bytes The pointer to the byte array.
+ * @param len The number of bytes to include.
+ * @return New string containing the provided bytes.
+ */
+func bytes_to_s(bytes: byte*, len: int) -> string {
+    return rt_string_from_byte_array(bytes, len);
+}
+
+/**
+ * Returns the index of the first occurrence of 'needle' in 'haystack', or -1 if not found.
+ *
+ * @param haystack The string to search in.
+ * @param needle The string to search for.
+ * @return The index of the first occurrence, or -1.
+ */
+func find_s(haystack: string, needle: string) -> int {
+    return find_from_s(haystack, needle, 0);
+}
+
+/**
+ * Returns the index of the last occurrence of 'needle' in 'haystack', or -1 if not found.
+ * For empty needle, returns len_s(haystack).
+ *
+ * @param haystack The string to search in.
+ * @param needle The string to search for.
+ * @return The index of the last occurrence, or -1.
+ */
+func find_last_s(haystack: string, needle: string) -> int {
+    let haystack_len = len_s(haystack);
+    let needle_len = len_s(needle);
+
+    if (needle_len == 0) {
+        return haystack_len;
+    }
+
+    if (needle_len > haystack_len) {
+        return -1;
+    }
+
+    for (let i = haystack_len - needle_len; i >= 0; i = i - 1) {
+        let found = true;
+        for (let j = 0; j < needle_len; j = j + 1) {
+            if (char_at_s(haystack, i + j) != char_at_s(needle, j)) {
+                found = false;
+                break;
+            }
+        }
+        if (found) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+/**
+ * Returns the index of the first occurrence of 'needle' in 'haystack' starting from 'pos', or -1 if not found.
+ *
+ * @param haystack The string to search in.
+ * @param needle The string to search for.
+ * @param pos The starting position.
+ * @return The index of the first occurrence, or -1.
+ */
+func find_from_s(haystack: string, needle: string, pos: int) -> int {
+    assert(pos >= 0, "find_from_s: position must be non-negative");
+    let haystack_len = len_s(haystack);
+    let needle_len = len_s(needle);
+    if (pos > haystack_len - needle_len) {
+        return -1;
+    }
+    for (let i = pos; i <= haystack_len - needle_len; i = i + 1) {
+        let found = true;
+        for (let j = 0; j < needle_len; j = j + 1) {
+            if (char_at_s(haystack, i + j) != char_at_s(needle, j)) {
+                found = false;
+                break;
+            }
+        }
+        if (found) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/**
+ * Returns true if 'haystack' contains 'needle'.
+ *
+ * @param haystack The string to search in.
+ * @param needle The string to search for.
+ * @return True if found, false otherwise.
+ */
+func contains_s(haystack: string, needle: string) -> bool {
+    return find_s(haystack, needle) != -1;
+}
+
+/**
+ * Returns true if 's' starts with 'prefix'.
+ *
+ * @param s The string.
+ * @param prefix The prefix string.
+ * @return True if 's' starts with 'prefix', false otherwise.
+ */
+func starts_with_s(s: string, prefix: string) -> bool {
+    return find_s(s, prefix) == 0;
+}
+
+/**
+ * Returns true if 's' ends with 'suffix'.
+ *
+ * @param s The string.
+ * @param suffix The suffix string.
+ * @return True if 's' ends with 'suffix', false otherwise.
+ */
+func ends_with_s(s: string, suffix: string) -> bool {
+    let s_len = len_s(s);
+    let suffix_len = len_s(suffix);
+    if (suffix_len > s_len) {
+        return false;
+    }
+    return find_from_s(s, suffix, s_len - suffix_len) == s_len - suffix_len;
+}
+
+/* ---------------------------------
+   Character classification
+   --------------------------------- */
+
+/**
+ * Checks if the given character is a whitespace character.
+ *
+ * @param c The character.
+ * @return True if whitespace, false otherwise.
+ */
+func is_space(c: byte) -> bool {
+    return c == ' ' || c == '\n' || c == '\t' || c == '\r';
+}
+
+/**
+ * Checks if the given character is a decimal digit.
+ *
+ * @param c The character.
+ * @return True if a digit, false otherwise.
+ */
+func is_digit(c: byte) -> bool {
+    return c >= '0' && c <= '9';
+}
+
+/**
+ * Checks if the character is a valid digit in the specified base.
+ *
+ * @param c The character.
+ * @param base The numeric base (2-16).
+ * @return True if a valid digit, false otherwise.
+ */
+func is_digit_base(c: byte, base: int) -> bool {
+    assert(base >= 2 && base <= 16, "Base must be between 2 and 16");
+
+    if (base <= 10) {
+        return c >= '0' && c < ('0' + base);
+    }
+
+    if (c >= '0' && c <= '9') {
+        return true;
+    }
+
+    if (c >= 'a' && c < ('a' + base - 10)) {
+        return true;
+    }
+
+    if (c >= 'A' && c < ('A' + base - 10)) {
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * Checks if the character is an alphabetic character.
+ *
+ * @param c The character.
+ * @return True if alphabetic, false otherwise.
+ */
+func is_alpha(c: byte) -> bool {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+/**
+ * Checks if the character is alphanumeric.
+ *
+ * @param c The character.
+ * @return True if alphanumeric, false otherwise.
+ */
+func is_alnum(c: byte) -> bool {
+    return is_alpha(c) || is_digit(c);
+}
+
+/* ---------------------------------
+   Character manipulation
+   --------------------------------- */
+
+/**
+ * Converts a numeric character to its integer value.
+ *
+ * @param c The character.
+ * @return The integer value.
+ */
+func to_digit(c: byte) -> int {
+    return c - '0';
+}
+
+/**
+ * Converts a character to its integer value in the specified base.
+ *
+ * @param c The character.
+ * @param base The numeric base (2-16).
+ * @return The integer value, or null if invalid.
+ */
+func to_digit_base(c: byte, base: int) -> int? {
+    assert(base >= 2 && base <= 16, "Base must be between 2 and 16");
+
+    if (base <= 10) {
+        if (is_digit(c) && c < ('0' + base)) {
+            return to_digit(c);
+        }
+        return null;
+    }
+
+    if (c >= '0' && c <= '9') {
+        return to_digit(c);
+    }
+
+    if (c >= 'a' && c < ('a' + base - 10)) {
+        return 10 + (c - 'a');
+    }
+
+    if (c >= 'A' && c < ('A' + base - 10)) {
+        return 10 + (c - 'A');
+    }
+
+    return null;
+}
+
+/**
+ * Converts a lowercase character to uppercase.
+ *
+ * @param c The character.
+ * @return The uppercase character.
+ */
+func to_upper(c: byte) -> byte {
+    if (c >= 'a' && c <= 'z') {
+        return (c - ('a' - 'A')) as byte;
+    }
+    return c;
+}
+
+/**
+ * Converts an uppercase character to lowercase.
+ *
+ * @param c The character.
+ * @return The lowercase character.
+ */
+func to_lower(c: byte) -> byte {
+    if (c >= 'A' && c <= 'Z') {
+        return (c + ('a' - 'A')) as byte;
+    }
+    return c;
+}
+
+/* ---------------------------------
+   String manipulation and conversion
+   --------------------------------- */
+
+/**
+ * Removes leading and trailing whitespace from the input string.
+ *
+ * @param s The string to trim.
+ * @return The trimmed string.
+ */
+func trim_s(s: string) -> string {
+    let start: int = 0;
+    let end: int = len_s(s) - 1;
+    while (start <= end && is_space(char_at_s(s, start))) {
+        start = start + 1;
+    }
+    while (end >= start && is_space(char_at_s(s, end))) {
+        end = end - 1;
+    }
+    if (start > end) {
+        return "";
+    }
+    return slice_s(s, start, end + 1);
+}
+
+/**
+ * Converts a digit (0-15) to its character representation.
+ *
+ * @param d The digit value.
+ * @return The character representation ('0'-'9', 'a'-'f').
+ */
+func digit_to_char(d: int) -> byte {
+    if (d < 10) {
+        return ('0' + d) as byte;
+    }
+    return ('a' + d - 10) as byte;
+}

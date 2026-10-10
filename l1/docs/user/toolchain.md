@@ -1,4 +1,4 @@
-# Using the L1 Stage 2 development toolchain
+# Using the canonical L1 development toolchain
 
 Run commands from any working directory. Replace `/path/to/dea-l1` with the prefix location; quote paths containing
 spaces. Activation is optional and selects the prefix in the current shell:
@@ -12,7 +12,7 @@ l1c --run /path/to/dea-l1/share/dea/l1/smoke/hello.l1
 ```
 
 The smoke program prints `hello from Dea L1`. In native Windows Command Prompt, call `bin\l1-env.cmd` and use `l1c.cmd`
-with Windows paths. Direct native `bin/l1c-stage2.native` execution uses the same installed-prefix checks.
+with Windows paths. Direct native `bin/l1c.native` execution uses the same installed-prefix checks.
 
 ## Native output and support
 

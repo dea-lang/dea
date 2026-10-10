@@ -5,7 +5,8 @@ description: Show all open Dea plans grouped by level then by initiative, with s
 
 ### Show open plans
 
-Use this skill when the user asks to list, show, or summarize open plans, active work, or in-flight initiatives.
+Use this skill when the project maintainer asks to list, show, or summarize open plans, active work, or in-flight
+initiatives.
 
 Do not use this skill for:
 
@@ -16,10 +17,10 @@ Do not use this skill for:
 ## Required context
 
 1. Read root `AGENTS.md` first.
-2. For each level that has open plans, read that level's roadmap if it exists — these are the authoritative sources for
+2. For each level that has open plans, read that level's roadmap if it exists : these are the authoritative sources for
    initiative membership:
    - `l0/docs/roadmap.md` (if present)
-   - `l1/docs/roadmap.md` (if present)
+   - `l1/docs/roadmap.md` and every `l[0-9]*/docs/roadmap.md` (if present)
    - any root-level roadmap under `docs/` (if present)
 
 ## Discovery steps
@@ -27,14 +28,14 @@ Do not use this skill for:
 1. Find all open plan files across the repo:
 
    ```
-   find work/plans l0/work/plans l1/work/plans -type f -name "*.md" ! -path "*/closed/*" 2>/dev/null | sort
+   rg --files work l[0-9]*/work | rg '/plans/.*\.md$' | rg -v '/(closed|attachments)/' | sort
    ```
 
 2. For each plan file, extract the `Status:`, `Title:`, `Kind:`, `Stage:`, and `Parent Initiative:` metadata lines from
    its header block.
 
 3. For each roadmap that exists, read its `## Active initiatives` section and standalone-plan backlog entries to
-   determine which initiative, if any, each plan belongs to. A missing roadmap file is not an error — skip it.
+   determine which initiative, if any, each plan belongs to. A missing roadmap file is not an error : skip it.
 
 ## Output format
 
@@ -47,7 +48,7 @@ For each level that has open plans, emit a top-level heading: `## Shared`, `## L
 Within each level section, group plans as follows:
 
 1. One subsection per active initiative that owns plans at this level, titled with the initiative number and name
-   (`### Initiative NNNN — <name>`).
+   (`### Initiative NNNN : <name>`).
 2. A `### Standalone Features` subsection for open feature plans not assigned to any initiative.
 3. A `### Tooling / Infrastructure` subsection for open tool or infra plans not assigned to any initiative.
 4. Skip any subsection that has no open plans.
@@ -56,7 +57,7 @@ Within each level section, group plans as follows:
 Within each subsection, list plans one per line:
 
 ```
-- `<Title>` — <path>
+- `<Title>` : <path>
 ```
 
 End with a one-line summary: total open plan count and how many active initiatives have open plans.
@@ -65,10 +66,12 @@ End with a one-line summary: total open plan count and how many active initiativ
 
 - A plan belongs to an initiative when it carries a `Parent Initiative:` field in its metadata. This is the
   authoritative signal; use it first.
-- When `Parent Initiative:` is absent, fall back to the roadmap's active-initiative entry or backlog — if it explicitly
+- When `Parent Initiative:` is absent, fall back to the roadmap's active-initiative entry or backlog : if it explicitly
   links that plan under an initiative's scope, treat that as membership.
 - `Related:` alone (without `Parent Initiative:`) does not establish initiative membership; a plan may list an
   initiative in `Related:` without being owned by it.
 - Standalone plans are plans with no `Parent Initiative:` field and no initiative link in the roadmap.
 - A plan's level is determined by its directory prefix: `work/plans/` → Shared, `l0/work/plans/` → L0, `l1/work/plans/`
   → L1, and so on.
+
+Discover all immediate `l[0-9]*` level trees, including L2; map their numeric directory prefix to the owning level.

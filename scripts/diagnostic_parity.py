@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -190,7 +191,6 @@ def run_compiler(stage: str, compiler: Path, root: Path, target: str) -> tuple[i
         env["L0_HOME"] = str(cwd / "compiler")
     else:
         cwd = REPO_ROOT / "l1"
-        env["L0_HOME"] = str(REPO_ROOT / "l0" / "compiler")
         env["L1_HOME"] = str(cwd / "compiler")
     completed = subprocess.run(
         [*wrapper_command(compiler), "--project-root", str(root), "--check", target],
@@ -208,6 +208,8 @@ def run_compiler(stage: str, compiler: Path, root: Path, target: str) -> tuple[i
 
 
 def check_stage(stage: str, compiler: Path) -> int:
+    if stage == "l1":
+        return check_contract(compiler)
     oracle = load_oracle()
     failures: list[str] = []
     for code in all_codes(stage, oracle):
@@ -234,6 +236,32 @@ def check_stage(stage: str, compiler: Path) -> int:
         return 1
     print(f"{stage}: diagnostic parity passed")
     return 0
+
+
+
+def check_contract(compiler: Path) -> int:
+    """Check the independent L1 diagnostic fixtures without loading another level.
+
+    Args:
+        compiler: Canonical L1 compiler to exercise.
+
+    Returns:
+        Zero if every recorded diagnostic is emitted, otherwise one.
+    """
+    fixture = REPO_ROOT / "l1/compiler/tests/fixtures/diagnostics/codes.json"
+    failures = []
+    for case in json.loads(fixture.read_text(encoding="utf-8")):
+        with tempfile.TemporaryDirectory(prefix="dea-l1-diagnostic-contract-") as tmp:
+            root = Path(tmp)
+            for name, encoded in case["files"].items():
+                (root / name).write_bytes(bytes.fromhex(encoded))
+            _, output, emitted = run_compiler("l1", compiler, root, case["target"])
+            if case["code"] not in emitted:
+                failures.append(f"{case['code']}: emitted {sorted(emitted)}; {output[:240]}")
+    for failure in failures:
+        print(failure)
+    print(f"l1: diagnostic contract {'failed' if failures else 'passed'}")
+    return int(bool(failures))
 
 
 def main() -> int:

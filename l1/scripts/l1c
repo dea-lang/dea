@@ -8,11 +8,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd -P)"
-DEFAULT_L1C="${REPO_ROOT}/build/l1/bin/l1c"
+DEFAULT_L1C="${REPO_ROOT}/build/dea/bin/l1c"
 SELECTED_L1C="${L1C_WRAPPER:-${DEFAULT_L1C}}"
 
 if [ ! -x "${SELECTED_L1C}" ]; then
-    echo "missing repo-local l1c wrapper at ${SELECTED_L1C}; run \`make build-stage1\` first" >&2
+    echo "missing repo-local l1c wrapper at ${SELECTED_L1C}; run \`make build\` first" >&2
     exit 1
 fi
 

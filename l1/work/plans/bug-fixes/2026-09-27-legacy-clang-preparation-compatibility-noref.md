@@ -7,23 +7,23 @@
 - Title: Support legacy Clang preparation with verified configuration isolation and safe persistent reuse
 - Kind: Bug Fix
 - Severity: Medium
-- Stage: 1
+- Stage: Canonical
 - Subsystem: Native preparation / Clang configuration discovery / identity and invalidation
 - Modules:
-  - `l1/compiler/stage1_l0/support/preparation/identity.h`
-  - `l1/compiler/stage1_l0/support/preparation/storage.h`
-  - `l1/compiler/stage1_l0/support/preparation/build.h`
-  - `l1/compiler/stage1_l0/support/preparation_support.c`
-  - `l1/compiler/stage1_l0/src/preparation.l0`
+  - `l1/compiler/support/preparation/identity.h`
+  - `l1/compiler/support/preparation/storage.h`
+  - `l1/compiler/support/preparation/build.h`
+  - `l1/compiler/support/preparation_support.c`
+  - `l1/compiler/src/preparation.l0`
   - `l1/scripts/check_preparation_reuse.py`
 - Test modules:
-  - `l1/compiler/stage1_l0/tests/preparation_identity_test.py`
-  - `l1/compiler/stage1_l0/tests/preparation_support_test.py`
-  - `l1/compiler/stage1_l0/tests/preparation_ownership_test.py`
-  - `l1/compiler/stage1_l0/tests/preparation_reuse_report_test.py`
-  - `l1/compiler/stage1_l0/tests/l1c_stage1_preparation_test.py`
-  - `l1/compiler/stage1_l0/tests/l1c_stage1_managed_preparation_test.py`
-  - `l1/compiler/stage1_l0/tests/preparation_identity_windows_environment_test.py`
+  - `l1/compiler/tests/preparation_identity_test.py`
+  - `l1/compiler/tests/preparation_support_test.py`
+  - `l1/compiler/tests/preparation_ownership_test.py`
+  - `l1/compiler/tests/preparation_reuse_report_test.py`
+  - `l1/compiler/tests/l1c_preparation_test.py`
+  - `l1/compiler/tests/l1c_managed_preparation_test.py`
+  - `l1/compiler/tests/preparation_identity_windows_environment_test.py`
 - Related:
   - [l1/docs/reference/stdlib-preparation.md][preparation-contract]
   - [l1/docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md][identity-adr]

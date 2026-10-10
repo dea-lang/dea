@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Priority: 1
-- Stage: L1
+- Stage: Canonical
 - Parent Initiative: `l1/work/initiatives/0005-filesystem-and-stream-io.md`
 - Subsystem: Stdlib / containers / binary I/O
 - Modules:
@@ -18,13 +18,13 @@
   - `l1/compiler/shared/l1/stdlib/sys/memory.l1`
   - `l1/docs/reference/standard-library.md`
 - Test modules:
-  - `l1/compiler/stage1_l0/tests/byte_array_test.l0`
-  - `l1/compiler/stage1_l0/tests/bytes_test.l0`
-  - `l1/compiler/stage1_l0/tests/analysis_trace_test.l0`
+  - `l1/compiler/tests/byte_array_test.l0`
+  - `l1/compiler/tests/bytes_test.l0`
+  - `l1/compiler/tests/analysis_trace_test.l0`
 - Related:
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
   - `l1/work/initiatives/closed/0004-array-primitives-and-unsafe-marker.md`
-- Repro: `make -C l1 test-stage1 TESTS="byte_array_test bytes_test analysis_trace_test"`
+- Repro: `make -C l1 test-compiler TESTS="byte_array_test bytes_test analysis_trace_test"`
 
 ## Summary
 

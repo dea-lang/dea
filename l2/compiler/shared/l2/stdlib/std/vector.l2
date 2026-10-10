@@ -1,0 +1,419 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+module std.vector;
+
+import sys.rt;
+import sys.memory;
+
+import std.assert;
+import std.string;
+
+import std.array;
+
+/* ---------------------------------
+   Dynamic Array Implementation
+   --------------------------------- */
+
+/**
+ * VectorBase implements a dynamic array (vector) of elements of a given size.
+ * It uses ArrayBase internally to manage storage.
+ * It can grow dynamically as elements are added, and a capacity can be reserved in advance.
+ *
+ * Note: This is a low-level implementation and does not provide type safety.
+ * It is the caller's responsibility to manage types and casting.
+ */
+struct VectorBase {
+    arr: ArrayBase*;
+    length: int;
+}
+
+/**
+ * Creates a new VectorBase with the specified element size and initial capacity.
+ *
+ * @param element_size The size of each element in bytes.
+ * @param initial_capacity The initial number of elements to allocate space for.
+ * @return A pointer to the newly created VectorBase.
+ */
+func vec_create(element_size: int, initial_capacity: int) -> VectorBase* {
+    assert(element_size > 0, "Element size must be greater than 0 for vector creation");
+    let arr = arr_create(element_size, initial_capacity);
+    let self = new VectorBase(arr, 0);
+    return self;
+}
+
+/**
+ * Internal function to grow the vector's capacity if needed.
+ *
+ * @param self The pointer to the VectorBase.
+ */
+func vec_grow(self: VectorBase*) {
+    assert(self.length <= self.arr.capacity, "Vector invariant violated in vec_grow");
+    if (self.length == self.arr.capacity) {
+        let next_capacity = self.arr.capacity;
+        if (next_capacity == 0) {
+            next_capacity = 1;
+        } else {
+            next_capacity = next_capacity * 2;
+        }
+        arr_resize(self.arr, next_capacity);
+    }
+    self.length = self.length + 1;
+}
+
+/**
+ * Ensures the vector has at least the specified total capacity.
+ *
+ * @param self The pointer to the VectorBase.
+ * @param total_capacity The desired total capacity.
+ */
+func vec_reserve(self: VectorBase*, total_capacity: int) {
+    if (total_capacity > self.arr.capacity) {
+        arr_resize(self.arr, total_capacity);
+    }
+}
+
+/**
+ * Checks if the given index is within the logical bounds of the vector.
+ *
+ * @param self The pointer to the VectorBase.
+ * @param index The index to check.
+ */
+func vec_check(self: VectorBase*, index: int) {
+    assert(index >= 0 && index < self.length, "Index out of bounds in vector access");
+}
+
+/**
+ * Returns a pointer to the element at the specified index.
+ *
+ * @param self The pointer to the VectorBase.
+ * @param index The index of the element.
+ * @return A pointer to the element data.
+ */
+func vec_get(self: VectorBase*, index: int) -> void* {
+    vec_check(self, index);
+    return arr_get(self.arr, index);
+}
+
+/**
+ * Grows the vector by one element and returns a pointer to the new slot.
+ *
+ * @param self The pointer to the VectorBase.
+ * @return A pointer to the newly added element slot.
+ */
+func vec_push(self: VectorBase*) -> void* {
+    vec_grow(self);
+    return vec_get(self, self.length - 1);
+}
+
+/**
+ * Returns the number of elements currently in the vector.
+ *
+ * @param self The pointer to the VectorBase.
+ * @return The number of elements.
+ */
+func vec_size(self: VectorBase*) -> int {
+    return self.length;
+}
+
+/**
+ * Returns the current total capacity of the vector.
+ *
+ * @param self The pointer to the VectorBase.
+ * @return The current capacity.
+ */
+func vec_capacity(self: VectorBase*) -> int {
+    return self.arr.capacity;
+}
+
+/**
+ * Zeros out the element at the specified index.
+ *
+ * @param self The pointer to the VectorBase.
+ * @param index The index of the element to zap.
+ */
+func vec_zap(self: VectorBase*, index: int) {
+    vec_check(self, index);
+    arr_zap(self.arr, index);
+}
+
+/**
+ * Clears the vector, resetting its length to zero and shrinking its capacity.
+ *
+ * @param self The pointer to the VectorBase to clear.
+ */
+func vec_clear(self: VectorBase*) {
+    /* Reset capacity to 1, length to 0 */
+    arr_resize(self.arr, 1);
+    self.length = 0;
+}
+
+/**
+ * Free a `VectorBase` and its backing array.
+ *
+ * @param self Vector to free.
+ */
+func vec_free(self: VectorBase*) {
+    arr_free(self.arr);
+    drop self;
+}
+
+/* ---------------------------------
+   Vector specialized push functions
+   --------------------------------- */
+
+/**
+ * Pushes an integer onto the vector.
+ *
+ * @param self The pointer to the VectorBase.
+ * @param val The integer value to push.
+ */
+func vec_push_int(self: VectorBase*, val: int) {
+    assert(self.arr.element_size == sizeof(int), "Element size mismatch in vec_push_int");
+    let dest = vec_push(self) as int*;
+    *dest = val;
+}
+
+/**
+ * Pushes a byte onto the vector.
+ *
+ * @param self The pointer to the VectorBase.
+ * @param val The byte value to push.
+ */
+func vec_push_byte(self: VectorBase*, val: byte) {
+    assert(self.arr.element_size == sizeof(byte), "Element size mismatch in vec_push_byte");
+    let dest = vec_push(self) as byte*;
+    *dest = val;
+}
+
+/**
+ * Bulk-push `count` bytes from `src` into a byte-element vector.
+ * Reserves capacity in one step and copies with `rt_memcpy`. A source range
+ * wholly within the vector's current logical bytes may alias its backing
+ * storage, including when reserve moves that storage. Backing-derived ranges
+ * that include non-logical capacity are rejected, as are ranges that start
+ * below the backing storage but overlap it.
+ *
+ * @param self The pointer to the VectorBase (must have element_size == 1).
+ * @param src Pointer to the source bytes.
+ * @param count Number of bytes to push.
+ */
+func vec_push_bytes(self: VectorBase*, src: byte*, count: int) {
+    assert(self.arr.element_size == sizeof(byte), "Element size mismatch in vec_push_bytes");
+    if (count <= 0) {
+        return;
+    }
+
+    let old_length = self.length;
+    let backing_bytes = self.arr.capacity;
+    if (backing_bytes == 0) {
+        /* `arr_create` retains one physical byte for zero logical capacity. */
+        backing_bytes = 1;
+    }
+    let source_offset = _rt_byte_span_offset(self.arr.data, backing_bytes, src as void*?);
+    if (source_offset >= 0) {
+        assert(
+            source_offset < old_length && count <= old_length - source_offset,
+            "Source range out of bounds in vec_push_bytes"
+        );
+    } else {
+        assert(
+            !_rt_byte_spans_overlap(self.arr.data, backing_bytes, src as void*?, count),
+            "Source range overlaps backing storage in vec_push_bytes"
+        );
+    }
+
+    let needed = old_length + count;
+    vec_reserve(self, needed);
+
+    let copy_src = src as void*;
+    if (source_offset >= 0) {
+        copy_src = rt_array_element(self.arr.data, 1, source_offset);
+    }
+    let dest = rt_array_element(self.arr.data, 1, old_length);
+    rt_memcpy(dest, copy_src, count);
+    self.length = needed;
+}
+
+/**
+ * Pushes a boolean onto the vector.
+ *
+ * @param self The pointer to the VectorBase.
+ * @param val The boolean value to push.
+ */
+func vec_push_bool(self: VectorBase*, val: bool) {
+    assert(self.arr.element_size == sizeof(bool), "Element size mismatch in vec_push_bool");
+    let dest = vec_push(self) as bool*;
+    *dest = val;
+}
+
+/**
+ * Pushes a generic pointer onto the vector.
+ *
+ * @param self The pointer to the VectorBase.
+ * @param val The pointer value to push.
+ */
+func vec_push_ptr(self: VectorBase*, val: void*) {
+    assert(self.arr.element_size == sizeof(void*), "Element size mismatch in vec_push_ptr");
+    let dest = vec_push(self) as void**;
+    *dest = val;
+}
+
+/**
+ * Sorts the elements of an integer vector in ascending order using insertion sort.
+ *
+ * @param self The pointer to the VectorBase containing integers.
+ */
+func vi_sort(self: VectorBase*) {
+    assert(self.arr.element_size == sizeof(int), "Element size mismatch in vi_sort");
+    let n = vec_size(self);
+    if (n <= 1) {
+        return;
+    }
+
+    for (let i: int = 1; i < n; i = i + 1) {
+        let key = *(vec_get(self, i) as int*);
+        let j = i - 1;
+
+        while (j >= 0) {
+            let cur_ptr = vec_get(self, j) as int*;
+            if (!(key < *cur_ptr)) {
+                break;
+            }
+            let dst_ptr = vec_get(self, j + 1) as int*;
+            *dst_ptr = *cur_ptr;
+            j = j - 1;
+        }
+
+        let ins_ptr = vec_get(self, j + 1) as int*;
+        *ins_ptr = key;
+    }
+}
+
+/* ---------------------------------
+   String Vector specialization
+   --------------------------------- */
+
+type StringVector = VectorBase;
+
+/**
+ * Creates a new StringVector with the specified initial capacity.
+ *
+ * @param initial_capacity The initial capacity.
+ * @return A pointer to the newly created StringVector.
+ */
+func sv_create(initial_capacity: int) -> StringVector* {
+    return vec_create(sizeof(string), initial_capacity);
+}
+
+/**
+ * Pushes a string onto the StringVector.
+ *
+ * @param self The pointer to the StringVector.
+ * @param val The string value to push.
+ */
+func sv_push(self: StringVector*, val: string) {
+    let dest = vec_push(self) as string*;
+    *dest = val;
+}
+
+/**
+ * Returns the string at the specified index.
+ *
+ * @param self The pointer to the StringVector.
+ * @param index The index to access.
+ * @return The string at that index.
+ */
+func sv_get(self: StringVector*, index: int) -> string {
+    let src = vec_get(self, index) as string*;
+    return *src;
+}
+
+/**
+ * Returns the number of strings currently in the vector.
+ *
+ * @param self The pointer to the StringVector.
+ * @return The count of elements.
+ */
+func sv_size(self: StringVector*) -> int {
+    return vec_size(self);
+}
+
+/**
+ * Returns the current capacity of the string vector.
+ *
+ * @param self The pointer to the StringVector.
+ * @return The total capacity.
+ */
+func sv_capacity(self: StringVector*) -> int {
+    return vec_capacity(self);
+}
+
+/**
+ * Internal helper to compare two strings for sorting.
+ *
+ * @param a The first string.
+ * @param b The second string.
+ * @return True if a < b lexicographically.
+ */
+func _sv_less(a: string, b: string) -> bool {
+    return rt_string_compare(a, b) < 0;
+}
+
+/**
+ * Sorts the strings in the vector lexicographically using insertion sort.
+ *
+ * @param self The pointer to the StringVector to sort.
+ */
+func sv_sort(self: StringVector*) {
+    let n = vec_size(self);
+    if (n <= 1) {
+        return;
+    }
+
+    for (let i: int = 1; i < n; i = i + 1) {
+        let key = sv_get(self, i);
+        let j = i - 1;
+
+        while (j >= 0) {
+            let cur = sv_get(self, j);
+            if (!_sv_less(key, cur)) {
+                break;
+            }
+            let dst_ptr = vec_get(self, j + 1) as string*;
+            *dst_ptr = cur;
+            j = j - 1;
+        }
+
+        let ins_ptr = vec_get(self, j + 1) as string*;
+        *ins_ptr = key;
+    }
+}
+
+/**
+ * Clears the string vector and releases all held strings.
+ *
+ * @param self The pointer to the StringVector to clear.
+ */
+func sv_clear(self: StringVector*) {
+    for (let i: int = 0; i < vec_size(self); i = i + 1) {
+        let str_ptr = vec_get(self, i) as string*;
+        rt_string_release(*str_ptr);
+    }
+    vec_clear(self);
+}
+
+/**
+ * Free a `StringVector` and release every stored string.
+ *
+ * @param self String vector to free.
+ */
+func sv_free(self: StringVector*) {
+    for (let i: int = 0; i < vec_size(self); i = i + 1) {
+        let str_ptr = vec_get(self, i) as string*;
+        rt_string_release(*str_ptr);
+    }
+    vec_free(self);
+}

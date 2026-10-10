@@ -4,6 +4,7 @@
 --langdef=Dea
 --map-Dea=+.l0
 --map-Dea=+.l1
+--map-Dea=+.l2
 
 --kinddef-Dea=m,module,modules
 --kinddef-Dea=f,function,functions

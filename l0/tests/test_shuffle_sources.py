@@ -76,21 +76,20 @@ def expected_pools() -> dict[str, set[str]]:
     l0_shared = source_files("l0/compiler/shared/l0/stdlib", "*.l0")
     l0_shared |= top_level_source_files("l0/compiler/shared/runtime", "*.h")
 
-    l1_stage1 = source_files("l1/compiler/stage1_l0/src", "*.l0")
-    l1_stage1 |= source_files("l1/compiler/stage1_l0/support", "*.c")
-    l1_stage2 = source_files("l1/compiler/stage2_l1/src", "*.l1")
-    l1_shared = source_files("l1/compiler/shared/l1/stdlib", "*.l1")
-    l1_shared |= source_files("l1/compiler/shared/runtime", "*.c")
-    l1_shared |= source_files("l1/compiler/shared/runtime", "*.h")
-
+    l1 = source_files("l1/compiler/src", "*.l0")
+    l2 = source_files("l2/compiler/src", "*.l1")
+    for level, sources in (("l1", l1), ("l2", l2)):
+        sources.update(source_files(f"{level}/compiler/support", "*.c"))
+        sources.update(source_files(f"{level}/compiler/shared/{level}/stdlib", f"*.{level}"))
+        sources.update(source_files(f"{level}/compiler/shared/runtime", "*.c"))
+        sources.update(source_files(f"{level}/compiler/shared/runtime", "*.h"))
     return {
         "l0-s1": l0_stage1 | l0_shared,
         "l0-s2": l0_stage2 | l0_shared,
         "l0": l0_stage1 | l0_stage2 | l0_shared,
-        "l1-s1": l1_stage1 | l1_shared,
-        "l1-s2": l1_stage2 | l1_shared,
-        "l1": l1_stage1 | l1_stage2 | l1_shared,
-        "all": l0_stage1 | l0_stage2 | l0_shared | l1_stage1 | l1_stage2 | l1_shared,
+        "l1": l1,
+        "l2": l2,
+        "all": l0_stage1 | l0_stage2 | l0_shared | l1 | l2,
     }
 
 
@@ -209,9 +208,9 @@ def main() -> int:
         "l0/compiler/stage2_l0/support/compiler_filesystem.c"
     )
     l0_shared_sentinel = "l0/compiler/shared/l0/stdlib/std/io.l0"
-    l1_stage1_sentinel = "l1/compiler/stage1_l0/src/analysis.l0"
+    l1_stage1_sentinel = "l1/compiler/src/analysis.l0"
     l1_stage1_support_sentinel = (
-        "l1/compiler/stage1_l0/support/interface_fingerprint.c"
+        "l1/compiler/support/interface_fingerprint.c"
     )
     l1_shared_sentinel = "l1/compiler/shared/l1/stdlib/std/io.l1"
 
@@ -247,15 +246,18 @@ def main() -> int:
         },
     )
     assert_full_pool(
-        ("l1", "s1"),
-        pools["l1-s1"],
+        ("l1",),
+        pools["l1"],
         sentinels={
             l1_stage1_sentinel,
             l1_stage1_support_sentinel,
             l1_shared_sentinel,
         },
     )
-    assert_full_pool(("L1", "S2"), pools["l1-s2"], sentinels={l1_shared_sentinel})
+    assert_full_pool(("L2",), pools["l2"], sentinels={
+        "l2/compiler/src/analysis.l1",
+        "l2/compiler/shared/l2/stdlib/std/io.l2",
+    })
 
     l1_paths = require_success("1", "l1")
     if len(l1_paths) != 1:
@@ -271,7 +273,10 @@ def main() -> int:
     assert_expected_failure("0")
     assert_expected_failure("-1")
     assert_expected_failure("not-a-number")
-    assert_expected_failure("1", "L2")
+    assert_expected_failure("1", "L3")
+    for level in ("L1", "L2"):
+        for stage in ("S1", "S2"):
+            assert_expected_failure("1", level, stage)
     assert_expected_failure("1", "L0", "S3")
     assert_expected_failure("1", "S1")
     assert_expected_failure("1", "L0", "S1", "extra")

@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: Medium
 - Priority: 3
-- Stage: L1
+- Stage: Canonical
 - Parent Initiative: `l1/work/initiatives/0008-data-format-modules.md`
 - Subsystem: Stdlib / data formats / streams
 - Modules:
@@ -20,13 +20,13 @@
   - `l1/compiler/shared/l1/stdlib/std/linear_map.l1`
   - `l1/docs/reference/standard-library.md`
 - Test modules:
-  - `l1/compiler/stage1_l0/tests/json_test.l0`
-  - `l1/compiler/stage1_l0/tests/analysis_trace_test.l0`
+  - `l1/compiler/tests/json_test.l0`
+  - `l1/compiler/tests/analysis_trace_test.l0`
 - Related:
   - `l1/work/initiatives/0008-data-format-modules.md`
   - `l1/work/plans/features/2026-08-30-dynamic-byte-buffers-noref.md`
   - `l1/work/plans/features/2026-08-30-streams-and-buffering-noref.md`
-- Repro: `make -C l1 test-stage1 TESTS="json_test analysis_trace_test"`
+- Repro: `make -C l1 test-compiler TESTS="json_test analysis_trace_test"`
 
 ## Summary
 

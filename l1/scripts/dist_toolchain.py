@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # Copyright (c) 2026 gwz
-"""Build one local Stage 2 distribution with failure-safe result metadata."""
+"""Build one local canonical L1 distribution with failure-safe result metadata."""
 
 from __future__ import annotations
 
@@ -89,7 +89,7 @@ def distribute(env: dict[str, str], *, make: str = "make") -> Path:
         result.unlink(missing_ok=True)
     docs = Path(env.get("DOCS_ARTIFACT", ""))
     if not env.get("DOCS_ARTIFACT", "").strip() or not docs.is_absolute() or not docs.is_file():
-        raise ValueError("DOCS_ARTIFACT is required: run make docs-artifacts DOC_STAGE=stage2 "
+        raise ValueError("DOCS_ARTIFACT is required: run make docs-artifacts "
                          "DEA_DIST_VERSION=<version> and set DOCS_ARTIFACT=<absolute-bundle-path>")
     # Private staging is outside the checkout and disjoint from installer scratch.
     with tempfile.TemporaryDirectory(prefix="l1-dist-") as temporary:
@@ -114,9 +114,9 @@ def distribute(env: dict[str, str], *, make: str = "make") -> Path:
             write_archive(prefix, candidate, windows=windows)
             extract_archive(candidate, scratch / "roundtrip")
             docs_manifest = json.loads((prefix / DOCS_PATH / "manifest.json").read_text(encoding="utf-8"))
-            result_record = {"schema_version": 1, "archive_path": str(archive_path),
+            result_record = {"schema_version": 2, "archive_path": str(archive_path),
                              "archive_sha256": digest(candidate), "archive_size": candidate.stat().st_size,
-                             "level": "l1", "stage": 2, "package_version": record["package_version"],
+                             "level": "l1", "package_version": record["package_version"],
                              "maturity": record["maturity"], "os": record["os"], "arch": record["arch"],
                              "provenance": record["provenance"], "docs_bundle_sha256": docs_digest,
                              "docs_source": docs_manifest["source"]}

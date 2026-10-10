@@ -25,19 +25,19 @@ from typing import Sequence
 
 
 L1_ROOT = Path(__file__).resolve().parents[1]
-STAGE1_SCRIPTS = L1_ROOT / "compiler" / "stage1_l0" / "scripts"
-if str(STAGE1_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(STAGE1_SCRIPTS))
+COMPILER_SCRIPTS = L1_ROOT / "compiler" / "scripts"
+if str(COMPILER_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(COMPILER_SCRIPTS))
 
-from build_stage1_l1c import stage1_support_args
+from build_l1c import compiler_support_args
 from test_runner_common import (
     build_repo_test_env,
-    repo_stage1_command,
+    bootstrap_command,
     resolve_l1_build_dir,
 )
 
 
-HARNESS = L1_ROOT / "compiler" / "stage1_l0" / "benchmarks" / "link_provenance_benchmark.l0"
+HARNESS = L1_ROOT / "compiler" / "benchmarks" / "link_provenance_benchmark.l0"
 DEFAULT_SHAPES = ("control-chain", "direct-chain", "terminal-chain", "layered-dag")
 DEFAULT_SIZES = (250, 500, 1000, 2000, 4000)
 
@@ -121,11 +121,11 @@ def compile_harness(executable: Path, env: dict[str, str]) -> None:
     """
 
     command = [
-        *repo_stage1_command(),
+        *bootstrap_command(),
         "--project-root",
-        "compiler/stage1_l0/src",
+        "compiler/src",
         "--build",
-        *stage1_support_args(),
+        *compiler_support_args(),
         "--output",
         str(executable),
         str(HARNESS),

@@ -1,8 +1,8 @@
 # Linking External Native Libraries
 
-Version: 2026-09-11
+Version: 2026-10-10
 
-L1 Stage 1 can combine separately compiled Dea modules, caller-asserted native objects, and external host libraries in
+L1 can combine separately compiled Dea modules, caller-asserted native objects, and external host libraries in
 `--build`, `--run`, and standalone `--link` mode. This is an explicit command-line contract: L1 does not yet have a
 package manifest or per-module declaration for host-library dependencies.
 

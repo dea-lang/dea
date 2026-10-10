@@ -18,6 +18,7 @@ WORKDIR /project
 COPY pyproject.toml uv.lock ./
 COPY l0/pyproject.toml /project/l0/pyproject.toml
 COPY l1/pyproject.toml /project/l1/pyproject.toml
+COPY l2/pyproject.toml /project/l2/pyproject.toml
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --all-groups
 
@@ -27,6 +28,8 @@ COPY scripts /project/scripts
 COPY l0 /project/l0
 # L0 tests exercise cross-level runtime compatibility and vendored doc tooling.
 COPY l1 /project/l1
+# Root source-selector regression discovers every registered canonical compiler.
+COPY l2 /project/l2
 COPY tools /project/tools
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --all-groups

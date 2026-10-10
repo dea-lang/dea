@@ -1,27 +1,19 @@
 # AGENTS.md
 
-Guidance for AI agents working in the `l1/` subtree of the Dea monorepo.
-
-Read `../AGENTS.md` first for monorepo-wide policy, commit conventions, planning policy, shared `.venv`, and quality
-standards.
-
-Run commands from the `l1/` directory.
+Guidance for the `l1/` subtree. Read [AGENTS.md](../AGENTS.md) first and run level commands from `l1/`.
 
 ## Project Overview
 
-Dea/L1 is in self-hosted development status.
-
-- `compiler/stage1_l0/` is the initial L1 compiler seed implemented in Dea/L0.
-- `compiler/stage2_l1/` is the mechanical L1 port, built by Stage 1 and capable of self-building.
-- `compiler/shared/runtime/` is the copied shared runtime tree.
-- `compiler/shared/l1/stdlib/` is the copied L1 stdlib seed.
+L1 has one canonical compiler, `l1c`, implemented in L0 under `compiler/src/` with `.l0` sources. It accepts L1 `.l1`
+programs and `.l1m` interfaces. L1 owns `compiler/shared/l1/stdlib/`, `compiler/shared/runtime/`, and its native support
+under `compiler/support/`. The former L1 Stage 2 is now L2; L1 has no stage selector, parity, or triple bootstrap.
 
 ## Bootstrap Contract
 
-- Local development defaults to the repo-local upstream L0 Stage 2 compiler at `../l0/build/dea/bin/l0c-stage2`.
-- Prepare that default with `make -C ../l0 use-dev-stage2`.
-- Override the upstream compiler explicitly with `L1_BOOTSTRAP_L0C=/path/to/l0c-stage2`.
-- Do not rely on whichever `l0c` happens to be active on `PATH`.
+Build with `L1_BOOTSTRAP_L0C=/absolute/path/to/l0c-stage2`. The development default remains
+`../l0/build/dea/bin/l0c-stage2`, prepared with `make -C ../l0 use-dev-stage2`. Invalid explicit selection fails; never
+select an ambient `l0c` from PATH. L0 is a build-time dependency. Installed L1 use needs no bootstrap compiler, source
+checkout, Python, or Make; native output still needs supported host compiler/linker and preparation tools.
 
 ## C Compiler Support for Agent Work
 
@@ -41,97 +33,55 @@ Dea/L1 is in self-hosted development status.
   runs as compatibility investigations and retain a supported compiler control. Do not use their results as evidence of
   full support before the plan's acceptance criteria pass.
 
-## Commands
+## Commands and Validation
 
-```bash
+```sh
 make venv
-make use-dev-stage2
-make install PREFIX=/path/to/l1
-make list-installed PREFIX=/path/to/l1
-make dist DOCS_ARTIFACT=/absolute/stage2-bundle.tar.gz DIST_RESULT=/absolute/result.json
-make smoke-dist ARCHIVE=/absolute/archive.tar.gz
-make test-productization-acceptance DOCS_ARTIFACT=/absolute/stage2-bundle.tar.gz ACCEPTANCE_DIR=/absolute/new-evidence
+make build
+make use-dev
 source build/dea/bin/l1-env.sh
-l1c --help
-l1c --version
-make check-examples
-make test-stage1
-make test-stage2
-make test-stage2-trace
-make triple-test
 make test
-make test-productization
-make test-stage1-trace
-make test-stage1-trace-smoke
-make test-stage1-trace-all
-make test-stage1-trace-children
 make test-extended
+make test-compiler TESTS="parser_test"
+make test-compiler-trace TESTS="lexer_test"
+make test-compiler-trace-smoke
+make test-compiler-trace-all
+make test-compiler-trace-children
 make test-ci
+make check-examples
+make test-productization
+make docs-artifacts DEA_DIST_VERSION=dev
+make install PREFIX=/absolute/fresh-prefix
+make list-installed PREFIX=/absolute/fresh-prefix
+make dist DOCS_ARTIFACT=/absolute/dea_l1_autodocs.tar.gz DIST_RESULT=/absolute/result.json
+make smoke-dist ARCHIVE=/absolute/archive.tar.gz
+make test-productization-acceptance DOCS_ARTIFACT=/absolute/dea_l1_autodocs.tar.gz ACCEPTANCE_DIR=/absolute/new-evidence
 ```
 
-`make test` is the fast local development gate. It runs representative Stage 1 and Stage 2 smoke tests, parity,
-examples, Stage 2 tooling, and Docker/Wine runner regressions. Use it after ordinary implementation work. It also
-includes fixture-based prefix inventory/recovery and installed-context launcher checks through
-`make test-productization`, including public install orchestration, inventory-only listing, safe archive extraction, and
-atomic dist results.
+`test` is the fast local gate; `test-extended` runs the complete normal compiler suite, examples, and tooling. `test-ci`
+includes CI-only normal cases and applicable environment, trace, and child-fixture gates. Use focused selectors when
+changing one subsystem. Dedicated trace discovery has a separate slow-case policy: slow cases are explicit or in
+`test-compiler-trace-all`. CI-only classification in normal discovery does not suppress dedicated trace coverage.
 
-`make test-extended` is the broad local-normal gate for subsystem work and refactors. It runs both Stage 1 and Stage 2
-normal suites, parity, examples, Stage 2 tooling, and Docker/Wine runner regressions. Normal runner discovery excludes
-CI-only cases. This target omits environment reconstruction, the dedicated trace sweeps, child trace fixtures, and
-triple bootstrap.
+`test-productization` checks fixture-based installation, inventory/recovery, installed startup, archives, and atomic
+results. `test-productization-acceptance` separately builds and verifies actual documented artifacts with portable exact
+archive/result/harness evidence. `ACCEPTANCE_PHASE=build` creates the build handoff; the existing four-platform workflow
+verifies on fresh runners without checkout or bootstrap artifacts. A combined local invocation does not demonstrate
+checkout unavailability. None of `test`, `test-extended`, or `test-ci` establishes artifact acceptance.
 
-Local normal discovery retains multiplication arithmetic, all six overflow fixtures through the already-built subject
-compiler, and representative managed preparation. Embedded-driver overflow compilation remains in the CI-only
-`mul_runtime_compile_test` and the default trace sweep. The installed read-only toolchain fixture
-(`l1c_stage1_installed_preparation_test.py`) and preparation recovery/concurrency matrix
-(`l1c_stage1_preparation_test.py`) are CI-only in both stages. Run either directly with
-`make test-stage1 TESTS="<test-name>"` or `make test-stage2 TESTS="<test-name>"` when changing those behaviors.
+## Delivery and Documentation
 
-`make test-productization-acceptance` is the separate artifact gate: it builds a documented distribution and smoke-tests
-its exact result, retaining archive/result/harness evidence in a new `ACCEPTANCE_DIR`. Use `ACCEPTANCE_PHASE=build` for
-the build half of the manual `L1 Productization Acceptance` workflow. That workflow verifies the evidence on fresh
-four-platform runners without checkout or bootstrap artifacts. A local combined invocation does not establish checkout
-unavailability. This gate is not part of `test`, `test-extended`, or `test-ci`.
+Installation builds a private installed-mode canonical compiler with matching semantic interfaces, rebuild inputs, and
+provenance. It preserves development artifacts. `list-installed` is inventory-only with no build/venv/cache
+prerequisite. Direct installation permits optional `DOCS_ARTIFACT`; distributions require verified matching canonical
+HTML/full PDF. Stage-free schema-2 artifacts use fresh prefixes; do not relabel historical Stage 2 artifacts or retain
+their acceptance as evidence for the new compiler. Reference generation selects actual `.l0` compiler inputs and L1
+support.
 
-`make test-ci` is the exhaustive hosted gate. It runs `test-extended` with CI-only normal cases included, followed by
-environment/bootstrap integration, both default Stage 1 and Stage 2 ARC/memory trace suites, both child-fixture suites,
-and triple bootstrap. Runner output lists included CI-only cases and each category has a visible boundary. Use `test-ci`
-for hosted-equivalent exhaustive validation. For subsystem changes, run the corresponding direct target or explicit test
-selector; a change involving trace, environment, child-process, preparation, or fixed-point behavior does not by itself
-require the entire `test-ci` suite.
-
-`make test-stage1-trace` is the default ARC/memory trace suite and skips intentionally slow trace cases such as
-`math_runtime_compile_test`. Use `make test-stage1-trace-all` to include those slow trace checks, or pass a slow test
-explicitly with `TESTS="math_runtime_compile_test"` when investigating it.
-
-Normal CI-only classification does not filter dedicated trace discovery; `slice_trace_test` remains in the default trace
-sweep. The slow-trace policy is independent of the normal-suite cost policy.
-
-`make test-stage1-trace-children` is the focused suite for successful L1 math runtime fixtures. It builds traced child
-executables and analyzes each child's stderr separately; `TESTS="wide_math_main"` selects one fixture. `make test-ci`
-always runs both declared children for each stage, independently of parent `TESTS` selectors.
-
-`make test-stage1-trace-smoke` retains the focused ARC/memory trace subset for quick developer diagnostics. Hosted
-Windows, Linux, and macOS run `make test-ci`, which includes the complete local-normal suites plus CI-only normal cases,
-environment/bootstrap validation, default trace suites, child fixtures, and strict triple bootstrap.
-
-`use-dev-stage1` and `use-dev-stage2` explicitly select the `l1c` alias. Build and test commands preserve its selection.
-Stage 2 exposes the same trace target suffixes as Stage 1. `triple-test` runs the final self-built compiler through its
-normal suite and examples; it is included in `test-ci` and excluded from `test` and `test-extended`. `make test-docker`
-runs the broad local-normal `test-extended` target in the repo-owned Linux image; use `make docker CMD=test-ci` for the
-exhaustive L1 container path.
-
-## Current Scope
-
-- This subtree supports local self-hosted development and Stage 2 installation with optional offline HTML/PDF through
-  `make install PREFIX=...`. Installation builds a private bootstrap chain and preserves development artifacts/aliases.
-- `make list-installed PREFIX=...` reads only the complete installation inventory; it has no build/venv prerequisite.
-- `DOCS_ARTIFACT` optionally installs a verified Stage 2 HTML/PDF bundle and is required by `make dist`.
-- `make dist` creates local archives; `make smoke-dist ARCHIVE=...` validates exact archives without bootstrap. Native
-  artifact acceptance passed on Linux x86_64, macOS Intel/ARM, and Windows UCRT64. Hosted releases and docs publishing
-  remain pending.
-- Keep root `README.md` and existing L0 user-facing docs unchanged unless the task explicitly requires a minimal
-  consistency fix.
+Fresh native artifact acceptance is required on Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64. Report pending
+platform/hosted evidence explicitly. Hosted releases remain separate work and require normal authorization gates. L1 is
+not frozen and its feature plans are not automatically migrated to L2. Explicit profiles/composable builds remain
+planned for L1 first, then L2, with no implementation in the split.
 
 ## Documentation Link Style
 

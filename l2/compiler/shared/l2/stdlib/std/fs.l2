@@ -1,0 +1,136 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module std.fs;
+
+import sys.rt;
+
+import std.unit;
+
+/**
+ * Shared file metadata wrapper around `sys.rt::RtFileInfo`.
+ */
+struct FileInfo {
+    exists: bool;
+    is_file: bool;
+    is_dir: bool;
+    size: long?;
+    mtime_sec: long?;
+    mtime_nsec: int?;
+}
+
+/**
+ * Convert one runtime metadata record into the public stdlib wrapper type.
+ *
+ * @param info Runtime metadata record.
+ * @return Public stdlib metadata record.
+ */
+func _fs_from_rt(info: RtFileInfo) -> FileInfo {
+    return FileInfo(info.exists, info.is_file, info.is_dir, info.size, info.mtime_sec, info.mtime_nsec);
+}
+
+/**
+ * Return metadata for a filesystem path.
+ *
+ * @param path Filesystem path to inspect.
+ * @return Metadata record with nullable size and timestamp fields.
+ */
+func stat(path: string) -> FileInfo {
+    return _fs_from_rt(rt_file_info(path));
+}
+
+/**
+ * Return whether any filesystem object exists at a path.
+ *
+ * @param path Filesystem path to inspect.
+ * @return `true` when the path exists.
+ */
+func exists(path: string) -> bool {
+    return stat(path).exists;
+}
+
+/**
+ * Return whether a path exists and is a regular file.
+ *
+ * @param path Filesystem path to inspect.
+ * @return `true` when `path` is a file.
+ */
+func is_file(path: string) -> bool {
+    let info = stat(path);
+    return info.exists && info.is_file;
+}
+
+/**
+ * Return whether a path exists and is a directory.
+ *
+ * @param path Filesystem path to inspect.
+ * @return `true` when `path` is a directory.
+ */
+func is_dir(path: string) -> bool {
+    let info = stat(path);
+    return info.exists && info.is_dir;
+}
+
+/**
+ * Return the size of a file when available.
+ *
+ * @param path Filesystem path to inspect.
+ * @return File size in bytes, or `null` when unavailable.
+ */
+func file_size(path: string) -> long? {
+    return stat(path).size;
+}
+
+/**
+ * Return the modification time in whole seconds when available.
+ *
+ * @param path Filesystem path to inspect.
+ * @return Unix modification time in seconds, or `null` when unavailable.
+ */
+func mtime_sec(path: string) -> long? {
+    return stat(path).mtime_sec;
+}
+
+/**
+ * Delete the file at the given path.
+ *
+ * @param path File path to remove.
+ * @return present() on success, or null on error.
+ */
+func delete_file(path: string) -> Unit? {
+    if (!rt_delete_file(path)) {
+        return null;
+    }
+    return present();
+}
+
+/**
+ * Read the entire content of a file.
+ *
+ * @param path File path to read.
+ * @return File contents, or null on error.
+ */
+func read_file(path: string) -> string? {
+    let rd_opt = rt_read_file_all(path);
+    if (rd_opt == null) {
+        return null;
+    }
+    return rd_opt;
+}
+
+/**
+ * Write the entire content of a file.
+ *
+ * @param path File path to write.
+ * @param data String content to write.
+ * @return present() on success, or null on error.
+ */
+func write_file(path: string, data: string) -> Unit? {
+    let ok = rt_write_file_all(path, data);
+    if (!ok) {
+        return null;
+    }
+    return present();
+}

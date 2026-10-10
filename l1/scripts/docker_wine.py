@@ -23,8 +23,8 @@ from typing import BinaryIO
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCKER_FILES = ROOT / "l1/docker/wine"
-ENVIRONMENT_INPUTS = ("Makefile", "pyproject.toml", "uv.lock", "l0/pyproject.toml", "l1/pyproject.toml")
-SOURCE_ROOTS = ("Makefile", "pyproject.toml", "uv.lock", "scripts", "l0", "l1")
+ENVIRONMENT_INPUTS = ("Makefile", "pyproject.toml", "uv.lock", "l0/pyproject.toml", "l1/pyproject.toml", "l2/pyproject.toml")
+SOURCE_ROOTS = ("Makefile", "pyproject.toml", "uv.lock", "scripts", "l0", "l1", "l2/pyproject.toml")
 FORWARDED = ("TESTS", "L1_TEST_JOBS", "L1_TRACE_TEST_JOBS")
 
 

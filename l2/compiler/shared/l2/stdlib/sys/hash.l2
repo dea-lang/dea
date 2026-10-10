@@ -1,0 +1,112 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+/**
+ * This module provides hashing functionality.
+ * Equal semantic values produce equal hashes. Type and optional-state domains
+ * are intentional hash inputs. Exact numeric hashes and accidental collisions
+ * are not stable across runtime versions, implementations, keys, or processes;
+ * do not persist them or use them as compatibility fingerprints.
+ */
+module sys.hash;
+
+/**
+ * Hash a boolean value.
+ *
+ * @param value The boolean to hash.
+ * @return The hash code.
+ */
+extern func rt_hash_bool(value: bool) -> int;
+
+/**
+ * Hash a byte value.
+ *
+ * @param value The byte to hash.
+ * @return The hash code.
+ */
+extern func rt_hash_byte(value: byte) -> int;
+
+/**
+ * Hash an integer value.
+ *
+ * @param value The integer to hash.
+ * @return The hash code.
+ */
+extern func rt_hash_int(value: int) -> int;
+
+/**
+ * Hash a string value.
+ *
+ * @param value The string to hash.
+ * @return The hash code.
+ */
+extern func rt_hash_string(value: string) -> int;
+
+/**
+ * Hash raw data given a pointer and its length.
+ * The pointer must be non-null even when `size` is zero; a zero-length hash
+ * does not read the pointed-to storage. Panics when `size` is negative.
+ *
+ * @param data The pointer to the data.
+ * @param size The size of the data in bytes.
+ * @return The hash code.
+ */
+extern func rt_hash_data(data: void*, size: int) -> int;
+
+/**
+ * Hash an optional boolean value.
+ * Empty optionals ignore their inactive payload representation.
+ *
+ * @param opt The optional boolean to hash.
+ * @return The hash code.
+ */
+extern func rt_hash_opt_bool(opt: bool?) -> int;
+
+/**
+ * Hash an optional byte value.
+ * Empty optionals ignore their inactive payload representation.
+ *
+ * @param opt The optional byte to hash.
+ * @return The hash code.
+ */
+extern func rt_hash_opt_byte(opt: byte?) -> int;
+
+/**
+ * Hash an optional integer value.
+ * Empty optionals ignore their inactive payload representation and C padding.
+ *
+ * @param opt The optional integer to hash.
+ * @return The hash code.
+ */
+extern func rt_hash_opt_int(opt: int?) -> int;
+
+/**
+ * Hash an optional string value.
+ * Optional-string presence participates in the hash input domain. An absent
+ * optional therefore uses a distinct input domain from every present optional
+ * string value.
+ *
+ * @param opt The optional string to hash.
+ * @return The hash code.
+ */
+extern func rt_hash_opt_string(opt: string?) -> int;
+
+/**
+ * Hash a pointer value. Note: this hashes the pointer address, not the data it points to.
+ * Panics when `ptr` is null.
+ *
+ * @param ptr The pointer to hash.
+ * @return The hash code.
+ */
+extern func rt_hash_ptr(ptr: void*) -> int;
+
+/**
+ * Hash an optional pointer value. Note: this hashes the pointer address, not the data it points to.
+ * Panics if the optional is empty.
+ *
+ * @param opt The optional pointer to hash.
+ * @return The hash code.
+ */
+extern func rt_hash_opt_ptr(opt: void*?) -> int;

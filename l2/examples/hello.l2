@@ -1,0 +1,77 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module hello;
+
+import std.integer;
+import std.io;
+import std.rand;
+
+// Top 25 languages by total speakers. Source: Babel, arXiv:2503.00865v1
+const hello_world_messages: string[25] = [
+    "Hello, world! This is Dea/L2.",
+    "你好，世界！这是 Dea/L2。",
+    "नमस्ते, दुनिया! यह Dea/L2 है।",
+    "¡Hola, mundo! Esto es Dea/L2.",
+    "مرحبًا، يا عالم! هذا Dea/L2.",
+    "Bonjour le monde ! Ceci est Dea/L2.",
+    "হ্যালো, বিশ্ব! এটি Dea/L2।",
+    "Olá, mundo! Isto é Dea/L2.",
+    "Привет, мир! Это Dea/L2.",
+    "ہیلو، دنیا! یہ Dea/L2 ہے۔",
+    "Halo, dunia! Ini Dea/L2.",
+    "Hallo, Welt! Das ist Dea/L2.",
+    "こんにちは、世界！これは Dea/L2 です。",
+    "Hujambo, dunia! Hii ni Dea/L2.",
+    "Kumusta, mundo! Ito ay Dea/L2.",
+    "வணக்கம், உலகமே! இது Dea/L2.",
+    "Xin chào, thế giới! Đây là Dea/L2.",
+    "Merhaba, dünya! Bu Dea/L2.",
+    "Ciao, mondo! Questo è Dea/L2.",
+    "Halo, donya! Iki Dea/L2.",
+    "안녕하세요, 세계! 이것은 Dea/L2입니다.",
+    "Sannu, duniya! Wannan Dea/L2 ne.",
+    "سلام، دنیا! این Dea/L2 است.",
+    "สวัสดีโลก! นี่คือ Dea/L2",
+    "မင်္ဂလာပါ၊ ကမ္ဘာကြီး! ဤသည်မှာ Dea/L2 ဖြစ်သည်။"
+];
+
+/**
+ * Returns a random integer in the range [0, n) that is coprime to n.
+ * A number s is coprime to n if gcd(s, n) == 1, meaning they have no
+ * common factors other than 1.
+ *
+ * @param n The upper bound (exclusive).
+ * @return A random integer coprime to n.
+ */
+func random_coprime_stride(n: int) -> int {
+    if (n > 1)
+        while (true) {
+            let s = rand_dice(rolls: 1, sides: n - 1);
+            let g = gcd(s, n) as int;
+            if (g == 1) return s;
+        }
+    return 0;
+}
+
+/**
+ * Prints "Hello, world!" in 25 different languages in a random order.
+ * The order is determined by a random starting index and a random
+ * coprime stride to ensure that all messages are printed without
+ * repetition.
+ *
+ * Note: Right-to-left languages may not display correctly in all
+ * terminals. Use a bidi-aware terminal for proper display.
+ */
+func main() {
+    rand_seed(0);
+    let n = 25;
+    let start = rand_int(n);
+    let step = random_coprime_stride(n);
+    for (let i = 0; i < n; i = i + 1) {
+        let index = (start + i * step) % n;
+        printl_s(hello_world_messages[index]);
+    }
+}

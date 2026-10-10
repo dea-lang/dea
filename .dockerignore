@@ -10,6 +10,9 @@ l0/.pytest_cache/
 l1/.venv/
 l1/build/
 l1/.pytest_cache/
+l2/.venv/
+l2/build/
+l2/.pytest_cache/
 temp/
 *.o
 *.dSYM

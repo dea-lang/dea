@@ -1,0 +1,196 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module std.path;
+
+import std.string;
+import std.text;
+
+/**
+ * Check whether a byte is a path separator.
+ *
+ * @param c Byte to inspect.
+ * @return `true` if `c` is `/` or `\\`.
+ */
+func is_sep(c: byte) -> bool {
+    return c == '/' || c == '\\';
+}
+
+/**
+ * Check whether a path is absolute.
+ *
+ * @param path Path string to inspect.
+ * @return `true` for POSIX absolute paths and Windows drive-rooted paths.
+ */
+func is_absolute(path: string) -> bool {
+    let n = len_s(path);
+    if (n == 0) {
+        return false;
+    }
+    if (is_sep(char_at_s(path, 0))) {
+        return true;
+    }
+    if (n >= 3 && char_at_s(path, 1) == ':' && is_sep(char_at_s(path, 2))) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Find the last path separator in a string.
+ *
+ * @param path Path string to inspect.
+ * @return Index of the last separator, or `-1` if none is present.
+ */
+func _path_find_last_sep(path: string) -> int {
+    let n = len_s(path);
+    let last = -1;
+    for (let i = 0; i < n; i = i + 1) {
+        if (is_sep(char_at_s(path, i))) {
+            last = i;
+        }
+    }
+    return last;
+}
+
+/**
+ * Normalize an extension so callers may pass either `txt` or `.txt`.
+ *
+ * @param ext Extension text to normalize.
+ * @return Extension with a leading `.` when non-empty.
+ */
+func _path_ext_with_dot(ext: string) -> string {
+    if (is_empty_s(ext)) {
+        return "";
+    }
+    if (char_at_s(ext, 0) == '.') {
+        return ext;
+    }
+    return "." + ext;
+}
+
+/**
+ * Check whether a path has a parent component.
+ *
+ * @param path Path string to inspect.
+ * @return `true` if the path contains a separator.
+ */
+func has_parent(path: string) -> bool {
+    return _path_find_last_sep(path) >= 0;
+}
+
+/**
+ * Return the last component of a path.
+ *
+ * @param path Path string to inspect.
+ * @return Basename with trailing separators ignored.
+ */
+func basename(path: string) -> string {
+    let n = len_s(path);
+    if (n == 0) {
+        return path;
+    }
+
+    let end = n;
+    while (end > 1 && is_sep(char_at_s(path, end - 1))) {
+        end = end - 1;
+    }
+
+    let last = -1;
+    for (let i = 0; i < end; i = i + 1) {
+        if (is_sep(char_at_s(path, i))) {
+            last = i;
+        }
+    }
+
+    return slice_s(path, last + 1, end);
+}
+
+/**
+ * Return the parent directory of a path.
+ *
+ * @param path Path string to inspect.
+ * @return Parent directory, or `.` when the path has no parent.
+ */
+func parent(path: string) -> string {
+    let n = len_s(path);
+    if (n == 0) {
+        return ".";
+    }
+
+    let end = n;
+    while (end > 1 && is_sep(char_at_s(path, end - 1))) {
+        end = end - 1;
+    }
+
+    let last = -1;
+    for (let i = 0; i < end; i = i + 1) {
+        if (is_sep(char_at_s(path, i))) {
+            last = i;
+        }
+    }
+
+    if (last < 0) {
+        return ".";
+    }
+    if (last == 0) {
+        return slice_s(path, 0, 1);
+    }
+    if (len_s(path) >= 3 && char_at_s(path, 1) == ':' && last == 2) {
+        return slice_s(path, 0, 3);
+    }
+
+    return slice_s(path, 0, last);
+}
+
+/**
+ * Return a path basename without its final extension when present.
+ *
+ * @param path Path string to inspect.
+ * @return Basename stem.
+ */
+func stem(path: string) -> string {
+    let base = basename(path);
+    let last_dot = find_last_s(base, ".");
+    if (last_dot <= 0) {
+        return base;
+    }
+    return slice_s(base, 0, last_dot);
+}
+
+/**
+ * Join a root path and relative path with one separator.
+ *
+ * @param root Root directory path.
+ * @param rel Relative path to append.
+ * @return Combined path.
+ */
+func join(root: string, rel: string) -> string {
+    if (is_empty_s(root)) {
+        return rel;
+    }
+
+    let tail = char_at_s(root, len_s(root) - 1);
+    if (is_sep(tail)) {
+        return root + rel;
+    }
+    return root + "/" + rel;
+}
+
+/**
+ * Check whether a path basename ends with the requested extension.
+ *
+ * @param path Path string to inspect.
+ * @param ext Extension to match, with or without leading `.`.
+ * @return `true` if `path` has the requested final extension.
+ */
+func has_extension(path: string, ext: string) -> bool {
+    let base = basename(path);
+    let want = _path_ext_with_dot(ext);
+    if (is_empty_s(want) || len_s(base) <= len_s(want)) {
+        return false;
+    }
+    return ends_with_s(base, want);
+}

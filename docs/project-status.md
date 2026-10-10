@@ -1,12 +1,13 @@
 # Dea Project Status
 
-Version: 2026-10-09
+Version: 2026-10-10
 
 This document summarizes the current status of the Dea project at the monorepo level.
 
-Today the repository contains one active release line, Dea/L0, plus a self-hosted development subtree for Dea/L1. L0
-remains the canonical user-facing toolchain and documentation set for current releases. L1 exists so post-L0 language
-evolution can continue inside the monorepo without changing the current L0 release target.
+The repository contains one active release line, Dea/L0, and independent development levels L1 and L2. L0 remains the
+current stable toolchain. L1 has one compiler implemented in L0; L2 has one compiler implemented in L1. L1 0.1.0 is the
+intended future canonical L1 development-toolchain release. Fresh artifact acceptance and hosted release work remain
+prerequisites.
 
 ## Scope and Canonical References
 
@@ -19,6 +20,7 @@ Use this file as the Dea-wide status snapshot. For more specific details, use:
 - [l0/docs/releases/2.1.1.md](../l0/docs/releases/2.1.1.md) for the current L0 2.1.1 release and compatibility guidance.
 - [l1/docs/project-status.md](../l1/docs/project-status.md) for the current L1 implementation and delivery status.
 - [l1/README.md](../l1/README.md) for the current L1 development and installation entry point.
+- [l2/docs/project-status.md](../l2/docs/project-status.md) for independent L2 construction and validation.
 - [docs/specs/compiler/cli-contract.md](specs/compiler/cli-contract.md) for the shared compiler CLI contract.
 
 ## Current Repository Shape
@@ -26,19 +28,18 @@ Use this file as the Dea-wide status snapshot. For more specific details, use:
 The monorepo currently contains:
 
 - `l0/` as the implemented language, compiler, runtime, docs, examples, and release subtree.
-- `l1/` as the in-progress next-level subtree.
-- `editors/` for shared Dea/L0 and Dea/L1 syntax highlighting, fallback modes, navigation indexes, the in-repository
-  Tree-sitter grammar, fixtures, and focused validation.
+- `l1/` as the L0-implemented canonical L1 toolchain subtree.
+- `l2/` as the L1-implemented canonical L2 toolchain subtree.
+- `editors/` for shared Dea/L0, Dea/L1, and Dea/L2 syntax highlighting, fallback modes, navigation indexes, the
+  in-repository Tree-sitter grammar, fixtures, and focused validation.
 - `scripts/` for monorepo-owned automation and shared helper modules.
 - `docs/` for Dea-wide and monorepo-wide stable documentation.
 - `work/` for Dea-wide and monorepo-wide plans/proposals.
 - `tools/` for vendored third-party dependencies.
 
-Inside `l1/`, the compiler layout is:
-
-- `compiler/stage1_l0/` for the first L1 compiler implemented in L0,
-- `compiler/stage2_l1/` for the self-hosted L1 compiler,
-- `compiler/shared/runtime/` and `compiler/shared/l1/stdlib/` for copied shared bootstrap assets.
+L1 and L2 each own `compiler/src/`, `compiler/support/`, `compiler/tests/`, and `compiler/scripts/`. Their target
+stdlibs and runtimes live under each level's `compiler/shared/` tree. L1 compiler implementation sources remain `.l0`;
+L2 compiler implementation sources remain `.l1`. L2 program sources use `.l2` and interfaces `.l2m`.
 
 ## Language-Level Status
 
@@ -64,15 +65,14 @@ minimum. The existing L0 language and CLI contract is unchanged from 2.0.0.
 
 ### Dea/L1
 
-L1 supports self-hosted development and standalone Stage 2 delivery; hosted releases remain pending.
+L1 supports canonical development and standalone installation/distribution. Hosted releases remain pending.
 
 Its repository status today is:
 
 - maintained as a separate language subtree under `l1/`,
-- bootstrapped through an explicit L0 compiler into L1 Stage 1 and self-hosted Stage 2, with explicit repo-local `l1c`
-  selection and a self-built Stage 2 delivery chain,
-- validated through both stages' normal suites, parity, trace checks, and strict triple bootstrap,
-- using `.l1` for the self-hosted compiler, L1 stdlib, examples, and language fixtures,
+- constructed through an explicit L0 compiler, with one canonical repo-local `l1c` and no stage selection,
+- validated through normal suites, environment/bootstrap integration, target examples, and ARC/memory trace checks,
+- using `.l0` for the compiler implementation and `.l1` for the L1 stdlib, examples, and language fixtures,
 - carrying implemented post-L0 language work such as wider numeric types, real literals, bitwise operators, top-level
   `const` with checked scalar constant expressions, string value comparisons, nullable/pointer identity equality, named
   arguments, the `is(...)` enum tag intrinsic, function pointer and L1-defined variadic function types, `unsafe func`,
@@ -85,25 +85,34 @@ Its repository status today is:
   libraries, search paths, rpaths, and raw host-driver arguments in every link-involving mode,
 - shipping bootstrap-oriented stdlib growth such as `std.real`, wider integer I/O/math helpers, and the new `std.types`
   value-type helper surface,
-- supporting self-built Stage 2 installation and local distribution archives with verified offline HTML/PDF
-  documentation and reusable archive smoke validation; native artifact acceptance passed on Linux x86_64, macOS
-  Intel/ARM, and Windows UCRT64, including fresh verification hosts without checkout or bootstrap compilers.
+- supporting private installed-compiler construction, verified bundled semantic inputs, stage-free schema-2 inventory
+  and offline HTML/PDF documentation, local distribution archives, and reusable archive smoke validation.
 
-L1 bootstrap CI validation is now automated through the unified `ci.yml` GitHub Actions workflow, which routes
-L1-relevant changes into the reusable `l1-ci.yml` delegate. That path covers:
+The former Stage 2 artifact passed native acceptance on Linux x86_64, macOS Intel/ARM, and Windows UCRT64. That record
+is historical: the retargeted canonical artifact requires fresh build/verify acceptance on all four platforms, including
+fresh verification hosts without a checkout or bootstrap compiler. The existing acceptance workflow is adapted for that
+artifact; local implementation checks alone do not satisfy the release prerequisite.
 
-- building the L1 Stage 1 compiler via an explicit upstream L0 Stage 2 compiler on Linux, macOS, and Windows,
-- running `make test-ci` for both compiler stages, including normal suites, environment/bootstrap integration,
-  ARC/memory trace sweeps, child fixtures, and strict triple bootstrap,
-- validating `examples/*.l1` sources, and
-- providing `workflow_dispatch` inputs for platform selection, manual C compiler selection, and explicit Make-target
-  selection; the focused Windows-capable trace smoke target remains available for manual diagnostics.
+The unified `ci.yml` routes L1 changes through `l1-ci.yml`. Its `make test-ci` gate covers canonical normal tests,
+CI-only cases, environment/bootstrap integration, ARC/memory traces, child fixtures, and examples on Linux, macOS, and
+Windows. Manual platform, compiler, and Make-target selection remain available.
 
-L1 release and snapshot workflows (`l1-v*` and `l1-snapshot-*`) are not yet implemented or active. The install/dist
-contract and four-platform artifact acceptance are complete;
+L1 release and snapshot workflows (`l1-v*` and `l1-snapshot-*`) are not implemented or active.
 [work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md](../work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md)
-now consumes the validated commands and artifacts and owns workflow implementation and separately authorized hosted
-publication acceptance. See [MONOREPO.md](../MONOREPO.md) for the release-line gating policy.
+remains deferred until the split and fresh artifact acceptance are complete. Its eventual implementation, tags,
+dispatches, and hosted publication retain separate authorization boundaries.
+
+### Dea/L2
+
+L2 starts from the former L1 Stage 2 and owns physical copies of its implementation support, target stdlib, and runtime.
+Its canonical `l2c` accepts `.l2` programs and emits `.l2m` interfaces with the inherited language semantics. The split
+adds no language feature and creates no perpetual cross-level parity gate.
+
+Building L2 requires `L2_BOOTSTRAP_L1C` pointing to an installed canonical L1 toolchain. L1 compiles the `.l1`
+implementation and implementation tests; `l2c` handles `.l2` target fixtures and examples. Ordinary L2 compilation and
+native preparation use only L2-owned inputs. CI adds independent L2 routing, four-platform native validation, and a
+Linux isolation gate that excludes sibling checkouts during construction and excludes the bootstrap compiler during
+operation. L2 installation, productization, and hosted releases are outside this split.
 
 ## Release Model
 
@@ -122,8 +131,8 @@ The monorepo now has a small but real shared top-level layer:
 
 - root `work/plans/` for Dea-wide planning,
 - root `docs/` for Dea-wide status and reference documents,
-- root `editors/` for distinct L0/L1 editor identities backed by shared TextMate, Vim, Emacs, Universal Ctags, and the
-  in-repository `editors/tree-sitter-dea/` L1-superset grammar package,
+- root `editors/` for distinct L0/L1/L2 editor identities backed by shared TextMate, Vim, Emacs, Universal Ctags, and
+  the in-repository `editors/tree-sitter-dea/` L1-superset grammar package,
 - root `AGENTS.md` for monorepo-wide workflow policy,
 - root `Makefile` for shared `help`, `venv`, `test`, `test-extended`, `clean`, and `clean-all`,
 - root `scripts/dea_tooling/` for shared launcher/bootstrap helpers.
@@ -135,6 +144,8 @@ by the relevant level subtree.
 
 - Dea/L0 `2.1.1` is the stable release line. User-visible fixes and future compatibility changes remain governed by L0
   semantic versioning and Stage 1/Stage 2 parity.
-- Dea/L1 provides a validated self-built Stage 2 development toolchain. Hosted release/snapshot workflows and verified
-  publication remain pending; local productization awaits formal plan closure. Its current direction is maintained in
-  [l1/docs/roadmap.md](../l1/docs/roadmap.md).
+- Dea/L1 remains open to feature development. Its current direction is maintained in
+  [l1/docs/roadmap.md](../l1/docs/roadmap.md); profiles/composable builds remain intended for L1 first and later L2
+  porting, with no implementation advanced by the split.
+- Dea/L2 is independently maintained under the canonical compiler lineage recorded in
+  [docs/decisions/0022-single-compiler-level-lineage.md](decisions/0022-single-compiler-level-lineage.md).

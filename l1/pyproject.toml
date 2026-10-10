@@ -1,7 +1,7 @@
 [project]
 name = "l1c"
 version = "0.1.0.dev0"
-description = "L1 language compiler bootstrap"
+description = "L1 compiler implemented in L0"
 authors = [{ name = "gwz (googlielmo)", email = "googlielmo@gmail.com" }]
 requires-python = ">=3.14"
 dependencies = []
@@ -11,4 +11,4 @@ package = false
 
 [tool.pytest.ini_options]
 addopts = "-n auto"
-testpaths = ["compiler/stage1_l0/tests"]
+testpaths = ["compiler/tests"]

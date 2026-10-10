@@ -1,0 +1,41 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+/**
+ * Module: std.unit
+ *
+ * This module defines the Unit type, a value with no associated data.
+ * It also provides constructors for Unit and optional Unit values.
+ *
+ * Optional Unit is intended for functions that would otherwise return void:
+ * a present Unit denotes success; null denotes failure.
+ *
+ * The form `f()?;` evaluates f and causes an immediate `null` return
+ * from the current function if f fails.
+ */
+module std.unit;
+
+/**
+ * Definition of the Unit type, representing a value with no information.
+ */
+struct Unit {}
+
+/**
+ * Returns a Unit value.
+ *
+ * @return A Unit instance.
+ */
+func unit() -> Unit {
+    return Unit();
+}
+
+/**
+ * Returns a non-null optional Unit value.
+ *
+ * @return A present Unit optional.
+ */
+func present() -> Unit? {
+    return Unit() as Unit?;
+}

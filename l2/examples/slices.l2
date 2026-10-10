@@ -1,0 +1,132 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module slices;
+
+import std.io;
+import std.string;
+
+/**
+ * Sums all values in a non-owning integer slice.
+ *
+ * @param values Slice of integer values to sum.
+ * @return The sum of all elements in the slice.
+ */
+func sum(values: int[]) -> int {
+    let total = 0;
+    for (let i = 0; i < len(values); i = i + 1) {
+        total = total + values[i];
+    }
+    return total;
+}
+
+/**
+ * Adds a value to the first element of a non-empty integer slice.
+ *
+ * The mutation is visible through any other slice backed by the same array.
+ *
+ * @param values Slice whose first element should be changed.
+ * @param delta Amount to add to the first element.
+ */
+func add_to_first(values: int[], delta: int) {
+    if (len(values) > 0) {
+        values[0] = values[0] + delta;
+    }
+}
+
+/**
+ * Prints an integer slice on one line.
+ *
+ * @param label Label to print before the slice contents.
+ * @param values Slice of values to print.
+ */
+func print_int_slice(label: string, values: int[]) {
+    print_s(label);
+    print_s(": [");
+    for (let i = 0; i < len(values); i = i + 1) {
+        if (i > 0) {
+            print_s(", ");
+        }
+        print_i(values[i]);
+    }
+    printl_s("]");
+}
+
+/**
+ * Prints a string slice on one line.
+ *
+ * @param label Label to print before the slice contents.
+ * @param values Slice of values to print.
+ */
+func print_string_slice(label: string, values: string[]) {
+    print_s(label);
+    print_s(": [");
+    for (let i = 0; i < len(values); i = i + 1) {
+        if (i > 0) {
+            print_s(", ");
+        }
+        print_s("\"");
+        print_s(values[i]);
+        print_s("\"");
+    }
+    printl_s("]");
+}
+
+/**
+ * Sums the byte lengths of all strings in a non-owning string slice.
+ *
+ * @param values Slice of strings to measure.
+ * @return Total byte length of all strings in the slice.
+ */
+func total_string_length(values: string[]) -> int {
+    let total = 0;
+    for (let i = 0; i < len(values); i = i + 1) {
+        total = total + len_s(values[i]);
+    }
+    return total;
+}
+
+/**
+ * Demonstrates fixed-array to slice conversion, range slicing, `len`, indexed
+ * access, and mutation through a slice view.
+ *
+ * @return Zero on success.
+ */
+func main() -> int {
+    let scores: int[5] = [4, 8, 15, 16, 23];
+    let all: int[] = scores;
+    let middle = slice(scores, 1, 3);
+    let tail = slice(all, 3);
+
+    print_int_slice("all scores", all);
+    print_int_slice("middle scores", middle);
+    print_int_slice("tail scores", tail);
+    printl_si("middle sum", sum(middle));
+
+    printl();
+    printl_s("adding 100 to middle[0]");
+    add_to_first(middle, 100);
+    print_int_slice("new all scores", all);
+    print_int_slice("new middle scores", middle);
+    print_int_slice("new tail scores", tail);
+    printl_si("new middle sum", sum(middle));
+
+    printl();
+    let names: string[5] = ["Ada", "Grace", "Margaret", "Barbara", "?"];
+    let first_two: string[] = slice(names, 0, 2);
+    let last_two = slice(names, 3, 2);
+    print_string_slice("all names", names);
+    printl_si("first two names total length:", total_string_length(first_two));
+    printl_si("last two names total length:", total_string_length(last_two));
+
+    printl();
+    printl_s("changing last_two[1]");
+    last_two[1] = "Frances";
+    print_string_slice("new last names", last_two);
+    print_string_slice("new all names", names);
+    printl_si("new last two names total length:", total_string_length(last_two));
+
+    return 0;
+}

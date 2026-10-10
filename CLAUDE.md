@@ -6,12 +6,15 @@ Read `AGENTS.md` first for monorepo structure, then read the level-local guide b
 
 The root `Makefile` is monorepo-only orchestration (`help`, `venv`, `test`, `test-extended`, `clean`, `clean-all`). Root
 `test` and `test-extended` delegate to the corresponding target in each registered level. The extended tier varies by
-level: L0 includes its Stage 2 trace sweep, while L1 covers both Stage 1 and Stage 2 normal suites. Use
-`make -C l1 test-ci` for exhaustive L1 validation. Focused level-specific commands still run inside the level directory.
+level: L0 includes its Stage 2 trace sweep, while L1 and L2 cover their canonical normal suites. Use level-local
+`test-ci` for exhaustive compiler validation. L2 construction requires explicit installed `L2_BOOTSTRAP_L1C`; focused
+level-specific commands run inside the owning directory.
 
 For Dea/L0 work, use `l0/AGENTS.md`.
 
 For Dea/L1 work, use `l1/AGENTS.md`.
+
+For Dea/L2 work, use `l2/AGENTS.md`.
 
 Non-negotiable remote and publication rules from `AGENTS.md`:
 
@@ -19,11 +22,11 @@ Non-negotiable remote and publication rules from `AGENTS.md`:
   creation, remote writes, or publication.
 - A local commit never authorizes a push. Pushes require an explicit request and verification of the checked-out
   branch's configured upstream.
-- Public, cross-repository, workflow-dispatching, or deployment-triggering writes require fresh user confirmation
-  immediately before execution, with the exact target, pending changes, and downstream effects disclosed.
+- Public, cross-repository, workflow-dispatching, or deployment-triggering writes require fresh project-maintainer
+  confirmation immediately before execution, with the exact target, pending changes, and downstream effects disclosed.
 - Never push a public branch unless this repository's instructions designate that target and the checked-out branch
   tracks the exact public remote and branch. Do not bypass this safeguard with an ad hoc refspec or upstream change.
 - Creating a release tag requires an explicit request naming the tag and target. Pushing it always requires a separate,
   fresh confirmation that discloses all publication effects.
-- Agent review, tests, CI, sandbox approval, credentials, or tool approval never substitute for user review or
-  authorization.
+- Agent review, tests, CI, sandbox approval, credentials, or tool approval never substitute for project-maintainer
+  review or authorization.

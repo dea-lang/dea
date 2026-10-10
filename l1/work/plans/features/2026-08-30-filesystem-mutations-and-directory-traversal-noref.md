@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Priority: 1
-- Stage: L1
+- Stage: Canonical
 - Parent Initiative: `l1/work/initiatives/0005-filesystem-and-stream-io.md`
 - Subsystem: Stdlib / runtime / filesystem
 - Modules:
@@ -20,14 +20,14 @@
   - `l1/compiler/shared/runtime/src/dea_rt_io.c`
   - `l1/docs/reference/standard-library.md`
 - Test modules:
-  - `l1/compiler/stage1_l0/tests/filesystem_runtime_test.l0`
-  - `l1/compiler/stage1_l0/tests/directory_runtime_test.l0`
-  - `l1/compiler/stage1_l0/tests/compiler_filesystem_support_test.py`
+  - `l1/compiler/tests/filesystem_runtime_test.l0`
+  - `l1/compiler/tests/directory_runtime_test.l0`
+  - `l1/compiler/tests/compiler_filesystem_support_test.py`
 - Related:
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
   - `l1/work/plans/features/closed/2026-08-30-wide-filesystem-metadata-noref.md`
   - `l1/work/plans/features/2026-08-30-os-error-and-io-results-noref.md`
-- Repro: `make -C l1 test-stage1 TESTS="filesystem_runtime_test directory_runtime_test"`
+- Repro: `make -C l1 test-compiler TESTS="filesystem_runtime_test directory_runtime_test"`
 
 ## Summary
 

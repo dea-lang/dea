@@ -1,11 +1,11 @@
 # The L1 Standard Library
 
-Version: 2026-09-07
+Version: 2026-10-10
 
 The standard library provides ergonomic L1 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
 For canonical ownership behavior around `new`/`drop`, ARC strings, and container-specific retain/release patterns, see
-[ownership.md](ownership.md).
+[l1/docs/reference/ownership.md](ownership.md).
 
 ## Architecture Overview
 
@@ -364,8 +364,8 @@ Unsigned `ulong` helpers intentionally omit signed-only concepts such as `sign_u
 Floating-point helper module for classification, basic operations, rounding, remainder/decomposition, and transcendental
 math.
 
-`PI_F`, `PI`, `E_F`, `E`, `NAN_F`, `NAN`, `INFINITY_F`, and `INFINITY` are module-level `let` values. Stage 1 now lowers
-runtime-initialized top-level `let` bindings through hidden module-init functions that run before user `main`.
+`PI_F`, `PI`, `E_F`, `E`, `NAN_F`, `NAN`, `INFINITY_F`, and `INFINITY` are module-level `let` values. The compiler
+lowers runtime-initialized top-level `let` bindings through hidden module-init functions that run before user `main`.
 
 The `modf_*` and `frexp_*` helpers return small named result structs:
 

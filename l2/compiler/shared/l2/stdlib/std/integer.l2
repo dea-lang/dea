@@ -1,0 +1,1554 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+/**
+ * This module provides integer-focused mathematical utility functions.
+ */
+module std.integer;
+
+import std.assert;
+
+/**
+ * Returns the maximum value for a 32-bit signed integer.
+ *
+ * @return INT_MAX.
+ */
+func int_max() -> int {
+    return 0x7fffffff; // 2147483647
+}
+
+/**
+ * Returns the minimum value for a 32-bit signed integer.
+ *
+ * @return INT_MIN.
+ */
+func int_min() -> int {
+    return -0x80000000; // -2147483648
+}
+
+/**
+ * Performs checked integer addition.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The sum, or null on overflow.
+ */
+func checked_add_int(a: int, b: int) -> int? {
+    if (b > 0 && a > int_max() - b) {
+        return null;
+    }
+    if (b < 0 && a < int_min() - b) {
+        return null;
+    }
+    return a + b;
+}
+
+/**
+ * Performs checked integer subtraction.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The difference, or null on overflow.
+ */
+func checked_sub_int(a: int, b: int) -> int? {
+    if (b < 0 && a > int_max() + b) {
+        return null;
+    }
+    if (b > 0 && a < int_min() + b) {
+        return null;
+    }
+    return a - b;
+}
+
+/**
+ * Performs checked integer multiplication.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The product, or null on overflow.
+ */
+func checked_mul_int(a: int, b: int) -> int? {
+    if (a == 0 || b == 0) {
+        return 0;
+    }
+    if ((a == -1 && b == int_min()) || (b == -1 && a == int_min())) {
+        return null;
+    }
+    if (a > 0 && b > 0) {
+        if (a > int_max() / b) {
+            return null;
+        }
+    } else if (a > 0 && b < 0) {
+        if (b < int_min() / a) {
+            return null;
+        }
+    } else if (a < 0 && b > 0) {
+        if (a < int_min() / b) {
+            return null;
+        }
+    } else if (a < int_max() / b) {
+        return null;
+    }
+    return a * b;
+}
+
+/**
+ * Returns the maximum value for a 32-bit unsigned integer.
+ *
+ * @return UINT_MAX.
+ */
+func uint_max() -> uint {
+    return 0xffffffff; // 4294967295
+}
+
+/**
+ * Returns the maximum value for a 64-bit signed integer.
+ *
+ * @return LONG_MAX.
+ */
+func long_max() -> long {
+    return 0x7fffffffffffffff; // 9223372036854775807
+}
+
+/**
+ * Returns the minimum value for a 64-bit signed integer.
+ *
+ * @return LONG_MIN.
+ */
+func long_min() -> long {
+    return -0x8000000000000000; // -9223372036854775808
+}
+
+/**
+ * Returns the maximum value for a 64-bit unsigned integer.
+ *
+ * @return ULONG_MAX.
+ */
+func ulong_max() -> ulong {
+    return 0xffffffffffffffff; // 18446744073709551615
+}
+
+/**
+ * Performs checked unsigned 32-bit addition.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The sum, or null on overflow.
+ */
+func checked_add_uint(a: uint, b: uint) -> uint? {
+    if (a > uint_max() - b) {
+        return null;
+    }
+    return a + b;
+}
+
+/**
+ * Performs checked unsigned 32-bit subtraction.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The difference, or null on underflow.
+ */
+func checked_sub_uint(a: uint, b: uint) -> uint? {
+    if (a < b) {
+        return null;
+    }
+    return a - b;
+}
+
+/**
+ * Performs checked unsigned 32-bit multiplication.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The product, or null on overflow.
+ */
+func checked_mul_uint(a: uint, b: uint) -> uint? {
+    let zero: uint = 0;
+    if (a == zero || b == zero) {
+        return zero;
+    }
+    if (a > uint_max() / b) {
+        return null;
+    }
+    return a * b;
+}
+
+/**
+ * Performs checked 64-bit signed addition.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The sum, or null on overflow.
+ */
+func checked_add_long(a: long, b: long) -> long? {
+    if (b > 0 && a > long_max() - b) {
+        return null;
+    }
+    if (b < 0 && a < long_min() - b) {
+        return null;
+    }
+    return a + b;
+}
+
+/**
+ * Performs checked 64-bit signed subtraction.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The difference, or null on overflow.
+ */
+func checked_sub_long(a: long, b: long) -> long? {
+    if (b < 0 && a > long_max() + b) {
+        return null;
+    }
+    if (b > 0 && a < long_min() + b) {
+        return null;
+    }
+    return a - b;
+}
+
+/**
+ * Performs checked 64-bit signed multiplication.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The product, or null on overflow.
+ */
+func checked_mul_long(a: long, b: long) -> long? {
+    if (a == 0 || b == 0) {
+        return 0;
+    }
+    if ((a == -1 && b == long_min()) || (b == -1 && a == long_min())) {
+        return null;
+    }
+    if (a > 0 && b > 0) {
+        if (a > long_max() / b) {
+            return null;
+        }
+    } else if (a > 0 && b < 0) {
+        if (b < long_min() / a) {
+            return null;
+        }
+    } else if (a < 0 && b > 0) {
+        if (a < long_min() / b) {
+            return null;
+        }
+    } else if (a < long_max() / b) {
+        return null;
+    }
+    return a * b;
+}
+
+/**
+ * Performs checked unsigned 64-bit addition.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The sum, or null on overflow.
+ */
+func checked_add_ulong(a: ulong, b: ulong) -> ulong? {
+    if (a > ulong_max() - b) {
+        return null;
+    }
+    return a + b;
+}
+
+/**
+ * Performs checked unsigned 64-bit subtraction.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The difference, or null on underflow.
+ */
+func checked_sub_ulong(a: ulong, b: ulong) -> ulong? {
+    if (a < b) {
+        return null;
+    }
+    return a - b;
+}
+
+/**
+ * Performs checked unsigned 64-bit multiplication.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The product, or null on overflow.
+ */
+func checked_mul_ulong(a: ulong, b: ulong) -> ulong? {
+    let zero: ulong = 0;
+    if (a == zero || b == zero) {
+        return zero;
+    }
+    if (a > ulong_max() / b) {
+        return null;
+    }
+    return a * b;
+}
+
+/**
+ * Calculates the Euclidean modulo: always returns a non-negative result,
+ * even if `a` is negative. Requires `b > 0`.
+ *
+ * @param a The dividend.
+ * @param b The divisor (must be > 0).
+ * @return The non-negative remainder.
+ */
+func emod(a: int, b: int) -> int {
+    assert(b > 0, "emod: divisor must be greater than 0");
+    let r = a % b;
+    if (r < 0) {
+        return r + b;
+    }
+    return r;
+}
+
+/**
+ * Calculates the Euclidean quotient paired with `emod`.
+ *
+ * @param a The dividend.
+ * @param b The divisor (must be > 0).
+ * @return The Euclidean quotient.
+ */
+func ediv(a: int, b: int) -> int {
+    assert(b > 0, "ediv: divisor must be greater than 0");
+    return div_floor(a, b);
+}
+
+/**
+ * Calculates the mathematical floor of `a / b`.
+ *
+ * The quotient must be representable as `int`.
+ *
+ * @param a The dividend.
+ * @param b The divisor (must be non-zero).
+ * @return The floor quotient.
+ */
+func div_floor(a: int, b: int) -> int {
+    assert(b != 0, "div_floor: divisor must be non-zero");
+    assert(!(a == int_min() && b == -1), "div_floor: result must be representable");
+
+    let q = a / b;
+    let r = a % b;
+    if (r != 0 && ((r > 0 && b < 0) || (r < 0 && b > 0))) {
+        let out = checked_sub_int(q, 1);
+        assert(out != null, "div_floor: result must be representable");
+        return out as int;
+    }
+    return q;
+}
+
+/**
+ * Calculates the mathematical ceiling of `a / b`.
+ *
+ * The quotient must be representable as `int`.
+ *
+ * @param a The dividend.
+ * @param b The divisor (must be non-zero).
+ * @return The ceiling quotient.
+ */
+func div_ceil(a: int, b: int) -> int {
+    assert(b != 0, "div_ceil: divisor must be non-zero");
+    assert(!(a == int_min() && b == -1), "div_ceil: result must be representable");
+
+    let q = a / b;
+    let r = a % b;
+    if (r != 0 && ((r > 0 && b > 0) || (r < 0 && b < 0))) {
+        let out = checked_add_int(q, 1);
+        assert(out != null, "div_ceil: result must be representable");
+        return out as int;
+    }
+    return q;
+}
+
+/**
+ * Returns the smaller of two integers.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The minimum value.
+ */
+func min(a: int, b: int) -> int {
+    if (a <= b) {
+        return a;
+    }
+    return b;
+}
+
+/**
+ * Returns the larger of two integers.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The maximum value.
+ */
+func max(a: int, b: int) -> int {
+    if (a >= b) {
+        return a;
+    }
+    return b;
+}
+
+/**
+ * Clamps `x` into the closed interval `[lo, hi]`.
+ *
+ * @param x The value to clamp.
+ * @param lo The lower bound.
+ * @param hi The upper bound.
+ * @return The clamped value.
+ */
+func clamp(x: int, lo: int, hi: int) -> int {
+    assert(lo <= hi, "clamp: lower bound must be less than or equal to upper bound");
+    if (x < lo) {
+        return lo;
+    }
+    if (x > hi) {
+        return hi;
+    }
+    return x;
+}
+
+/**
+ * Returns the sign of `x` as `-1`, `0`, or `1`.
+ *
+ * @param x The input value.
+ * @return The sign indicator.
+ */
+func sign(x: int) -> int {
+    if (x < 0) {
+        return -1;
+    }
+    if (x > 0) {
+        return 1;
+    }
+    return 0;
+}
+
+/**
+ * Returns whether `x` is even.
+ *
+ * @param x The input value.
+ * @return True when `x` is evenly divisible by 2.
+ */
+func is_even(x: int) -> bool {
+    return x % 2 == 0;
+}
+
+/**
+ * Returns whether `x` is odd.
+ *
+ * @param x The input value.
+ * @return True when `x` is not evenly divisible by 2.
+ */
+func is_odd(x: int) -> bool {
+    return x % 2 != 0;
+}
+
+/**
+ * Returns whether `a` is a multiple of `b`.
+ *
+ * @param a The dividend.
+ * @param b The divisor (must be non-zero).
+ * @return True when `a` is evenly divisible by `b`.
+ */
+func is_multiple(a: int, b: int) -> bool {
+    assert(b != 0, "is_multiple: divisor must be non-zero");
+    if (b == -1) {
+        return true;
+    }
+    return a % b == 0;
+}
+
+/**
+ * Returns the absolute value of `x`.
+ *
+ * @param x The input value.
+ * @return The absolute value, or null when it is not representable as `int`.
+ */
+func abs(x: int) -> int? {
+    if (x >= 0) {
+        return x;
+    }
+    return checked_sub_int(0, x);
+}
+
+/**
+ * Returns the non-negative greatest common divisor of `a` and `b`.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The greatest common divisor, or null when it is not representable as `int`.
+ */
+func gcd(a: int, b: int) -> int? {
+    let x = a;
+    let y = b;
+    if (x > 0) {
+        x = -x;
+    }
+    if (y > 0) {
+        y = -y;
+    }
+    if (x == 0) {
+        return abs(y);
+    }
+    if (y == 0) {
+        return abs(x);
+    }
+
+    while (y != 0) {
+        if (y == -1) {
+            return 1;
+        }
+        let r = x % y;
+        x = y;
+        y = r;
+    }
+    return abs(x);
+}
+
+/**
+ * Returns the non-negative least common multiple of `a` and `b`.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The least common multiple, or null when it is not representable as `int`.
+ */
+func lcm(a: int, b: int) -> int? {
+    if (a == 0 || b == 0) {
+        return 0;
+    }
+
+    let g = gcd(a, b);
+    if (g == null) {
+        return null;
+    }
+
+    let g_value = g as int;
+    let reduced = a / g_value;
+    let product = checked_mul_int(reduced, b);
+    if (product == null) {
+        return null;
+    }
+    return abs(product as int);
+}
+
+/**
+ * Returns `base` raised to the non-negative exponent `exp`.
+ *
+ * @param base The base value.
+ * @param exp The exponent.
+ * @return The result, or null when `exp < 0` or the result is not representable as `int`.
+ */
+func pow(base: int, exp: int) -> int? {
+    if (exp < 0) {
+        return null;
+    }
+
+    let result = 1;
+    let factor = base;
+    let remaining = exp;
+    while (remaining > 0) {
+        if (is_odd(remaining)) {
+            let next = checked_mul_int(result, factor);
+            if (next == null) {
+                return null;
+            }
+            result = next as int;
+        }
+        remaining = remaining / 2;
+        if (remaining > 0) {
+            let squared = checked_mul_int(factor, factor);
+            if (squared == null) {
+                return null;
+            }
+            factor = squared as int;
+        }
+    }
+    return result;
+}
+
+/**
+ * Returns the floor integer square root of `x`.
+ *
+ * @param x The input value.
+ * @return The floor square root, or null when `x < 0`.
+ */
+func isqrt(x: int) -> int? {
+    if (x < 0) {
+        return null;
+    }
+    if (x == 0) {
+        return 0;
+    }
+
+    let lo = 1;
+    let hi = 46340;
+    let best = 0;
+    if (x < hi) {
+        hi = x;
+    }
+    while (lo <= hi) {
+        let mid = lo + (hi - lo) / 2;
+        if (mid <= x / mid) {
+            best = mid;
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    return best;
+}
+
+/**
+ * Rounds `x` down to the nearest multiple of `align`.
+ *
+ * @param x The input value.
+ * @param align The positive alignment.
+ * @return The aligned value, or null when the mathematical result is not representable as `int`.
+ */
+func align_down(x: int, align: int) -> int? {
+    assert(align > 0, "align_down: alignment must be greater than 0");
+    let r = emod(x, align);
+    if (r == 0) {
+        return x;
+    }
+    return checked_sub_int(x, r);
+}
+
+/**
+ * Rounds `x` up to the nearest multiple of `align`.
+ *
+ * @param x The input value.
+ * @param align The positive alignment.
+ * @return The aligned value, or null when the mathematical result is not representable as `int`.
+ */
+func align_up(x: int, align: int) -> int? {
+    assert(align > 0, "align_up: alignment must be greater than 0");
+    let r = emod(x, align);
+    if (r == 0) {
+        return x;
+    }
+    return checked_add_int(x, align - r);
+}
+
+/**
+ * Returns whether `x` is already aligned to `align`.
+ *
+ * @param x The input value.
+ * @param align The positive alignment.
+ * @return True when `x` is a multiple of `align`.
+ */
+func is_aligned(x: int, align: int) -> bool {
+    assert(align > 0, "is_aligned: alignment must be greater than 0");
+    return emod(x, align) == 0;
+}
+
+/**
+ * Divides one unsigned 32-bit integer by another.
+ *
+ * @param a The dividend.
+ * @param b The divisor (must be non-zero).
+ * @return The quotient.
+ */
+func div_ui(a: uint, b: uint) -> uint {
+    let zero: uint = 0;
+    assert(b != zero, "div_ui: divisor must be non-zero");
+    return a / b;
+}
+
+/**
+ * Computes the unsigned 32-bit remainder.
+ *
+ * @param a The dividend.
+ * @param b The divisor (must be non-zero).
+ * @return The remainder.
+ */
+func mod_ui(a: uint, b: uint) -> uint {
+    let zero: uint = 0;
+    assert(b != zero, "mod_ui: divisor must be non-zero");
+    return a % b;
+}
+
+/**
+ * Calculates the ceiling of unsigned 32-bit division.
+ *
+ * @param a The dividend.
+ * @param b The divisor (must be non-zero).
+ * @return The ceiling quotient.
+ */
+func div_ceil_ui(a: uint, b: uint) -> uint {
+    let zero: uint = 0;
+    let one: uint = 1;
+    assert(b != zero, "div_ceil_ui: divisor must be non-zero");
+    let q = a / b;
+    let r = a % b;
+    if (r == zero) {
+        return q;
+    }
+    return q + one;
+}
+
+/**
+ * Returns the smaller of two unsigned 32-bit integers.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The minimum value.
+ */
+func min_ui(a: uint, b: uint) -> uint {
+    if (a <= b) {
+        return a;
+    }
+    return b;
+}
+
+/**
+ * Returns the larger of two unsigned 32-bit integers.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The maximum value.
+ */
+func max_ui(a: uint, b: uint) -> uint {
+    if (a >= b) {
+        return a;
+    }
+    return b;
+}
+
+/**
+ * Clamps `x` into the closed unsigned 32-bit interval `[lo, hi]`.
+ *
+ * @param x The value to clamp.
+ * @param lo The lower bound.
+ * @param hi The upper bound.
+ * @return The clamped value.
+ */
+func clamp_ui(x: uint, lo: uint, hi: uint) -> uint {
+    assert(lo <= hi, "clamp_ui: lower bound must be less than or equal to upper bound");
+    if (x < lo) {
+        return lo;
+    }
+    if (x > hi) {
+        return hi;
+    }
+    return x;
+}
+
+/**
+ * Returns whether an unsigned 32-bit integer is even.
+ *
+ * @param x The input value.
+ * @return True when `x` is evenly divisible by 2.
+ */
+func is_even_ui(x: uint) -> bool {
+    let zero: uint = 0;
+    let two: uint = 2;
+    return x % two == zero;
+}
+
+/**
+ * Returns whether an unsigned 32-bit integer is odd.
+ *
+ * @param x The input value.
+ * @return True when `x` is not evenly divisible by 2.
+ */
+func is_odd_ui(x: uint) -> bool {
+    let zero: uint = 0;
+    let two: uint = 2;
+    return x % two != zero;
+}
+
+/**
+ * Returns whether `a` is a multiple of `b`.
+ *
+ * @param a The dividend.
+ * @param b The divisor (must be non-zero).
+ * @return True when `a` is evenly divisible by `b`.
+ */
+func is_multiple_ui(a: uint, b: uint) -> bool {
+    let zero: uint = 0;
+    assert(b != zero, "is_multiple_ui: divisor must be non-zero");
+    return a % b == zero;
+}
+
+/**
+ * Returns the greatest common divisor of two unsigned 32-bit integers.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The greatest common divisor.
+ */
+func gcd_ui(a: uint, b: uint) -> uint {
+    let zero: uint = 0;
+    let x = a;
+    let y = b;
+    while (y != zero) {
+        let r = x % y;
+        x = y;
+        y = r;
+    }
+    return x;
+}
+
+/**
+ * Returns the least common multiple of two unsigned 32-bit integers.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The least common multiple, or null on overflow.
+ */
+func lcm_ui(a: uint, b: uint) -> uint? {
+    let zero: uint = 0;
+    if (a == zero || b == zero) {
+        return zero;
+    }
+    let reduced = a / gcd_ui(a, b);
+    return checked_mul_uint(reduced, b);
+}
+
+/**
+ * Returns `base` raised to the non-negative exponent `exp`.
+ *
+ * @param base The base value.
+ * @param exp The exponent.
+ * @return The result, or null when `exp < 0` or the result overflows.
+ */
+func pow_ui(base: uint, exp: int) -> uint? {
+    if (exp < 0) {
+        return null;
+    }
+
+    let result: uint = 1;
+    let factor = base;
+    let remaining = exp;
+    while (remaining > 0) {
+        if (is_odd(remaining)) {
+            let next = checked_mul_uint(result, factor);
+            if (next == null) {
+                return null;
+            }
+            result = next as uint;
+        }
+        remaining = remaining / 2;
+        if (remaining > 0) {
+            let squared = checked_mul_uint(factor, factor);
+            if (squared == null) {
+                return null;
+            }
+            factor = squared as uint;
+        }
+    }
+    return result;
+}
+
+/**
+ * Returns the floor integer square root of an unsigned 32-bit integer.
+ *
+ * @param x The input value.
+ * @return The floor square root.
+ */
+func isqrt_ui(x: uint) -> uint {
+    let zero: uint = 0;
+    if (x == zero) {
+        return zero;
+    }
+
+    let one: uint = 1;
+    let two: uint = 2;
+    let lo: uint = 1;
+    let hi: uint = 65535;
+    let best: uint = 0;
+    if (x < hi) {
+        hi = x;
+    }
+    while (lo <= hi) {
+        let mid = lo + (hi - lo) / two;
+        if (mid <= x / mid) {
+            best = mid;
+            lo = mid + one;
+        } else {
+            hi = mid - one;
+        }
+    }
+    return best;
+}
+
+/**
+ * Rounds an unsigned 32-bit integer down to the nearest multiple of `align`.
+ *
+ * @param x The input value.
+ * @param align The positive alignment.
+ * @return The aligned value.
+ */
+func align_down_ui(x: uint, align: uint) -> uint {
+    let zero: uint = 0;
+    assert(align > zero, "align_down_ui: alignment must be greater than 0");
+    let r = x % align;
+    if (r == zero) {
+        return x;
+    }
+    return x - r;
+}
+
+/**
+ * Rounds an unsigned 32-bit integer up to the nearest multiple of `align`.
+ *
+ * @param x The input value.
+ * @param align The positive alignment.
+ * @return The aligned value, or null on overflow.
+ */
+func align_up_ui(x: uint, align: uint) -> uint? {
+    let zero: uint = 0;
+    assert(align > zero, "align_up_ui: alignment must be greater than 0");
+    let r = x % align;
+    if (r == zero) {
+        return x;
+    }
+    return checked_add_uint(x, align - r);
+}
+
+/**
+ * Returns whether an unsigned 32-bit integer is already aligned.
+ *
+ * @param x The input value.
+ * @param align The positive alignment.
+ * @return True when `x` is a multiple of `align`.
+ */
+func is_aligned_ui(x: uint, align: uint) -> bool {
+    let zero: uint = 0;
+    assert(align > zero, "is_aligned_ui: alignment must be greater than 0");
+    return x % align == zero;
+}
+
+/**
+ * Calculates the Euclidean modulo for 64-bit signed integers. Requires `b > 0`.
+ *
+ * @param a The dividend.
+ * @param b The divisor.
+ * @return The non-negative remainder.
+ */
+func emod_l(a: long, b: long) -> long {
+    assert(b > 0, "emod_l: divisor must be greater than 0");
+    let r = a % b;
+    if (r < 0) {
+        return r + b;
+    }
+    return r;
+}
+
+/**
+ * Calculates the Euclidean quotient paired with `emod_l`.
+ *
+ * @param a The dividend.
+ * @param b The divisor (must be > 0).
+ * @return The Euclidean quotient.
+ */
+func ediv_l(a: long, b: long) -> long {
+    assert(b > 0, "ediv_l: divisor must be greater than 0");
+    return div_floor_l(a, b);
+}
+
+/**
+ * Calculates the mathematical floor of 64-bit signed division.
+ *
+ * @param a The dividend.
+ * @param b The divisor (must be non-zero).
+ * @return The floor quotient.
+ */
+func div_floor_l(a: long, b: long) -> long {
+    assert(b != 0, "div_floor_l: divisor must be non-zero");
+    assert(!(a == long_min() && b == -1), "div_floor_l: result must be representable");
+
+    let q = a / b;
+    let r = a % b;
+    if (r != 0 && ((r > 0 && b < 0) || (r < 0 && b > 0))) {
+        let out = checked_sub_long(q, 1);
+        assert(out != null, "div_floor_l: result must be representable");
+        return out as long;
+    }
+    return q;
+}
+
+/**
+ * Calculates the mathematical ceiling of 64-bit signed division.
+ *
+ * @param a The dividend.
+ * @param b The divisor (must be non-zero).
+ * @return The ceiling quotient.
+ */
+func div_ceil_l(a: long, b: long) -> long {
+    assert(b != 0, "div_ceil_l: divisor must be non-zero");
+    assert(!(a == long_min() && b == -1), "div_ceil_l: result must be representable");
+
+    let q = a / b;
+    let r = a % b;
+    if (r != 0 && ((r > 0 && b > 0) || (r < 0 && b < 0))) {
+        let out = checked_add_long(q, 1);
+        assert(out != null, "div_ceil_l: result must be representable");
+        return out as long;
+    }
+    return q;
+}
+
+/**
+ * Returns the smaller of two 64-bit signed integers.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The minimum value.
+ */
+func min_l(a: long, b: long) -> long {
+    if (a <= b) {
+        return a;
+    }
+    return b;
+}
+
+/**
+ * Returns the larger of two 64-bit signed integers.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The maximum value.
+ */
+func max_l(a: long, b: long) -> long {
+    if (a >= b) {
+        return a;
+    }
+    return b;
+}
+
+/**
+ * Clamps `x` into the closed 64-bit signed interval `[lo, hi]`.
+ *
+ * @param x The value to clamp.
+ * @param lo The lower bound.
+ * @param hi The upper bound.
+ * @return The clamped value.
+ */
+func clamp_l(x: long, lo: long, hi: long) -> long {
+    assert(lo <= hi, "clamp_l: lower bound must be less than or equal to upper bound");
+    if (x < lo) {
+        return lo;
+    }
+    if (x > hi) {
+        return hi;
+    }
+    return x;
+}
+
+/**
+ * Returns the sign of a 64-bit signed integer as `-1`, `0`, or `1`.
+ *
+ * @param x The input value.
+ * @return The sign indicator.
+ */
+func sign_l(x: long) -> int {
+    if (x < 0) {
+        return -1;
+    }
+    if (x > 0) {
+        return 1;
+    }
+    return 0;
+}
+
+/**
+ * Returns whether a 64-bit signed integer is even.
+ *
+ * @param x The input value.
+ * @return True when `x` is evenly divisible by 2.
+ */
+func is_even_l(x: long) -> bool {
+    return x % 2 == 0;
+}
+
+/**
+ * Returns whether a 64-bit signed integer is odd.
+ *
+ * @param x The input value.
+ * @return True when `x` is not evenly divisible by 2.
+ */
+func is_odd_l(x: long) -> bool {
+    return x % 2 != 0;
+}
+
+/**
+ * Returns whether `a` is a multiple of `b`.
+ *
+ * @param a The dividend.
+ * @param b The divisor (must be non-zero).
+ * @return True when `a` is evenly divisible by `b`.
+ */
+func is_multiple_l(a: long, b: long) -> bool {
+    assert(b != 0, "is_multiple_l: divisor must be non-zero");
+    if (b == -1) {
+        return true;
+    }
+    return a % b == 0;
+}
+
+/**
+ * Returns the absolute value of a 64-bit signed integer.
+ *
+ * @param x The input value.
+ * @return The absolute value, or null when it is not representable as `long`.
+ */
+func abs_l(x: long) -> long? {
+    if (x >= 0) {
+        return x;
+    }
+    return checked_sub_long(0, x);
+}
+
+/**
+ * Returns the non-negative greatest common divisor of two 64-bit signed integers.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The greatest common divisor, or null when it is not representable as `long`.
+ */
+func gcd_l(a: long, b: long) -> long? {
+    let x = a;
+    let y = b;
+    if (x > 0) {
+        x = -x;
+    }
+    if (y > 0) {
+        y = -y;
+    }
+    if (x == 0) {
+        return abs_l(y);
+    }
+    if (y == 0) {
+        return abs_l(x);
+    }
+
+    while (y != 0) {
+        if (y == -1) {
+            return 1;
+        }
+        let r = x % y;
+        x = y;
+        y = r;
+    }
+    return abs_l(x);
+}
+
+/**
+ * Returns the non-negative least common multiple of two 64-bit signed integers.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The least common multiple, or null when it is not representable as `long`.
+ */
+func lcm_l(a: long, b: long) -> long? {
+    if (a == 0 || b == 0) {
+        return 0;
+    }
+
+    let g = gcd_l(a, b);
+    if (g == null) {
+        return null;
+    }
+
+    let g_value = g as long;
+    let reduced = a / g_value;
+    let product = checked_mul_long(reduced, b);
+    if (product == null) {
+        return null;
+    }
+    return abs_l(product as long);
+}
+
+/**
+ * Returns `base` raised to the non-negative exponent `exp`.
+ *
+ * @param base The base value.
+ * @param exp The exponent.
+ * @return The result, or null when `exp < 0` or the result is not representable as `long`.
+ */
+func pow_l(base: long, exp: int) -> long? {
+    if (exp < 0) {
+        return null;
+    }
+
+    let result: long = 1;
+    let factor = base;
+    let remaining = exp;
+    while (remaining > 0) {
+        if (is_odd(remaining)) {
+            let next = checked_mul_long(result, factor);
+            if (next == null) {
+                return null;
+            }
+            result = next as long;
+        }
+        remaining = remaining / 2;
+        if (remaining > 0) {
+            let squared = checked_mul_long(factor, factor);
+            if (squared == null) {
+                return null;
+            }
+            factor = squared as long;
+        }
+    }
+    return result;
+}
+
+/**
+ * Returns the floor integer square root of a 64-bit signed integer.
+ *
+ * @param x The input value.
+ * @return The floor square root, or null when `x < 0`.
+ */
+func isqrt_l(x: long) -> long? {
+    if (x < 0) {
+        return null;
+    }
+    if (x == 0) {
+        return 0;
+    }
+
+    let lo: long = 1;
+    let hi: long = 3037000499;
+    let best: long = 0;
+    if (x < hi) {
+        hi = x;
+    }
+    while (lo <= hi) {
+        let mid = lo + (hi - lo) / 2;
+        if (mid <= x / mid) {
+            best = mid;
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    return best;
+}
+
+/**
+ * Rounds a 64-bit signed integer down to the nearest multiple of `align`.
+ *
+ * @param x The input value.
+ * @param align The positive alignment.
+ * @return The aligned value, or null when it is not representable as `long`.
+ */
+func align_down_l(x: long, align: long) -> long? {
+    assert(align > 0, "align_down_l: alignment must be greater than 0");
+    let r = emod_l(x, align);
+    if (r == 0) {
+        return x;
+    }
+    return checked_sub_long(x, r);
+}
+
+/**
+ * Rounds a 64-bit signed integer up to the nearest multiple of `align`.
+ *
+ * @param x The input value.
+ * @param align The positive alignment.
+ * @return The aligned value, or null when it is not representable as `long`.
+ */
+func align_up_l(x: long, align: long) -> long? {
+    assert(align > 0, "align_up_l: alignment must be greater than 0");
+    let r = emod_l(x, align);
+    if (r == 0) {
+        return x;
+    }
+    return checked_add_long(x, align - r);
+}
+
+/**
+ * Returns whether a 64-bit signed integer is already aligned.
+ *
+ * @param x The input value.
+ * @param align The positive alignment.
+ * @return True when `x` is a multiple of `align`.
+ */
+func is_aligned_l(x: long, align: long) -> bool {
+    assert(align > 0, "is_aligned_l: alignment must be greater than 0");
+    return emod_l(x, align) == 0;
+}
+
+/**
+ * Divides one unsigned 64-bit integer by another.
+ *
+ * @param a The dividend.
+ * @param b The divisor (must be non-zero).
+ * @return The quotient.
+ */
+func div_ul(a: ulong, b: ulong) -> ulong {
+    let zero: ulong = 0;
+    assert(b != zero, "div_ul: divisor must be non-zero");
+    return a / b;
+}
+
+/**
+ * Computes the unsigned 64-bit remainder.
+ *
+ * @param a The dividend.
+ * @param b The divisor (must be non-zero).
+ * @return The remainder.
+ */
+func mod_ul(a: ulong, b: ulong) -> ulong {
+    let zero: ulong = 0;
+    assert(b != zero, "mod_ul: divisor must be non-zero");
+    return a % b;
+}
+
+/**
+ * Calculates the ceiling of unsigned 64-bit division.
+ *
+ * @param a The dividend.
+ * @param b The divisor (must be non-zero).
+ * @return The ceiling quotient.
+ */
+func div_ceil_ul(a: ulong, b: ulong) -> ulong {
+    let zero: ulong = 0;
+    let one: ulong = 1;
+    assert(b != zero, "div_ceil_ul: divisor must be non-zero");
+    let q = a / b;
+    let r = a % b;
+    if (r == zero) {
+        return q;
+    }
+    return q + one;
+}
+
+/**
+ * Returns the smaller of two unsigned 64-bit integers.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The minimum value.
+ */
+func min_ul(a: ulong, b: ulong) -> ulong {
+    if (a <= b) {
+        return a;
+    }
+    return b;
+}
+
+/**
+ * Returns the larger of two unsigned 64-bit integers.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The maximum value.
+ */
+func max_ul(a: ulong, b: ulong) -> ulong {
+    if (a >= b) {
+        return a;
+    }
+    return b;
+}
+
+/**
+ * Clamps `x` into the closed unsigned 64-bit interval `[lo, hi]`.
+ *
+ * @param x The value to clamp.
+ * @param lo The lower bound.
+ * @param hi The upper bound.
+ * @return The clamped value.
+ */
+func clamp_ul(x: ulong, lo: ulong, hi: ulong) -> ulong {
+    assert(lo <= hi, "clamp_ul: lower bound must be less than or equal to upper bound");
+    if (x < lo) {
+        return lo;
+    }
+    if (x > hi) {
+        return hi;
+    }
+    return x;
+}
+
+/**
+ * Returns whether an unsigned 64-bit integer is even.
+ *
+ * @param x The input value.
+ * @return True when `x` is evenly divisible by 2.
+ */
+func is_even_ul(x: ulong) -> bool {
+    let zero: ulong = 0;
+    let two: ulong = 2;
+    return x % two == zero;
+}
+
+/**
+ * Returns whether an unsigned 64-bit integer is odd.
+ *
+ * @param x The input value.
+ * @return True when `x` is not evenly divisible by 2.
+ */
+func is_odd_ul(x: ulong) -> bool {
+    let zero: ulong = 0;
+    let two: ulong = 2;
+    return x % two != zero;
+}
+
+/**
+ * Returns whether `a` is a multiple of `b`.
+ *
+ * @param a The dividend.
+ * @param b The divisor (must be non-zero).
+ * @return True when `a` is evenly divisible by `b`.
+ */
+func is_multiple_ul(a: ulong, b: ulong) -> bool {
+    let zero: ulong = 0;
+    assert(b != zero, "is_multiple_ul: divisor must be non-zero");
+    return a % b == zero;
+}
+
+/**
+ * Returns the greatest common divisor of two unsigned 64-bit integers.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The greatest common divisor.
+ */
+func gcd_ul(a: ulong, b: ulong) -> ulong {
+    let zero: ulong = 0;
+    let x = a;
+    let y = b;
+    while (y != zero) {
+        let r = x % y;
+        x = y;
+        y = r;
+    }
+    return x;
+}
+
+/**
+ * Returns the least common multiple of two unsigned 64-bit integers.
+ *
+ * @param a The first operand.
+ * @param b The second operand.
+ * @return The least common multiple, or null on overflow.
+ */
+func lcm_ul(a: ulong, b: ulong) -> ulong? {
+    let zero: ulong = 0;
+    if (a == zero || b == zero) {
+        return zero;
+    }
+    let reduced = a / gcd_ul(a, b);
+    return checked_mul_ulong(reduced, b);
+}
+
+/**
+ * Returns `base` raised to the non-negative exponent `exp`.
+ *
+ * @param base The base value.
+ * @param exp The exponent.
+ * @return The result, or null when `exp < 0` or the result overflows.
+ */
+func pow_ul(base: ulong, exp: int) -> ulong? {
+    if (exp < 0) {
+        return null;
+    }
+
+    let result: ulong = 1;
+    let factor = base;
+    let remaining = exp;
+    while (remaining > 0) {
+        if (is_odd(remaining)) {
+            let next = checked_mul_ulong(result, factor);
+            if (next == null) {
+                return null;
+            }
+            result = next as ulong;
+        }
+        remaining = remaining / 2;
+        if (remaining > 0) {
+            let squared = checked_mul_ulong(factor, factor);
+            if (squared == null) {
+                return null;
+            }
+            factor = squared as ulong;
+        }
+    }
+    return result;
+}
+
+/**
+ * Returns the floor integer square root of an unsigned 64-bit integer.
+ *
+ * @param x The input value.
+ * @return The floor square root.
+ */
+func isqrt_ul(x: ulong) -> ulong {
+    let zero: ulong = 0;
+    if (x == zero) {
+        return zero;
+    }
+
+    let one: ulong = 1;
+    let two: ulong = 2;
+    let lo: ulong = 1;
+    let hi: ulong = 0xffffffff; // 4294967295
+    let best: ulong = 0;
+    if (x < hi) {
+        hi = x;
+    }
+    while (lo <= hi) {
+        let mid = lo + (hi - lo) / two;
+        if (mid <= x / mid) {
+            best = mid;
+            lo = mid + one;
+        } else {
+            hi = mid - one;
+        }
+    }
+    return best;
+}
+
+/**
+ * Rounds an unsigned 64-bit integer down to the nearest multiple of `align`.
+ *
+ * @param x The input value.
+ * @param align The positive alignment.
+ * @return The aligned value.
+ */
+func align_down_ul(x: ulong, align: ulong) -> ulong {
+    let zero: ulong = 0;
+    assert(align > zero, "align_down_ul: alignment must be greater than 0");
+    let r = x % align;
+    if (r == zero) {
+        return x;
+    }
+    return x - r;
+}
+
+/**
+ * Rounds an unsigned 64-bit integer up to the nearest multiple of `align`.
+ *
+ * @param x The input value.
+ * @param align The positive alignment.
+ * @return The aligned value, or null on overflow.
+ */
+func align_up_ul(x: ulong, align: ulong) -> ulong? {
+    let zero: ulong = 0;
+    assert(align > zero, "align_up_ul: alignment must be greater than 0");
+    let r = x % align;
+    if (r == zero) {
+        return x;
+    }
+    return checked_add_ulong(x, align - r);
+}
+
+/**
+ * Returns whether an unsigned 64-bit integer is already aligned.
+ *
+ * @param x The input value.
+ * @param align The positive alignment.
+ * @return True when `x` is a multiple of `align`.
+ */
+func is_aligned_ul(x: ulong, align: ulong) -> bool {
+    let zero: ulong = 0;
+    assert(align > zero, "is_aligned_ul: alignment must be greater than 0");
+    return x % align == zero;
+}

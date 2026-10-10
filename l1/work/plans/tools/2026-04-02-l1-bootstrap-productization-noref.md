@@ -1,25 +1,25 @@
 # Tool Plan
 
-## Define the self-hosted L1 Stage 2 install and distribution workflow
+## Canonical L1 install and distribution workflow
 
 - Date: 2026-04-02
-- Last reviewed: 2026-10-09
+- Last reviewed: 2026-10-10
 - Status: In progress
-- Title: Define the self-hosted L1 Stage 2 install and distribution workflow
+- Title: Canonical L1 install and distribution workflow
 - Kind: Tooling
 - Severity: Medium
-- Stage: L1
+- Stage: Canonical
 - Target status:
-  - Prefix installer, inventory, and launcher adaptation: Implemented (public install/list targets, optional Stage 2
-    docs, and private bootstrap orchestration; four-platform artifact acceptance passed)
-  - Native installed-state guard and package provenance: Implemented; four-platform acceptance passed
-  - Distribution archive, atomic result metadata, and reusable artifact smoke command: Implemented
-  - Acceptance target and isolated four-platform workflow: Completed; all hosted build and verification jobs passed
-  - Stage 2 HTML/PDF inclusion: Implemented for direct installs and required distributions
-  - Native artifact acceptance: Linux x86_64, macOS Intel/ARM, and Windows UCRT64 passed with full generated Stage 2
-    docs
-  - Architectural records: Completed (ADR-0042 delivery contract and ADR-0001 bootstrap amendment)
-  - Final documentation/release-workflow handoff: Completed
+  - Prefix installer, inventory, launchers, and private construction: Implemented and retargeted to canonical L1
+  - Installed-state guard and package provenance: Implemented with stage-free schema 2 and fresh-prefix requirements
+  - Distribution archives, atomic result metadata, and artifact smoke command: Implemented and retargeted
+  - Canonical HTML/full PDF: Strict canonical HTML and full indexed PDF passed; required for distributions and optional
+    as a verified bundle for direct installs
+  - Fresh canonical artifact acceptance: Linux x86_64 and macOS Intel exact archives passed local isolated verification;
+    fresh hosted matrix completion, macOS ARM, and Windows UCRT64 remain pending
+  - Architectural records: Canonical delivery recorded in ADR-0043; former Stage 2 decisions retained as superseded
+    history
+  - Hosted release-workflow handoff: Deferred until the shared split and fresh artifact acceptance are complete
   - Formal plan closure: Pending
 - Subsystem: Build workflow / install layout / distribution packaging / bootstrap docs
 - Modules:
@@ -34,17 +34,16 @@
   - `.github/workflows/l1-productization-acceptance.yml`
   - `l1/scripts/package/`
   - `l1/docs/user/`
-  - `l1/compiler/stage1_l0/support/installation.h`
-  - `l1/scripts/build_stage2_l1c.py`
-  - `l1/scripts/triple_bootstrap.py` (reuse fixed-point validation)
-  - `l1/compiler/stage1_l0/src/build_info.l0`
-  - `l1/compiler/stage1_l0/src/l1c_lib.l0`
-  - `l1/compiler/stage1_l0/src/source_paths.l0`
-  - `l1/compiler/stage1_l0/src/build_driver.l0`
-  - `l1/compiler/stage1_l0/src/compile_driver/compile.l0`
-  - `l1/compiler/stage1_l0/src/link_driver/toolchain.l0`
-  - `l1/compiler/stage1_l0/support/` (native prefix/state support)
-  - `l1/compiler/stage2_l1/src/` (packaged compiler, build-info overlay, and installed startup)
+  - `l1/compiler/support/installation.h`
+  - `l1/scripts/build_l1c.py`
+  - `l1/compiler/src/build_info.l0`
+  - `l1/compiler/src/l1c_lib.l0`
+  - `l1/compiler/src/source_paths.l0`
+  - `l1/compiler/src/build_driver.l0`
+  - `l1/compiler/src/compile_driver/compile.l0`
+  - `l1/compiler/src/link_driver/toolchain.l0`
+  - `l1/compiler/support/` (native prefix/state support)
+  - `l1/compiler/src/` (packaged compiler, build-info overlay, and installed startup)
   - `l1/compiler/shared/`
   - `l1/docs/`
   - `l1/docs/reference/productization-inventory.md`
@@ -54,21 +53,19 @@
 - Test modules:
   - `l1/tests/test_bootstrap_productization.py` (new install/dist regression suite)
   - `l1/tests/test_env_stackability.py`
-  - `l1/tests/test_stage2_tooling.py`
-  - `l1/tests/test_stage2_build_overlay.py`
+  - `l1/tests/test_compiler_tooling.py`
+  - `l1/tests/test_build_overlay.py`
   - `l1/tests/test_installation_guard.py`
   - `l1/tests/test_productization_payload.py`
   - `l1/tests/test_install_toolchain.py`
   - `l1/tests/test_productization_acceptance.py`
-  - `l1/tests/test_bootstrap_identity.py`
-  - `l1/compiler/stage1_l0/tests/compiler_runtime_build_env_test.py`
-  - `l1/compiler/stage1_l0/tests/runtime_build_config_test.py`
-  - `l1/compiler/stage1_l0/tests/l1c_stage1_compile_only_test.py`
-  - `l1/compiler/stage1_l0/tests/l1c_stage1_link_set_test.py`
-  - `l1/compiler/stage1_l0/tests/l1c_stage1_installed_preparation_test.py`
-  - `l1/compiler/stage1_l0/tests/l1c_stage1_bootstrap_interfaces_test.py`
-  - `l1/compiler/stage2_l1/tests/stage_parity_test.py`
-  - Stage 1 and Stage 2 shared installed-state diagnostic cases
+  - `l1/compiler/tests/compiler_runtime_build_env_test.py`
+  - `l1/compiler/tests/runtime_build_config_test.py`
+  - `l1/compiler/tests/l1c_compile_only_test.py`
+  - `l1/compiler/tests/l1c_link_set_test.py`
+  - `l1/compiler/tests/l1c_installed_preparation_test.py`
+  - `l1/compiler/tests/l1c_bootstrap_interfaces_test.py`
+  - Canonical installed-state diagnostic contracts
 - Related:
   - `work/plans/refactors/closed/2026-04-02-l1-bootstrap-scaffold-noref.md`
   - [l1/work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][stdlib-preparation]
@@ -80,7 +77,49 @@
   - [l0/docs/decisions/0023-toolchain-installation-and-distribution-layout.md][l0-delivery]
   - [l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md][autodocs]
 
-## Summary
+## Canonical compiler retargeting
+
+The former Stage 2 implementation and 2026-10-09 four-platform acceptance below are historical evidence for that
+product. Do not rerun the obsolete stage recipes as current instructions or relabel its acceptance. Its completed
+implementation is retained; formal closure remains pending, and the initiative is not reopened wholesale.
+
+The current shared split implementation is tracked by
+[work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../../../work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md).
+It retargets installation/distribution to the sole L0-implemented `l1c`, with private installed construction, canonical
+semantic-input verification, stage-free schema-2 references/inventory/results, and fresh prefixes. Ownership/recovery,
+relocation, exact-artifact handoff, four-platform fresh-host acceptance, and mandatory dist HTML/full PDF are unchanged.
+Fresh local exact-artifact acceptance passed on Linux x86_64 and macOS Intel; the remaining platform and hosted gates
+are pending. Current operational contracts live in
+[l1/docs/decisions/0043-canonical-compiler-toolchain-delivery.md](../../../docs/decisions/0043-canonical-compiler-toolchain-delivery.md)
+and [l1/AGENTS.md](../../../AGENTS.md). The split plan owns new implementation work and its consolidated evidence. The
+ADR Impact section reflects the current accepted contract.
+
+### Canonical verification (2026-10-10)
+
+- `python scripts/gen_docs.py --strict --pdf --artifacts` passed with the canonical source inventory. The stage-free
+  schema-2 bundle includes offline HTML and the full 1,410-page indexed PDF without undefined references. Both native
+  archives below contain this exact matching documentation bundle and retain package version `dev` and development
+  maturity.
+- Each native build used `python scripts/productization_acceptance.py --phase build --directory <new-evidence>` with
+  explicit `DOCS_ARTIFACT`, `DEA_DIST_VERSION=dev`, and host compiler selection. Both private constructions used the
+  default `L0_CFLAGS=-O2`; installed compiler provenance records the actual L0 command and runtime flags. The installed
+  compiler verified the captured semantic inputs before prefix publication.
+- macOS Intel with Apple Clang 17 passed exact-archive verification from transported evidence using Python 3.14.7
+  `-I -S`. A macOS sandbox denied reads from both repository checkouts and both installed bootstrap prefixes and denied
+  network access. Four negative read probes confirmed access denial before the copied verification harness ran.
+- Linux x86_64 with GCC 12.2 passed exact-archive verification in a separate fresh Python 3.14.8 container with network
+  disabled. Only transported evidence, its copied harness, and the isolation preflight were mounted. The verifier
+  confirmed source/bootstrap roots and Dea executables on `PATH` were absent, then ran
+  `python -I <copied-harness>/productization_acceptance.py --phase verify --directory <transported-evidence>`.
+- Both schema-2 acceptance reports record success after exact archive/result/inventory/docs validation, read-only
+  relocation, semantic operation without native compiler tools, standalone linking, cold and warm native preparation,
+  build/run, and runtime-profile checks. These are new canonical-product results; the historical Stage 2 acceptance is
+  not reused. Fresh hosted matrix completion, macOS ARM, native Windows UCRT64, and authorized publication remain
+  outstanding.
+
+The following original implementation and evidence sections remain historical records.
+
+## Historical implementation summary
 
 The `l1/` subtree supports repo-local Stage 1 and self-hosted Stage 2 development. This plan adds a relocatable
 install-prefix workflow and a curated distribution archive for the self-hosted Stage 2 toolchain, with the semantic
@@ -91,7 +130,7 @@ ship only the self-hosted Stage 2 compiler. The installed `l1c` selects Stage 2.
 active release line or stable language/toolchain maturity. Hosted publication remains owned by the separate
 release-workflow plan.
 
-## Current State
+## Historical state (2026-10-09)
 
 Reviewed on 2026-10-09 against the local checkout:
 
@@ -740,21 +779,19 @@ not assign those codes to the new startup inventory failure.
 
 ## ADR Impact
 
-- Decision: Ship the self-hosted L1 Stage 2 compiler through one relocatable install-prefix and distribution contract.
+- Decision: Ship canonical L1 through one relocatable install-prefix and distribution contract.
   - Scope: L1
   - Disposition: Covered by ADR
-  - ADR: `l1/docs/decisions/0042-self-hosted-toolchain-delivery.md`
-  - Rationale: ADR-0042 now records the relocatable prefix, curated semantic/source payload, inventory, native
-    installed-state boundary, archive/result schema, Stage 2-only payload, self-built delivery requirement, and smoke
-    command as toolchain interfaces consumed by later release workflows. Cache algorithms remain governed by the
-    existing preparation ADRs.
+  - ADR: `l1/docs/decisions/0043-canonical-compiler-toolchain-delivery.md`
+  - Rationale: ADR-0043 retargets the established integrity, ownership, provenance, offline documentation, and
+    exact-artifact delivery contract to the sole L0-implemented compiler. Superseded ADR-0042 retains the former Stage 2
+    decision history.
 - Decision: Choose the L1 bootstrap compiler from repo-local L0 Stage 2 or `L1_BOOTSTRAP_L0C`, never ambient `PATH`.
   - Scope: L1
   - Disposition: Covered by ADR
   - ADR: `l1/docs/decisions/0001-bootstrap-adaptation-strategy.md`
-  - Rationale: The amended ADR-0001 distinguishes the explicit upstream compiler used to construct Stage 1 and the Stage
-    2 seed from the self-built Stage 2 compiler used after installation. Both ADR backlinks will follow this plan when
-    it closes.
+  - Rationale: The amended ADR-0001 records the explicit upstream compiler used for canonical L1 construction and
+    installed operation independent of that upstream toolchain. ADR backlinks will follow this plan when it closes.
 
 ## Non-Goals
 

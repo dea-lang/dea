@@ -8,14 +8,14 @@
 - Kind: Feature
 - Severity: Low
 - Priority: 4
-- Stage: L1
+- Stage: Canonical
 - Parent Initiative: `l1/work/initiatives/0008-data-format-modules.md`
 - Subsystem: Stdlib / data formats / roadmap design
 - Modules:
   - `l1/docs/specs/stdlib/iff-format.md`
   - `l1/compiler/shared/l1/stdlib/std/iff.l1`
 - Test modules:
-  - `l1/compiler/stage1_l0/tests/iff_test.l0`
+  - `l1/compiler/tests/iff_test.l0`
 - Related:
   - `l1/work/initiatives/0008-data-format-modules.md`
   - `l1/docs/roadmap.md`

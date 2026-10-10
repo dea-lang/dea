@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: Medium
 - Priority: 2
-- Stage: L1
+- Stage: Canonical
 - Parent Initiative: `l1/work/initiatives/0005-filesystem-and-stream-io.md`
 - Subsystem: Stdlib / I/O abstractions
 - Modules:
@@ -18,14 +18,14 @@
   - `l1/compiler/shared/l1/stdlib/std/bytes.l1`
   - `l1/docs/reference/standard-library.md`
 - Test modules:
-  - `l1/compiler/stage1_l0/tests/stream_test.l0`
-  - `l1/compiler/stage1_l0/tests/analysis_trace_test.l0`
-  - `l1/compiler/stage1_l0/tests/l0c_lib_test.l0`
+  - `l1/compiler/tests/stream_test.l0`
+  - `l1/compiler/tests/analysis_trace_test.l0`
+  - `l1/compiler/tests/l0c_lib_test.l0`
 - Related:
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
   - `l1/work/plans/features/2026-08-30-file-handles-and-random-access-noref.md`
   - `l1/work/plans/features/2026-08-30-dynamic-byte-buffers-noref.md`
-- Repro: `make -C l1 test-stage1 TESTS="stream_test analysis_trace_test l0c_lib_test"`
+- Repro: `make -C l1 test-compiler TESTS="stream_test analysis_trace_test l0c_lib_test"`
 
 ## Summary
 

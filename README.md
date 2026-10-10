@@ -4,8 +4,8 @@
 
 Welcome to the **Dea** programming language!
 
-Dea is a systems programming language built through a staged bootstrap chain: each language level is compiled by the
-previous one, self-hosts, and then becomes the compiler base for the next level.
+Dea is a systems programming language built through an explicit compiler lineage. After L0, each language level has one
+canonical compiler implemented in the preceding level.
 
 The design is conservative by choice: a small, precisely specified language whose semantics leave no room for undefined
 behavior. Operations are either well-defined or rejected - at compile time or with a named runtime error.
@@ -19,10 +19,11 @@ _Tertium non datur._
 
 This repository is a monorepo hosting the Dea language family. Each level is a self-contained subtree:
 
-| Level             | Directory    | Status                                                          |
-| ----------------- | ------------ | --------------------------------------------------------------- |
-| Dea/L<sub>0</sub> | [`l0/`](l0/) | **Released** (`l0-v2.1.1`), self-hosted; the current stable Dea |
-| Dea/L<sub>1</sub> | [`l1/`](l1/) | **In bootstrap development**; the current Dea bleeding edge     |
+| Level             | Directory    | Status                                                              |
+| ----------------- | ------------ | ------------------------------------------------------------------- |
+| Dea/L<sub>0</sub> | [`l0/`](l0/) | **Released** (`l0-v2.1.1`), self-hosted; the current stable Dea     |
+| Dea/L<sub>1</sub> | [`l1/`](l1/) | **In development**; canonical compiler implemented in L0            |
+| Dea/L<sub>2</sub> | [`l2/`](l2/) | **Initial independent level**; canonical compiler implemented in L1 |
 
 **Dea/L0** is a small, UB-free systems language, compiling to C99, sufficient to host its own compiler. It is
 self-hosted through its Stage 2 compiler and is the canonical user-facing toolchain today. Start at
@@ -33,11 +34,15 @@ L0 `2.1.1` fixes ARC cleanup for comparison temporaries and improves AddressSani
 
 **Dea/L1** carries post-L0 language growth: wider fixed-width integer types, `float`/`double` with an explicit
 floating-point contract, bitwise operators, top-level `const`, function pointer types, the `unsafe` function marker,
-fixed-size arrays, export manifests, and selective/aliased imports, among others. Its L0-implemented bootstrap compiler
-(`stage1_l0`) now supports per-module generated C, compile-only `.o + .l1m` artifacts, verified standalone linking, and
+fixed-size arrays, export manifests, and selective/aliased imports, among others. Its L0-implemented canonical compiler
+supports per-module generated C, compile-only `.o + .l1m` artifacts, verified standalone linking, and
 multi-compilation-unit build/run, including ordered external-library, search-path, rpath, and raw driver arguments. It
 consumes the L0 Stage 2 compiler as its upstream toolchain and is not yet a release-bearing product. Start at
 [l1/README.md](l1/README.md) and [l1/docs/roadmap.md](l1/docs/roadmap.md).
+
+**Dea/L2** starts from the former L1 Stage 2 implementation. Its canonical `l2c` compiles `.l2` programs, emits `.l2m`
+interfaces, and owns its stdlib, runtime, and support inputs. Construction requires an explicitly installed L1
+toolchain; ordinary L2 use does not invoke it. See [l2/README.md](l2/README.md).
 
 ## Stability and Evolution
 
@@ -48,8 +53,7 @@ changes; when they land, they are incorporated into that level's semantic versio
 
 At any given moment:
 
-- the **bleeding edge** of Dea is the highest language level at its latest commit (today: Dea/L1 on the development
-  branch);
+- L1 and L2 are **development** levels; L1 feature plans remain owned by L1 pending individual placement review;
 - the **stable** version of Dea is the highest released level/version (today: Dea/L0 `2.1.1`).
 
 When Dea one day becomes production-ready, or at least reasonably stable, it will be announced. Until then, consider Dea
@@ -70,13 +74,13 @@ migration guidance are recorded in [l0/docs/releases/2.1.1.md](l0/docs/releases/
 
 ## The Bootstrap Chain
 
-Each Dea level implements its compiler in two stages: Stage 1 is written in an external host language (Python for L0, L0
-itself for L1) and is the behavioral oracle; Stage 2 is written in the level's own language and, once mature, becomes
-the primary delivery vehicle. **Level 0 is self-hosted today** and is the compiler base used to build L1; L1 will
-subsequently self-host, and the process repeats for successive levels.
+L0 retains its Python Stage 1 and self-hosted Stage 2. L1 has one compiler implemented in L0; L2 has one compiler
+implemented in L1. L1/L2 have no intra-level stage selection, parity gate, or self-hosting requirement. Installed L1
+operation is independent of its upstream L0 construction toolchain. L1 0.1.0 remains the intended first canonical L1
+development-toolchain release, pending fresh artifact acceptance and separately authorized hosted release work.
 
 The architectural rationale is recorded in [docs/decisions/](docs/decisions/), starting with
-[docs/decisions/0001-two-stage-architecture.md](docs/decisions/0001-two-stage-architecture.md).
+[docs/decisions/0022-single-compiler-level-lineage.md](docs/decisions/0022-single-compiler-level-lineage.md).
 
 ## Getting Started
 
@@ -95,7 +99,7 @@ For L1 bootstrap development:
 ```shell
 make venv
 cd l1
-make use-dev-stage1            # auto-prepares the repo-local upstream L0 Stage 2 compiler
+make use-dev                  # auto-prepares the repo-local upstream L0 Stage 2 compiler
 source build/dea/bin/l1-env.sh
 ```
 
@@ -107,6 +111,7 @@ See [l1/README.md](l1/README.md) for the current L1 workflow.
 | ---------- | ---------------------------------------------------- |
 | `l0/`      | Dea/L0 language, compiler, runtime, docs, and tests  |
 | `l1/`      | Dea/L1 bootstrap compiler, runtime, docs, and tests  |
+| `l2/`      | Dea/L2 compiler, runtime, docs, and tests            |
 | `editors/` | Shared editor grammars, modes, indexes, and fixtures |
 | `scripts/` | Shared monorepo automation and helper modules        |
 | `docs/`    | Dea-wide and monorepo-wide stable documentation      |

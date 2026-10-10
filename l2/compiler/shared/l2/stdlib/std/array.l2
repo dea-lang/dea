@@ -1,0 +1,199 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+module std.array;
+
+import sys.rt;
+import sys.memory;
+
+import std.assert;
+import std.string;
+
+
+/* ---------------------------------
+   Fixed-size Array Implementation
+   --------------------------------- */
+
+/**
+ * ArrayBase implements an array of elements of a given size.
+ * Elements can be accessed via index, and the array can be resized on demand.
+ * See VectorBase for a dynamic array implementation.
+ *
+ * Note: This is a low-level implementation and does not provide type safety.
+ * It is the caller's responsibility to manage types and casting.
+ */
+struct ArrayBase {
+    capacity: int;
+    element_size: int;
+    data: void*;
+}
+
+/**
+ * Byte-specialized fixed-size array wrapper.
+ */
+struct ByteArray {
+    storage: ArrayBase*;
+}
+
+/**
+ * Creates a new ArrayBase with the specified element size and length.
+ *
+ * @param element_size The size of each element in bytes.
+ * @param length The number of elements in the array.
+ * @return A pointer to the newly created ArrayBase.
+ */
+func arr_create(element_size: int, length: int) -> ArrayBase* {
+    assert(element_size > 0, "Element size must be greater than 0 for array creation");
+    assert(length >= 0, "Initial length must be non-negative for array creation");
+    let initial_capacity = length;
+    if (length == 0) {
+        /* Avoid zero-size allocations, which are platform-dependent */
+        initial_capacity = 1;
+    }
+    let new_data_opt = rt_alloc(element_size * initial_capacity);
+    assert(new_data_opt != null, "Failed to allocate memory for array creation");
+    let new_data = new_data_opt as void*;
+    rt_memset(new_data, 0, element_size * initial_capacity);
+    let self = new ArrayBase(
+        length,
+        element_size,
+        new_data as void*
+    );
+    return self;
+}
+
+/**
+ * Checks if the given index is within the bounds of the array.
+ *
+ * @param self The pointer to the ArrayBase.
+ * @param index The index to check.
+ */
+func arr_check(self: ArrayBase*, index: int) {
+    assert(index >= 0 && index < self.capacity, "Index out of bounds in array access");
+}
+
+/**
+ * Resizes the array to a new length.
+ *
+ * @param self The pointer to the ArrayBase.
+ * @param new_length The new length of the array.
+ */
+func arr_resize(self: ArrayBase*, new_length: int) {
+    assert(new_length >= 0, "New length must be non-negative for array resize");
+    let old_capacity = self.capacity;
+    let new_capacity = new_length;
+    if (new_capacity == 0) {
+        new_capacity = 1;
+    }
+    let new_data = rt_realloc(self.data, self.element_size * new_capacity) as void*;
+    assert(new_data != null, "Failed to realloc memory for array resize");
+    if (new_capacity > old_capacity) {
+        let start_ptr = rt_array_element(new_data, self.element_size, old_capacity);
+        let new_bytes = (new_capacity - old_capacity) * self.element_size;
+        rt_memset(start_ptr, 0, new_bytes);
+    }
+    self.capacity = new_length; // Keep logical length; zero maps to 1-byte backing allocation only.
+    self.data = new_data;
+}
+
+/**
+ * Returns a pointer to the element at the specified index.
+ *
+ * @param self The pointer to the ArrayBase.
+ * @param index The index of the element.
+ * @return A pointer to the element.
+ */
+func arr_get(self: ArrayBase*, index: int) -> void* {
+    arr_check(self, index);
+    return rt_array_element(self.data, self.element_size, index);
+}
+
+/**
+ * Zeros out the element at the specified index.
+ *
+ * @param self The pointer to the ArrayBase.
+ * @param index The index of the element to zap.
+ */
+func arr_zap(self: ArrayBase*, index: int) {
+    let dest_ptr = arr_get(self, index);
+    rt_memset(dest_ptr, 0, self.element_size);
+}
+
+/**
+ * Free an `ArrayBase` and its element storage.
+ *
+ * @param self Array to free.
+ */
+func arr_free(self: ArrayBase*) {
+    rt_free(self.data);
+    drop self;
+}
+
+/* ---------------------------------
+   ByteArray specialization
+   --------------------------------- */
+
+/**
+ * Create a fixed-size byte array.
+ *
+ * @param length Number of bytes to allocate.
+ * @return New byte array wrapper.
+ */
+func ba_create(length: int) -> ByteArray* {
+    return new ByteArray(arr_create(sizeof(byte), length));
+}
+
+/**
+ * Return the capacity of a byte array.
+ *
+ * @param self Byte array to inspect.
+ * @return Number of byte slots.
+ */
+func ba_capacity(self: ByteArray*) -> int {
+    return self.storage.capacity;
+}
+
+/**
+ * Return one byte from the array.
+ *
+ * @param self Byte array to inspect.
+ * @param index Byte index to read.
+ * @return Byte value at `index`.
+ */
+func ba_get(self: ByteArray*, index: int) -> byte {
+    return *(arr_get(self.storage, index) as byte*);
+}
+
+/**
+ * Store one byte into the array.
+ *
+ * @param self Byte array to update.
+ * @param index Byte index to write.
+ * @param value Byte value to store.
+ */
+func ba_set(self: ByteArray*, index: int, value: byte) {
+    let dest = arr_get(self.storage, index) as byte*;
+    *dest = value;
+}
+
+/**
+ * Zero one byte slot in the array.
+ *
+ * @param self Byte array to update.
+ * @param index Byte index to clear.
+ */
+func ba_zap(self: ByteArray*, index: int) {
+    arr_zap(self.storage, index);
+}
+
+/**
+ * Free a byte array and its backing storage.
+ *
+ * @param self Byte array to free.
+ */
+func ba_free(self: ByteArray*) {
+    arr_free(self.storage);
+    drop self;
+}

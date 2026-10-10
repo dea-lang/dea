@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # Copyright (c) 2026 gwz
-"""Create and verify offline stage documentation bundles without running TeX."""
+"""Create and verify offline canonical documentation bundles without running TeX."""
 
 from __future__ import annotations
 
@@ -23,16 +23,13 @@ from productization_provenance import package_version as compiler_package_versio
 L1_ROOT = Path(__file__).resolve().parents[1]
 
 
-def pdf_name(stage: str) -> str:
-    """Return the stage-qualified reference filename.
-
-    Args:
-        stage: Concrete stage name.
+def pdf_name() -> str:
+    """Return the canonical reference filename.
 
     Returns:
         Reference PDF basename.
     """
-    return f"dea_l1_{stage}_api_reference.pdf"
+    return "dea_l1_api_reference.pdf"
 
 
 def _git(root: Path, *args: str) -> str:
@@ -51,12 +48,11 @@ def _git(root: Path, *args: str) -> str:
         return "unknown"
 
 
-def source_identity(root: Path, stage: str) -> dict[str, object]:
+def source_identity(root: Path) -> dict[str, object]:
     """Fingerprint selected sources and generation inputs.
 
     Args:
         root: L1 source root.
-        stage: Selected documentation stage.
 
     Returns:
         Revision, tree state, and a digest of named source and generator inputs.
@@ -65,7 +61,7 @@ def source_identity(root: Path, stage: str) -> dict[str, object]:
         sys.path.insert(0, str(root))
     from compiler.docgen.l1_docgen_sources import build_source_manifest
 
-    inputs = set(build_source_manifest(root, stage).files)
+    inputs = set(build_source_manifest(root).files)
     for directory in ("compiler/docgen", "scripts/docs/templates"):
         inputs.update(p.relative_to(root) for p in (root / directory).rglob("*")
                       if p.is_file() and "__pycache__" not in p.parts and p.suffix in {".py", ".j2", ".in"})
@@ -186,12 +182,11 @@ def _file_digests(root: Path) -> dict[str, str]:
     return result
 
 
-def verify_tree(root: Path, *, stage: str, version: str, source: dict[str, object]) -> dict:
+def verify_tree(root: Path, *, version: str, source: dict[str, object]) -> dict:
     """Verify completeness, identity, and every digest after extraction.
 
     Args:
         root: Extracted bundle root.
-        stage: Expected stage.
         version: Expected package version.
         source: Expected source identity.
 
@@ -205,9 +200,9 @@ def verify_tree(root: Path, *, stage: str, version: str, source: dict[str, objec
         manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"), object_pairs_hook=_unique_object)
         if not isinstance(manifest, dict):
             raise ValueError("invalid documentation manifest")
-        if type(manifest.get("stage")) is not int or type(manifest.get("schema_version")) is not int or manifest.get("strict") is not True or manifest.get("full_pdf") is not True:
+        if type(manifest.get("schema_version")) is not int or manifest.get("strict") is not True or manifest.get("full_pdf") is not True:
             raise ValueError("documentation bundle identity has invalid success/schema types")
-        expected = {"schema_version": 1, "level": "l1", "stage": int(stage[-1]), "package_version": version,
+        expected = {"schema_version": 2, "level": "l1", "package_version": version,
                     "source": source, "strict": True, "full_pdf": True}
         for key, value in expected.items():
             if manifest.get(key) != value:
@@ -215,12 +210,11 @@ def verify_tree(root: Path, *, stage: str, version: str, source: dict[str, objec
         files = _file_digests(root)
         if files != manifest.get("files"):
             raise ValueError("documentation bundle file digests do not match")
-        other = "stage1_l0/src" if stage == "stage2" else "stage2_l1/src"
-        if any(f"/compiler/{other}/" in name for name in files):
-            raise ValueError("documentation payload contains the other compiler stage")
-        if "html/index.html" not in files or f"pdf/{pdf_name(stage)}" not in files:
+        if "stage" in manifest or any("stage1_l0/" in name or "stage2_l1/" in name for name in files):
+            raise ValueError("documentation payload contains obsolete stage identity")
+        if "html/index.html" not in files or f"pdf/{pdf_name()}" not in files:
             raise ValueError("documentation bundle requires HTML and complete PDF")
-        if not (root / "pdf" / pdf_name(stage)).read_bytes().startswith(b"%PDF-"):
+        if not (root / "pdf" / pdf_name()).read_bytes().startswith(b"%PDF-"):
             raise ValueError("documentation reference is not a PDF")
         if not isinstance(manifest.get("tools"), dict) or not all(manifest["tools"].get(k) for k in ("doxygen", "pdflatex", "python", "mcss")):
             raise ValueError("documentation tool provenance is missing")
@@ -230,13 +224,12 @@ def verify_tree(root: Path, *, stage: str, version: str, source: dict[str, objec
         raise ValueError(f"invalid documentation bundle: {exc}") from exc
 
 
-def unpack_bundle(bundle: Path, destination: Path, *, stage: str, version: str, source: dict[str, object]) -> dict:
+def unpack_bundle(bundle: Path, destination: Path, *, version: str, source: dict[str, object]) -> dict:
     """Safely extract and verify a bundle before any distribution is created.
 
     Args:
         bundle: Absolute path to an offline bundle.
         destination: Empty extraction directory.
-        stage: Expected stage.
         version: Expected version.
         source: Expected source identity.
 
@@ -246,12 +239,12 @@ def unpack_bundle(bundle: Path, destination: Path, *, stage: str, version: str, 
     Raises:
         ValueError: The archive has unsafe members or fails verification.
     """
-    hint = "Generate it with make docs-artifacts DOC_STAGE=stage2 DEA_DIST_VERSION=<version> and set DOCS_ARTIFACT=<absolute-path>."
+    hint = "Generate it with make docs-artifacts DEA_DIST_VERSION=<version> and set DOCS_ARTIFACT=<absolute-path>."
     if not bundle.is_absolute() or not bundle.is_file():
         raise ValueError(f"missing absolute DOCS_ARTIFACT bundle. {hint}")
     if destination.exists() and any(destination.iterdir()):
         raise ValueError("documentation extraction destination must be empty")
-    top = f"dea-l1-{stage}-autodocs"
+    top = "dea-l1-autodocs"
     try:
         with tarfile.open(bundle, "r:gz") as archive:
             seen = set()
@@ -264,18 +257,17 @@ def unpack_bundle(bundle: Path, destination: Path, *, stage: str, version: str, 
                     raise ValueError(f"unsafe documentation archive member: {member.name}")
                 seen.add(path.as_posix())
             archive.extractall(destination, members=members, filter="data")
-        return verify_tree(destination / top, stage=stage, version=version, source=source)
+        return verify_tree(destination / top, version=version, source=source)
     except (OSError, tarfile.TarError, ValueError) as exc:
         raise ValueError(f"invalid DOCS_ARTIFACT: {exc}. {hint}") from exc
 
 
-def create_bundle(stage_root: Path, output: Path, *, stage: str, version: str, source: dict[str, object], tools: dict[str, str]) -> None:
+def create_bundle(reference_root: Path, output: Path, *, version: str, source: dict[str, object], tools: dict[str, str]) -> None:
     """Bundle a successfully completed strict HTML/full-PDF build atomically.
 
     Args:
-        stage_root: Completed generated outputs.
+        reference_root: Completed generated outputs.
         output: Destination tarball.
-        stage: Selected stage.
         version: Package version.
         source: Source identity captured before generation.
         tools: Recorded tool versions.
@@ -285,16 +277,16 @@ def create_bundle(stage_root: Path, output: Path, *, stage: str, version: str, s
     """
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".autodocs-", dir=output.parent) as work:
-        tree = Path(work) / f"dea-l1-{stage}-autodocs"
+        tree = Path(work) / "dea-l1-autodocs"
         tree.mkdir()
-        shutil.copytree(stage_root / "html", tree / "html")
+        shutil.copytree(reference_root / "html", tree / "html")
         # The HTML-local copy is produced only after the full PDF succeeds.
-        shutil.copytree(stage_root / "pdf", tree / "pdf")
-        manifest = {"schema_version": 1, "level": "l1", "stage": int(stage[-1]), "package_version": version,
+        shutil.copytree(reference_root / "pdf", tree / "pdf")
+        manifest = {"schema_version": 2, "level": "l1", "package_version": version,
                     "source": source, "tools": tools, "strict": True, "full_pdf": True,
                     "files": _file_digests(tree)}
         (tree / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        verify_tree(tree, stage=stage, version=version, source=source)
+        verify_tree(tree, version=version, source=source)
         archive_path = Path(work) / "bundle.tar.gz"
         with tarfile.open(archive_path, "w:gz") as archive:
             archive.add(tree, arcname=tree.name)

@@ -1,0 +1,340 @@
+#!/usr/bin/env python3
+#
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 gwz
+#
+
+"""Regression coverage for native L1 compiler runtime build flags."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+L1_ROOT = REPO_ROOT / "l1"
+SCRIPTS_ROOT = L1_ROOT / "scripts"
+if str(SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_ROOT))
+
+from build_l1c import (  # noqa: E402
+    L1_COMPILER_RT_CHECK_BASIC_ENV,
+    L1_COMPILER_RT_QUARANTINE_MAX_BYTES_ENV,
+    L1_COMPILER_RT_QUARANTINE_MAX_COUNT_ENV,
+    L1_COMPILER_RT_UNCHECKED_ENV,
+    COMPILER_SUPPORT_SOURCES,
+    compiler_runtime_build_env,
+    compiler_support_args,
+    compiler_support_build_env,
+)
+
+STAGE1_TEST_SCRIPTS_ROOT = L1_ROOT / "compiler" / "scripts"
+if str(STAGE1_TEST_SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(STAGE1_TEST_SCRIPTS_ROOT))
+
+from test_runner_common import build_repo_test_env  # noqa: E402
+
+
+@dataclass(frozen=True)
+class BuildEnvCase:
+    """One compiler runtime environment composition case."""
+
+    name: str
+    source: dict[str, str]
+    expected_cflags: str | None
+
+
+def require_build_env_cases() -> None:
+    """Require compiler mode and quarantine flags to resolve independently."""
+
+    cases = (
+        BuildEnvCase(
+            "absent values use basic and q256 defaults",
+            {},
+            "-DL0_RT_CHECK_BASIC -D_RT_QUARANTINE_MAX_COUNT=256",
+        ),
+        BuildEnvCase(
+            "empty basic selects full checked mode",
+            {L1_COMPILER_RT_CHECK_BASIC_ENV: ""},
+            "-D_RT_QUARANTINE_MAX_COUNT=256",
+        ),
+        BuildEnvCase(
+            "explicit basic preserves raw optimization flags",
+            {"L0_CFLAGS": "-O2", L1_COMPILER_RT_CHECK_BASIC_ENV: "1"},
+            "-O2 -DL0_RT_CHECK_BASIC -D_RT_QUARANTINE_MAX_COUNT=256",
+        ),
+        BuildEnvCase(
+            "unchecked suppresses the basic default",
+            {L1_COMPILER_RT_CHECK_BASIC_ENV: "1", L1_COMPILER_RT_UNCHECKED_ENV: "1"},
+            "-DL0_RT_UNCHECKED -D_RT_QUARANTINE_MAX_COUNT=256",
+        ),
+        BuildEnvCase(
+            "raw basic mode takes precedence",
+            {
+                "L0_CFLAGS": "-O1 -DL0_RT_CHECK_BASIC=1",
+                L1_COMPILER_RT_UNCHECKED_ENV: "1",
+            },
+            "-O1 -DL0_RT_CHECK_BASIC=1 -D_RT_QUARANTINE_MAX_COUNT=256",
+        ),
+        BuildEnvCase(
+            "raw unchecked mode takes precedence",
+            {"L0_CFLAGS": "-D L0_RT_UNCHECKED", L1_COMPILER_RT_CHECK_BASIC_ENV: "1"},
+            "-D L0_RT_UNCHECKED -D_RT_QUARANTINE_MAX_COUNT=256",
+        ),
+        BuildEnvCase(
+            "conflicting raw modes remain visible",
+            {"L0_CFLAGS": "-DL0_RT_CHECK_BASIC -DL0_RT_UNCHECKED"},
+            "-DL0_RT_CHECK_BASIC -DL0_RT_UNCHECKED -D_RT_QUARANTINE_MAX_COUNT=256",
+        ),
+        BuildEnvCase(
+            "compiler quarantine dimensions are independent",
+            {
+                L1_COMPILER_RT_QUARANTINE_MAX_BYTES_ENV: "8192",
+                L1_COMPILER_RT_QUARANTINE_MAX_COUNT_ENV: "17",
+            },
+            "-DL0_RT_CHECK_BASIC -D_RT_QUARANTINE_MAX_BYTES=8192 -D_RT_QUARANTINE_MAX_COUNT=17",
+        ),
+        BuildEnvCase(
+            "raw byte limit suppresses only the compiler byte limit",
+            {
+                "L0_CFLAGS": "-O2 -D_RT_QUARANTINE_MAX_BYTES=4096",
+                L1_COMPILER_RT_QUARANTINE_MAX_BYTES_ENV: "8192",
+                L1_COMPILER_RT_QUARANTINE_MAX_COUNT_ENV: "17",
+            },
+            "-O2 -D_RT_QUARANTINE_MAX_BYTES=4096 -DL0_RT_CHECK_BASIC -D_RT_QUARANTINE_MAX_COUNT=17",
+        ),
+        BuildEnvCase(
+            "raw count suppresses only the compiler count limit",
+            {
+                "L0_CFLAGS": "-D_RT_QUARANTINE_MAX_COUNT=33",
+                L1_COMPILER_RT_QUARANTINE_MAX_BYTES_ENV: "2048",
+                L1_COMPILER_RT_QUARANTINE_MAX_COUNT_ENV: "17",
+            },
+            "-D_RT_QUARANTINE_MAX_COUNT=33 -DL0_RT_CHECK_BASIC -D_RT_QUARANTINE_MAX_BYTES=2048",
+        ),
+        BuildEnvCase(
+            "empty quarantine defaults disable compiler tuning",
+            {
+                L1_COMPILER_RT_QUARANTINE_MAX_BYTES_ENV: "",
+                L1_COMPILER_RT_QUARANTINE_MAX_COUNT_ENV: "",
+            },
+            "-DL0_RT_CHECK_BASIC",
+        ),
+        BuildEnvCase(
+            "empty mode and tuning defaults preserve absent cflags",
+            {
+                L1_COMPILER_RT_CHECK_BASIC_ENV: "",
+                L1_COMPILER_RT_QUARANTINE_MAX_BYTES_ENV: "",
+                L1_COMPILER_RT_QUARANTINE_MAX_COUNT_ENV: "",
+            },
+            None,
+        ),
+        BuildEnvCase(
+            "similarly named raw macros do not suppress exact defaults",
+            {
+                "L0_CFLAGS": (
+                    "-DNOT_L0_RT_CHECK_BASIC "
+                    "-D_RT_QUARANTINE_MAX_COUNT_EXTRA=9"
+                ),
+            },
+            (
+                "-DNOT_L0_RT_CHECK_BASIC -D_RT_QUARANTINE_MAX_COUNT_EXTRA=9 "
+                "-DL0_RT_CHECK_BASIC -D_RT_QUARANTINE_MAX_COUNT=256"
+            ),
+        ),
+    )
+
+    for case in cases:
+        source_before = dict(case.source)
+        result = compiler_runtime_build_env(case.source)
+        if case.source != source_before:
+            raise AssertionError(f"{case.name}: source environment was mutated")
+        if result is case.source:
+            raise AssertionError(f"{case.name}: helper returned the source mapping")
+
+        expected_cflags = case.expected_cflags
+        actual_cflags = result.get("L0_CFLAGS")
+        if actual_cflags != expected_cflags:
+            raise AssertionError(
+                f"{case.name}: expected L0_CFLAGS={expected_cflags!r}, got {actual_cflags!r}"
+            )
+        if compiler_runtime_build_env(result) != result:
+            raise AssertionError(f"{case.name}: repeated composition duplicated compiler flags")
+
+
+def require_support_source_composition() -> None:
+    """Require full compiler support and explicit preparation-free test support."""
+
+    support_sources = [str(path) for path in COMPILER_SUPPORT_SOURCES]
+    source = {"L0_CFLAGS": "-O2"}
+    source_before = dict(source)
+    result = compiler_support_build_env(source)
+    if source != source_before:
+        raise AssertionError("support-source composition mutated its source mapping")
+    if result.get("L0_CFLAGS") != "-O2":
+        raise AssertionError("support-source composition changed C compiler options")
+
+    test_env = build_repo_test_env("build/dea", L1_ROOT / "build" / "dea")
+    if any(path in test_env.get("L0_CFLAGS", "").split() for path in support_sources):
+        raise AssertionError("Stage 1 test environment injected the support source into L0_CFLAGS")
+    expected_args = [arg for path in support_sources for arg in ("--c-source", path)]
+    if compiler_support_args() != expected_args:
+        raise AssertionError("support sources were not represented as structured compiler arguments")
+    minimal_sources = [path for path in support_sources if not path.endswith("preparation_support.c")]
+    expected_minimal = [arg for path in minimal_sources for arg in ("--c-source", path)]
+    if compiler_support_args(preparation=False) != expected_minimal:
+        raise AssertionError("preparation-free builds must retain the other support units")
+
+
+def require_make_help_parity() -> None:
+    """Require Make help to separate and uniquely list the public flag families."""
+
+    completed = subprocess.run(
+        ["make", "help"],
+        cwd=L1_ROOT,
+        text=True,
+        encoding="utf-8",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+        timeout=30,
+    )
+    if completed.returncode != 0:
+        raise AssertionError(f"make help exited with {completed.returncode}:\n{completed.stdout}")
+
+    for heading in (
+        "Compiler construction variables:",
+        "Generated L1 program variables:",
+        "Runtime archive variables:",
+        "Test variables:",
+        "Docker variables:",
+    ):
+        if heading not in completed.stdout:
+            raise AssertionError(f"make help omitted section {heading!r}")
+
+    for variable in (
+        "L1_COMPILER_RT_CHECK_BASIC",
+        "L1_COMPILER_RT_UNCHECKED",
+        "L1_COMPILER_RT_QUARANTINE_MAX_BYTES",
+        "L1_COMPILER_RT_QUARANTINE_MAX_COUNT",
+        "L0_CFLAGS",
+        "L1_CFLAGS",
+        "DOCKER_CC",
+        "DOCKER_L0_CC",
+    ):
+        occurrences = completed.stdout.count(variable)
+        if occurrences != 1:
+            raise AssertionError(f"make help listed {variable} {occurrences} times, expected once")
+
+
+def require_docker_compiler_propagation() -> None:
+    """Require Docker compiler selection to configure every compiler role."""
+
+    def dry_run(*assignments: str) -> str:
+        env = os.environ.copy()
+        env.pop("DOCKER_CC", None)
+        env.pop("DOCKER_L0_CC", None)
+        completed = subprocess.run(
+            ["make", "--dry-run", "docker", "CMD=test-extended", *assignments],
+            cwd=L1_ROOT,
+            env=env,
+            text=True,
+            encoding="utf-8",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+            timeout=30,
+        )
+        if completed.returncode != 0:
+            raise AssertionError(
+                f"make --dry-run docker {' '.join(assignments)} exited with "
+                f"{completed.returncode}:\n{completed.stdout}"
+            )
+        return completed.stdout
+
+    def require_roles(output: str, compiler: str, case: str) -> None:
+        for role in ("L0_CC", "L1_CC", "L1_RUNTIME_CC"):
+            assignment = f'-e "{role}={compiler}"'
+            occurrences = output.count(assignment)
+            if occurrences != 1:
+                raise AssertionError(
+                    f"{case}: expected one {assignment!r}, got {occurrences}:\n{output}"
+                )
+
+    require_roles(dry_run(), "gcc", "default Docker compiler")
+    require_roles(
+        dry_run("DOCKER_L0_CC=clang"),
+        "clang",
+        "legacy Docker compiler selector",
+    )
+
+    explicit_output = dry_run("DOCKER_CC=gcc-16", "DOCKER_L0_CC=clang")
+    require_roles(explicit_output, "gcc-16", "canonical Docker compiler selector")
+    for role in ("L0_CC", "L1_CC", "L1_RUNTIME_CC"):
+        shadowed_assignment = f'-e "{role}=clang"'
+        if shadowed_assignment in explicit_output:
+            raise AssertionError(
+                "canonical Docker compiler selector did not override the legacy selector:\n"
+                f"{explicit_output}"
+            )
+
+
+def require_make_preserves_environment_cflags() -> None:
+    """Require the Stage 1 recipe to inherit raw C flags without Make expansion."""
+
+    literal_cflags = "-Wl,-rpath,$ORIGIN/lib"
+    env = os.environ.copy()
+    env["L0_CFLAGS"] = literal_cflags
+    completed = subprocess.run(
+        [
+            "make",
+            "--dry-run",
+            "--old-file=venv",
+            "--old-file=runtime",
+            "--old-file=_ensure-bootstrap-l0-stage2",
+            "build",
+        ],
+        cwd=L1_ROOT,
+        env=env,
+        text=True,
+        encoding="utf-8",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+        timeout=30,
+    )
+    if completed.returncode != 0:
+        raise AssertionError(
+            f"make --dry-run build exited with {completed.returncode}:\n{completed.stdout}"
+        )
+    if "./scripts/build_l1c.py" not in completed.stdout:
+        raise AssertionError("make --dry-run omitted the build recipe")
+    if "L0_CFLAGS=" in completed.stdout:
+        raise AssertionError(
+            "build must inherit L0_CFLAGS instead of reinjecting it into the recipe:\n"
+            f"{completed.stdout}"
+        )
+    if "$ORIGIN/lib" in completed.stdout or "RIGIN/lib" in completed.stdout:
+        raise AssertionError(
+            "build exposed or mangled the literal $ORIGIN environment value:\n"
+            f"{completed.stdout}"
+        )
+
+
+def main() -> int:
+    """Run native compiler build-environment regressions."""
+
+    require_build_env_cases()
+    require_support_source_composition()
+    require_make_help_parity()
+    require_docker_compiler_propagation()
+    require_make_preserves_environment_cflags()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

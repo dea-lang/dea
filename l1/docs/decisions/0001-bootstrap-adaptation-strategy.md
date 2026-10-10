@@ -1,7 +1,7 @@
 # ADR-0001: Bootstrap Adaptation Strategy
 
 - Decision date: 2026-04-02
-- Last edited: 2026-10-09
+- Last edited: 2026-10-10
 - Status: Accepted
 
 ## Context
@@ -13,8 +13,7 @@ other language, or reuse the mature L0 toolchain as a starting point.
 
 L1 starts as a retargeted copy of the L0 Stage 2 compiler rather than a greenfield implementation:
 
-- The runnable L1 compiler (`compiler/stage1_l0/`) starts from copied L0 Stage 2 sources and is retargeted to emit L1
-  semantics.
+- The runnable L1 compiler (`compiler/`) starts from copied L0 Stage 2 sources and is retargeted to emit L1 semantics.
 - The L1 reference docs start from copied L0 reference material and are rewritten to describe the real L1 bootstrap
   tree.
 - Copied implementation and docs are allowed to retain historical internal names (e.g., `l0_*` prefixes) when those
@@ -27,18 +26,16 @@ Select the upstream compiler explicitly. Local development defaults to the repo-
 selection fails without falling back to the default or searching ambient `PATH` for `l0c`. Windows selection supports
 the corresponding `.cmd` wrapper. Prepare the development default with `make -C ../l0 use-dev-stage2`.
 
-Delivery construction follows the explicit chain: upstream L0 compiler -> L1 Stage 1 -> repository-mode L1 Stage 2 seed
--> self-built, installed-mode L1 Stage 2 executable. The installer prepares an absent default upstream through L0's
-`venv` and `install-dev-stage2` targets, preserving the L0 development alias. It builds the L1 stages in disposable
-repo-local scratch and requires the seed to reproduce Stage 1's complete bundled semantic interface set byte-for-byte
-before building the delivered executable. Neither the active L1 development alias nor existing development binaries
-select the delivered stage or get replaced by packaging.
+Delivery construction uses the explicit upstream L0 compiler to build the canonical repository-mode L1 compiler and an
+independently constructed installed-mode L1 executable in private scratch. The delivered compiler agrees with its
+captured bundled semantic interfaces, runtime/stdlib rebuild inputs, and symbol manifests. The canonical compiler
+regenerates and verifies the semantic set. Development artifacts are not selected or replaced by packaging.
 
-The installed compiler runs independently of L0, L1 Stage 1, and the Stage 2 seed. Its native startup, semantic
+The installed compiler runs independently of L0 and repository-mode construction artifacts. Its native startup, semantic
 commands, and bundled-support preparation do not invoke Python, `uv`, or Make. Native output and preparation still
 require a compatible host C compiler/linker and preparation host tools. Python-based installation and artifact
 verification remain separate tooling operations. The delivery contract is recorded in
-[l1/docs/decisions/0042-self-hosted-toolchain-delivery.md][delivery].
+[l1/docs/decisions/0043-canonical-compiler-toolchain-delivery.md][delivery].
 
 ## Rationale
 
@@ -49,7 +46,8 @@ verification remain separate tooling operations. The delivery contract is record
 - The copied baseline provides a regression anchor: divergence from L0 behavior must be intentional and documented.
 - Explicit compiler selection makes the construction chain reproducible and prevents an activated installation or
   unrelated `PATH` alias from silently choosing the bootstrap compiler.
-- A self-built delivery compiler and matching semantic interfaces separate construction dependencies from installed use.
+- A privately built canonical delivery compiler and matching semantic interfaces separate construction dependencies from
+  installed use.
 
 ## Consequences
 
@@ -60,7 +58,11 @@ verification remain separate tooling operations. The delivery contract is record
 
 ## Related Plans
 
+- [work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../../work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md):
+  canonical compiler delivery amendment.
+
 - [work/plans/refactors/closed/2026-04-02-l1-bootstrap-scaffold-noref.md][scaffold]
+
 - [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization]: bootstrap contract amendment;
   documentation handoff is complete; formal plan closure remains active.
 
@@ -70,7 +72,7 @@ verification remain separate tooling operations. The delivery contract is record
 - [l1/AGENTS.md][guidance]: explicit upstream selection.
 - [l1/docs/reference/productization-inventory.md][inventory]: private bootstrap chain and installed dependency boundary.
 
-[delivery]: 0042-self-hosted-toolchain-delivery.md
+[delivery]: 0043-canonical-compiler-toolchain-delivery.md
 [design-decisions]: ../reference/design-decisions.md
 [guidance]: ../../AGENTS.md
 [inventory]: ../reference/productization-inventory.md

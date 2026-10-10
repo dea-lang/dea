@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import productization_payload as payload
 from productization_provenance import PackageProvenance
-from productization_inventory import install_payload, verify_payload
+from productization_inventory import MANIFEST_PATH, install_payload, verify_payload
 
 
 @pytest.fixture
@@ -77,10 +77,12 @@ def test_inconsistent_inputs_rejected(inputs, change):
 
 
 @pytest.mark.parametrize("windows", [False, True])
-def test_assembly_uses_snapshot_marker_and_private_output(inputs, monkeypatch, tmp_path, windows):
+@pytest.mark.parametrize("fail_installed", [False, True])
+def test_assembly_uses_snapshot_marker_and_private_output(inputs, monkeypatch, tmp_path, windows, fail_installed):
     root, layout = inputs
     expected = payload.snapshot_support(root, layout)
     calls = []
+    verified = []
 
     def collect(source, env, **kwargs):
         assert kwargs["preparation_inputs"] == {name: hashlib.sha256(data).hexdigest()
@@ -92,23 +94,54 @@ def test_assembly_uses_snapshot_marker_and_private_output(inputs, monkeypatch, t
                                    "native_compiler": {"version": "fixture"}}}
         return PackageProvenance(json.dumps(metadata)), env
 
-    def build(seed, output, env, **kwargs):
+    def build(upstream, output, env, **kwargs):
+        assert upstream == tmp_path / "l0"
         assert "func build_info_is_installed() -> bool {\n    return true;" in kwargs["build_info_overlay"].read_text()
         assert not output.is_relative_to(root)
         payload._write(output.parent, output.name, b"native fixture", 0o755)
         calls.append(output)
+        return [str(upstream), "--build", "--project-root", str(kwargs["build_info_overlay"].parent),
+                "--project-root", str(root / "compiler/src"), "-o", str(output), "l1c"]
 
     monkeypatch.setattr(payload, "collect_provenance", collect)
     monkeypatch.setattr(payload, "build_compiler", build)
-    monkeypatch.setattr(payload.subprocess, "run", lambda *a, **kw: None)
-    with payload.build_payload(root, layout, layout / "bin/l1c-stage2", {}, upstream=tmp_path / "l0",
-                               stage1_options=[]) as (tree, provenance):
+    def verify(command, *, cwd, env, check):
+        verified.append(command)
+        assert check
+        if command[0].endswith("l1c.native"):
+            tree = Path(command[0]).parent.parent
+            record = json.loads((tree / MANIFEST_PATH).read_text())
+            assert record["schema_version"] == 2 and record["state"] == "complete"
+            assert "stage" not in record
+            assert "--sys-root" not in command
+            assert command[command.index("-I") + 1] == str(tree / "interfaces")
+            assert not any(name in env for name in ("L1_HOME", "L1_SYSTEM", "L1_BUILD_DIR"))
+            assert cwd == tree.parent
+            if fail_installed:
+                raise RuntimeError("installed graph rejected")
+
+    monkeypatch.setattr(payload.subprocess, "run", verify)
+    if fail_installed:
+        with pytest.raises(RuntimeError, match="installed graph rejected"):
+            with payload.build_payload(root, layout, layout / "bin/l1c", {}, upstream=tmp_path / "l0",
+                                       compiler_options=[]):
+                pytest.fail("must not expose an unverified installed compiler")
+        assert len(verified) == 2 and not calls[-1].parent.parent.exists()
+        return
+    with payload.build_payload(root, layout, layout / "bin/l1c", {}, upstream=tmp_path / "l0",
+                               compiler_options=[]) as (tree, provenance):
+        assert len(verified) == 2
+        assert not (tree / MANIFEST_PATH).exists()
         for name, data in expected.items():
             assert (tree / name).read_bytes() == data
         assert (tree / "bin/l1c.cmd").exists() == windows
         assert (tree / "bin/l1-env.cmd").exists() == windows
         assert (tree / "bin/l1c").exists()
-        assert not (tree / "bin/l1c-stage1").exists()
+        command = provenance.metadata()["provenance"]["installed_compiler_command"]
+        assert command[0] == str(tmp_path / "l0")
+        assert command[command.index("-o") + 1] == str(tree / "bin/l1c.native")
+        assert command.count("--project-root") == 2
+        assert not (tree / "bin/l1c-stage2").exists()
         assert "share/doc/dea/l1/toolchain.md" in (tree / "README.md").read_text()
         for document in (tree / "README.md", tree / "README-WINDOWS.md",
                          tree / "share/doc/dea/l1/toolchain.md"):
@@ -118,7 +151,7 @@ def test_assembly_uses_snapshot_marker_and_private_output(inputs, monkeypatch, t
             for target in targets:
                 if not target.startswith("https://"):
                     assert (document.parent / target).is_file(), target
-        assert not list(tree.rglob("build_info.l1"))
+        assert not list(tree.rglob("build_info.l0"))
         prefix = tmp_path / "installed"
         record = install_payload(tree, prefix, provenance.metadata())
         verify_payload(prefix, record)
@@ -147,7 +180,7 @@ def test_failed_build_removes_private_scratch(inputs, monkeypatch, tmp_path, fai
     monkeypatch.setattr(payload.subprocess, "run", verify)
     monkeypatch.setattr(payload, "build_compiler", build)
     with pytest.raises(RuntimeError, match=failure + " failed"):
-        with payload.build_payload(root, layout, layout / "bin/seed", {}, upstream=tmp_path / "l0", stage1_options=[]):
+        with payload.build_payload(root, layout, layout / "bin/seed", {}, upstream=tmp_path / "l0", compiler_options=[]):
             pytest.fail("must not expose failed payload")
     assert scratch and not scratch[0].exists()
     assert not (layout / "bin").exists()

@@ -21,13 +21,13 @@ on:
       - THIRD_PARTY_NOTICES
       - docs/decisions/**
       - pyproject.toml
-      - scripts/check_adr_impact.py
-      - scripts/tests/test_check_adr_impact.py
+      - scripts/**
       - tools/**
       - uv.lock
       - work/**
       - l0/**
       - l1/**
+      - l2/**
   pull_request:
     paths:
       - .agents/skills/**
@@ -42,13 +42,13 @@ on:
       - THIRD_PARTY_NOTICES
       - docs/decisions/**
       - pyproject.toml
-      - scripts/check_adr_impact.py
-      - scripts/tests/test_check_adr_impact.py
+      - scripts/**
       - tools/**
       - uv.lock
       - work/**
       - l0/**
       - l1/**
+      - l2/**
   workflow_dispatch:
     inputs:
       platform:
@@ -78,6 +78,11 @@ on:
         type: string
       l1_make_target:
         description: L1 make target to run
+        required: true
+        default: test-ci
+        type: string
+      l2_make_target:
+        description: L2 make target to run
         required: true
         default: test-ci
         type: string
@@ -161,6 +166,7 @@ jobs:
     outputs:
       run_l0: ${{ steps.route.outputs.run_l0 }}
       run_l1: ${{ steps.route.outputs.run_l1 }}
+      run_l2: ${{ steps.route.outputs.run_l2 }}
       run_docs: ${{ steps.route.outputs.run_docs }}
       run_any: ${{ steps.route.outputs.run_any }}
     steps:
@@ -181,11 +187,13 @@ jobs:
         run: |
           run_l0=false
           run_l1=false
+          run_l2=false
           run_docs=false
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             run_l0=true
             run_l1=true
+            run_l2=true
             run_docs=true
           else
             if [ "$EVENT_NAME" = "pull_request" ]; then
@@ -199,18 +207,20 @@ jobs:
             if [ -z "$base_sha" ] || [ "$base_sha" = "0000000000000000000000000000000000000000" ]; then
               run_l0=true
               run_l1=true
+              run_l2=true
               run_docs=true
             elif ! git rev-parse --verify "$base_sha^{commit}" >/dev/null 2>&1 || \
                  ! git rev-parse --verify "$head_sha^{commit}" >/dev/null 2>&1; then
               echo "Diff endpoints unavailable; running all validation workloads."
               run_l0=true
               run_l1=true
+              run_l2=true
               run_docs=true
             else
               changed_files="$(git diff --name-only "$base_sha" "$head_sha")"
               shared=false
 
-              if printf '%s\n' "$changed_files" | grep -Eq '^(tools/|\.github/actions/|\.github/workflows/(ci|l0-ci|l1-ci)\.yml$|Makefile$)'; then
+              if printf '%s\n' "$changed_files" | grep -Eq '^(tools/|scripts/|pyproject\.toml$|uv\.lock$|\.github/actions/|\.github/workflows/(ci|l0-ci|l1-ci|l2-ci)\.yml$|Makefile$)'; then
                 shared=true
               fi
               if printf '%s\n' "$changed_files" | grep -Eq '^l0/'; then
@@ -218,10 +228,15 @@ jobs:
               fi
               if printf '%s\n' "$changed_files" | grep -Eq '^l1/'; then
                 run_l1=true
+                run_l2=true
+              fi
+              if printf '%s\n' "$changed_files" | grep -Eq '^l2/'; then
+                run_l2=true
               fi
               if [ "$shared" = true ]; then
                 run_l0=true
                 run_l1=true
+                run_l2=true
               fi
               if printf '%s\n' "$changed_files" | grep -Eq '^(\.github/workflows/|README\.md$|CONTRIBUTING\.md$|CLAUDE\.md$|THIRD_PARTY_NOTICES$|tools/|pyproject\.toml$|uv\.lock$|l0/(compiler/(stage1_py|docgen|stage2_l0|shared)/|docs/|README(-WINDOWS)?\.md$|CLAUDE\.md$|pyproject\.toml$|scripts/(docs/|(gen_docs|docs_artifacts|stage_docs_pages|gen_dist_tools|dist_tools_lib)\.py$)))'; then
                 run_docs=true
@@ -230,13 +245,14 @@ jobs:
           fi
 
           run_any=false
-          if [ "$run_l0" = true ] || [ "$run_l1" = true ]; then
+          if [ "$run_l0" = true ] || [ "$run_l1" = true ] || [ "$run_l2" = true ]; then
             run_any=true
           fi
 
           {
             echo "run_l0=$run_l0"
             echo "run_l1=$run_l1"
+            echo "run_l2=$run_l2"
             echo "run_docs=$run_docs"
             echo "run_any=$run_any"
           } >> "$GITHUB_OUTPUT"
@@ -409,6 +425,16 @@ jobs:
             echo "value=test-ci" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Select L2 Make target
+        id: select-l2-target
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ inputs.l2_make_target }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=test-ci" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run L0 CI delegate
         if: needs.route-levels.outputs.run_l0 == 'true'
         uses: ./.github/actions/l0-ci
@@ -422,5 +448,12 @@ jobs:
         uses: ./.github/actions/l1-ci
         with:
           make_target: ${{ steps.select-l1-target.outputs.value }}
+          c_compiler: ${{ steps.select-cc.outputs.value }}
+          artifact_name_suffix: ${{ matrix.platform }}-${{ steps.select-cc.outputs.value }}
+      - name: Run L2 CI delegate
+        if: needs.route-levels.outputs.run_l2 == 'true'
+        uses: ./.github/actions/l2-ci
+        with:
+          make_target: ${{ steps.select-l2-target.outputs.value }}
           c_compiler: ${{ steps.select-cc.outputs.value }}
           artifact_name_suffix: ${{ matrix.platform }}-${{ steps.select-cc.outputs.value }}

@@ -3,13 +3,13 @@
 ## Widen time seconds and add sleep and deadlines
 
 - Date: 2026-08-30
-- Last reviewed: 2026-09-08
+- Last reviewed: 2026-10-10
 - Status: Draft
 - Title: Widen L1 time seconds and add monotonic sleep, deadline, and timeout helpers
 - Kind: Feature
 - Severity: Medium
 - Priority: 3
-- Stage: L1
+- Stage: Canonical
 - Parent Initiative: `l1/work/initiatives/0006-process-and-host-services.md`
 - Subsystem: Stdlib / runtime / time
 - Modules:
@@ -26,11 +26,11 @@
   - `l1/docs/reference/design-decisions.md`
   - `l1/docs/specs/compiler/abi.md`
 - Test modules:
-  - `l1/compiler/stage1_l0/tests/time_runtime_test.py` (new L1 runtime/fixture harness)
-  - `l1/compiler/stage1_l0/tests/fixtures/time_runtime/` (new `.l1` fixtures)
-  - `l1/compiler/stage1_l0/tests/time_test.l0` (existing L0-seed compatibility coverage)
-  - `l1/compiler/stage1_l0/tests/io_runtime_test.py`
-  - `l1/compiler/stage1_l0/tests/runtime_symbol_manifest_test.py`
+  - `l1/compiler/tests/time_runtime_test.py` (new L1 runtime/fixture harness)
+  - `l1/compiler/tests/fixtures/time_runtime/` (new `.l1` fixtures)
+  - `l1/compiler/tests/time_test.l0` (existing L0-seed compatibility coverage)
+  - `l1/compiler/tests/io_runtime_test.py`
+  - `l1/compiler/tests/runtime_symbol_manifest_test.py`
 - Related:
   - `l1/work/initiatives/0006-process-and-host-services.md`
   - `l1/work/initiatives/0007-blocking-networking.md`

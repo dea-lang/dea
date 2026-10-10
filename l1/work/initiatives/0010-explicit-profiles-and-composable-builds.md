@@ -7,8 +7,8 @@
   - `l1/work/plans/features/2026-09-30-explicit-profile-artifacts-noref.md`
 - Closed plans:
   - `l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md`
-- Stage: Shared
-- Scope: L1 Stage 1 and Stage 2
+- Stage: Canonical
+- Scope: L1 canonical L1 compiler
 - Subsystem: Profile construction, native preparation, compiler driver and external build integration
 
 ## Summary
@@ -24,6 +24,12 @@ system, a new package manager, or a rewrite of the compiler bootstrap.
 This initiative records the direction agreed in the September 30 design discussion and reviewed against the repository
 on October 1. Phase A is complete: the internal constructor accepts frozen inputs and a caller-owned destination. The
 public artifact contract and later phases remain planned work. All new command examples below are proposed syntax.
+
+## Compiler-lineage placement
+
+Complete this work in canonical L1 first, then carry the accepted implementation forward into L2 under a later scoped
+change. This split does not implement or advance profiles/composable builds and adds no dependency on them. Former
+paired-stage compatibility scenarios now refer to canonical L1 producer/consumer consistency, not a second L1 compiler.
 
 ## ADR Impact
 
@@ -161,11 +167,10 @@ create, repair or silently substitute managed support.
 ## Scope and Deferred Work
 
 No language syntax, ownership semantics, ABI mangling, lifecycle ordering, native object inspection or public stdlib API
-changes are included. Preserve Stage 1 as the semantic/diagnostic oracle and implement paired Stage 2 behavior while
-retaining its reviewed L1 idioms.
+changes are included. Preserve the canonical L1 semantic/diagnostic contract while retaining its reviewed L1 idioms.
 
-Production Make-managed compiler builds, changing Stage 1's L0 bootstrap, ordinary-project stdlib construction, treating
-the stdlib as an arbitrary third-party package, profile distribution, cross-host reuse, cross-toolchain ABI
+Production Make-managed compiler builds, changing the canonical L1 L0 bootstrap, ordinary-project stdlib construction,
+treating the stdlib as an arbitrary third-party package, profile distribution, cross-host reuse, cross-toolchain ABI
 compatibility, cache eviction and a native backend are outside this initiative's completion requirements. Production
 compiler and stdlib adoption follow the relevant delivered foundations as separately scoped work. Profile selection in
 `--check`, `--gen` and `--emit-interface` is deferred beyond the initial plans and is not an initiative completion
@@ -173,8 +178,8 @@ requirement.
 
 Do not restart hashing or metadata-policy experiments as a dependency of the profile work. Coordinate touching changes
 with [l1/work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md][efficiency-plan], without adopting its
-unselected alternatives. Keep the active Stage 2 source review and legacy compiler compatibility work independently
-owned; this initiative must not become their prerequisite or claim their results.
+unselected alternatives. Keep legacy compiler compatibility work independently owned; this initiative must not become
+their prerequisite or claim their results.
 
 ## Completion Criteria
 

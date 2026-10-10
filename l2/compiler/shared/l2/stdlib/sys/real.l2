@@ -1,0 +1,109 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/**
+ * Low-level runtime FFI bindings for floating-point operations.
+ *
+ * This module declares the `extern func` surface backed by `rt_real_*`
+ * runtime helpers, covering classification, basic operations, rounding,
+ * remainder, decomposition, and neighboring-value queries for both `float`
+ * and `double`.
+ *
+ * Prefer `std.real` for ordinary use; this module exists as the thin
+ * C-oriented binding layer underneath it.
+ *
+ * Implementation note: Importing this module, directly or transitively,
+ * triggers inclusion of `l1_real.h` and linkage of the host math library
+ * (`-lm` or platform equivalent) into the final binary.
+ */
+module sys.real;
+
+struct RtFloatOut { val: float; }
+struct RtDoubleOut { val: double; }
+struct RtIntOut { val: int; }
+
+// Constants
+extern func rt_real_get_nan_f() -> float;
+extern func rt_real_get_nan_d() -> double;
+extern func rt_real_get_inf_f() -> float;
+extern func rt_real_get_inf_d() -> double;
+
+// Classification
+extern func rt_real_is_nan_f(x: float) -> bool;
+extern func rt_real_is_nan_d(x: double) -> bool;
+extern func rt_real_is_inf_f(x: float) -> bool;
+extern func rt_real_is_inf_d(x: double) -> bool;
+extern func rt_real_is_finite_f(x: float) -> bool;
+extern func rt_real_is_finite_d(x: double) -> bool;
+extern func rt_real_signbit_f(x: float) -> bool;
+extern func rt_real_signbit_d(x: double) -> bool;
+
+// Basic ops
+extern func rt_real_abs_f(x: float) -> float;
+extern func rt_real_abs_d(x: double) -> double;
+extern func rt_real_sqrt_f(x: float) -> float;
+extern func rt_real_sqrt_d(x: double) -> double;
+extern func rt_real_cbrt_f(x: float) -> float;
+extern func rt_real_cbrt_d(x: double) -> double;
+extern func rt_real_hypot_f(x: float, y: float) -> float;
+extern func rt_real_hypot_d(x: double, y: double) -> double;
+
+// Rounding
+extern func rt_real_floor_f(x: float) -> float;
+extern func rt_real_floor_d(x: double) -> double;
+extern func rt_real_ceil_f(x: float) -> float;
+extern func rt_real_ceil_d(x: double) -> double;
+extern func rt_real_trunc_f(x: float) -> float;
+extern func rt_real_trunc_d(x: double) -> double;
+extern func rt_real_round_f(x: float) -> float;
+extern func rt_real_round_d(x: double) -> double;
+
+// Remainder and decomposition
+extern func rt_real_fmod_f(x: float, y: float) -> float;
+extern func rt_real_fmod_d(x: double, y: double) -> double;
+extern func rt_real_remainder_f(x: float, y: float) -> float;
+extern func rt_real_remainder_d(x: double, y: double) -> double;
+extern func rt_real_modf_f(x: float, iptr: RtFloatOut*) -> float;
+extern func rt_real_modf_d(x: double, iptr: RtDoubleOut*) -> double;
+extern func rt_real_frexp_f(x: float, exp: RtIntOut*) -> float;
+extern func rt_real_frexp_d(x: double, exp: RtIntOut*) -> double;
+extern func rt_real_ldexp_f(x: float, exp: int) -> float;
+extern func rt_real_ldexp_d(x: double, exp: int) -> double;
+
+// Sign and neighboring-value helpers
+extern func rt_real_copy_sign_f(x: float, y: float) -> float;
+extern func rt_real_copy_sign_d(x: double, y: double) -> double;
+extern func rt_real_next_after_f(x: float, y: float) -> float;
+extern func rt_real_next_after_d(x: double, y: double) -> double;
+
+// Exponential and logarithmic
+extern func rt_real_exp_f(x: float) -> float;
+extern func rt_real_exp_d(x: double) -> double;
+extern func rt_real_exp2_f(x: float) -> float;
+extern func rt_real_exp2_d(x: double) -> double;
+extern func rt_real_log_f(x: float) -> float;
+extern func rt_real_log_d(x: double) -> double;
+extern func rt_real_log10_f(x: float) -> float;
+extern func rt_real_log10_d(x: double) -> double;
+extern func rt_real_log2_f(x: float) -> float;
+extern func rt_real_log2_d(x: double) -> double;
+extern func rt_real_pow_f(x: float, y: float) -> float;
+extern func rt_real_pow_d(x: double, y: double) -> double;
+
+// Trigonometric
+extern func rt_real_sin_f(x: float) -> float;
+extern func rt_real_sin_d(x: double) -> double;
+extern func rt_real_cos_f(x: float) -> float;
+extern func rt_real_cos_d(x: double) -> double;
+extern func rt_real_tan_f(x: float) -> float;
+extern func rt_real_tan_d(x: double) -> double;
+extern func rt_real_asin_f(x: float) -> float;
+extern func rt_real_asin_d(x: double) -> double;
+extern func rt_real_acos_f(x: float) -> float;
+extern func rt_real_acos_d(x: double) -> double;
+extern func rt_real_atan_f(x: float) -> float;
+extern func rt_real_atan_d(x: double) -> double;
+extern func rt_real_atan2_f(x: float, y: float) -> float;
+extern func rt_real_atan2_d(x: double, y: double) -> double;

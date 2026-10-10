@@ -1,0 +1,465 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+module std.hashset;
+
+import sys.rt;
+import sys.memory;
+
+import std.assert;
+import std.string;
+import sys.hash;
+
+import std.array;
+import std.vector;
+
+/* Slot states — same values as hashmap */
+let HS_EMPTY: byte = 0;
+let HS_OCCUPIED: byte = 1;
+let HS_TOMBSTONE: byte = 2;
+
+let HS_DEFAULT_CAP: int = 16;
+
+/**
+ * Compute a non-negative slot index from a hash and a power-of-2 capacity.
+ *
+ * @param h The hash value.
+ * @param cap The capacity of the hash set.
+ * @return The calculated slot index.
+ */
+func _hs_slot(h: int, cap: int) -> int {
+    let r = h % cap;
+    if (r < 0) {
+        return r + cap;
+    }
+    return r;
+}
+
+/* =================================
+   StringSet: set of strings
+   ================================= */
+
+/**
+ * StringSet is an open-addressing hash set with linear probing.
+ * Struct-of-arrays: states, hashes, keys.
+ */
+struct StringSet {
+    capacity: int;
+    count: int;
+    tomb_count: int;
+    states: ArrayBase*;
+    hashes: ArrayBase*;
+    keys: ArrayBase*;
+}
+
+/* ---------------------------------
+   Construction
+   --------------------------------- */
+
+/**
+ * Creates a new StringSet with default capacity.
+ *
+ * @return A pointer to the newly created StringSet.
+ */
+func ss_create() -> StringSet* {
+    return _ss_alloc(HS_DEFAULT_CAP);
+}
+
+/**
+ * Creates a new StringSet with at least the specified capacity.
+ *
+ * @param min_cap The minimum capacity for the set.
+ * @return A pointer to the newly created StringSet.
+ */
+func ss_create_with_capacity(min_cap: int) -> StringSet* {
+    let cap = HS_DEFAULT_CAP;
+    while (cap < min_cap) {
+        cap = cap * 2;
+    }
+    return _ss_alloc(cap);
+}
+
+/**
+ * Internal allocator for StringSet.
+ *
+ * @param cap The capacity to allocate.
+ * @return A pointer to the newly allocated StringSet.
+ */
+func _ss_alloc(cap: int) -> StringSet* {
+    let states = arr_create(sizeof(byte), cap);
+    let hashes = arr_create(sizeof(int), cap);
+    let keys   = arr_create(sizeof(string), cap);
+    return new StringSet(cap, 0, 0, states, hashes, keys);
+}
+
+/* ---------------------------------
+   Slot accessors (internal)
+   --------------------------------- */
+
+/**
+ * Returns the state of the specified slot.
+ *
+ * @param self The pointer to the StringSet.
+ * @param i The slot index.
+ * @return The state byte of the slot.
+ */
+func _ss_get_state(self: StringSet*, i: int) -> byte {
+    return *(arr_get(self.states, i) as byte*);
+}
+
+/**
+ * Sets the state of the specified slot.
+ *
+ * @param self The pointer to the StringSet.
+ * @param i The slot index.
+ * @param s The state byte to set.
+ */
+func _ss_set_state(self: StringSet*, i: int, s: byte) {
+    let p = arr_get(self.states, i) as byte*;
+    *p = s;
+}
+
+/**
+ * Returns the hash value of the specified slot.
+ *
+ * @param self The pointer to the StringSet.
+ * @param i The slot index.
+ * @return The hash value of the slot.
+ */
+func _ss_get_hash(self: StringSet*, i: int) -> int {
+    return *(arr_get(self.hashes, i) as int*);
+}
+
+/**
+ * Sets the hash value of the specified slot.
+ *
+ * @param self The pointer to the StringSet.
+ * @param i The slot index.
+ * @param h The hash value to set.
+ */
+func _ss_set_hash(self: StringSet*, i: int, h: int) {
+    let p = arr_get(self.hashes, i) as int*;
+    *p = h;
+}
+
+/**
+ * Returns the key string of the specified slot.
+ *
+ * @param self The pointer to the StringSet.
+ * @param i The slot index.
+ * @return The key string of the slot.
+ */
+func _ss_get_key(self: StringSet*, i: int) -> string {
+    return *(arr_get(self.keys, i) as string*);
+}
+
+/**
+ * Sets the key string of the specified slot and retains it.
+ *
+ * @param self The pointer to the StringSet.
+ * @param i The slot index.
+ * @param k The key string to set.
+ */
+func _ss_set_key_retain(self: StringSet*, i: int, k: string) {
+    let p = arr_get(self.keys, i) as string*;
+    *p = k;
+}
+
+/**
+ * Releases the key string of the specified slot and zaps it.
+ *
+ * @param self The pointer to the StringSet.
+ * @param i The slot index.
+ */
+func _ss_release_key(self: StringSet*, i: int) {
+    let p = arr_get(self.keys, i) as string*;
+    rt_string_release(*p);
+    arr_zap(self.keys, i);
+}
+
+/* ---------------------------------
+   Probing (internal)
+   --------------------------------- */
+
+/**
+ * Find the slot index of an existing key.
+ *
+ * @param self The pointer to the StringSet.
+ * @param key The key string to find.
+ * @param h The hash value of the key.
+ * @return The slot index if found, or -1 if not in the set.
+ */
+func _ss_find(self: StringSet*, key: string, h: int) -> int {
+    let cap = self.capacity;
+    let idx = _hs_slot(h, cap);
+
+    for (let i: int = 0; i < cap; i = i + 1) {
+        let state = _ss_get_state(self, idx);
+        if (state == HS_EMPTY) {
+            return -1;
+        }
+        if (state == HS_OCCUPIED) {
+            if (_ss_get_hash(self, idx) == h) {
+                if (_ss_get_key(self, idx) == key) {
+                    return idx;
+                }
+            }
+        }
+        idx = (idx + 1) % cap;
+    }
+    return -1;
+}
+
+/**
+ * Find the first non-occupied slot for insertion.
+ *
+ * @param self The pointer to the StringSet.
+ * @param h The hash value of the key.
+ * @return The available slot index.
+ */
+func _ss_find_insert(self: StringSet*, h: int) -> int {
+    let cap = self.capacity;
+    let idx = _hs_slot(h, cap);
+
+    for (let i: int = 0; i < cap; i = i + 1) {
+        if (_ss_get_state(self, idx) != HS_OCCUPIED) {
+            return idx;
+        }
+        idx = (idx + 1) % cap;
+    }
+    assert(false, "hashset: no free slot found during insert probe");
+    return -1;
+}
+
+/**
+ * Checks if the set needs to grow.
+ *
+ * @param self The pointer to the StringSet.
+ * @return True if growth is needed, false otherwise.
+ */
+func _ss_needs_grow(self: StringSet*) -> bool {
+    return (self.count + self.tomb_count) * 4 > self.capacity * 3;
+}
+
+/**
+ * Rehashes the set to a larger capacity.
+ *
+ * @param self The pointer to the StringSet.
+ */
+func _ss_rehash(self: StringSet*) {
+    let old_cap    = self.capacity;
+    let old_states = self.states;
+    let old_hashes = self.hashes;
+    let old_keys   = self.keys;
+
+    let new_cap = old_cap * 2;
+    self.capacity   = new_cap;
+    self.count      = 0;
+    self.tomb_count = 0;
+    self.states = arr_create(sizeof(byte), new_cap);
+    self.hashes = arr_create(sizeof(int), new_cap);
+    self.keys   = arr_create(sizeof(string), new_cap);
+
+    for (let i: int = 0; i < old_cap; i = i + 1) {
+        let sp = arr_get(old_states, i) as byte*;
+        if (*sp == HS_OCCUPIED) {
+            let h  = *(arr_get(old_hashes, i) as int*);
+            let kp = arr_get(old_keys, i) as string*;
+
+            let idx = _hs_slot(h, new_cap);
+            while (_ss_get_state(self, idx) != HS_EMPTY) {
+                idx = (idx + 1) % new_cap;
+            }
+
+            _ss_set_state(self, idx, HS_OCCUPIED);
+            _ss_set_hash(self, idx, h);
+
+            /* Move key ownership */
+            let dest_kp = arr_get(self.keys, idx) as string*;
+            rt_memcpy(dest_kp as void*, kp as void*, sizeof(string));
+
+            self.count = self.count + 1;
+        }
+    }
+
+    arr_free(old_states);
+    arr_free(old_hashes);
+    arr_free(old_keys);
+}
+
+/* =================================
+   StringSet: public API
+   ================================= */
+
+/**
+ * Add a string to the set.
+ * Returns true if the string was newly added, false if already present.
+ *
+ * @param self The pointer to the StringSet.
+ * @param key The key string to add.
+ * @return True if the string was newly added, false otherwise.
+ */
+func ss_add(self: StringSet*, key: string) -> bool {
+    if (_ss_needs_grow(self)) {
+        _ss_rehash(self);
+    }
+
+    let h = rt_hash_string(key);
+    let found_idx = _ss_find(self, key, h);
+
+    if (found_idx >= 0) {
+        return false;
+    }
+
+    let idx = _ss_find_insert(self, h);
+    let state = _ss_get_state(self, idx);
+    if (state == HS_TOMBSTONE) {
+        self.tomb_count = self.tomb_count - 1;
+    }
+    _ss_set_state(self, idx, HS_OCCUPIED);
+    _ss_set_hash(self, idx, h);
+    _ss_set_key_retain(self, idx, key);
+    self.count = self.count + 1;
+    return true;
+}
+
+/**
+ * Check whether a string is in the set.
+ *
+ * @param self The pointer to the StringSet.
+ * @param key The key string to check.
+ * @return True if the string is in the set, false otherwise.
+ */
+func ss_has(self: StringSet*, key: string) -> bool {
+    if (self.count == 0) {
+        return false;
+    }
+    let h = rt_hash_string(key);
+    return _ss_find(self, key, h) >= 0;
+}
+
+/**
+ * Remove a string from the set.
+ * Returns true if it was found and removed.
+ *
+ * @param self The pointer to the StringSet.
+ * @param key The key string to remove.
+ * @return True if found and removed, false otherwise.
+ */
+func ss_remove(self: StringSet*, key: string) -> bool {
+    if (self.count == 0) {
+        return false;
+    }
+    let h = rt_hash_string(key);
+    let idx = _ss_find(self, key, h);
+    if (idx < 0) {
+        return false;
+    }
+
+    _ss_release_key(self, idx);
+    _ss_set_state(self, idx, HS_TOMBSTONE);
+    self.count = self.count - 1;
+    self.tomb_count = self.tomb_count + 1;
+    return true;
+}
+
+/**
+ * Returns the number of entries in the set.
+ *
+ * @param self The pointer to the StringSet.
+ * @return The count of elements.
+ */
+func ss_size(self: StringSet*) -> int {
+    return self.count;
+}
+
+/**
+ * Returns the current capacity of the set.
+ *
+ * @param self The pointer to the StringSet.
+ * @return The capacity.
+ */
+func ss_capacity(self: StringSet*) -> int {
+    return self.capacity;
+}
+
+/**
+ * Remove all entries from the set. Releases all key strings.
+ *
+ * @param self The pointer to the StringSet.
+ */
+func ss_clear(self: StringSet*) {
+    for (let i: int = 0; i < self.capacity; i = i + 1) {
+        if (_ss_get_state(self, i) == HS_OCCUPIED) {
+            _ss_release_key(self, i);
+        }
+    }
+    rt_memset(self.states.data, 0, self.capacity * sizeof(byte));
+    rt_memset(self.hashes.data, 0, self.capacity * sizeof(int));
+    rt_memset(self.keys.data,   0, self.capacity * sizeof(string));
+    self.count = 0;
+    self.tomb_count = 0;
+}
+
+/**
+ * Collect all elements into a new StringVector.
+ * Caller owns the result and must sv_free() it.
+ *
+ * @param self The pointer to the StringSet.
+ * @return A new StringVector containing all elements.
+ */
+func ss_to_vector(self: StringSet*) -> StringVector* {
+    let result = sv_create(self.count);
+    for (let i: int = 0; i < self.capacity; i = i + 1) {
+        if (_ss_get_state(self, i) == HS_OCCUPIED) {
+            sv_push(result, _ss_get_key(self, i));
+        }
+    }
+    return result;
+}
+
+/**
+ * Free the set and all backing storage.
+ * Releases all key strings.
+ *
+ * @param self The pointer to the StringSet to free.
+ */
+func ss_free(self: StringSet*) {
+    for (let i: int = 0; i < self.capacity; i = i + 1) {
+        if (_ss_get_state(self, i) == HS_OCCUPIED) {
+            _ss_release_key(self, i);
+        }
+    }
+    arr_free(self.states);
+    arr_free(self.hashes);
+    arr_free(self.keys);
+    drop self;
+}
+
+/* ---------------------------------
+   Iteration support
+   --------------------------------- */
+
+/**
+ * Checks if a slot is occupied.
+ *
+ * @param self The pointer to the StringSet.
+ * @param i The slot index.
+ * @return True if occupied, false otherwise.
+ */
+func ss_slot_occupied(self: StringSet*, i: int) -> bool {
+    return _ss_get_state(self, i) == HS_OCCUPIED;
+}
+
+/**
+ * Returns the key at the specified slot.
+ *
+ * @param self The pointer to the StringSet.
+ * @param i The slot index.
+ * @return The key string.
+ */
+func ss_slot_key(self: StringSet*, i: int) -> string {
+    return _ss_get_key(self, i);
+}

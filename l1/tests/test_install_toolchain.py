@@ -14,7 +14,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import install_toolchain as installer
-import build_stage1_l1c as stage1
+import build_l1c as builder
 from docs_artifacts import create_bundle, unpack_bundle, verify_tree
 from productization_inventory import MANIFEST_PATH, install_payload, list_installed, read_inventory
 from productization_provenance import PackageProvenance
@@ -31,13 +31,13 @@ def checkout(tmp_path, monkeypatch):
     root = tmp_path / "checkout/l1"
     root.mkdir(parents=True)
     monkeypatch.setattr(installer, "REPO_ROOT", root)
-    monkeypatch.setattr(stage1, "REPO_ROOT", root)
+    monkeypatch.setattr(builder, "REPO_ROOT", root)
     monkeypatch.setattr(installer, "host_target", lambda *args: ("linux", "x86_64"))
     return root
 
 
 DOCS_SOURCE = {"revision": "fixture", "tree_state": "clean", "input_digest": "a" * 64}
-DOCS_RELATIVE = Path("share/doc/dea/l1/autodocs/stage2")
+DOCS_RELATIVE = Path("share/doc/dea/l1/autodocs")
 
 
 def docs_bundle(tmp_path):
@@ -45,21 +45,23 @@ def docs_bundle(tmp_path):
     tree = tmp_path / "docs source"
     (tree / "html").mkdir(parents=True)
     (tree / "pdf").mkdir()
-    (tree / "html/index.html").write_text('<a href="../pdf/dea_l1_stage2_api_reference.pdf">PDF</a>')
-    (tree / "pdf/dea_l1_stage2_api_reference.pdf").write_bytes(b"%PDF-1.7\nfixture\n%%EOF\n")
+    (tree / "html/index.html").write_text('<a href="../pdf/dea_l1_api_reference.pdf">PDF</a>')
+    (tree / "pdf/dea_l1_api_reference.pdf").write_bytes(b"%PDF-1.7\nfixture\n%%EOF\n")
     bundle = tmp_path / "offline docs.tar.gz"
-    create_bundle(tree, bundle, stage="stage2", version="dev", source=DOCS_SOURCE,
+    create_bundle(tree, bundle, version="dev", source=DOCS_SOURCE,
                   tools={name: "fixture" for name in ("doxygen", "pdflatex", "python", "mcss")})
     return bundle
 
 
 @pytest.mark.parametrize("with_docs", [False, True])
-@pytest.mark.parametrize("failure", [None, "stage1", "seed", "interfaces", "payload"])
-def test_private_chain_preserves_development_artifacts(checkout, tmp_path, monkeypatch, failure, with_docs):
+@pytest.mark.parametrize("failure", [None, "compiler", "payload"])
+@pytest.mark.parametrize("construction_flags", [None, "", "-O1 -Dupstream=1"])
+def test_private_chain_preserves_development_artifacts(
+        checkout, tmp_path, monkeypatch, failure, with_docs, construction_flags):
     root = checkout
     build = root / "build/custom layout"
     (build / "bin").mkdir(parents=True)
-    for name in ("l1c", "l1c-stage1.native", "l1c-stage2.native"):
+    for name in ("l1c", "l1c.native"):
         (build / "bin" / name).write_bytes(b"preserved development artifact")
     upstream = tmp_path / "explicit l0"
     upstream.write_bytes(b"upstream")
@@ -78,8 +80,8 @@ def test_private_chain_preserves_development_artifacts(checkout, tmp_path, monke
         return upstream
 
     def run(command, *, cwd, env, check):
-        step("stage1")
-        assert command == [sys.executable, str(root / "scripts/build_stage1_l1c.py")]
+        step("compiler")
+        assert command == [sys.executable, str(root / "scripts/build_l1c.py")]
         layout = Path(env["L1_BUILD_DIR"])
         private.append(layout)
         assert layout.parent == build and layout != build
@@ -87,25 +89,15 @@ def test_private_chain_preserves_development_artifacts(checkout, tmp_path, monke
         assert env["L1_STDLIB_CACHE"] == str(layout / "cache")
         assert env["KEEP_C"] == "0"
         assert env["L1_CFLAGS"] == "-Dcustom=1"
+        assert env["L0_CFLAGS"] == ("-O2" if construction_flags is None else construction_flags)
         assert cwd == root and check
-
-    def build_seed(compiler, output, env):
-        step("seed")
-        assert compiler == private[-1] / "bin/l1c-stage1"
-        assert output == private[-1] / "bin/l1c-stage2.native"
-        output.parent.mkdir()
-        output.write_bytes(b"seed")
-
-    def verify(layout, seed, env):
-        step("interfaces")
-        assert layout == private[-1] and seed == layout / "bin/l1c-stage2"
 
     @contextmanager
     def payload(root, layout, seed, env, **kwargs):
         step("payload")
-        assert seed == private[-1] / "bin/l1c-stage2"
+        assert seed == private[-1] / "bin/l1c"
         assert kwargs["upstream"] == upstream
-        assert kwargs["stage1_options"] == stage1.stage1_build_options(stage1.normalize_l1_build_dir(str(layout)))
+        assert kwargs["compiler_options"] == builder.compiler_build_options(builder.normalize_l1_build_dir(str(layout)))
         tree = layout / "payload"
         tree.mkdir()
         (tree / "VERSION").write_text("fixture")
@@ -114,11 +106,11 @@ def test_private_chain_preserves_development_artifacts(checkout, tmp_path, monke
     monkeypatch.setattr(installer, "bootstrap_upstream", bootstrap)
     monkeypatch.setattr(installer, "compiler_build_env", lambda env: (env, []))
     monkeypatch.setattr(installer.subprocess, "run", run)
-    monkeypatch.setattr(installer, "build_compiler", build_seed)
-    monkeypatch.setattr(installer, "verify_seed_interfaces", verify)
     monkeypatch.setattr(installer, "build_payload", payload)
     env = {"L1_BUILD_DIR": str(build), "L1_CFLAGS": "-Dcustom=1", "KEEP_C": "1",
            "L0_HOME": "stale", "L1_HOME": "stale", "L1_SYSTEM": "stale", "L1_STDLIB_CACHE": "stale"}
+    if construction_flags is not None:
+        env["L0_CFLAGS"] = construction_flags
     if with_docs:
         env["DOCS_ARTIFACT"] = str(docs_bundle(tmp_path))
         monkeypatch.setattr(installer, "source_identity", lambda *args: dict(DOCS_SOURCE))
@@ -129,10 +121,10 @@ def test_private_chain_preserves_development_artifacts(checkout, tmp_path, monke
     else:
         assert installer.install(str(prefix), env, make="selected-make") == prefix
         assert read_inventory(prefix)["state"] == "complete"
-        assert calls == ["stage1", "seed", "interfaces", "payload"]
+        assert calls == ["compiler", "payload"]
         if with_docs:
             docs = prefix / DOCS_RELATIVE
-            verify_tree(docs, stage="stage2", version="dev", source=DOCS_SOURCE)
+            verify_tree(docs, version="dev", source=DOCS_SOURCE)
             assert (DOCS_RELATIVE / "html/index.html").as_posix() in list_installed(prefix)
             # Reinstall without docs removes only owned docs, retaining unrelated files.
             (docs / "personal-note.txt").write_text("preserve")
@@ -154,7 +146,7 @@ def test_private_chain_preserves_development_artifacts(checkout, tmp_path, monke
     assert all(path.read_bytes() == b"preserved development artifact" for path in (build / "bin").iterdir())
 
 
-@pytest.mark.parametrize("prefix", ["", ".", "compiler/nested", "scripts", "docs", "build/dea", "../l0"])
+@pytest.mark.parametrize("prefix", ["", ".", "compiler/nested", "scripts", "docs", "build/dea", "../l0", "../l2"])
 def test_invalid_destination_fails_before_bootstrap(checkout, monkeypatch, prefix):
     monkeypatch.setattr(installer, "bootstrap_upstream", lambda *args: pytest.fail("must preflight first"))
     with pytest.raises(ValueError):
@@ -191,29 +183,6 @@ def test_default_bootstrap_prepared_once_without_selecting_alias(checkout, monke
     assert all(call[0] == "chosen-make" and call[-1] == "DEA_BUILD_DIR=build/dea" for call in calls)
     assert installer.bootstrap_upstream({}, "chosen-make") == default
     assert len(calls) == 2
-
-
-@pytest.mark.parametrize("matching", [True, False])
-def test_stage2_interface_agreement(checkout, tmp_path, monkeypatch, matching):
-    source = checkout / "compiler/shared/l1/stdlib/std/io.l1"
-    source.parent.mkdir(parents=True)
-    source.write_text("module std.io;")
-    layout = tmp_path / "layout"
-    canonical = layout / "interfaces/std/io.l1m"
-    canonical.parent.mkdir(parents=True)
-    canonical.write_bytes(b"canonical")
-
-    def run(command, **kwargs):
-        assert command[-3] == "std.io"
-        Path(command[-1]).write_bytes(b"canonical" if matching else b"different")
-
-    monkeypatch.setattr(installer.subprocess, "run", run)
-    if matching:
-        installer.verify_seed_interfaces(layout, tmp_path / "seed", {})
-    else:
-        with pytest.raises(ValueError, match="Stage 2 interface differs from Stage 1: std.io"):
-            installer.verify_seed_interfaces(layout, tmp_path / "seed", {})
-    assert list(layout.iterdir()) == [layout / "interfaces"]
 
 
 def test_public_make_listing_is_inventory_only(tmp_path):
@@ -272,8 +241,8 @@ def test_public_make_invalid_override_fails_without_installing(tmp_path):
 def test_invalid_docs_preserve_prefix_before_bootstrap(checkout, tmp_path, monkeypatch, problem):
     bundle = docs_bundle(tmp_path)
     extraction = tmp_path / "extracted"
-    unpack_bundle(bundle, extraction, stage="stage2", version="dev", source=DOCS_SOURCE)
-    tree = extraction / "dea-l1-stage2-autodocs"
+    unpack_bundle(bundle, extraction, version="dev", source=DOCS_SOURCE)
+    tree = extraction / "dea-l1-autodocs"
     manifest_path = tree / "manifest.json"
     manifest = json.loads(manifest_path.read_text())
     if problem == "stage":

@@ -1,0 +1,48 @@
+{
+  "sig-0010-not-a-type": {
+    "expected": "[SIG-0010] symbol 'bar' in module 'main' is not a type (kind=FUNC)",
+    "files": {
+      "main": "                module main;\n                func bar() -> int { return 0; }\n                func foo() -> int { return 1 as bar; }\n            "
+    }
+  },
+  "sig-0018-qualified-type-path": {
+    "expected": "[SIG-0018] nested symbol path 'color::Color::Red': paths must have the form 'module::symbol' (did you mean 'color::Red'?)",
+    "files": {
+      "color": "                module color;\n                enum Color { Red(); }\n            ",
+      "main": "                module main;\n                import color;\n                func foo(x: color::Color::Red) -> int { return 0; }\n            "
+    }
+  },
+  "typ-0158-nested-symbol-path": {
+    "expected": "[TYP-0158] nested symbol path 'color::Color::Red': paths must have the form 'module::symbol' (did you mean 'color::Red'?)",
+    "files": {
+      "color": "                module color;\n                enum Color { Red(); }\n            ",
+      "main": "                module main;\n                import color;\n                func foo() -> int { let x: int = color::Color::Red; return 0; }\n            "
+    }
+  },
+  "sig-0019-ambiguous-type": {
+    "expected": "[SIG-0019] ambiguous type 'T' (imported from modules 'a', 'b'); use 'a::T' or 'b::T' to disambiguate",
+    "files": {
+      "a": "                module a;\n                struct T { value: int; }\n            ",
+      "b": "                module b;\n                struct T { value: int; }\n            ",
+      "main": "                module main;\n                import a;\n                import b;\n                func foo(x: T) -> int { return 0; }\n            "
+    }
+  },
+  "sig-0020-alias-cycle": {
+    "expected": "[SIG-0020] cyclic type alias involving 'A' in module 'main'",
+    "files": {
+      "main": "                module main;\n                type A = B;\n                type B = A;\n                func foo(x: A) -> int { return 0; }\n            "
+    }
+  },
+  "par-0620-array-type-syntax": {
+    "expected": "[PAR-0620] expected constant integer expression in array type",
+    "files": {
+      "main": "                module main;\n                func foo() -> int {\n                    let x: int[+] = 0;\n                    return x;\n                }\n            "
+    }
+  },
+  "par-0624-reserved-inferred-length-array": {
+    "expected": "[PAR-0624] inferred-length array type '[_]' is reserved for future use",
+    "files": {
+      "main": "                module main;\n                func foo() -> int {\n                    let x: int[_] = 0;\n                    return x;\n                }\n            "
+    }
+  }
+}

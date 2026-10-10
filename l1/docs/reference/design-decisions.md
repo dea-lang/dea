@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-09-27
+Version: 2026-10-10
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -18,7 +18,7 @@ Related docs:
 The current L1 bootstrap language aims to be:
 
 - small but expressive
-- practical for bootstrapping a later self-hosted compiler
+- practical for constructing the next language level's compiler
 - suitable for systems/runtime-oriented code
 - explicit about safety boundaries
 - portable through conservative C99 lowering
@@ -83,9 +83,9 @@ exact-byte caller snapshots.
 
 The reusable artifact remains a caller-trusted pair. No checksum or native symbol binds the files, so build systems must
 create, copy, invalidate, replace, and keep them stable together. The accepted risk is that a mixed-generation pair may
-fail interface validation, fail at the native link, or link successfully with incorrect behavior. All Stage 1 artifacts
-must be rebuilt after the authority change; there is no interface-format discriminator that makes old import-free,
-non-entry interfaces reliably distinguishable.
+fail interface validation, fail at the native link, or link successfully with incorrect behavior. All canonical L1
+artifacts must be rebuilt after the authority change; there is no interface-format discriminator that makes old
+import-free, non-entry interfaces reliably distinguishable.
 
 The interface keeps three dependency views separate:
 
@@ -124,8 +124,8 @@ translation. This policy is recorded by
 Near-term L1 evolution should preserve the current bootstrap implementation and semantics unless a targeted bug fix or a
 decision-complete feature addition requires a deliberate change.
 
-When `stage2_l1` is eventually implemented, it should preserve these language/runtime decisions unless the L1 reference
-docs are intentionally revised.
+The former L1 Stage 2 now belongs to L2. L1 retains one canonical compiler implemented in L0. Future L1 changes and any
+subsequent L2 ports require deliberate feature placement; the split does not freeze L1.
 
 ## 6. Bootstrap Adaptation Strategy
 
@@ -134,7 +134,7 @@ implementation.
 
 Current policy:
 
-- the runnable L1 compiler starts from copied L0 Stage 2 compiler sources and is retargeted inside `compiler/stage1_l0/`
+- the runnable L1 compiler starts from copied L0 Stage 2 compiler sources and is retargeted inside `compiler/`
 - the current L1 reference set starts from copied L0 reference material and is rewritten to describe the real L1
   bootstrap tree
 - copied implementation and docs are allowed to retain historical internal names when those names are merely bootstrap
@@ -203,12 +203,11 @@ These boundaries are recorded in
 [l1/docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md](../decisions/0039-native-preparation-identity-and-reuse-boundary.md)
 and [l1/docs/reference/stdlib-preparation.md](stdlib-preparation.md).
 
-The native L1 Stage 1 compiler is an L0 program; Stage 2 is its mechanical L1 port. Both default compiler-build runtimes
-use basic pointer validation and a 256-record quarantine limit, retaining core checked-runtime diagnostics without the
-full interior-pointer index. `L1_COMPILER_RT_CHECK_BASIC`, `L1_COMPILER_RT_UNCHECKED`,
-`L1_COMPILER_RT_QUARANTINE_MAX_BYTES`, and `L1_COMPILER_RT_QUARANTINE_MAX_COUNT` configure only the native compiler
-binaries. They do not change the full checked default of L1 runtime archives or the runtime mode selected for programs
-produced by `l1c`.
+The canonical native L1 compiler is an L0 program. Its default compiler-build runtime use basic pointer validation and a
+256-record quarantine limit, retaining core checked-runtime diagnostics without the full interior-pointer index.
+`L1_COMPILER_RT_CHECK_BASIC`, `L1_COMPILER_RT_UNCHECKED`, `L1_COMPILER_RT_QUARANTINE_MAX_BYTES`, and
+`L1_COMPILER_RT_QUARANTINE_MAX_COUNT` configure only the native compiler binaries. They do not change the full checked
+default of L1 runtime archives or the runtime mode selected for programs produced by `l1c`.
 
 ## 7.1 Fixed-Size Array Policy
 
@@ -572,8 +571,8 @@ Current decision:
 
 For floating-point literals and expressions, the current bootstrap compiler adds the following rule:
 
-- Stage 1 does not perform arithmetic evaluation of floating-point expressions unless it can guarantee results identical
-  to the L1 floating-point contract
+- The canonical compiler does not perform arithmetic evaluation of floating-point expressions unless it can guarantee
+  results identical to the L1 floating-point contract
 
 Rationale:
 

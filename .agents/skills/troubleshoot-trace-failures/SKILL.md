@@ -6,14 +6,15 @@ description: Diagnose Dea ARC and memory trace failures, fix ownership bugs, and
 ### Troubleshoot tracing errors and leaks
 
 Use this skill when Dea trace output reports leaks, retain/release imbalances, object lifetime bugs, or other ARC/memory
-trace failures in `l0/` or `l1/`.
+trace failures in `l0/`, `l1/`, or `l2/`.
 
 ## Scope
 
 This skill is for ownership-sensitive debugging and fixes in:
 
 - `l0/compiler/stage2_l0/**`
-- `l1/compiler/stage1_l0/**`
+- `l1/compiler/**`
+- `l2/compiler/**`
 - shared runtime and stdlib paths used by those compilers
 - trace runner scripts and trace-focused regression tests
 
@@ -28,7 +29,7 @@ Typical triggers:
 
 1. Read `AGENTS.md` first. Then read the subtree guide:
    - `l0/AGENTS.md` for L0 Stage 2 work
-   - `l1/AGENTS.md` for L1 Stage 1 work
+   - `l1/AGENTS.md` for canonical L1 work
 2. Read the ownership reference that governs the target subtree:
    - `l0/docs/reference/ownership.md` for L0 work
    - `l1/docs/reference/ownership.md` for L1 work
@@ -45,12 +46,13 @@ make test-stage2-trace TESTS="lexer_test"
 
 # L1
 cd l1
-make test-stage1-trace TESTS="lexer_test"
-../.venv/bin/python compiler/stage1_l0/scripts/run_test_trace.py lexer_test
-../.venv/bin/python compiler/stage1_l0/scripts/check_trace_log.py /path/to/stderr.log --triage
+make test-compiler-trace TESTS="lexer_test"
+../.venv/bin/python compiler/scripts/run_test_trace.py lexer_test
+../.venv/bin/python compiler/scripts/check_trace_log.py /path/to/stderr.log --triage
 ```
 
-5. If the suite case is noisy, reduce it to a minimal `.l0` reproducer that exercises the exact ownership path.
+5. If the suite case is noisy, reduce it to a minimal reproducer in the subject language that exercises the exact
+   ownership path.
 6. Map the leak or trace error to one of the common ownership failure modes:
    - early return skips cleanup of temporary vectors or builders
    - ownership moves but the old slot still gets released
@@ -112,11 +114,11 @@ make test-stage2-trace
 
 ```bash
 cd l1
-make test-stage1
-make test-stage1-trace
+make test-compiler
+make test-compiler-trace
 ```
 
-- L1 trace discovery is `.l0`-only. Python parity tests belong in the normal test runner, not the trace runner.
+- L1 trace discovery is `.l0`-only. Python contract tests belong in the normal test runner, not the trace runner.
 
 ## Investigation checklist
 
@@ -134,3 +136,7 @@ make test-stage1-trace
 - traced repro passes with zero leaks
 - subtree trace target passes
 - related normal tests pass
+
+For L2, read `l2/AGENTS.md` and `l2/docs/reference/ownership.md`. Run canonical `test-compiler-trace` from `l2/` with
+the explicit installed L1 toolchain. `.l1` implementation traces and `.l2` target-program traces are different subjects;
+choose the reproducer extension and child-trace harness accordingly. Never require cross-level source parity.

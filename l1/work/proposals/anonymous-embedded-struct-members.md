@@ -1,6 +1,6 @@
 # Anonymous Embedded Struct Members Proposal
 
-Version: 2026-07-25
+Version: 2026-10-10
 
 Status: Proposed
 
@@ -11,9 +11,9 @@ This proposal reopens whether L1 should support anonymous struct composition wit
 layout, ABI, or conversion semantics are accepted.
 
 This is a design proposal, not an implementation plan. L1 already has enough language surface to reach its first
-self-hosted Stage 2 fixed point, so this proposal must not delay the mechanical Stage 2 port. If the design is later
-accepted, its normative rules must first graduate into L1 documentation and then into a new Stage 1-first feature plan
-with future Stage 2 parity requirements.
+canonical L1/L2 split, so this proposal is not a split prerequisite. If the design is later accepted, its normative
+rules must first graduate into L1 documentation and then into a new canonical L1 feature plan with canonical compiler
+regression requirements.
 
 ## Current Problem
 
@@ -38,10 +38,10 @@ the added language and compiler complexity.
 
 The current compiler contains a few plausible but limited applications:
 
-- `StructInfo` and `EnumInfo` in [l1/compiler/stage1_l0/src/types.l0][types] share the meaningful prefix `key`,
-  `module_name`, `name`, `filename`, and `span`.
-- `ParseResult` and `ImplParseResult` in [l1/compiler/stage1_l0/src/parser.l0][parser] and
-  [l1/compiler/stage1_l0/src/parser/shared.l0][parser-shared] have the same five-field shape.
+- `StructInfo` and `EnumInfo` in [l1/compiler/src/types.l0][types] share the meaningful prefix `key`, `module_name`,
+  `name`, `filename`, and `span`.
+- `ParseResult` and `ImplParseResult` in [l1/compiler/src/parser.l0][parser] and
+  [l1/compiler/src/parser/state.l0][parser-shared] have the same five-field shape.
 - `PreparedInput` and `BuildPreparedInput` duplicate a small entry-module and search-path bundle.
 - Some stdlib records, maps, and sets share storage prefixes, although several existing wrappers contain pointers to
   their storage and therefore would not benefit from by-value-only embedding.
@@ -145,8 +145,7 @@ Every group below is a decision gate. An implementation plan must not open until
 2. Should initial implementation require at least two reviewed production uses, or ship without internal adoption?
 3. How would future methods, interfaces, traits, or nominal inheritance coexist with promoted fields?
 4. Is anonymous composition still worthwhile after generics and improved module type sharing reduce current duplication?
-5. When Stage 2 exists, how will Stage 1-first semantics and diagnostic parity be maintained without making the feature
-   a prerequisite for the initial self-hosting fixed point?
+5. How will the canonical L1 semantics and diagnostic contract be validated independently of a future L2 port?
 
 ## Alternatives
 
@@ -187,7 +186,7 @@ The proposal is ready for acceptance only when:
 2. construction, ownership, interface, fingerprint, and ABI behavior form one coherent model;
 3. the design demonstrates clearer production code in concrete compiler or stdlib examples;
 4. adding or changing a base field has a documented source- and binary-compatibility consequence;
-5. the accepted surface does not require or delay the first L1 Stage 2 fixed point.
+5. the accepted surface does not require or delay the canonical compiler split.
 
 ## Proposal Lifecycle
 
@@ -195,13 +194,13 @@ The proposal is ready for acceptance only when:
 2. Keep stable grammar, ABI, ownership, and compiler documentation unchanged while the proposal remains open.
 3. On acceptance, graduate the normative decisions into the appropriate L1 specs, references, and implementation
    documentation.
-4. Create a new Stage 1-first feature plan only after those decisions are accepted; that plan must include future Stage
-   2 parity and freshly checked diagnostic reservations.
+4. Create a new canonical L1 feature plan only after those decisions are accepted; that plan must include canonical
+   compiler regression checks and freshly checked diagnostic reservations.
 5. On rejection, mark this proposal rejected and update the roadmap without reviving the withdrawn plan.
 
-[parser]: ../../compiler/stage1_l0/src/parser.l0
-[parser-shared]: ../../compiler/stage1_l0/src/parser/shared.l0
+[parser]: ../../compiler/src/parser.l0
+[parser-shared]: ../../compiler/src/parser/state.l0
 [roadmap]: ../../docs/roadmap.md
 [stage 2 self-hosting plan]: ../../../work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md
-[types]: ../../compiler/stage1_l0/src/types.l0
+[types]: ../../compiler/src/types.l0
 [withdrawn feature plan]: ../plans/features/closed/2026-04-22-anonymous-embedded-struct-members-noref.md

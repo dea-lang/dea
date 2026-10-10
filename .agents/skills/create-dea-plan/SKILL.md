@@ -16,8 +16,8 @@ Do not use this skill for:
 
 ## Cross-level default rule
 
-Treat plan rules as shared across `l0/`, `l1/`, and future `lN/` subtrees unless an explicit subtree or root rule says
-otherwise.
+Treat plan rules as shared across `l0/`, `l1/`, `l2/`, and future `lN/` subtrees unless an explicit subtree or root rule
+says otherwise.
 
 That means:
 
@@ -146,7 +146,7 @@ Start every new plan with the standard plan header and metadata block.
 - Title: [Full descriptive title]
 - Kind: [Bug Fix | Feature | Refactor | Tooling]
 - Severity: [Low | Medium | High | Critical]
-- Stage: [match nearby plans in the target tree]
+- Stage: [Canonical for L1/L2; actual stage for L0]
 - Subsystem: [subsystem summary]
 - Modules:
   - `path/to/module`
@@ -163,7 +163,8 @@ Notes:
 - `# Tool Plan` pairs with `Kind: Tooling`.
 - Include `Related:` when there are meaningful links; omit it only when there is nothing useful to reference.
 - Include `Repro:` when there is a concrete repro command, fixture, or focused entrypoint.
-- Use the stage/value style already used by nearby plans in the same tree and category.
+- Use `Stage: Canonical` for single-compiler L1/L2 plans. L0 retains meaningful stage values; root shared work uses
+  `Stage: Shared`. Existing historical metadata is not rewritten. Current validators do not require fictitious stages.
 
 ### Root shared-plan extra metadata
 
@@ -308,9 +309,9 @@ For legibility, the visible link text in `roadmap.md` uses special abbreviated f
 `roadmap.md`; everywhere else, follow the general "repository-root paths as visible link text" rule from the writing
 rules below.
 
-- plans: `[plan-slug](../work/plans/<kind>/plan-slug.md)` — visible text is the bare plan slug, without the `.md`
+- plans: `[plan-slug](../work/plans/<kind>/plan-slug.md)` : visible text is the bare plan slug, without the `.md`
   extension and without the `../work/plans/<kind>/` prefix
-- initiatives: `[NNNN-initiative-slug](../work/initiatives/NNNN-initiative-slug.md)` — visible text is the bare
+- initiatives: `[NNNN-initiative-slug](../work/initiatives/NNNN-initiative-slug.md)` : visible text is the bare
   `NNNN-initiative-slug`, without the `.md` extension
 - other documents: visible text is just the filename without extension, for example
   `[design-decisions](reference/design-decisions.md)` or `[project-status](project-status.md)`

@@ -1,0 +1,74 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+/**
+ * Random Number Generation Module
+ *
+ * This module provides functions for generating random numbers, including
+ * seeding the random number generator, generating random integers within a
+ * specified range, generating random boolean values, and simulating dice rolls.
+ */
+module std.rand;
+
+import sys.rt;
+
+/**
+ * Seeds the random number generator with the given seed.
+ * A non-zero seed produces a reproducible sequence of numbers for the same seed.
+ * 0 means use the current time as the seed (not reproducible sequence of numbers).
+ *
+ * @param seed The integer seed value.
+ */
+func rand_seed(seed : int) -> void {
+    rt_srand(seed);
+}
+
+/**
+ * Returns a random integer in the range [0, max).
+ *
+ * @param max The upper bound (exclusive).
+ * @return A random integer.
+ */
+func rand_int(max : int) -> int {
+    return rt_rand(max);
+}
+
+/**
+ * Returns a random integer in the range [min, max).
+ *
+ * @param min The lower bound (inclusive).
+ * @param max The upper bound (exclusive).
+ * @return A random integer.
+ */
+func rand_int_range(min : int, max : int) -> int {
+    let range : int = max - min;
+    return min + rt_rand(range);
+}
+
+/**
+ * Returns a random boolean value.
+ *
+ * @return A random boolean.
+ */
+func rand_bool() -> bool {
+    return rt_rand(2) == 0;
+}
+
+/**
+ * Rolls the specified number of dice with the given number of sides and returns the total.
+ *
+ * @param sides The number of sides on each die.
+ * @param rolls The number of dice to roll.
+ * @return The total sum of the rolls.
+ */
+func rand_dice(sides : int, rolls : int) -> int {
+    let total : int = 0;
+    let i : int = 0;
+    while (i < rolls) {
+        total = total + rt_rand(sides) + 1;
+        i = i + 1;
+    }
+    return total;
+}

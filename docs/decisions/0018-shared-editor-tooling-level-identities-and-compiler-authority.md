@@ -1,7 +1,7 @@
 # ADR-0018: Shared Editor Tooling, Level Identities, and Compiler Authority
 
 - Decision date: 2026-06-30
-- Last edited: 2026-08-29
+- Last edited: 2026-10-10
 - Status: Accepted
 
 ## Context
@@ -16,6 +16,10 @@ valid. Encoding type checking or complete level-specific rejection into editor g
 authority that can silently disagree with the compiler.
 
 ## Decision
+
+L2 extends the existing host mappings with `.l2`, `dea-l2`, `source.dea.l2`, and `dea_l2`. It initially reuses the
+compatible L1 syntax rules, while `.l1` compiler implementation files retain L1 identity. This is an extension of the
+shared editor package, not a new semantic authority.
 
 Dea maintains one shared editor-support tree under `editors/`, with distinct public identities for L0 and L1 wherever a
 host supports that distinction.
@@ -62,10 +66,15 @@ reimplementing the language independently.
 
 ## Related Plans
 
+- [work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md):
+  L2 editor identity.
+
 - [work/plans/features/closed/2026-06-30-shared-editor-support-noref.md](../../work/plans/features/closed/2026-06-30-shared-editor-support-noref.md):
   established and implemented the shared editor baseline
+
 - [work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md](../../work/plans/tools/closed/2026-07-27-shared-historical-adr-backlog-publication-noref.md):
   promoted the historical decision into the ADR catalog
+
 - [work/plans/bug-fixes/closed/2026-08-29-shared-editor-case-default-parity-noref.md](../../work/plans/bug-fixes/closed/2026-08-29-shared-editor-case-default-parity-noref.md):
   restored wildcard-only `case` syntax and consistent wildcard presentation within the shared editor boundary
 

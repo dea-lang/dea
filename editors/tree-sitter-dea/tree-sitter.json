@@ -8,7 +8,8 @@
       "scope": "source.dea",
       "file-types": [
         "l0",
-        "l1"
+        "l1",
+        "l2"
       ],
       "highlights": [
         "queries/highlights.scm"

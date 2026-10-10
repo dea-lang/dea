@@ -7,38 +7,38 @@
 - Title: Improve L1 preparation reuse efficiency using attributed validation costs
 - Kind: Feature
 - Severity: Medium
-- Stage: 1
+- Stage: Canonical
 - Subsystem: Managed providers / native preparation / validation memos / performance measurement
 - Modules:
-  - `l1/compiler/stage1_l0/src/cli_args.l0`
-  - `l1/compiler/stage1_l0/src/cli_args/model.l0`
-  - `l1/compiler/stage1_l0/src/cli_args/parse.l0`
-  - `l1/compiler/stage1_l0/src/cli_args/help.l0`
-  - `l1/scripts/build_stage1_l1c.py`
-  - `l1/compiler/stage1_l0/src/preparation/consumer.l0`
-  - `l1/compiler/stage1_l0/src/source_paths.l0`
-  - `l1/compiler/stage1_l0/src/build_driver.l0`
-  - `l1/compiler/stage1_l0/support/preparation_support.c`
-  - `l1/compiler/stage1_l0/support/preparation/identity.h`
-  - `l1/compiler/stage1_l0/support/preparation/storage.h`
-  - `l1/compiler/stage1_l0/support/preparation/platform.h`
-  - `l1/compiler/stage1_l0/support/preparation/sha256.h`
+  - `l1/compiler/src/cli_args.l0`
+  - `l1/compiler/src/cli_args/model.l0`
+  - `l1/compiler/src/cli_args/parse.l0`
+  - `l1/compiler/src/cli_args/help.l0`
+  - `l1/scripts/build_l1c.py`
+  - `l1/compiler/src/preparation/consumer.l0`
+  - `l1/compiler/src/source_paths.l0`
+  - `l1/compiler/src/build_driver.l0`
+  - `l1/compiler/support/preparation_support.c`
+  - `l1/compiler/support/preparation/identity.h`
+  - `l1/compiler/support/preparation/storage.h`
+  - `l1/compiler/support/preparation/platform.h`
+  - `l1/compiler/support/preparation/sha256.h`
   - `l1/scripts/check_preparation_reuse.py`
 - Test modules:
-  - `l1/compiler/stage1_l0/tests/cli_args_test.l0`
-  - `l1/compiler/stage1_l0/tests/source_paths_test.l0`
-  - `l1/compiler/stage1_l0/tests/l1c_stage1_bootstrap_interfaces_test.py`
-  - `l1/compiler/stage1_l0/tests/l1c_stage1_help_output_test.py`
-  - `l1/compiler/stage1_l0/tests/preparation_identity_test.py`
-  - `l1/compiler/stage1_l0/tests/preparation_support_test.py`
-  - `l1/compiler/stage1_l0/tests/preparation_ownership_test.py`
-  - `l1/compiler/stage1_l0/tests/preparation_identity_windows_environment_test.py`
-  - `l1/compiler/stage1_l0/tests/preparation_observability_test.c`
-  - `l1/compiler/stage1_l0/tests/preparation_digest_seed_test.c`
-  - `l1/compiler/stage1_l0/tests/l1c_stage1_managed_preparation_test.py`
-  - `l1/compiler/stage1_l0/tests/l1c_stage1_preparation_test.py`
-  - `l1/compiler/stage1_l0/tests/l1c_stage1_installed_preparation_test.py`
-  - `l1/compiler/stage1_l0/tests/preparation_reuse_report_test.py`
+  - `l1/compiler/tests/cli_args_test.l0`
+  - `l1/compiler/tests/source_paths_test.l0`
+  - `l1/compiler/tests/l1c_bootstrap_interfaces_test.py`
+  - `l1/compiler/tests/l1c_help_output_test.py`
+  - `l1/compiler/tests/preparation_identity_test.py`
+  - `l1/compiler/tests/preparation_support_test.py`
+  - `l1/compiler/tests/preparation_ownership_test.py`
+  - `l1/compiler/tests/preparation_identity_windows_environment_test.py`
+  - `l1/compiler/tests/preparation_observability_test.c`
+  - `l1/compiler/tests/preparation_digest_seed_test.c`
+  - `l1/compiler/tests/l1c_managed_preparation_test.py`
+  - `l1/compiler/tests/l1c_preparation_test.py`
+  - `l1/compiler/tests/l1c_installed_preparation_test.py`
+  - `l1/compiler/tests/preparation_reuse_report_test.py`
 - Related:
   - [l1/docs/reference/stdlib-preparation.md][preparation]
   - [l1/docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md][semantic-authority]
@@ -381,7 +381,7 @@ metadata behavior on Linux, macOS, and Windows, with supported compiler/backend 
 explicitly.
 
 After focused checks, run L1 normal validation (`make -C l1 test`) and relevant ARC/memory trace coverage, starting with
-`make -C l1 test-stage1-trace-smoke` and broadening according to ownership changes and the subtree rules. Repeat the
+`make -C l1 test-compiler-trace-smoke` and broadening according to ownership changes and the subtree rules. Repeat the
 Docker matrix with the same resource constraints, multiple independent pairs, output verification outside compilation
 timing, and debug/nondebug controls. Compare distributions and operation counts rather than imposing real elapsed-time
 thresholds in correctness tests. Record image/runtime identity and distinguish fresh containers from cold filesystems.

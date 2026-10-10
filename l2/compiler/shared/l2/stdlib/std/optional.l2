@@ -1,0 +1,100 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+/**
+ * This module provides utility functions for handling optional values.
+ * It includes functions to unwrap optionals with default values and
+ * to expect non-null values with custom error messages.
+ */
+module std.optional;
+
+import std.assert;
+
+/**
+ * Unwraps an optional string, returning the contained value if present,
+ * otherwise returning the provided default string.
+ *
+ * @param opt The optional string to unwrap.
+ * @param default The default string value.
+ * @return The unwrapped value or the default.
+ */
+func unwrap_or_s(opt: string?, default: string) -> string {
+    if (opt == null) {
+        return default;
+    } else {
+        return opt as string;
+    }
+}
+
+/**
+ * Unwraps an optional int, returning the contained value if present,
+ * otherwise returning the provided default int.
+ *
+ * @param opt The optional integer to unwrap.
+ * @param default The default integer value.
+ * @return The unwrapped value or the default.
+ */
+func unwrap_or_i(opt: int?, default: int) -> int {
+    if (opt == null) {
+        return default;
+    } else {
+        return opt as int;
+    }
+}
+
+/**
+ * Unwraps an optional bool, returning the contained value if present,
+ * otherwise returning the provided default bool.
+ *
+ * @param opt The optional boolean to unwrap.
+ * @param default The default boolean value.
+ * @return The unwrapped value or the default.
+ */
+func unwrap_or_b(opt: bool?, default: bool) -> bool {
+    if (opt == null) {
+        return default;
+    } else {
+        return opt as bool;
+    }
+}
+
+/**
+ * Expects an optional string to be non-null, returning the contained value.
+ * If the optional is null, it aborts with the provided message.
+ *
+ * @param opt The optional string.
+ * @param msg The abort message if null.
+ * @return The unwrapped string value.
+ */
+func expect_s(opt: string?, msg: string) -> string {
+    assert(opt != null, msg);
+    return opt as string;
+}
+
+/**
+ * Expects an optional int to be non-null, returning the contained value.
+ * If the optional is null, it aborts with the provided message.
+ *
+ * @param opt The optional integer.
+ * @param msg The abort message if null.
+ * @return The unwrapped integer value.
+ */
+func expect_i(opt: int?, msg: string) -> int {
+    assert(opt != null, msg);
+    return opt as int;
+}
+
+/**
+ * Expects an optional bool to be non-null, returning the contained value.
+ * If the optional is null, it aborts with the provided message.
+ *
+ * @param opt The optional boolean.
+ * @param msg The abort message if null.
+ * @return The unwrapped boolean value.
+ */
+func expect_b(opt: bool?, msg: string) -> bool {
+    assert(opt != null, msg);
+    return opt as bool;
+}

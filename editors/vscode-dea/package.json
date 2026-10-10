@@ -1,7 +1,7 @@
 {
   "name": "dea-language-support",
   "displayName": "Dea Language Support",
-  "description": "Syntax highlighting and editing configuration for Dea/L0 and Dea/L1.",
+  "description": "Syntax highlighting and editing configuration for Dea/L0, Dea/L1, and Dea/L2.",
   "version": "0.1.0",
   "publisher": "dea-lang",
   "license": "MIT OR Apache-2.0",
@@ -20,6 +20,7 @@
     "dea",
     "dea-l0",
     "dea-l1",
+    "dea-l2",
     "textmate"
   ],
   "scripts": {
@@ -49,6 +50,17 @@
           ".l1"
         ],
         "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "dea-l2",
+        "aliases": [
+          "Dea/L2",
+          "Dea L2"
+        ],
+        "extensions": [
+          ".l2"
+        ],
+        "configuration": "./language-configuration.json"
       }
     ],
     "grammars": [
@@ -61,6 +73,11 @@
         "language": "dea-l1",
         "scopeName": "source.dea.l1",
         "path": "./syntaxes/dea-l1.tmLanguage.json"
+      },
+      {
+        "language": "dea-l2",
+        "scopeName": "source.dea.l2",
+        "path": "./syntaxes/dea-l2.tmLanguage.json"
       }
     ]
   },

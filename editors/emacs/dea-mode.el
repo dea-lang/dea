@@ -1,4 +1,4 @@
-;;; dea-mode.el --- Major mode for Dea/L0 and Dea/L1 -*- lexical-binding: t; -*-
+;;; dea-mode.el --- Major mode for Dea/L0, Dea/L1, and Dea/L2 -*- lexical-binding: t; -*-
 
 ;; SPDX-License-Identifier: MIT OR Apache-2.0
 ;; Copyright (c) 2026 gwz
@@ -44,7 +44,7 @@
     (modify-syntax-entry ?\n "> b" table)
     (modify-syntax-entry ?' "." table)
     table)
-  "Syntax table shared by Dea/L0 and Dea/L1.")
+  "Syntax table shared by Dea/L0, Dea/L1, and Dea/L2.")
 
 (defun dea--font-lock-keywords ()
   "Build font-lock rules for the current Dea language level."
@@ -83,11 +83,11 @@
 
 ;;;###autoload
 (define-derived-mode dea-mode prog-mode "Dea"
-  "Major mode for Dea/L0 and Dea/L1 source files."
+  "Major mode for Dea/L0, Dea/L1, and Dea/L2 source files."
   :syntax-table dea--syntax-table
   (setq-local dea-language-level
               (if (and buffer-file-name
-                       (string-match-p "\\.l1\\'" buffer-file-name))
+                       (string-match-p "\\.l[12]\\'" buffer-file-name))
                   1
                 0))
   (setq-local font-lock-defaults (list (dea--font-lock-keywords)))
@@ -97,7 +97,7 @@
   (setq-local parse-sexp-ignore-comments t))
 
 ;;;###autoload
-(add-to-list 'auto-mode-alist '("\\.l[01]\\'" . dea-mode))
+(add-to-list 'auto-mode-alist '("\\.l[012]\\'" . dea-mode))
 
 (provide 'dea-mode)
 

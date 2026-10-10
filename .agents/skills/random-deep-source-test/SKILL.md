@@ -11,7 +11,7 @@ count of `1` with no level or stage scope.
 ## Select source files
 
 1. Read root `AGENTS.md` first. After selection, read `l0/AGENTS.md` for every L0 source or test route involved, and
-   read `l1/AGENTS.md` for every L1 source or test route involved.
+   read `l1/AGENTS.md` for every L1 source or test route involved, and `l2/AGENTS.md` for every L2 route.
 2. Resolve an interpreter from the shared virtual environment (`.venv/bin/python` or `.venv/Scripts/python.exe`), then
    fall back to `python3`. Do not assume bare `python` is available.
 3. From the monorepo root, run:
@@ -100,12 +100,12 @@ explain the correctness impact. Exclude routine style preferences, unsupported s
 
 3. Reuse the narrowest existing route when possible:
 
-   | Source area                                    | Preferred route                                                                                                                                             |
-   | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-   | L0 Stage 1 Python or the Stage 2 trace checker | From `l0/`, run direct focused pytest with existing fixtures or a temporary probe.                                                                          |
-   | L0 Stage 2 or shared L0                        | From `l0/`, run focused `make test-stage2 TESTS=...`; add `test-stage2-trace` for ownership or memory concerns.                                             |
-   | L1 Stage 1, shared L1, or L1 runtime           | From `l1/`, run focused `make test-stage1 TESTS=...`; add `test-stage1-trace` for ownership or memory concerns, or use a temporary L1 program or C harness. |
-   | Future L1 Stage 2 implementation               | Report an unsupported execution harness until that compiler and test workflow exist.                                                                        |
+   | Source area                                    | Preferred route                                                                                                                                                                  |
+   | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | L0 Stage 1 Python or the Stage 2 trace checker | From `l0/`, run direct focused pytest with existing fixtures or a temporary probe.                                                                                               |
+   | L0 Stage 2 or shared L0                        | From `l0/`, run focused `make test-stage2 TESTS=...`; add `test-stage2-trace` for ownership or memory concerns.                                                                  |
+   | Canonical L1 compiler, stdlib, or runtime      | From `l1/`, run focused `make test-compiler TESTS=...`; add `test-compiler-trace` for ownership or memory concerns, or use a temporary L1 program or C harness.                  |
+   | Canonical L2 compiler, stdlib, or runtime      | From `l2/`, use `make test-compiler TESTS=...` and relevant `test-compiler-trace` with installed `L2_BOOTSTRAP_L1C`; distinguish `.l1` implementation tests from `.l2` programs. |
 
 4. Use controlled inputs only. Do not probe arbitrary filesystem locations, network behavior, or process launching. Run
    focused workflows sequentially when they share bootstrap or build outputs.
@@ -142,5 +142,10 @@ As the final step, end the response with these two separate tables:
    include a single `None found` row.
 
 Possible remediation and investigation steps are report content only. Do not write bug-fix plans, issues, or any other
-documents unless the user explicitly asks for them. Keep the worktree unchanged except for normal ignored build/cache
-artifacts. A review request does not authorize a tracked test, a code change, a commit, or any remote action.
+documents unless the project maintainer explicitly asks for them. Keep the worktree unchanged except for normal ignored
+build/cache artifacts. A review request does not authorize a tracked test, a code change, a commit, or any remote
+action.
+
+Canonical L2 sources use `.l1`, while L2 stdlib/fixtures use `.l2`. From `l2/`, run `make test-compiler TESTS=...` and
+appropriate `test-compiler-trace` with explicit installed `L2_BOOTSTRAP_L1C`. L0 S1/S2 selectors remain valid; L1/L2
+stage selectors must fail. Resolve ownership and compiler subject before choosing a harness or reproducer.

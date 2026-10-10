@@ -1,7 +1,7 @@
 # ADR-0038: Bundled Semantic Inputs and Local Native Preparation
 
 - Decision date: 2026-09-11
-- Last edited: 2026-10-01
+- Last edited: 2026-10-10
 - Status: Accepted
 
 ## Context
@@ -14,8 +14,8 @@ without changing the compiler's semantic authority.
 ## Decision
 
 The toolchain owns the complete verified bundled semantic interface set and all inputs needed to rebuild native support.
-Repository `build-stage1` supplies public headers and generates those interfaces with the new frontend independently of
-native L1 program-runtime construction. Ordinary semantic commands do not hash sources to prove bootstrap freshness;
+Repository `make build` supplies public headers and generates those interfaces with the canonical frontend independently
+of native L1 program-runtime construction. Ordinary semantic commands do not hash sources to prove bootstrap freshness;
 developers rebuild bootstrap after editing interface-generating inputs.
 
 Managed interfaces occupy exactly the bundled directory's ordered system-root position, preserving explicit interface
@@ -68,6 +68,9 @@ explicit replacement avoids a new concurrent-reader protocol.
 - Deleting only the owned cache subtree changes preparation cost, not successful compilation semantics.
 
 ## Related Plans
+
+- [work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../../work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md):
+  canonical build naming and construction boundary.
 
 - [l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md][profile-boundary]
 

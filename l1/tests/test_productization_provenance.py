@@ -11,7 +11,7 @@ import sys
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-import build_stage2_l1c
+import build_l1c
 import productization_provenance as provenance
 from productization_inventory import inventory_payload
 
@@ -20,8 +20,8 @@ from productization_inventory import inventory_payload
 def capture(tmp_path, monkeypatch):
     monkeypatch.setattr(provenance.platform, "system", lambda: "Linux")
     monkeypatch.setattr(provenance.platform, "machine", lambda: "x86_64")
-    monkeypatch.setattr(build_stage2_l1c, "compiler_build_env", lambda env: (
-        {**env, "L1_CC": "/native compiler/gcc", "L1_CFLAGS": "-O2 -D_RT_QUARANTINE_MAX_COUNT=256"},
+    monkeypatch.setattr(build_l1c, "compiler_build_env", lambda env: (
+        {**env, "L0_CC": "/native compiler/gcc", "L0_CFLAGS": "-O2 -D_RT_QUARANTINE_MAX_COUNT=256"},
         ["--check-basic"]))
     calls = []
 
@@ -31,15 +31,15 @@ def capture(tmp_path, monkeypatch):
             return "a" * 40 + "\n"
         if args[:2] == ["git", "status"]:
             return " M tracked.l1\n"
-        return {"l0": "Dea language / L0 compiler (Stage 2)",
-                "l1": "Dea language / L1 compiler (Stage 1)",
-                "l2": "Dea language / L1 compiler (Stage 2)",
+        return {"l0": "Dea language / L0 compiler",
+                "l1": "Dea language / L1 compiler",
+                "l2": "Dea language / L1 compiler",
                 "gcc": 'gcc "quoted" \\ path caf\u00e9\nsecond line'}[Path(args[0]).name]
 
     monkeypatch.setattr(provenance.subprocess, "check_output", command)
     kwargs = dict(root=tmp_path, env={"DEA_DIST_VERSION": "1.2.3", "SECRET": "do-not-record"},
-                  upstream=Path("l0"), stage1=Path("l1"), stage2=Path("l2"),
-                  stage1_options=["--check-basic"], preparation_inputs={"include/dea_rt.h": "b" * 64},
+                  upstream=Path("l0"), compiler=Path("l1"),
+                  compiler_options=["--check-basic"], preparation_inputs={"include/dea_rt.h": "b" * 64},
                   now=datetime(2026, 10, 7, 12, 0, tzinfo=timezone(timedelta(hours=2))))
     return kwargs, calls
 
@@ -55,7 +55,7 @@ def test_single_snapshot_agrees_with_inventory_and_version(capture, tmp_path):
     assert evidence["build_id"] == "aaaaaaaaaaaa-20261007-100000"
     assert evidence["source"]["tree_state"] == "dirty"
     assert evidence["source"]["url"] == "https://github.com/dea-lang/dea"
-    assert evidence["self_build"]["cflags"] == build_env["L1_CFLAGS"]
+    assert evidence["compiler_build"]["cflags"] == build_env["L0_CFLAGS"]
     assert "preparation_identity" not in evidence
     assert "do-not-record" not in snapshot.version_text()
     assert json.loads(snapshot.version_text().split("\n", 1)[1]) == metadata
@@ -64,7 +64,7 @@ def test_single_snapshot_agrees_with_inventory_and_version(capture, tmp_path):
     (payload / "VERSION").write_text(snapshot.version_text())
     record = inventory_payload(payload, metadata)
     assert record["provenance"] == evidence
-    assert len(calls) == 6
+    assert len(calls) == 5
     # A caller cannot mutate the snapshot after a compiler has embedded it.
     expected = snapshot.metadata()
     metadata["provenance"]["bootstrap"].clear()
@@ -118,7 +118,7 @@ def test_reject_unsupported_host(system, machine, env):
 @pytest.mark.parametrize("changes", [
     {"preparation_inputs": {}}, {"preparation_inputs": {"../escape": "b" * 64}},
     {"preparation_inputs": {"include/input.h": "bad"}}, {"preparation_identity": ""},
-    {"now": datetime(2026, 10, 7)}, {"stage1_options": [None]}, {"stage1_options": "--flag"},
+    {"now": datetime(2026, 10, 7)}, {"compiler_options": [None]}, {"compiler_options": "--flag"},
 ])
 def test_invalid_inputs_fail_before_compiler_probes(capture, changes):
     kwargs, calls = capture
@@ -143,7 +143,7 @@ def test_unknown_git_evidence_and_exported_identity(capture, monkeypatch):
     assert evidence["preparation_identity"] == "service-owned-D"
 
 
-def test_wrong_seed_identity_does_not_fall_back(capture, monkeypatch):
+def test_wrong_compiler_identity_does_not_fall_back(capture, monkeypatch):
     kwargs, _ = capture
     monkeypatch.setattr(provenance.subprocess, "check_output", lambda *args, **kw: "unrelated compiler")
     with pytest.raises(ValueError, match="identity"):
@@ -166,3 +166,39 @@ def test_failed_compiler_probe_is_not_unknown_provenance(capture, monkeypatch):
     monkeypatch.setattr(provenance.subprocess, "check_output", fail)
     with pytest.raises(subprocess.CalledProcessError):
         provenance.collect_provenance(**kwargs)
+
+
+@pytest.mark.parametrize("stage", [1, 2])
+def test_former_stage_compiler_cannot_supply_canonical_evidence(capture, monkeypatch, stage):
+    kwargs, _ = capture
+    original = provenance.subprocess.check_output
+
+    def command(args, **kw):
+        if Path(args[0]).name == "l1":
+            return f"Dea language / L1 compiler (Stage {stage})"
+        return original(args, **kw)
+
+    monkeypatch.setattr(provenance.subprocess, "check_output", command)
+    with pytest.raises(ValueError, match="canonical L1 compiler identity"):
+        provenance.collect_provenance(**kwargs)
+
+
+def test_completed_build_command_extends_snapshot_without_changing_embedded_fields(capture):
+    kwargs, _ = capture
+    original, _ = provenance.collect_provenance(**kwargs)
+    overlay = original.build_info_module(installed=True)
+    command = ["/upstream compiler/l0c", "--build", "--project-root", "/private overlay", "-o", "/payload/bin/l1c.native"]
+    completed = original.with_installed_compiler_command(command)
+    assert completed.metadata()["provenance"]["installed_compiler_command"] == command
+    assert "installed_compiler_command" not in original.metadata()["provenance"]
+    assert completed.build_info_module(installed=True) == overlay
+    command.clear()
+    assert completed.metadata()["provenance"]["installed_compiler_command"]
+
+
+@pytest.mark.parametrize("command", [None, [], "l0c --build", [None], ["nul\x00argument"]])
+def test_invalid_installed_compiler_command_is_rejected(capture, command):
+    kwargs, _ = capture
+    snapshot, _ = provenance.collect_provenance(**kwargs)
+    with pytest.raises(ValueError, match="installed compiler command"):
+        snapshot.with_installed_compiler_command(command)

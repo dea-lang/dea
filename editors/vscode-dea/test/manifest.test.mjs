@@ -13,7 +13,7 @@ async function readJson(relativePath) {
   return JSON.parse(await readFile(path.join(extensionRoot, relativePath), "utf8"));
 }
 
-test("manifest keeps distinct L0 and L1 language identities", async () => {
+test("manifest keeps distinct L0, L1, and L2 language identities", async () => {
   const manifest = await readJson("package.json");
   const languages = new Map(
     manifest.contributes.languages.map((language) => [language.id, language]),
@@ -22,9 +22,11 @@ test("manifest keeps distinct L0 and L1 language identities", async () => {
     manifest.contributes.grammars.map((grammar) => [grammar.language, grammar]),
   );
 
-  assert.deepEqual([...languages.keys()].sort(), ["dea-l0", "dea-l1"]);
+  assert.deepEqual([...languages.keys()].sort(), ["dea-l0", "dea-l1", "dea-l2"]);
   assert.deepEqual(languages.get("dea-l0").extensions, [".l0"]);
   assert.deepEqual(languages.get("dea-l1").extensions, [".l1"]);
+  assert.deepEqual(languages.get("dea-l2").extensions, [".l2"]);
+  assert.equal(grammars.get("dea-l2").scopeName, "source.dea.l2");
   assert.equal(grammars.get("dea-l0").scopeName, "source.dea.l0");
   assert.equal(grammars.get("dea-l1").scopeName, "source.dea.l1");
   assert.equal(

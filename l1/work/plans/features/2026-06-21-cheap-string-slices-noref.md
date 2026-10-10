@@ -3,12 +3,12 @@
 ## Add cheap string slices
 
 - Date: 2026-06-21
-- Last reviewed: 2026-09-08
+- Last reviewed: 2026-10-10
 - Status: Draft
 - Title: Add ARC-backed cheap string slices
 - Kind: Feature
 - Severity: High
-- Stage: L1
+- Stage: Canonical
 - Subsystem: Intrinsics / backend / ARC runtime / string stdlib
 - Modules:
   - `l0/compiler/shared/runtime/l0_runtime.h`
@@ -19,14 +19,14 @@
   - `l0/compiler/stage2_l0/src/compiler_byte_batch.l0` (new private wrapper module)
   - `l0/compiler/stage2_l0/src/compiler_filesystem.l0`
   - `l0/compiler/stage2_l0/support/compiler_filesystem.c`
-  - `l1/compiler/stage1_l0/src/compiler_byte_batch.l0` (new private wrapper module)
-  - `l1/compiler/stage1_l0/src/compiler_filesystem.l0`
-  - `l1/compiler/stage1_l0/src/interface_fingerprint.l0`
-  - `l1/compiler/stage1_l0/support/compiler_support.c`
-  - `l1/compiler/stage1_l0/support/interface_fingerprint.c`
-  - `l1/compiler/stage1_l0/src/expr_types/expr.l0`
-  - `l1/compiler/stage1_l0/src/backend/lower.l0`
-  - `l1/compiler/stage1_l0/src/c_emitter/`
+  - `l1/compiler/src/compiler_byte_batch.l0` (new private wrapper module)
+  - `l1/compiler/src/compiler_filesystem.l0`
+  - `l1/compiler/src/interface_fingerprint.l0`
+  - `l1/compiler/support/compiler_support.c`
+  - `l1/compiler/support/interface_fingerprint.c`
+  - `l1/compiler/src/expr_types/expr.l0`
+  - `l1/compiler/src/backend/lower.l0`
+  - `l1/compiler/src/c_emitter/`
   - `l1/compiler/shared/runtime/include/dea_rt.h`
   - `l1/compiler/shared/runtime/src/dea_rt_string.c`
   - `l1/compiler/shared/runtime/src/dea_rt_io.c`
@@ -45,28 +45,28 @@
   - `l0/compiler/stage2_l0/tests/util_text_test.l0`
   - `l0/compiler/stage2_l0/tests/compiler_byte_batch_test.l0` (new private wrapper coverage)
   - `l0/compiler/stage2_l0/tests/compiler_filesystem_support_test.py`
-  - `l1/compiler/stage1_l0/tests/expr_types_test.l0`
-  - `l1/compiler/stage1_l0/tests/backend_test.l0`
-  - `l1/compiler/stage1_l0/tests/c_emitter_test.l0`
-  - `l1/compiler/stage1_l0/tests/l1c_lib_test.l0`
-  - `l1/compiler/stage1_l0/tests/l1c_stage1_arc_trace_regression_test.py`
-  - `l1/compiler/stage1_l0/tests/fixtures/driver`
-  - `l1/compiler/stage1_l0/tests/util_text_test.l0`
-  - `l1/compiler/stage1_l0/tests/compiler_byte_batch_test.l0` (new private wrapper coverage)
-  - `l1/compiler/stage1_l0/tests/compiler_filesystem_support_test.py`
-  - `l1/compiler/stage1_l0/tests/interface_fingerprint_runtime_test.py`
-  - `l1/compiler/stage1_l0/tests/l1c_stage1_build_run_multi_cu_test.py`
-  - `l1/compiler/stage1_l0/tests/runtime_pointer_validation_test.py`
-  - `l1/compiler/stage1_l0/tests/runtime_symbol_manifest_test.py`
-  - `l1/compiler/stage1_l0/tests/io_runtime_test.py`
-  - `l1/compiler/stage1_l0/tests/fixtures/io_runtime/io_numeric_main.l1`
+  - `l1/compiler/tests/expr_types_test.l0`
+  - `l1/compiler/tests/backend_test.l0`
+  - `l1/compiler/tests/c_emitter_test.l0`
+  - `l1/compiler/tests/l1c_lib_test.l0`
+  - `l1/compiler/tests/l1c_arc_trace_regression_test.py`
+  - `l1/compiler/tests/fixtures/driver`
+  - `l1/compiler/tests/util_text_test.l0`
+  - `l1/compiler/tests/compiler_byte_batch_test.l0` (new private wrapper coverage)
+  - `l1/compiler/tests/compiler_filesystem_support_test.py`
+  - `l1/compiler/tests/interface_fingerprint_runtime_test.py`
+  - `l1/compiler/tests/l1c_build_run_multi_cu_test.py`
+  - `l1/compiler/tests/runtime_pointer_validation_test.py`
+  - `l1/compiler/tests/runtime_symbol_manifest_test.py`
+  - `l1/compiler/tests/io_runtime_test.py`
+  - `l1/compiler/tests/fixtures/io_runtime/io_numeric_main.l1`
 - Related:
   - `l1/work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md`
   - `l1/docs/decisions/0015-slice-types-and-intrinsics.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
   - [docs/decisions/0010-checked-runtime-pointer-access-validation.md][pointer-validation]
   - [work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md][self-hosting]
-- Repro: `make -C l1 test-stage1 && make -C l1 test-stage1-trace`
+- Repro: `make -C l1 test-compiler && make -C l1 test-compiler-trace`
 
 ## Summary
 
@@ -93,11 +93,13 @@ copy behavior: one amortized reserve and one `memcpy` per non-empty string appen
 04. Every current string is terminated at its logical end. Runtime helpers therefore use `_rt_string_bytes` both for
     length-aware byte access and for native calls that require a trailing NUL.
 05. The runtime calls `system`, `getenv`, `stat`, `_stat64`, `fopen`, and `remove` with string byte pointers.
-06. Current compiler-private bridges also consume the public raw-byte escape: L0 Stage 2 filesystem helpers, L1 Stage 1
-    filesystem/process helpers, and L1 interface fingerprinting. The process helper stores an entire argument-pointer
-    vector until the native launch/wait call returns. These consumers must migrate before removing the old helper.
-07. L1 Stage 1 production code is still compiled against the L0 stdlib/runtime. Its `.l0` implementation tests do not
-    prove the new L1 string representation; generated `.l1` fixtures and native runtime probes must cover that ABI.
+06. Current compiler-private bridges also consume the public raw-byte escape: L0 Stage 2 filesystem helpers, canonical
+    L1 compiler filesystem/process helpers, and L1 interface fingerprinting. The process helper stores an entire
+    argument-pointer vector until the native launch/wait call returns. These consumers must migrate before removing the
+    old helper.
+07. canonical L1 compiler production code is still compiled against the L0 stdlib/runtime. Its `.l0` implementation
+    tests do not prove the new L1 string representation; generated `.l1` fixtures and native runtime probes must cover
+    that ABI.
 08. The compiler source is decomposed into subsystem modules. Intrinsic inference lives in `expr_types/expr.l0`,
     lowering in `backend/lower.l0`, and C representation/literal emission in `c_emitter/`.
 09. `len(string)` already exists in L1. Preserve that overload and have it report the logical length of a view; the
@@ -135,15 +137,15 @@ copy behavior: one amortized reserve and one `memcpy` per non-empty string appen
 ## Compiler Bridge Migration
 
 The following is the production consumer inventory reviewed on 2026-09-08. Repeat a repository search for
-`rt_string_bytes_ptr` at implementation time and include any newly added callers, including an L1 Stage 2 copy if the
-self-hosting plan has landed. This plan does not depend on Stage 2 existing.
+`rt_string_bytes_ptr` at implementation time and include newly added callers within this L0/L1 scope. Any L2 port
+requires separate placement review; the compiler split does not expand this plan.
 
 | Consumer                                                                                  | Required migration                                                                                                                                                                                |
 | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `l0/compiler/shared/l0/stdlib/std/text.l0` and `l1/compiler/shared/l1/stdlib/std/text.l1` | Preserve the specialized reserve-once, copy-once vector append described below; append directly into the destination buffer.                                                                      |
 | `l0/compiler/stage2_l0/src/compiler_filesystem.l0`                                        | Pack one path or both join operands into one scoped `CompilerByteBatch`, including join-output scratch. Reuse that batch across size-query/fill and bounded retry sequences.                      |
-| `l1/compiler/stage1_l0/src/compiler_filesystem.l0`                                        | Pack path/name inputs for classification, identity, mutations, canonicalization, temporary paths, and command search. Include join-output scratch and batch the complete process argument vector. |
-| `l1/compiler/stage1_l0/src/interface_fingerprint.l0`                                      | Pack the canonical serialization once and reserve 22 scratch bytes for the tagged digest. Keep the native hash input count, algorithm, canonical bytes, and known-answer digests unchanged.       |
+| `l1/compiler/src/compiler_filesystem.l0`                                                  | Pack path/name inputs for classification, identity, mutations, canonicalization, temporary paths, and command search. Include join-output scratch and batch the complete process argument vector. |
+| `l1/compiler/src/interface_fingerprint.l0`                                                | Pack the canonical serialization once and reserve 22 scratch bytes for the tagged digest. Keep the native hash input count, algorithm, canonical bytes, and known-answer digests unchanged.       |
 
 ### Packed allocation and construction
 
@@ -354,9 +356,9 @@ for some inputs and allocated for others.
     modules only after every production consumer has moved. Replace tests that call it with copy-boundary and
     removed-export checks. Remove lazy string-exposure tracker hooks only where they are now unreachable, preserving
     generic allocation, ARC, quarantine, and foreign read-only tracking coverage.
-11. Rebuild the upstream L0 Stage 2 compiler before rebuilding L1 Stage 1, so no surviving compiler source requires the
-    removed L0 helper. A final production-source search must find no declaration, export, call, or replacement mutable
-    string-pointer escape.
+11. Rebuild the upstream L0 Stage 2 compiler before rebuilding canonical L1 compiler, so no surviving compiler source
+    requires the removed L0 helper. A final production-source search must find no declaration, export, call, or
+    replacement mutable string-pointer escape.
 
 ### Phase 3: Safe reallocation
 
@@ -514,8 +516,7 @@ allocation-failure convention described above; they introduce no new compiler di
 2. Measure large `CharBuffer` appends, many small `CharBuffer` appends, and `sb_to_string` with many small parts.
 3. Measure the existing L0 Stage 2 triple-bootstrap workload because compiler emission is a real `CharBuffer` hot path.
    Also measure L1 interface fingerprinting and graph-heavy build/run commands, including large argument vectors, to
-   expose packed-buffer sizing, copying, and tracking costs. L1 Stage 2 is not a prerequisite; add its fixed-point
-   workload only if that stage exists at implementation time.
+   expose packed-buffer sizing, copying, and tracking costs. L1 has no fixed-point workload or second compiler stage.
 4. Warm each workload once, collect at least five measured runs, and compare medians.
 5. Inspect or instrument the copy path to verify exactly one direct libc `memcpy` per non-empty string append, with no
    terminated-string materialization. Separately verify one owning allocation per compiler batch, one copy of each input
@@ -538,7 +539,7 @@ runtime/public-header and both levels' batch-wrapper/compiler-filesystem tests, 
 generated-code tests, and the string/bridge probes below. Then run root `make clean test-extended` and
 `make -C l1 test-ci`, reusing equivalent just-completed level validation where permitted. Run L1's explicit slow trace
 cases required by the changed fixtures; the default aggregate does not include those cases. Verify L0 triple-bootstrap
-with `make -C l0 triple-test`; `test-ci` runs L1 examples and triple bootstrap.
+with `make -C l0 triple-test`; `test-ci` runs canonical L1 normal, environment, and trace validation.
 
 This Draft-plan refresh requires only Markdown, link, ADR Impact, and staged pre-commit validation.
 
@@ -571,8 +572,8 @@ This Draft-plan refresh requires only Markdown, link, ADR Impact, and staged pre
   Keep support-object and runtime-archive symbol ownership checks; private batch helpers stay out of runtime exports.
 - Preserve raw-memory/foreign read-only protection tests while replacing tests whose only entrypoint was the removed
   string escape. Verify the old public symbol is absent and copying never changes the source string or a sibling view.
-- Compile actual `.l1` fixtures through L1 Stage 1 for the new representation; `.l0` harness coverage alone tests the L0
-  seed. Rebuild all affected compiler, runtime, stdlib, and generated native artifacts together.
+- Compile actual `.l1` fixtures through canonical L1 compiler for the new representation; `.l0` harness coverage alone
+  tests the L0 seed. Rebuild all affected compiler, runtime, stdlib, and generated native artifacts together.
 
 ## Verification Criteria
 

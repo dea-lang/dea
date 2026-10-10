@@ -6,6 +6,9 @@ setup, coding conventions, and testing.
 Dea/L0 now lives under `l0/` inside the Dea monorepo. Unless a section says otherwise, run the commands in this document
 from the `l0/` directory.
 
+For canonical L1 and L2 development, use [l1/README.md](l1/README.md) and [l2/README.md](l2/README.md). Their compiler
+workflows use `build`, `use-dev`, and `test-compiler`; the stage commands below belong to L0.
+
 ## Scope and status
 
 Dea/L0 remains experimental. `2.1.1` is the latest released, semantically versioned language line; it fixes ARC cleanup
@@ -38,8 +41,9 @@ as distribution packages tend to ship an outdated version.
 For normal development, start with `make venv`: it validates the Python version, creates the shared monorepo virtual
 environment at `./.venv`, and installs all dev + docs dependency groups declared in the root `pyproject.toml`. The
 monorepo is a single `uv` workspace; level-local `make venv` targets delegate to the root, so any of `make venv`,
-`cd l0 && make venv`, or `cd l1 && make venv` converges on the same `./.venv`. `uv` is preferred when on `PATH`; when
-absent, `make venv` falls back to `python -m venv` plus `pip install` of the same dependency-group specifiers.
+`cd l0 && make venv`, `cd l1 && make venv`, or `cd l2 && make venv` converges on the same `./.venv`. `uv` is preferred
+when on `PATH`; when absent, `make venv` falls back to `python -m venv` plus `pip install` of the same dependency-group
+specifiers.
 
 ### Pre-commit hooks
 
@@ -53,8 +57,8 @@ Three hooks run on every commit:
 
 - **mdformat** -- auto-formats all `.md` files (line wrap 120, numbered lists, GitHub Flavored Markdown). If it
   reformats a file, stage the changes and commit again.
-- **copyright-headers** -- checks that tracked `.c`, `.h`, `.l0`, `.l1`, `.py`, `.sh` files have a copyright notice in
-  the first 80 lines.
+- **copyright-headers** -- checks that tracked `.c`, `.h`, `.l0`, `.l1`, `.l2`, `.py`, `.sh` files have a copyright
+  notice in the first 80 lines.
 - **adr-impact** -- validates every active plan and initiative plus any added, renamed, or modified closed lifecycle
   document against the staged `## ADR Impact` contract. It also enforces same-change ADR and index evidence at closure.
 
@@ -120,14 +124,14 @@ lifetimes, trace infrastructure, or trace-eligible test inputs because it checks
 triage) across the trace-eligible Stage 2 suite. Confidently trace-independent work can use `make test`; broader or
 uncertain L0 validation uses `make test-extended`.
 
-For L1, `make test` is the fast development gate and `make test-extended` runs the Stage 1 and Stage 2 normal suites
-without CI-only cases. Use `make test-ci` for the exhaustive hosted gate, which adds CI-only normal tests,
-environment/bootstrap integration, trace suites, child fixtures, and triple bootstrap. For trace-, bootstrap-,
-preparation-, or environment-sensitive changes, run the relevant focused targets locally instead of routinely running
-the entire CI suite.
+For L1 and L2, `make test` is the fast development gate and `make test-extended` runs the canonical compiler's normal
+suite without CI-only cases. Use `make test-ci` for the exhaustive gate, which adds CI-only normal tests, applicable
+environment/bootstrap integration, trace suites, and child fixtures. L2 requires an explicitly selected installed L1
+bootstrap. For trace-, bootstrap-, preparation-, or environment-sensitive changes, run the relevant focused targets
+locally instead of routinely running the entire CI suite. L2 isolation and L1 artifact acceptance are separate gates.
 
-`make triple-test` is a focused test for the triple-bootstrap process, which is a critical end-to-end validation of the
-compiler's ability to build itself and produce a stable artifact.
+L0's `make triple-test` is a focused test for its triple-bootstrap process, validating the compiler's ability to build
+itself and produce a stable artifact. L1 and L2 each have one canonical compiler and no triple-bootstrap target.
 
 ### Smoke test
 

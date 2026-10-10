@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: Medium
 - Priority: 2
-- Stage: L1
+- Stage: Canonical
 - Parent Initiative: `l1/work/initiatives/0006-process-and-host-services.md`
 - Subsystem: Stdlib / runtime / filesystem / tooling
 - Modules:
@@ -21,13 +21,13 @@
   - `l1/compiler/shared/runtime/src/dea_rt_io.c`
   - `l1/docs/reference/standard-library.md`
 - Test modules:
-  - `l1/compiler/stage1_l0/tests/temp_runtime_test.l0`
-  - `l1/compiler/stage1_l0/tests/analysis_trace_test.l0`
+  - `l1/compiler/tests/temp_runtime_test.l0`
+  - `l1/compiler/tests/analysis_trace_test.l0`
 - Related:
   - `l1/work/initiatives/0006-process-and-host-services.md`
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
   - `l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md`
-- Repro: `make -C l1 test-stage1 TESTS="temp_runtime_test analysis_trace_test"`
+- Repro: `make -C l1 test-compiler TESTS="temp_runtime_test analysis_trace_test"`
 
 ## Summary
 

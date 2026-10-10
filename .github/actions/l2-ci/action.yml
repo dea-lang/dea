@@ -1,0 +1,77 @@
+name: L2 CI Delegate
+
+description: Build canonical L2 through an installed L1 toolchain and validate isolation.
+
+inputs:
+  make_target:
+    description: Make target to run in l2/
+    required: true
+  c_compiler:
+    description: Native compiler selected for bootstrap and target operations
+    required: true
+  artifact_name_suffix:
+    description: Artifact suffix
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install explicit L1 bootstrap and validate L2
+      if: runner.os != 'Windows'
+      shell: bash
+      env:
+        L0_CC: ${{ inputs.c_compiler }}
+        L1_CC: ${{ inputs.c_compiler }}
+        L1_RUNTIME_CC: ${{ inputs.c_compiler }}
+        L2_CC: ${{ inputs.c_compiler }}
+        L2_RUNTIME_CC: ${{ inputs.c_compiler }}
+        L2_MAKE_TARGET: ${{ inputs.make_target }}
+      run: |
+        command -v "$L2_CC"
+        "$L2_CC" --version
+        prefix="$RUNNER_TEMP/l2-bootstrap-l1"
+        make -C l1 install PREFIX="$prefix"
+        export L2_BOOTSTRAP_L1C="$prefix/bin/l1c"
+        make -C l2 "$L2_MAKE_TARGET"
+
+    - name: Install explicit L1 bootstrap and validate L2 (Windows)
+      if: runner.os == 'Windows'
+      shell: msys2 {0}
+      env:
+        L0_CC: ${{ inputs.c_compiler }}
+        L1_CC: ${{ inputs.c_compiler }}
+        L1_RUNTIME_CC: ${{ inputs.c_compiler }}
+        L2_CC: ${{ inputs.c_compiler }}
+        L2_RUNTIME_CC: ${{ inputs.c_compiler }}
+        L2_MAKE_TARGET: ${{ inputs.make_target }}
+        PYTHON: python
+      run: |
+        command -v "$L2_CC"
+        "$L2_CC" --version
+        prefix="$(cygpath -u "$RUNNER_TEMP")/l2-bootstrap-l1"
+        make -C l1 install PREFIX="$prefix"
+        export L2_BOOTSTRAP_L1C="$prefix/bin/l1c"
+        make -C l2 "$L2_MAKE_TARGET"
+
+    - name: Verify Linux checkout and bootstrap isolation
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        prefix="$RUNNER_TEMP/l2-bookworm-bootstrap"
+        mkdir -p "$prefix"
+        docker build -f l1/Dockerfile -t dea-l2-bootstrap-builder .
+        docker run --rm -e L0_CC=gcc -e L1_CC=gcc -e L1_RUNTIME_CC=gcc \
+          -v "$prefix:/output/l1" dea-l2-bootstrap-builder make install PREFIX=/output/l1
+        L2_ISOLATION_BOOTSTRAP_PREFIX="$prefix" make -C l2 test-isolation
+
+    - name: Upload L2 workdir artifact
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: l2-workdir-${{ inputs.artifact_name_suffix }}
+        path: |
+          .github/workflows/l2-ci.yml
+          l2
+          !l2/.git/**
+        if-no-files-found: warn
+        retention-days: 2

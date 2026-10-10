@@ -20,7 +20,7 @@ def _checker_path() -> Path:
 
 def _l1_checker_path() -> Path:
     monorepo_root = Path(__file__).resolve().parents[5]
-    return monorepo_root / "l1" / "compiler" / "stage1_l0" / "scripts" / "check_trace_log.py"
+    return monorepo_root / "l1" / "compiler" / "scripts" / "check_trace_log.py"
 
 
 def _run_checker(tmp_path, log_text: str, extra_args: list[str] | None = None):

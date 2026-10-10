@@ -26,7 +26,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 class ParsedArgs:
     """Parsed wrapper options plus docgen pass-through arguments."""
 
-    stage: str
     artifacts: bool
     build_pdf: bool
     build_pdf_fast: bool
@@ -48,10 +47,9 @@ def show_usage() -> None:
 Wrapper around `python -m compiler.docgen.l1_docgen`.
 
 Extra options:
-  --stage STAGE    Select stage1, stage2, or all (default); output-dir names their common parent.
   --artifacts      Require strict HTML/full PDF and create verified offline bundles.
-  --pdf            Build stage-qualified complete PDFs under `<output-dir>/stageS/pdf/`.
-  --pdf-fast       Build a preview stage-qualified PDF with a single `pdflatex` pass (faster, less complete references/index).
+  --pdf            Build complete PDFs under `<output-dir>/reference/pdf/`.
+  --pdf-fast       Build a preview PDF with a single `pdflatex` pass (faster, less complete references/index).
   -v, --verbose    Show docgen warnings and LaTeX build output directly.
 
 Environment:
@@ -74,7 +72,6 @@ def venv_python() -> str:
 def parse_args(argv: list[str]) -> ParsedArgs:
     """Parse wrapper arguments while preserving docgen pass-through options."""
 
-    stage = "all"
     artifacts = False
     build_pdf = False
     build_pdf_fast = False
@@ -91,13 +88,8 @@ def parse_args(argv: list[str]) -> ParsedArgs:
         arg = argv[index]
         if arg == "--artifacts":
             artifacts = True
-        elif arg == "--stage":
-            if index + 1 >= len(argv):
-                raise ValueError("--stage requires a value")
-            stage = argv[index + 1]
-            index += 1
-        elif arg.startswith("--stage="):
-            stage = arg.split("=", 1)[1]
+        elif arg == "--stage" or arg.startswith("--stage="):
+            raise ValueError("L1 has one canonical compiler; --stage is not supported")
         elif arg == "--pdf":
             build_pdf = True
         elif arg == "--pdf-fast":
@@ -135,10 +127,7 @@ def parse_args(argv: list[str]) -> ParsedArgs:
             docgen_args.append(arg)
         index += 1
 
-    if stage not in {"stage1", "stage2", "all"}:
-        raise ValueError("--stage must be stage1, stage2, or all")
     return ParsedArgs(
-        stage=stage,
         artifacts=artifacts,
         build_pdf=build_pdf,
         build_pdf_fast=build_pdf_fast,
@@ -217,8 +206,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         args = parse_args(sys.argv[1:] if argv is None else argv)
         parent = (REPO_ROOT / args.output_dir).resolve()
-        for stage in (("stage1", "stage2") if args.stage == "all" else (args.stage,)):
-            (parent / "artifacts" / f"dea_l1_{stage}_autodocs.tar.gz").unlink(missing_ok=True)
+        (parent / "artifacts" / "dea_l1_autodocs.tar.gz").unlink(missing_ok=True)
         version = package_version(REPO_ROOT)
         if args.artifacts and (not args.build_pdf or "--strict" not in args.docgen_args or args.latex_only):
             raise ValueError("--artifacts requires --strict --pdf and HTML output")
@@ -247,66 +235,65 @@ def main(argv: list[str] | None = None) -> int:
 
     parent = (REPO_ROOT / args.output_dir).resolve()
     parent.mkdir(parents=True, exist_ok=True)
-    for stage in (("stage1", "stage2") if args.stage == "all" else (args.stage,)):
-        identity = source_identity(REPO_ROOT, stage)
-        bundle = parent / "artifacts" / f"dea_l1_{stage}_autodocs.tar.gz"
-        # Invalidate distribution success on every new selected-stage attempt.
-        bundle.unlink(missing_ok=True)
-        with tempfile.TemporaryDirectory(prefix=f".{stage}-", dir=parent) as work:
-            work_root = Path(work)
-            try:
-                run_logged(
-                    [venv_python(), "-m", "compiler.docgen.l1_docgen", "--stage", stage,
-                     "--output-dir", str(work_root), *args.docgen_args],
-                    work_root / "docgen.log", verbose=args.verbose,
-                )
-                stage_root = work_root / stage
-                if args.build_pdf or args.build_pdf_fast:
-                    latex_dir = stage_root / "doxygen/latex"
-                    pdf_dir = stage_root / "pdf"
-                    pdf_dir.mkdir(parents=True, exist_ok=True)
-                    if args.build_pdf:
-                        command = ["make", "-C", str(latex_dir), "LATEX_CMD=pdflatex -interaction=nonstopmode -halt-on-error"]
-                        run_logged(command, work_root / "latex.log", verbose=args.verbose)
-                        latex_log = (latex_dir / "refman.log").read_text(errors="replace")
-                        if "There were undefined references" in latex_log or "Rerun to get cross-references right" in latex_log:
-                            raise ValueError("full PDF has unresolved references")
-                        if not (latex_dir / "refman.ind").is_file():
-                            raise ValueError("full PDF index is missing")
-                    else:
-                        run_logged(["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "refman"],
-                                   work_root / "latex.log", verbose=args.verbose, cwd=latex_dir)
-                    shutil.copy2(latex_dir / "refman.pdf", pdf_dir / pdf_name(stage))
-                if source_identity(REPO_ROOT, stage) != identity:
-                    raise ValueError("documentation source changed during generation")
-                if args.artifacts:
-                    tools = {name: subprocess.check_output([name, "--version"], text=True).splitlines()[0]
-                             for name in ("doxygen", "pdflatex")}
-                    tools["python"] = subprocess.check_output([venv_python(), "--version"], text=True).strip()
-                    tools["mcss"] = hashlib.sha256(
-                        (REPO_ROOT.parent / "tools/m.css/documentation/doxygen.py").read_bytes()).hexdigest()
-                    create_bundle(stage_root, bundle, stage=stage, version=version, source=identity, tools=tools)
-                for name in ("docgen.log", "latex.log"):
-                    if (work_root / name).exists():
-                        shutil.copy2(work_root / name, stage_root / name)
-                destination = parent / stage
-                shutil.rmtree(destination, ignore_errors=True)
-                shutil.move(str(stage_root), destination)
-                preview = REPO_ROOT / "build/preview" / stage
-                shutil.rmtree(preview, ignore_errors=True)
-                for kind in ("html", "markdown", "pdf"):
-                    sync_preview_dir(destination / kind, preview / kind)
-                report = destination / "undocumented-functions.txt"
-                if has_undocumented_functions(report):
-                    print(f"Undocumented functions report: {report}")
-            except (SystemExit, subprocess.CalledProcessError, OSError, ValueError) as exc:
-                bundle.unlink(missing_ok=True)
-                # Retain the previous successful stage and preserve failure logs.
-                failure = parent / f"{stage}-failure"
-                shutil.rmtree(failure, ignore_errors=True)
-                shutil.copytree(work_root, failure)
-                print(f"Error: {exc}; failed build saved to {failure}", file=sys.stderr)
-                return 1
+    identity = source_identity(REPO_ROOT)
+    bundle = parent / "artifacts" / "dea_l1_autodocs.tar.gz"
+    # Invalidate distribution success on every new reference attempt.
+    bundle.unlink(missing_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".reference-", dir=parent) as work:
+        work_root = Path(work)
+        try:
+            run_logged(
+                [venv_python(), "-m", "compiler.docgen.l1_docgen",
+                 "--output-dir", str(work_root), *args.docgen_args],
+                work_root / "docgen.log", verbose=args.verbose,
+            )
+            reference_root = work_root / "reference"
+            if args.build_pdf or args.build_pdf_fast:
+                latex_dir = reference_root / "doxygen/latex"
+                pdf_dir = reference_root / "pdf"
+                pdf_dir.mkdir(parents=True, exist_ok=True)
+                if args.build_pdf:
+                    command = ["make", "-C", str(latex_dir), "LATEX_CMD=pdflatex -interaction=nonstopmode -halt-on-error"]
+                    run_logged(command, work_root / "latex.log", verbose=args.verbose)
+                    latex_log = (latex_dir / "refman.log").read_text(errors="replace")
+                    if "There were undefined references" in latex_log or "Rerun to get cross-references right" in latex_log:
+                        raise ValueError("full PDF has unresolved references")
+                    if not (latex_dir / "refman.ind").is_file():
+                        raise ValueError("full PDF index is missing")
+                else:
+                    run_logged(["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "refman"],
+                               work_root / "latex.log", verbose=args.verbose, cwd=latex_dir)
+                shutil.copy2(latex_dir / "refman.pdf", pdf_dir / pdf_name())
+            if source_identity(REPO_ROOT) != identity:
+                raise ValueError("documentation source changed during generation")
+            if args.artifacts:
+                tools = {name: subprocess.check_output([name, "--version"], text=True).splitlines()[0]
+                         for name in ("doxygen", "pdflatex")}
+                tools["python"] = subprocess.check_output([venv_python(), "--version"], text=True).strip()
+                tools["mcss"] = hashlib.sha256(
+                    (REPO_ROOT.parent / "tools/m.css/documentation/doxygen.py").read_bytes()).hexdigest()
+                create_bundle(reference_root, bundle, version=version, source=identity, tools=tools)
+            for name in ("docgen.log", "latex.log"):
+                if (work_root / name).exists():
+                    shutil.copy2(work_root / name, reference_root / name)
+            destination = parent / "reference"
+            shutil.rmtree(destination, ignore_errors=True)
+            shutil.move(str(reference_root), destination)
+            preview = REPO_ROOT / "build/preview" / "reference"
+            shutil.rmtree(preview, ignore_errors=True)
+            for kind in ("html", "markdown", "pdf"):
+                sync_preview_dir(destination / kind, preview / kind)
+            report = destination / "undocumented-functions.txt"
+            if has_undocumented_functions(report):
+                print(f"Undocumented functions report: {report}")
+        except (SystemExit, subprocess.CalledProcessError, OSError, ValueError) as exc:
+            bundle.unlink(missing_ok=True)
+            # Retain the previous successful reference and preserve failure logs.
+            failure = parent / "reference-failure"
+            shutil.rmtree(failure, ignore_errors=True)
+            shutil.copytree(work_root, failure)
+            print(f"Error: {exc}; failed build saved to {failure}", file=sys.stderr)
+            return 1
 
     return 0
 

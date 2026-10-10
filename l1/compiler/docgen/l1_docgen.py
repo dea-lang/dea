@@ -105,7 +105,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "use python scripts/gen_docs.py --help."
         ),
     )
-    parser.add_argument("--stage", choices=("stage1", "stage2", "all"), default="all")
     parser.add_argument("--html-only", action="store_true", help="Generate only HTML output.")
     parser.add_argument("--markdown-only", action="store_true", help="Generate only Markdown output.")
     parser.add_argument("--latex-only", action="store_true", help="Generate only LaTeX output.")
@@ -317,8 +316,8 @@ def _verify_source_functions(root: Path, manifest: SourceManifest, xml_dir: Path
 
     Args:
         root: L1 source root.
-        manifest: Selected stage inventory.
-        xml_dir: Doxygen XML database for exactly this stage.
+        manifest: Selected source inventory.
+        xml_dir: Doxygen XML database for the canonical compiler.
 
     Raises:
         ValueError: A source function is absent from the generated database.
@@ -349,11 +348,11 @@ def _normalize_html_output(doxygen_root: Path, html_dir: Path) -> None:
     shutil.copytree(generated_html_dir, html_dir)
 
 
-def _generate_stage(args: argparse.Namespace) -> int:
-    """Generate one isolated stage into its supplied working directory.
+def _generate_reference(args: argparse.Namespace) -> int:
+    """Generate one isolated reference into its supplied working directory.
 
     Args:
-        args: Parsed options with a concrete stage and temporary output directory.
+        args: Parsed options with a temporary output directory.
 
     Returns:
         Zero after successful generation and strict validation.
@@ -397,18 +396,17 @@ def _generate_stage(args: argparse.Namespace) -> int:
         markdown_dir.mkdir(parents=True)
     generated_root.mkdir(parents=True)
 
-    manifest = build_source_manifest(root, args.stage)
+    manifest = build_source_manifest(root)
     _build_shadow_tree(root, manifest, shadow_root)
     local_mcss = tmp_root / "mcss"
     shutil.copytree(mcss_root, local_mcss, ignore=shutil.ignore_patterns(".git", "__pycache__"))
     mcss_root = local_mcss
     _patch_mcss_renderer(mcss_root)
 
-    _write_template("mainpage_html.md.j2", html_mainpage_path, stage=args.stage)
+    _write_template("mainpage_html.md.j2", html_mainpage_path)
     _write_template(
         "doxyfile.in",
         xml_doxygen_path,
-        stage=args.stage,
         input_files=[(shadow_root / path).as_posix() for path in manifest.files],
         output_directory=doxygen_root.as_posix(),
         mainpage=html_mainpage_path.as_posix(),
@@ -421,7 +419,6 @@ def _generate_stage(args: argparse.Namespace) -> int:
     _write_template(
         "mcss_conf.py.in",
         mcss_conf_path,
-        stage=args.stage,
         doxygen_path=xml_doxygen_path.as_posix(),
         html_output=html_dir.as_posix(),
     )
@@ -429,11 +426,10 @@ def _generate_stage(args: argparse.Namespace) -> int:
     _run_command(["doxygen", str(xml_doxygen_path)], cwd=root)
 
     if latex_enabled:
-        _write_template("mainpage_latex.md.j2", latex_mainpage_path, stage=args.stage)
+        _write_template("mainpage_latex.md.j2", latex_mainpage_path)
         _write_template(
             "doxyfile.in",
             latex_doxygen_path,
-            stage=args.stage,
             input_files=[(shadow_root / path).as_posix() for path in manifest.files],
             output_directory=doxygen_root.as_posix(),
             mainpage=latex_mainpage_path.as_posix(),
@@ -455,9 +451,9 @@ def _generate_stage(args: argparse.Namespace) -> int:
         _normalize_html_output(doxygen_root, html_dir)
         normalize_search_result_urls(html_dir)
     if markdown_render_root is not None:
-        render_markdown_site(xml_dir, markdown_render_root, templates_dir, stage=args.stage)
+        render_markdown_site(xml_dir, markdown_render_root, templates_dir)
     if html_enabled and markdown_render_root is not None:
-        render_curated_html_site(xml_dir, markdown_render_root, html_dir, templates_dir, stage=args.stage)
+        render_curated_html_site(xml_dir, markdown_render_root, html_dir, templates_dir)
         render_raw_reference_backlinks(xml_dir, markdown_render_root, html_dir)
         rewrite_and_prune_raw_html_surface(xml_dir, markdown_render_root, html_dir)
         render_compat_redirect_pages(xml_dir, markdown_render_root, html_dir, templates_dir)
@@ -487,13 +483,13 @@ def _generate_stage(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run independent stage pipelines, replacing only successful stage outputs.
+    """Run the canonical reference pipeline, replacing only successful reference outputs.
 
     Args:
         argv: Optional command-line arguments.
 
     Returns:
-        Zero after every selected stage succeeds.
+        Zero after reference generation succeeds.
 
     Raises:
         SystemExit: Argument parsing or generation fails.
@@ -502,23 +498,21 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     parent = (repo_root() / args.output_dir).resolve()
     parent.mkdir(parents=True, exist_ok=True)
-    for stage in (("stage1", "stage2") if args.stage == "all" else (args.stage,)):
-        (parent / "artifacts" / f"dea_l1_{stage}_autodocs.tar.gz").unlink(missing_ok=True)
-        with tempfile.TemporaryDirectory(prefix=f".{stage}-", dir=parent) as work:
-            selected = argparse.Namespace(**vars(args))
-            selected.stage = stage
-            selected.output_dir = Path(work) / stage
-            try:
-                _generate_stage(selected)
-            except (SystemExit, OSError, subprocess.CalledProcessError):
-                failure = parent / f"{stage}-failure"
-                shutil.rmtree(failure, ignore_errors=True)
-                shutil.copytree(work, failure)
-                raise
-            destination = parent / stage
-            if destination.exists():
-                shutil.rmtree(destination)
-            shutil.move(str(selected.output_dir), destination)
+    (parent / "artifacts" / "dea_l1_autodocs.tar.gz").unlink(missing_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".reference-", dir=parent) as work:
+        selected = argparse.Namespace(**vars(args))
+        selected.output_dir = Path(work) / "reference"
+        try:
+            _generate_reference(selected)
+        except (SystemExit, OSError, subprocess.CalledProcessError):
+            failure = parent / "reference-failure"
+            shutil.rmtree(failure, ignore_errors=True)
+            shutil.copytree(work, failure)
+            raise
+        destination = parent / "reference"
+        if destination.exists():
+            shutil.rmtree(destination)
+        shutil.move(str(selected.output_dir), destination)
     return 0
 
 

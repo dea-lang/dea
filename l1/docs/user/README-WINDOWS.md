@@ -1,6 +1,6 @@
 # Dea/L<sub>1</sub> on Windows
 
-The L1 Stage 2 development package targets MSYS2 UCRT64. Native compilation and stdlib/runtime preparation require a
+The canonical L1 development package targets MSYS2 UCRT64. Native compilation and stdlib/runtime preparation require a
 compatible UCRT64 C compiler and host tools. Install MSYS2 from <https://www.msys2.org/>, then install GCC from its
 UCRT64 shell:
 

@@ -1,0 +1,159 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/**
+ * Standard library module for `float` and `double` operations.
+ *
+ * All functions are available in explicit `_f` (`float`) and `_d` (`double`)
+ * variants; no implicit overloading is provided. Functions that naturally
+ * return more than one result use small structs (`FracPartsF`, `FracPartsD`,
+ * `FrexpPartsF`, `FrexpPartsD`) rather than output parameters.
+ *
+ * Covered families: classification, basic operations, exponential and
+ * logarithmic, trigonometric, rounding, remainder and decomposition, and
+ * sign and neighboring-value helpers.
+ *
+ * This module does not expose floating-point environment control, trap flags,
+ * or rounding-mode management.
+ *
+ * Implementation note: Importing this module, directly or transitively,
+ * triggers host math-library linkage (`-lm` or platform equivalent) via
+ * `sys.real`.
+ */
+module std.real;
+
+import sys.real;
+
+// Constants
+let PI: double = 3.14159265358979323846;
+let PI_F: float = 3.14159265358979323846f;
+let E: double = 2.71828182845904523536;
+let E_F: float = 2.71828182845904523536f;
+let NAN_F: float = rt_real_get_nan_f();
+let NAN: double = rt_real_get_nan_d();
+let INFINITY_F: float = rt_real_get_inf_f();
+let INFINITY: double = rt_real_get_inf_d();
+
+// Multi-result public types
+struct FracPartsF {
+    int_part: float;
+    frac_part: float;
+}
+
+struct FracPartsD {
+    int_part: double;
+    frac_part: double;
+}
+
+struct FrexpPartsF {
+    significand: float;
+    exp: int;
+}
+
+struct FrexpPartsD {
+    significand: double;
+    exp: int;
+}
+
+// Phase 1: Classification
+func is_nan_f(x: float) -> bool { return rt_real_is_nan_f(x); }
+func is_nan_d(x: double) -> bool { return rt_real_is_nan_d(x); }
+func is_inf_f(x: float) -> bool { return rt_real_is_inf_f(x); }
+func is_inf_d(x: double) -> bool { return rt_real_is_inf_d(x); }
+func is_finite_f(x: float) -> bool { return rt_real_is_finite_f(x); }
+func is_finite_d(x: double) -> bool { return rt_real_is_finite_d(x); }
+func signbit_f(x: float) -> bool { return rt_real_signbit_f(x); }
+func signbit_d(x: double) -> bool { return rt_real_signbit_d(x); }
+
+// Phase 1: Basic ops
+func abs_f(x: float) -> float { return rt_real_abs_f(x); }
+func abs_d(x: double) -> double { return rt_real_abs_d(x); }
+func sqrt_f(x: float) -> float { return rt_real_sqrt_f(x); }
+func sqrt_d(x: double) -> double { return rt_real_sqrt_d(x); }
+func cbrt_f(x: float) -> float { return rt_real_cbrt_f(x); }
+func cbrt_d(x: double) -> double { return rt_real_cbrt_d(x); }
+func hypot_f(x: float, y: float) -> float { return rt_real_hypot_f(x, y); }
+func hypot_d(x: double, y: double) -> double { return rt_real_hypot_d(x, y); }
+
+// Phase 1: Rounding
+func floor_f(x: float) -> float { return rt_real_floor_f(x); }
+func floor_d(x: double) -> double { return rt_real_floor_d(x); }
+func ceil_f(x: float) -> float { return rt_real_ceil_f(x); }
+func ceil_d(x: double) -> double { return rt_real_ceil_d(x); }
+func trunc_f(x: float) -> float { return rt_real_trunc_f(x); }
+func trunc_d(x: double) -> double { return rt_real_trunc_d(x); }
+func round_f(x: float) -> float { return rt_real_round_f(x); }
+func round_d(x: double) -> double { return rt_real_round_d(x); }
+
+// Phase 1: Remainder and decomposition
+func fmod_f(x: float, y: float) -> float { return rt_real_fmod_f(x, y); }
+func fmod_d(x: double, y: double) -> double { return rt_real_fmod_d(x, y); }
+func remainder_f(x: float, y: float) -> float { return rt_real_remainder_f(x, y); }
+func remainder_d(x: double, y: double) -> double { return rt_real_remainder_d(x, y); }
+
+func modf_f(x: float) -> FracPartsF {
+    with (let iptr = new RtFloatOut(0.0f) => drop iptr) {
+        let frac = rt_real_modf_f(x, iptr);
+        return FracPartsF(iptr.val, frac);
+    }
+}
+func modf_d(x: double) -> FracPartsD {
+    with (let iptr = new RtDoubleOut(0.0) => drop iptr) {
+        let frac = rt_real_modf_d(x, iptr);
+        return FracPartsD(iptr.val, frac);
+    }
+}
+
+func frexp_f(x: float) -> FrexpPartsF {
+    with (let exp = new RtIntOut(0) => drop exp) {
+        let sig = rt_real_frexp_f(x, exp);
+        return FrexpPartsF(sig, exp.val);
+    }
+}
+func frexp_d(x: double) -> FrexpPartsD {
+    with (let exp = new RtIntOut(0) => drop exp) {
+        let sig = rt_real_frexp_d(x, exp);
+        return FrexpPartsD(sig, exp.val);
+    }
+}
+
+func ldexp_f(x: float, exp: int) -> float { return rt_real_ldexp_f(x, exp); }
+func ldexp_d(x: double, exp: int) -> double { return rt_real_ldexp_d(x, exp); }
+
+// Phase 1: Sign and neighboring-value helpers
+func copy_sign_f(x: float, y: float) -> float { return rt_real_copy_sign_f(x, y); }
+func copy_sign_d(x: double, y: double) -> double { return rt_real_copy_sign_d(x, y); }
+func next_after_f(x: float, y: float) -> float { return rt_real_next_after_f(x, y); }
+func next_after_d(x: double, y: double) -> double { return rt_real_next_after_d(x, y); }
+
+// Phase 2: Exponential and logarithmic
+func exp_f(x: float) -> float { return rt_real_exp_f(x); }
+func exp_d(x: double) -> double { return rt_real_exp_d(x); }
+func exp2_f(x: float) -> float { return rt_real_exp2_f(x); }
+func exp2_d(x: double) -> double { return rt_real_exp2_d(x); }
+func log_f(x: float) -> float { return rt_real_log_f(x); }
+func log_d(x: double) -> double { return rt_real_log_d(x); }
+func log10_f(x: float) -> float { return rt_real_log10_f(x); }
+func log10_d(x: double) -> double { return rt_real_log10_d(x); }
+func log2_f(x: float) -> float { return rt_real_log2_f(x); }
+func log2_d(x: double) -> double { return rt_real_log2_d(x); }
+func pow_f(x: float, y: float) -> float { return rt_real_pow_f(x, y); }
+func pow_d(x: double, y: double) -> double { return rt_real_pow_d(x, y); }
+
+// Phase 2: Trigonometric
+func sin_f(x: float) -> float { return rt_real_sin_f(x); }
+func sin_d(x: double) -> double { return rt_real_sin_d(x); }
+func cos_f(x: float) -> float { return rt_real_cos_f(x); }
+func cos_d(x: double) -> double { return rt_real_cos_d(x); }
+func tan_f(x: float) -> float { return rt_real_tan_f(x); }
+func tan_d(x: double) -> double { return rt_real_tan_d(x); }
+func asin_f(x: float) -> float { return rt_real_asin_f(x); }
+func asin_d(x: double) -> double { return rt_real_asin_d(x); }
+func acos_f(x: float) -> float { return rt_real_acos_f(x); }
+func acos_d(x: double) -> double { return rt_real_acos_d(x); }
+func atan_f(x: float) -> float { return rt_real_atan_f(x); }
+func atan_d(x: double) -> double { return rt_real_atan_d(x); }
+func atan2_f(x: float, y: float) -> float { return rt_real_atan2_f(x, y); }
+func atan2_d(x: double, y: double) -> double { return rt_real_atan2_d(x, y); }

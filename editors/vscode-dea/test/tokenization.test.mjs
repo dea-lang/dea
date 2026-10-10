@@ -16,6 +16,7 @@ const fixtureRoot = path.join(extensionRoot, "test", "fixtures");
 const grammarPaths = new Map([
   ["source.dea.l0", path.join(extensionRoot, "syntaxes", "dea-l0.tmLanguage.json")],
   ["source.dea.l1", path.join(extensionRoot, "syntaxes", "dea-l1.tmLanguage.json")],
+  ["source.dea.l2", path.join(extensionRoot, "syntaxes", "dea-l2.tmLanguage.json")],
 ]);
 
 const wasmBytes = fs.readFileSync(
@@ -208,6 +209,7 @@ test("case wildcard defaults keep wildcard and arrow scopes across levels", asyn
   for (const [scopeName, fixtureName] of [
     ["source.dea.l0", "l0_hello.l0"],
     ["source.dea.l1", "l1_surface.l1"],
+    ["source.dea.l2", "l2_surface.l2"],
   ]) {
     const tokenized = await tokenizeFixture(scopeName, fixtureName);
     assertScope(

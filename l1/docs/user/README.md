@@ -4,7 +4,7 @@
 
 ## Dea/L<sub>1</sub>
 
-This package contains the standalone, self-hosted Dea/L1 Stage 2 development compiler. The package version does not
+This package contains the standalone, canonical L0-implemented Dea/L1 development compiler. The package version does not
 imply stable language or toolchain maturity. Exact build and version metadata are recorded in [VERSION].
 
 ## What is included
@@ -48,9 +48,9 @@ relocation. Keep the entire prefix together when moving it. Activation is option
 from any directory.
 
 Distribution archives include autodocs; direct installations may omit them. Open
-`share/doc/dea/l1/autodocs/stage2/html/index.html` for the offline HTML reference or
-`share/doc/dea/l1/autodocs/stage2/pdf/dea_l1_stage2_api_reference.pdf` for the full PDF. Compiler-only installations
-omit these optional files.
+`share/doc/dea/l1/autodocs/html/index.html` for the offline HTML reference or
+`share/doc/dea/l1/autodocs/pdf/dea_l1_api_reference.pdf` for the full PDF. Compiler-only installations omit these
+optional files.
 
 Project source and reference documentation are available at <https://github.com/dea-lang/dea>.
 

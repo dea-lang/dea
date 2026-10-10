@@ -1,20 +1,21 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # Copyright (c) 2026 gwz
-"""Curate a private Stage 2 payload from explicit bootstrap inputs."""
+"""Curate a private canonical L1 payload from explicit bootstrap inputs."""
 
 from __future__ import annotations
 
 from contextlib import contextmanager
 import hashlib
+import json
 import os
 from pathlib import Path
 import stat
 import subprocess
 import tempfile
 
-from build_stage2_l1c import build_compiler
+from build_l1c import build_compiler
 from dea_tooling.bootstrap import wrapper_command
-from productization_inventory import inventory_payload
+from productization_inventory import MANIFEST_PATH, inventory_payload, verify_payload
 from productization_launchers import env_cmd_script, env_script, native_cmd_wrapper, native_wrapper
 from productization_provenance import collect_provenance
 
@@ -96,20 +97,20 @@ def _write(root: Path, relative: str, data: bytes, mode: int = 0o644) -> None:
 
 @contextmanager
 def build_payload(root: Path, layout: Path, seed: Path, env: dict[str, str], *,
-                  upstream: Path, stage1_options: list[str]):
-    """Self-build and yield a private curated payload and its provenance snapshot.
+                  upstream: Path, compiler_options: list[str]):
+    """Build and yield a private curated payload and its provenance snapshot.
 
-    The caller must first build the explicit upstream/Stage 1/Stage 2 seed chain.
+    The caller must first build a private canonical compiler with the explicit upstream L0 toolchain.
     The payload has no install manifest; publish it through ``install_payload``.
     All scratch and the yielded payload are removed when the context exits.
 
     Args:
         root: L1 checkout matching the compiler builder's source root.
         layout: Completed bootstrap layout; never modified by this helper.
-        seed: Explicit repository-mode Stage 2 compiler, independent of the alias.
+        seed: Private repository-mode canonical compiler for semantic verification.
         env: Native build and package-version selection.
-        upstream: Upstream L0 compiler used to construct Stage 1.
-        stage1_options: Arguments used for that Stage 1 construction.
+        upstream: Upstream L0 compiler used for canonical construction.
+        compiler_options: Arguments used for the private canonical construction.
 
     Yields:
         Pair of private payload directory and immutable package provenance.
@@ -117,7 +118,7 @@ def build_payload(root: Path, layout: Path, seed: Path, env: dict[str, str], *,
     Raises:
         ValueError: Required input families or package metadata are inconsistent.
         OSError: A selected input cannot be read or private output cannot be written.
-        subprocess.CalledProcessError: Semantic verification or self-build fails.
+        subprocess.CalledProcessError: Semantic verification or compiler construction fails.
     """
     root, layout, seed = root.resolve(), layout.resolve(), seed.absolute()
     support = snapshot_support(root, layout)
@@ -128,8 +129,8 @@ def build_payload(root: Path, layout: Path, seed: Path, env: dict[str, str], *,
         extra[target] = _read(root, "docs/user/" + source)
     extra["share/dea/l1/smoke/hello.l1"] = _read(root, "scripts/package/hello.l1")
     provenance, build_env = collect_provenance(
-        root, env, upstream=upstream, stage1=layout / "bin/l1c-stage1", stage2=seed,
-        stage1_options=stage1_options,
+        root, env, upstream=upstream, compiler=seed,
+        compiler_options=compiler_options,
         preparation_inputs={name: hashlib.sha256(data).hexdigest() for name, data in support.items()})
     with tempfile.TemporaryDirectory(prefix="l1-package-") as temporary:
         scratch = Path(temporary)
@@ -146,16 +147,32 @@ def build_payload(root: Path, layout: Path, seed: Path, env: dict[str, str], *,
                         "--sys-root", str(payload / "shared/l1/stdlib"),
                         "-I", str(payload / "interfaces"), str(umbrella), "-o", str(scratch / "verify.c")],
                        cwd=root, env=build_env, check=True)
-        overlay = scratch / "build_info.l1"
+        overlay = scratch / "build_info.l0"
         overlay.write_text(provenance.build_info_module(installed=True), encoding="utf-8")
-        build_compiler(seed, payload / "bin/l1c-stage2.native", build_env, build_info_overlay=overlay)
-        for name in ("l1c", "l1c-stage2"):
-            _write(payload, "bin/" + name, native_wrapper().encode(), 0o755)
-            if provenance.metadata()["os"] == "windows":
-                _write(payload, "bin/" + name + ".cmd", native_cmd_wrapper().encode(), 0o755)
+        command = build_compiler(upstream, payload / "bin/l1c.native", build_env, build_info_overlay=overlay)
+        provenance = provenance.with_installed_compiler_command(command)
+        _write(payload, "bin/l1c", native_wrapper().encode(), 0o755)
+        if provenance.metadata()["os"] == "windows":
+            _write(payload, "bin/l1c.cmd", native_cmd_wrapper().encode(), 0o755)
         _write(payload, "bin/l1-env.sh", env_script().encode(), 0o755)
         if provenance.metadata()["os"] == "windows":
             _write(payload, "bin/l1-env.cmd", env_cmd_script().encode(), 0o755)
         _write(payload, "VERSION", provenance.version_text().encode())
-        inventory_payload(payload, provenance.metadata())
+        # The marked native compiler must consume the captured graph through its
+        # installed roots before any requested destination can be modified.
+        # Its startup guard needs a complete private inventory. The publisher
+        # later records the final tree after optional documentation is added.
+        record = inventory_payload(payload, provenance.metadata())
+        _write(payload, MANIFEST_PATH, (json.dumps(record, sort_keys=True, indent=2) + "\n").encode())
+        installed_env = {name: value for name, value in build_env.items()
+                         if name not in {"L1_HOME", "L1_BUILD_DIR", "L1_SYSTEM", "L1_RUNTIME_INCLUDE",
+                                         "L1_RUNTIME_LIB", "L1_STDLIB_CACHE"}}
+        try:
+            subprocess.run([str(payload / "bin/l1c.native"), "--gen", "--no-managed-stdlib",
+                            "-I", str(payload / "interfaces"), str(umbrella),
+                            "-o", str(scratch / "verify-installed.c")],
+                           cwd=scratch, env=installed_env, check=True)
+            verify_payload(payload, record)
+        finally:
+            (payload / MANIFEST_PATH).unlink()
         yield payload, provenance

@@ -12,7 +12,7 @@ completed Dea work.
 
 1. Read root `AGENTS.md` first.
 2. If touched paths are under `l0/`, read `l0/AGENTS.md`.
-3. If touched paths are under `l1/`, read `l1/AGENTS.md`.
+3. Read the matching level guidance for every touched level, including `l1/AGENTS.md` and `l2/AGENTS.md`.
 4. Check `git status --short` before staging. Never stage unrelated files.
 
 ## Authorization boundary
@@ -106,13 +106,11 @@ inspection, or staging unchanged content does not invalidate validation. Plan cl
 Markdown-only hook formatting after the suite also do not invalidate code-test results; run the applicable docs checks
 plus the mandatory staged whitespace and pre-commit checks instead.
 
-When unchanged inputs already passed `test-extended` and exhaustive L1 validation is required, reuse the local-normal
-result and run only the missing `test-ci` categories: explicitly select the cases listed in
-`CI_ONLY_NORMAL_STAGE1_TESTS` and `CI_ONLY_NORMAL_STAGE2_TESTS`, then run environment/bootstrap integration, Stage 1 and
-Stage 2 trace suites, child trace fixtures, and triple bootstrap as required by the change. Do not invoke `test-ci`
-merely to repeat the covered local-normal work. For L0, `test-extended` includes its Stage 2 trace sweep; if unchanged
-`test` has passed and only that sweep remains, run `make -C l0 test-stage2-trace` instead of repeating the normal suite.
-Scope reused validation to the same affected levels and inputs.
+When unchanged inputs already passed `test-extended` and exhaustive L1/L2 validation is required, reuse the local-normal
+result and run only the missing CI-only normal cases from the current runner registry, environment/bootstrap checks,
+canonical trace suites, and child trace fixtures required by the change. L1/L2 have no parity or triple-bootstrap gate.
+For L0, `test-extended` includes its Stage 2 trace sweep; if unchanged `test` has passed and only that sweep remains,
+run `make -C l0 test-stage2-trace`. Scope reused evidence to the same level, subject, and covered inputs.
 
 Do not upgrade a just-passed applicable `test`, `test-extended`, or `test-ci` run to its `clean` form solely because the
 scope matrix names the clean command. The `clean` prefix is how to obtain fresh validation when validation is needed,
@@ -140,18 +138,16 @@ This check applies within the changed scope; it does not require a repository-wi
 Choose the validation tier from the complete intended commit diff before applying the level scope matrix. Scope and tier
 are independent decisions; reclassify if staging or pre-commit changes that diff:
 
-- `test` is the normal development aggregate. In L1 it runs representative Stage 1 and Stage 2 smoke tests, examples,
-  parity, Stage 2 tooling, and Docker/Wine runner regressions. L0 keeps its normal validation composition.
-- `test-extended` is the broad local aggregate. In L1 it runs the Stage 1 and Stage 2 normal suites, excluding CI-only
-  normal cases, environment/bootstrap integration, dedicated trace sweeps, child fixtures, and triple bootstrap. L0
-  preserves the former extended behavior by adding its dedicated Stage 2 trace sweep to `test`.
-- L1 `test-ci` is the exhaustive hosted aggregate. It includes `test-extended`, CI-only normal cases,
-  environment/bootstrap integration, Stage 1 and Stage 2 trace suites, child trace fixtures, and triple bootstrap. It is
-  not a routine local default. Root `test-extended` delegates to each level's extended target and does not include L1's
-  `test-ci` additions.
+- `test` is the fast development aggregate. L1/L2 exercise representative canonical compiler tests, examples, and
+  applicable tooling; L0 retains its two-stage normal validation.
+- `test-extended` is the broad local aggregate. L1/L2 run their canonical normal suites without CI-only cases or the
+  separate expensive environment/trace/child gates. L0 adds its dedicated Stage 2 trace sweep.
+- L1/L2 `test-ci` is exhaustive: broad normal validation plus CI-only cases, environment/bootstrap checks, canonical
+  traces, and child fixtures. Root `test-extended` does not imply those additions. L2 independence also needs
+  `test-isolation`; L1 actual-artifact acceptance is always a separate productization gate.
 
 Select aggregate tiers based on scope and expected coverage. Run focused expensive tests for trace-, bootstrap-,
-preparation-, and environment-sensitive changes; those changes do not automatically require the complete L1 `test-ci`
+preparation-, and environment-sensitive changes; those changes do not automatically require the complete L1/L2 `test-ci`
 suite. Use the affected direct target and selectors where possible. Require the relevant trace validation when a
 functional change can affect trace health or the trace gate itself, including:
 
@@ -159,21 +155,22 @@ functional change can affect trace health or the trace gate itself, including:
   validation, runtime variants, or compiler/runtime flags that select those behaviors
 - ownership or lifetime behavior such as `new`, `drop`, raw allocation/free/reallocation, ARC retain/release, managed
   assignment/copy/move/return/argument passing, nullable unwrap, owned container storage, generated cleanup, or
-  allocation-bearing control flow in self-hosted compiler code
+  allocation-bearing control flow in native compiler code
 - backend or C-emitter behavior that can alter generated allocation, ownership, lifetime, cleanup, or trace
   instrumentation
 - trace flags or defines, trace event formats, runner/checker logic, discovery/exclusion/parallelism, artifact handling,
   trace environment, or Make/CI wiring of dedicated trace targets
 - adding, changing, removing, or renaming a trace-eligible top-level `.l0` test under `l0/compiler/stage2_l0/tests/` or
-  `l1/compiler/stage1_l0/tests/`, or a fixture/dependency whose execution can affect that trace result; when the changed
-  case is intentionally excluded from the default sweep, also run its documented focused trace command
+  `l1/compiler/tests/`, or a `.l1` implementation test under `l2/compiler/tests/`, or a fixture/dependency whose
+  execution can affect that trace result; when the changed case is intentionally excluded from the default sweep, also
+  run its documented focused trace command
 
 The fast `test` tier is generally sufficient for routine changes whose behavior is confidently scoped and
 trace-independent. Examples include:
 
 - diagnostics, source spans, help/version/output wording, AST/debug printing, and comparable presentation-only edits
 - lexer, parser, name-resolution, or type-analysis changes that do not alter ownership classification, accepted-program
-  memory semantics, emitted cleanup, or the self-hosted compiler's own owning-value/control-flow behavior
+  memory semantics, emitted cleanup, or the native compiler's own owning-value/control-flow behavior
 - pure scalar behavior with no allocation, managed values, pointer validation, cleanup, or trace-instrumentation impact
 - new or changed non-trace Python tests and ordinary test harnesses that do not affect trace discovery or execution
 - CI routing, packaging, release, documentation tooling, or Make changes that do not alter trace invocation, inputs,
@@ -181,7 +178,7 @@ trace-independent. Examples include:
 
 These categories select the aggregate tier only. Continue to run every focused validation required by the affected
 subsystem. Do not require `test-ci` solely because a path is compiler-, test-, CI-, or tooling-related. Use
-`test-extended` when broad local coverage is warranted. For L1, run the relevant explicit trace and other focused
+`test-extended` when broad local coverage is warranted. For L1/L2, run the relevant explicit trace and other focused
 targets for expensive subsystem changes; choose `test-ci` when hosted-equivalent exhaustive coverage is warranted. If
 the classification is uncertain, use focused validation plus `test-extended`, and include the relevant expensive
 categories explicitly.
@@ -220,13 +217,15 @@ For history-only rewrites such as squash, reword, or reorder operations:
 
 - For trace-sensitive non-documentation functional changes confined to `l0/`: run `make -C l0 clean test-extended`.
 
-- For routine trace-independent non-documentation functional changes confined to `l1/`: run `make -C l1 clean test`.
+- For routine trace-independent non-documentation functional changes confined to L1/L2 (use the affected level in the
+  command): run `make -C l1 clean test`.
 
-- For broad trace-independent non-documentation functional changes confined to `l1/`: run
-  `make -C l1 clean test-extended`.
+- For broad trace-independent non-documentation functional changes confined to L1/L2 (use the affected level in the
+  command): run `make -C l1 clean test-extended`.
 
-- For trace-sensitive non-documentation functional changes confined to `l1/`: run the affected normal and trace targets
-  with focused selectors. Use `make -C l1 clean test-ci` only when exhaustive hosted-equivalent coverage is warranted.
+- For trace-sensitive non-documentation functional changes confined to L1/L2 (use the affected level in the command):
+  run the affected normal and trace targets with focused selectors. Use `make -C l1 clean test-ci` only when exhaustive
+  hosted-equivalent coverage is warranted.
 
 - For routine trace-independent cross-cutting non-documentation functional changes (touching more than one level, or
   touching shared/root paths such as `scripts/`, `tools/`, root `pyproject.toml`, `uv.lock`, root config, or the root
@@ -269,8 +268,8 @@ python3 scripts/check_adr_impact.py --staged
 uv run --group dev pre-commit run --hook-stage pre-commit -c .pre-commit-config.yaml --files $(git diff --cached --name-only --diff-filter=ACMR)
 ```
 
-If you are already in an immediate level directory such as `l0/` or `l1/`, keep `uv` pointed at the root project and
-pass root-relative staged paths:
+If you are already in an immediate level directory such as `l0/`, `l1/`, or `l2/`, keep `uv` pointed at the root project
+and pass root-relative staged paths:
 
 ```bash
 uv run --directory .. --group dev pre-commit run --hook-stage pre-commit -c .pre-commit-config.yaml --files $(git -C .. diff --cached --name-only --diff-filter=ACMR)
@@ -356,3 +355,15 @@ git log -1 --oneline
 - any unstaged/untracked files intentionally left alone
 - current branch upstream and the unpushed commit range
 - gated remote or publication actions intentionally left pending
+
+## Canonical L1/L2 validation
+
+L1 and L2 each have one compiler. Use `test-compiler` and `test-compiler-trace` with focused `TESTS` selectors, `test`
+for ordinary changes, `test-extended` for broad normal validation, and `test-ci` for exhaustive coverage. No intra-L1/L2
+parity, stage selection, or triple bootstrap is required. L2 builds require explicit installed `L2_BOOTSTRAP_L1C`;
+changes to independence require `test-isolation`. Resolve compiler ownership from the path and subject, not `.l0`/`.l1`
+suffix alone. L1 implementation tests are `.l0`; L2 implementation tests are `.l1`.
+
+L1 delivery changes require affected product fixtures and real `test-productization-acceptance` evidence. Compiler CI
+does not replace artifact acceptance. Reuse evidence only when all covered inputs are unchanged; old Stage 2 artifact
+acceptance never covers the retargeted canonical compiler. Preserve root Windows path-comparison safeguards.

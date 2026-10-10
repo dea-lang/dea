@@ -28,7 +28,7 @@ def evidence(package, tmp_path, monkeypatch):
         archive = tmp_path / 'archive with spaces.tar.gz'
         archives.write_archive(prefix, archive, windows=False)
         docs = json.loads((prefix / archives.DOCS_PATH / 'manifest.json').read_text())
-        record = {**metadata, 'schema_version': 1, 'level': 'l1', 'stage': 2,
+        record = {**metadata, 'schema_version': 2, 'level': 'l1',
                   'archive_path': str(archive), 'archive_size': archive.stat().st_size,
                   'archive_sha256': archives.digest(archive), 'docs_source': docs['source'],
                   'docs_bundle_sha256': 'a' * 64}
@@ -59,7 +59,7 @@ def test_transported_result_drives_smoke_and_report(evidence, tmp_path, monkeypa
 
 
 @pytest.mark.parametrize('field,value', [
-    ('schema_version', 2), ('schema_version', True), ('schema_version', 1.0),
+    ('schema_version', 1), ('schema_version', True), ('schema_version', 2.0),
     ('stage', 1), ('stage', 2.0), ('level', 'l0'), ('maturity', 'stable'),
     ('archive_path', 'relative.tar.gz'), ('archive_size', 0), ('archive_sha256', '0' * 64),
     ('package_version', 'different'), ('provenance', {}), ('docs_source', {}),

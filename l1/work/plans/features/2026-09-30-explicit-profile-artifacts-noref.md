@@ -7,46 +7,47 @@
 - Title: Add caller-owned L1 profiles with `--create-profile` and `--profile PATH`
 - Kind: Feature
 - Severity: Medium
-- Stage: Shared
+- Stage: Canonical
 - Parent Initiative: `l1/work/initiatives/0010-explicit-profiles-and-composable-builds.md`
 - Targets:
-  - L1 Stage 1: Pending
-  - L1 Stage 2: Pending
+  - Canonical L1: Pending
 - Subsystem: Explicit native support artifacts, CLI selection, compilation and linking
 - Depends on: `l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md`
 - Modules:
-  - `l1/compiler/stage1_l0/src/cli_args.l0`
-  - `l1/compiler/stage1_l0/src/cli_args/`
-  - `l1/compiler/stage1_l0/src/l1c_lib.l0`
-  - `l1/compiler/stage1_l0/src/preparation.l0`
-  - `l1/compiler/stage1_l0/src/preparation/`
-  - `l1/compiler/stage1_l0/src/build_driver.l0`
-  - `l1/compiler/stage1_l0/src/source_paths.l0`
-  - `l1/compiler/stage1_l0/src/compile_driver.l0`
-  - `l1/compiler/stage1_l0/src/compile_driver/`
-  - `l1/compiler/stage1_l0/src/link_driver.l0`
-  - `l1/compiler/stage1_l0/src/link_driver/`
-  - Corresponding modules under `l1/compiler/stage2_l1/src/` with `.l1` suffixes.
-  - `l1/compiler/stage1_l0/support/preparation_support.c`
-  - `l1/compiler/stage1_l0/support/preparation/`
+  - `l1/compiler/src/cli_args.l0`
+  - `l1/compiler/src/cli_args/`
+  - `l1/compiler/src/l1c_lib.l0`
+  - `l1/compiler/src/preparation.l0`
+  - `l1/compiler/src/preparation/`
+  - `l1/compiler/src/build_driver.l0`
+  - `l1/compiler/src/source_paths.l0`
+  - `l1/compiler/src/compile_driver.l0`
+  - `l1/compiler/src/compile_driver/`
+  - `l1/compiler/src/link_driver.l0`
+  - `l1/compiler/src/link_driver/`
+  - `l1/compiler/support/preparation_support.c`
+  - `l1/compiler/support/preparation/`
 - Test modules:
-  - `l1/compiler/stage1_l0/tests/cli_args_test.l0`
-  - `l1/compiler/stage2_l1/tests/cli_args_test.l1`
-  - `l1/compiler/stage1_l0/tests/preparation_test.l0`
-  - `l1/compiler/stage2_l1/tests/preparation_test.l1`
-  - `l1/compiler/stage1_l0/tests/l1c_stage1_preparation_test.py`
-  - `l1/compiler/stage1_l0/tests/l1c_stage1_managed_preparation_test.py`
-  - `l1/compiler/stage1_l0/tests/l1c_stage1_installed_preparation_test.py`
-  - `l1/compiler/stage1_l0/tests/l1c_profile_test.py` (proposed shared integration test).
-  - `l1/compiler/stage1_l0/tests/profile_test.l0` (proposed implementation test).
-  - `l1/compiler/stage2_l1/tests/profile_test.l1` (proposed paired implementation test).
-  - Both stages' normal/trace runner registrations for the new coverage.
+  - `l1/compiler/tests/cli_args_test.l0`
+  - `l1/compiler/tests/preparation_test.l0`
+  - `l1/compiler/tests/l1c_preparation_test.py`
+  - `l1/compiler/tests/l1c_managed_preparation_test.py`
+  - `l1/compiler/tests/l1c_installed_preparation_test.py`
+  - `l1/compiler/tests/l1c_profile_test.py` (proposed shared integration test).
+  - `l1/compiler/tests/profile_test.l0` (proposed implementation test).
+  - The canonical compiler's normal/trace runner registrations for the new coverage.
 - Related:
   - [l1/work/initiatives/0010-explicit-profiles-and-composable-builds.md][initiative]
   - [l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md][boundary-plan]
   - [l1/docs/reference/stdlib-preparation.md][preparation]
   - [l1/docs/reference/separate-compilation.md][separate-compilation]
 - Repro: The proposed explicit compilation sequence under Public CLI Contract.
+
+## Compiler-lineage placement
+
+Complete this work in canonical L1 first, then carry the accepted implementation forward into L2 under a later scoped
+change. This split does not implement or advance profiles/composable builds and adds no dependency on them. Former
+paired-stage compatibility scenarios now refer to canonical L1 producer/consumer consistency, not a second L1 compiler.
 
 ## Summary
 
@@ -244,10 +245,10 @@ are configuration. Observed target, compiler version and component descriptions 
 may be unavailable for an invocable configuration whose managed reuse is refused. Do not invent observations or require
 managed discovery to populate them.
 
-Both compiler stages support the same contract version. A matching version declares a supported Dea interface/runtime
+The canonical compiler supports the same contract version. A matching version declares a supported Dea interface/runtime
 protocol, not proof of native ABI compatibility. Phase 1 must define which incompatible interface, code-generation,
-header/runtime and lifecycle changes require a contract-version bump and how both stages reject unsupported versions.
-Producer provenance and managed content identities are not substitutes for that maintenance rule.
+header/runtime and lifecycle changes require a contract-version bump and how the canonical compiler rejects unsupported
+versions. Producer provenance and managed content identities are not substitutes for that maintenance rule.
 
 The final field spelling, required/optional distinction and serialization limits are a Phase 1 deliverable. The manifest
 is data, not a shell program: store argument arrays, not executable command strings. Do not embed an unrestricted
@@ -359,10 +360,10 @@ Pass the same explicit support selection through the existing build/run graph an
 materialization and retain no-profile behavior. Keep source-graph analysis, per-node one-module compilation, entry
 selection, foreign operands and output/run lifecycle unchanged.
 
-Exit gate: the public sequence above works through both stages, including read-only profile consumption and runtime
-variant inheritance. Stage 1 consumes Stage 2-created profiles and Stage 2 consumes Stage 1-created profiles under the
-same supported native configuration. Preserve Stage 2's reviewed L1 idioms while implementing paired behavior. Help
-reports only implemented mode combinations at each intermediate landing.
+Exit gate: the public sequence above works through the canonical compiler, including read-only profile consumption and
+runtime variant inheritance. The canonical L1 compiler produces and consumes profiles under the same supported native
+configuration. Preserve current canonical compiler behavior. Help reports only implemented mode combinations at each
+intermediate landing.
 
 ### Phase 4: Prove manual composition without adding a build system
 
@@ -379,9 +380,9 @@ frontend, import parser, cache-key calculator or wrapper generator appears in th
 
 ### Phase 5: Complete validation, documentation and closure
 
-Run the matrix below through Stage 1 and Stage 2. Register shared compiler-facing integration tests through the explicit
-subject-compiler mechanism. Use focused tests during implementation, then the required aggregate/trace suites and strict
-bootstrap for closure. Record actual supported native compiler paths/versions and coverage gaps.
+Run the matrix below through canonical L1 compiler. Register shared compiler-facing integration tests through the
+explicit subject-compiler mechanism. Use focused tests during implementation, then the required aggregate/trace suites
+and strict bootstrap for closure. Record actual supported native compiler paths/versions and coverage gaps.
 
 Update the shared CLI and diagnostic catalogs, L1 preparation and separate-compilation references, architecture, help
 and roadmap in the same relevant implementation changes. Write the exact profile specification under `l1/docs/` when
@@ -393,27 +394,27 @@ discovery or Make conversion; the parent initiative remains active until all fou
 
 ## Verification Criteria
 
-| Area                  | Required cases                                                                                                                                                                                                                                                                                |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CLI                   | Missing/repeated selector, missing output, incompatible modes/flags, empty paths, inherited settings, normalized redundant settings and conflicting explicit settings rejected before native work.                                                                                            |
-| Creation              | Complete canonical set, default/basic/unchecked/traced configurations, correct separate runtime policy, supported compiler capabilities and invocable-but-reuse-ineligible construction.                                                                                                      |
-| Selection             | Exact root, no cache fallback, no implicit repair, missing/incomplete/corrupt/unknown-version profiles, provider precedence and profile-configuration mismatch.                                                                                                                               |
-| No hidden preparation | Instrumented absence of managed identity discovery, cache lookup/locks, native-support construction and persistent memo writes after explicit selection. Ordinary host compilation is allowed.                                                                                                |
-| Profile independence  | Read-only profile; invalid/unavailable cache; changed ambient `L1_CC`/`L1_CFLAGS` and system/runtime defaults across compile/link/build/run; consume a moved/copied profile with original bundled sources, interfaces and headers unavailable.                                                |
-| Native option paths   | Relative include/sysroot options and response/configuration files, changed cwd and moved profile follow the frozen Phase 1 rules, including explicit rejection of unsupported forms.                                                                                                          |
-| Safety and ownership  | Existing output rejection, path escape/alias/overlap rejection, injected construction/publication failures, retained unexpected scratch and caller-owned input preservation.                                                                                                                  |
-| Compiler semantics    | Interface verification, imported-provider requirements, entry/lifecycle checks, foreign inputs, float-option restrictions, compile rollback and retained-C rules.                                                                                                                             |
-| Compatibility         | Stage 1-created profiles consumed by Stage 2 and Stage 2-created profiles consumed by Stage 1 under the same native configuration; unsupported contract versions rejected; GCC/Clang and TinyCC runtime shapes on applicable supported hosts without inventing cross-toolchain compatibility. |
-| Regression            | Existing explicit prewarming, force, cold/warm managed requests, no-auto-prepare refusal, corruption/private fallback and current cache-location behavior still pass.                                                                                                                         |
+| Area                  | Required cases                                                                                                                                                                                                                                                      |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CLI                   | Missing/repeated selector, missing output, incompatible modes/flags, empty paths, inherited settings, normalized redundant settings and conflicting explicit settings rejected before native work.                                                                  |
+| Creation              | Complete canonical set, default/basic/unchecked/traced configurations, correct separate runtime policy, supported compiler capabilities and invocable-but-reuse-ineligible construction.                                                                            |
+| Selection             | Exact root, no cache fallback, no implicit repair, missing/incomplete/corrupt/unknown-version profiles, provider precedence and profile-configuration mismatch.                                                                                                     |
+| No hidden preparation | Instrumented absence of managed identity discovery, cache lookup/locks, native-support construction and persistent memo writes after explicit selection. Ordinary host compilation is allowed.                                                                      |
+| Profile independence  | Read-only profile; invalid/unavailable cache; changed ambient `L1_CC`/`L1_CFLAGS` and system/runtime defaults across compile/link/build/run; consume a moved/copied profile with original bundled sources, interfaces and headers unavailable.                      |
+| Native option paths   | Relative include/sysroot options and response/configuration files, changed cwd and moved profile follow the frozen Phase 1 rules, including explicit rejection of unsupported forms.                                                                                |
+| Safety and ownership  | Existing output rejection, path escape/alias/overlap rejection, injected construction/publication failures, retained unexpected scratch and caller-owned input preservation.                                                                                        |
+| Compiler semantics    | Interface verification, imported-provider requirements, entry/lifecycle checks, foreign inputs, float-option restrictions, compile rollback and retained-C rules.                                                                                                   |
+| Compatibility         | Canonical L1-created profiles consumed by the canonical L1 compiler under the same native configuration; unsupported contract versions rejected; GCC/Clang and TinyCC runtime shapes on applicable supported hosts without inventing cross-toolchain compatibility. |
+| Regression            | Existing explicit prewarming, force, cold/warm managed requests, no-auto-prepare refusal, corruption/private fallback and current cache-location behavior still pass.                                                                                               |
 
 Payload hashing is not prohibited. Record its scope and cost separately from external toolchain identity work. Add no
 new persistent validation memo to make the first implementation appear cheap. Measure before considering such an
 optimization.
 
 From `l1/`, use applicable focused tests, `make test-extended`, relevant ownership cases through both
-`test-stage1-trace` and `test-stage2-trace`, and `make triple-test`. Explicitly select
-`TESTS="l1c_stage1_preparation_test l1c_stage1_installed_preparation_test"` with each of `make test-stage1` and
-`make test-stage2`; these shared integration cases are CI-only in normal discovery. Use `make test-ci` for exhaustive
+`test-compiler-trace` and `test-compiler-trace`, and `make test-ci`. Explicitly select
+`TESTS="l1c_preparation_test l1c_installed_preparation_test"` with each of `make test-compiler` and
+`make test-compiler`; these shared integration cases are CI-only in normal discovery. Use `make test-ci` for exhaustive
 hosted-equivalent coverage, reusing already completed applicable validation under the repository rules.
 
 Exercise the repo-owned Linux Docker path with GCC. Follow [l1/AGENTS.md][l1-agents] for supported-host and
@@ -434,7 +435,7 @@ meanings already apply; avoid duplicate fallback errors after a specific cause.
 
 These numbers are planning reservations only. Recheck the live catalog and other active reservations before assigning or
 implementing them; choose another unused block of 20 if they have been taken. Update registered meanings and phase
-help/tests in the same implementation changes. Stage 2 reuses the same codes and meanings.
+help/tests in the same implementation changes. Equivalent conditions retain the same codes and meanings.
 
 ## Non-Goals and Migration Boundaries
 

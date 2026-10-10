@@ -233,30 +233,15 @@ def main() -> int:
     try:
         run_checked(["make", f"DEA_BUILD_DIR={l0_build_rel}", "use-dev-stage2"], cwd=L0_REPO_ROOT)
         run_checked(
-            ["make", f"L1_BUILD_DIR={l1_build_rel}", "use-dev-stage1"],
+            ["make", f"L1_BUILD_DIR={l1_build_rel}", "use-dev"],
             extra_env={"L1_BOOTSTRAP_L0C": str(l0_build_dir / "bin" / "l0c-stage2")},
         )
         source_level_envs_and_check(l0_build_dir, l1_build_dir)
-        run_checked(
-            ["make", f"L1_BUILD_DIR={l1_build_rel}", "use-dev-stage2"],
-            extra_env={"L1_BOOTSTRAP_L0C": str(l0_build_dir / "bin" / "l0c-stage2")},
-        )
         selected = l1_build_dir / "bin" / "l1c"
-        if "(Stage 2)" not in run_checked([str(selected), "--version"]):
-            fail("use-dev-stage2 did not select Stage 2")
+        version = run_checked([str(selected), "--version"])
+        if "Dea language / L1 compiler" not in version or "(Stage " in version:
+            fail("use-dev did not build the canonical compiler")
         source_level_envs_and_check(l0_build_dir, l1_build_dir)
-        run_checked(
-            ["make", f"L1_BUILD_DIR={l1_build_rel}", "build-stage1"],
-            extra_env={"L1_BOOTSTRAP_L0C": str(l0_build_dir / "bin" / "l0c-stage2")},
-        )
-        if "(Stage 2)" not in run_checked([str(selected), "--version"]):
-            fail("build-stage1 changed the selected compiler")
-        run_checked(
-            [str(MONOREPO_ROOT / ".venv/bin/python"), "scripts/select_stage.py", "1"],
-            extra_env={"L1_BUILD_DIR": l1_build_rel},
-        )
-        if "(Stage 1)" not in run_checked([str(selected), "--version"]):
-            fail("could not switch back to Stage 1")
     finally:
         shutil.rmtree(l0_build_dir, ignore_errors=True)
         shutil.rmtree(l1_build_dir, ignore_errors=True)

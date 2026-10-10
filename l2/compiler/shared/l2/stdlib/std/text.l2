@@ -1,0 +1,971 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+module std.text;
+
+import sys.rt;
+import sys.memory;
+
+import std.string;
+import std.integer;
+import std.assert;
+
+import std.vector;
+
+/* ---------------------------------
+   StringBuffer: efficient building
+   --------------------------------- */
+
+/**
+ * StringBuffer allows for efficient construction of strings by accumulating
+ * parts in a vector.
+ */
+struct StringBuffer {
+    parts: StringVector*; // Vector of strings
+    size: int; // Total size of all parts (cached for efficiency)
+}
+
+/**
+ * Creates a new, empty StringBuffer.
+ *
+ * @return A pointer to the newly created StringBuffer.
+ */
+func sb_create() -> StringBuffer* {
+    let parts = sv_create(8);
+    let self = new StringBuffer(parts, 0);
+    return self;
+}
+
+/**
+ * Appends a string to the StringBuffer.
+ *
+ * @param self The pointer to the StringBuffer.
+ * @param s The string to append.
+ */
+func sb_append(self: StringBuffer*, s: string) {
+    sv_push(self.parts, s);
+    self.size = self.size + len_s(s);
+}
+
+/**
+ * Appends an integer to the StringBuffer.
+ *
+ * @param self The pointer to the StringBuffer.
+ * @param value The integer value to append.
+ */
+func sb_append_int(self: StringBuffer*, value: int) {
+    sb_append(self, int_to_string(value));
+}
+
+/**
+ * Appends a byte to the StringBuffer.
+ *
+ * @param self The pointer to the StringBuffer.
+ * @param b The byte value to append.
+ */
+func sb_append_byte(self: StringBuffer*, b: byte){
+    sb_append(self, byte_to_s(b));
+}
+
+/**
+ * Converts the accumulated contents of the StringBuffer into a single string.
+ *
+ * @param self The pointer to the StringBuffer.
+ * @return The final concatenated string.
+ */
+func sb_to_string(self: StringBuffer*) -> string {
+    with (let cb = cb_create() => cb_free(cb)) {
+        cb_reserve(cb, self.size);
+        for (let i: int = 0; i < sv_size(self.parts); i = i + 1) {
+            cb_append_s(cb, sv_get(self.parts, i));
+        }
+        return cb_to_string(cb);
+    }
+}
+
+/**
+ * Returns the current total size of all strings in the StringBuffer.
+ *
+ * @param self The pointer to the StringBuffer.
+ * @return The total size in bytes.
+ */
+func sb_size(self: StringBuffer*) -> int {
+    return self.size;
+}
+
+/**
+ * Free a `StringBuffer` and its accumulated string parts.
+ *
+ * @param self String buffer to free.
+ */
+func sb_free(self: StringBuffer*) {
+    sv_free(self.parts);
+    drop self;
+}
+
+/* ---------------------------------
+   CharBuffer: efficient building
+   --------------------------------- */
+
+/**
+ * CharBuffer allows for efficient building of strings by accumulating
+ * individual characters.
+ */
+struct CharBuffer {
+    chars: VectorBase*; // Vector of byte
+}
+
+/**
+ * Creates a new, empty CharBuffer.
+ *
+ * @return A pointer to the newly created CharBuffer.
+ */
+func cb_create() -> CharBuffer* {
+    let chars = vec_create(sizeof(byte), 16);
+    let self = new CharBuffer(chars);
+    return self;
+}
+
+/**
+ * Returns the current capacity of the CharBuffer.
+ *
+ * @param self The pointer to the CharBuffer.
+ * @return The total capacity.
+ */
+func cb_capacity(self: CharBuffer*) -> int {
+    return vec_capacity(self.chars);
+}
+
+/**
+ * Returns the number of characters currently in the CharBuffer.
+ *
+ * @param self The pointer to the CharBuffer.
+ * @return The character count.
+ */
+func cb_size(self: CharBuffer*) -> int {
+    return vec_size(self.chars);
+}
+
+/**
+ * Ensures the CharBuffer has at least the specified capacity.
+ *
+ * @param self The pointer to the CharBuffer.
+ * @param total_capacity The desired capacity.
+ */
+func cb_reserve(self: CharBuffer*, total_capacity: int) {
+    vec_reserve(self.chars, total_capacity);
+}
+
+/**
+ * Appends a single character to the CharBuffer.
+ *
+ * @param self The pointer to the CharBuffer.
+ * @param c The character to append.
+ */
+func cb_append(self: CharBuffer*, c: byte) {
+    let dest = vec_push(self.chars) as byte*;
+    *dest = c;
+}
+
+/**
+ * Appends a string to the CharBuffer.
+ *
+ * @param self The pointer to the CharBuffer.
+ * @param s The string to append.
+ */
+func cb_append_s(self: CharBuffer*, s: string) {
+    let n = len_s(s);
+    if (n > 0) {
+        vec_push_bytes(self.chars, rt_string_bytes_ptr(s), n);
+    }
+}
+
+/**
+ * Appends a slice of a string to the CharBuffer.
+ *
+ * @param self The pointer to the CharBuffer.
+ * @param s The string containing the slice.
+ * @param start The starting index of the slice.
+ * @param length The number of characters to append.
+ */
+func cb_append_slice(self: CharBuffer*, s: string, start: int, length: int) {
+    if (length <= 0) {
+        return;
+    }
+    let slen = len_s(s);
+    assert(start >= 0 && start + length <= slen, "cb_append_slice: range out of bounds");
+    let src = rt_string_bytes_ptr(s);
+    let offset_src = rt_array_element(src as void*, 1, start) as byte*;
+    vec_push_bytes(self.chars, offset_src, length);
+}
+
+/**
+ * Appends an integer to the CharBuffer.
+ *
+ * @param self The pointer to the CharBuffer.
+ * @param value The integer value to append.
+ */
+func cb_append_int(self: CharBuffer*, value: int) {
+    cb_append_s(self, int_to_string(value));
+}
+
+/**
+ * Reverses the contents of the CharBuffer in place.
+ *
+ * @param cb The pointer to the CharBuffer.
+ */
+func cb_reverse(cb: CharBuffer*) {
+    let size = cb_size(cb);
+    for (let i: int = 0; i < size / 2; i = i + 1) {
+        let a = vec_get(cb.chars, i) as byte*;
+        let b = vec_get(cb.chars, size - 1 - i) as byte*;
+        let temp = *a;
+        *a = *b;
+        *b = temp;
+    }
+}
+
+/**
+ * Converts the accumulated characters in the CharBuffer into a string.
+ *
+ * @param self The pointer to the CharBuffer.
+ * @return The final string.
+ */
+func cb_to_string(self: CharBuffer*) -> string {
+    let size = cb_size(self);
+    if (size == 0) {
+        return "";
+    }
+    let bytes = vec_get(self.chars, 0) as byte*;
+    return bytes_to_s(bytes, size);
+}
+
+/**
+ * Clears all characters from the CharBuffer without freeing memory.
+ *
+ * @param self The pointer to the CharBuffer.
+ */
+func cb_clear(self: CharBuffer*) {
+    vec_clear(self.chars);
+}
+
+/**
+ * Free a `CharBuffer` and its backing character storage.
+ *
+ * @param self Character buffer to free.
+ */
+func cb_free(self: CharBuffer*) {
+    vec_free(self.chars);
+    drop self;
+}
+
+/* ---------------------------------
+   String utility functions
+   --------------------------------- */
+
+/**
+ * Converts all characters in the input string to uppercase.
+ *
+ * @param s The string to convert.
+ * @return The uppercase string.
+ */
+func to_upper_s(s: string) -> string {
+    with (let cb = cb_create() => cb_free(cb)) {
+        for (let i: int = 0; i < len_s(s); i = i + 1) {
+            let c = char_at_s(s, i);
+            cb_append(cb, to_upper(c));
+        }
+        return cb_to_string(cb);
+    }
+}
+
+/**
+ * Converts all characters in the input string to lowercase.
+ *
+ * @param s The string to convert.
+ * @return The lowercase string.
+ */
+func to_lower_s(s: string) -> string {
+    with (let cb = cb_create() => cb_free(cb)) {
+        for (let i: int = 0; i < len_s(s); i = i + 1) {
+            let c = char_at_s(s, i);
+            cb_append(cb, to_lower(c));
+        }
+        return cb_to_string(cb);
+    }
+}
+
+/**
+ * Returns a new string that is the input string `s` repeated `count` times.
+ *
+ * @param s The string to repeat.
+ * @param count The number of repetitions.
+ * @return The repeated string.
+ */
+func repeat_s(s: string, count: int) -> string {
+    with (let cb = cb_create() => cb_free(cb)) {
+        for (let i: int = 0; i < count; i = i + 1) {
+            cb_append_s(cb, s);
+        }
+        return cb_to_string(cb);
+    }
+}
+
+/**
+ * Splits a string into parts based on a separator string.
+ *
+ * @param s The string to split.
+ * @param sep The separator string.
+ * @return A new StringVector containing the parts.
+ */
+func split_s(s: string, sep: string) -> StringVector* {
+    assert(!is_empty_s(sep), "split_s: separator must be non-empty");
+
+    let out = sv_create(4);
+    let n = len_s(s);
+    let sep_len = len_s(sep);
+
+    let start = 0;
+    let search_pos = 0;
+
+    while (search_pos <= n) {
+        let hit = find_from_s(s, sep, search_pos);
+        if (hit < 0) {
+            break;
+        }
+        sv_push(out, slice_s(s, start, hit));
+        start = hit + sep_len;
+        search_pos = start;
+    }
+
+    sv_push(out, slice_s(s, start, n));
+    return out;
+}
+
+/**
+ * Internal helper to strip a trailing CR from a line string.
+ *
+ * @param s The string.
+ * @return The stripped string.
+ */
+func _line_strip_trailing_cr(s: string) -> string {
+    let n = len_s(s);
+    if (n > 0 && char_at_s(s, n - 1) == '\r') {
+        return slice_s(s, 0, n - 1);
+    }
+    return s;
+}
+
+/**
+ * Splits a string into lines, supporting both LF and CRLF.
+ *
+ * @param s The string to split into lines.
+ * @return A new StringVector containing the lines.
+ */
+func lines_s(s: string) -> StringVector* {
+    let out = sv_create(16);
+    let n = len_s(s);
+    if (n == 0) {
+        return out;
+    }
+
+    let start = 0;
+    for (let i = 0; i < n; i = i + 1) {
+        if (char_at_s(s, i) == '\n') {
+            sv_push(out, _line_strip_trailing_cr(slice_s(s, start, i)));
+            start = i + 1;
+        }
+    }
+
+    if (start < n) {
+        sv_push(out, _line_strip_trailing_cr(slice_s(s, start, n)));
+    }
+
+    return out;
+}
+
+/**
+ * Joins parts of a string vector using a separator.
+ *
+ * @param parts The vector of string parts.
+ * @param sep The separator string.
+ * @return The single joined string.
+ */
+func join_s(parts: StringVector*, sep: string) -> string {
+    let count = sv_size(parts);
+    if (count == 0) {
+        return "";
+    }
+
+    let sep_len = len_s(sep);
+    let total_len = sep_len * (count - 1);
+    for (let p = 0; p < count; p = p + 1) {
+        total_len = total_len + len_s(sv_get(parts, p));
+    }
+
+    with (let cb = cb_create() => cb_free(cb)) {
+        cb_reserve(cb, total_len);
+        for (let i = 0; i < count; i = i + 1) {
+            if (i > 0) {
+                cb_append_s(cb, sep);
+            }
+            cb_append_s(cb, sv_get(parts, i));
+        }
+        return cb_to_string(cb);
+    }
+}
+
+/**
+ * Replaces all occurrences of an old substring with a new replacement string.
+ *
+ * @param s The source string.
+ * @param old The substring to replace.
+ * @param replacement The replacement substring.
+ * @return The modified string.
+ */
+func replace_s(s: string, old: string, replacement: string) -> string {
+    assert(!is_empty_s(old), "replace_s: old pattern must be non-empty");
+
+    let n = len_s(s);
+    let old_len = len_s(old);
+    with (let cb = cb_create() => cb_free(cb)) {
+        let start = 0;
+        while (start <= n) {
+            let hit = find_from_s(s, old, start);
+            if (hit < 0) {
+                cb_append_slice(cb, s, start, n - start);
+                break;
+            }
+
+            cb_append_slice(cb, s, start, hit - start);
+            cb_append_s(cb, replacement);
+            start = hit + old_len;
+        }
+        return cb_to_string(cb);
+    }
+}
+
+/**
+ * Converts an integer to a string representation in the specified base.
+ *
+ * @param value The integer value.
+ * @param base The numeric base (2-16).
+ * @return The string representation.
+ */
+func int_to_string_base(value: int, base: int) -> string {
+    assert(base >= 2 && base <= 16, "Base must be between 2 and 16");
+    if (value == 0) {
+        return "0";
+    }
+    let sign_value = 1;
+    if (value < 0) {
+        sign_value = -1;
+    }
+
+    let cb = cb_create();
+
+    let digit = emod(value, base);
+    if (sign_value < 0 && digit != 0) {
+        digit = base - digit;
+    }
+    cb_append(cb, digit_to_char(digit));
+    value = value / (sign_value * base); // divide with sign adjustment
+
+    while (value != 0) {
+        digit = emod(value, base);
+        cb_append(cb, digit_to_char(digit));
+        value = value / base;
+    }
+    if (sign_value < 0) {
+        cb_append(cb, '-' as byte);
+    }
+
+    cb_reverse(cb);
+    let result = cb_to_string(cb);
+    cb_free(cb);
+    return result;
+}
+
+/**
+ * Reverses the characters in a string.
+ *
+ * @param s The string to reverse.
+ * @return The reversed string.
+ */
+func reverse_s(s: string) -> string {
+    with (let cb = cb_create() => cb_free(cb)) {
+        cb_append_s(cb, s);
+        cb_reverse(cb);
+        return cb_to_string(cb);
+    }
+}
+
+/**
+ * Converts an integer to its decimal string representation.
+ *
+ * @param value The integer value.
+ * @return The decimal string.
+ */
+func int_to_string(value: int) -> string {
+    return int_to_string_base(value, 10);
+}
+
+/**
+ * Converts an integer to its hexadecimal string representation.
+ *
+ * @param value The integer value.
+ * @return The hex string.
+ */
+func int_to_hex_string(value: int) -> string {
+    return int_to_string_base(value, 16);
+}
+
+/**
+ * Converts an integer to its binary string representation.
+ *
+ * @param value The integer value.
+ * @return The binary string.
+ */
+func int_to_bin_string(value: int) -> string {
+    return int_to_string_base(value, 2);
+}
+
+/**
+ * Converts a boolean to its string representation ("true" or "false").
+ *
+ * @param value The boolean value.
+ * @return The string representation.
+ */
+func bool_to_string(value: bool) -> string {
+    if (value) {
+        return "true";
+    }
+    return "false";
+}
+
+/**
+ * Parses a string representation of a boolean.
+ *
+ * @param s The string to parse.
+ * @return The boolean value, or null if invalid.
+ */
+func string_to_bool(s: string) -> bool? {
+    if (s == "true") {
+        return true;
+    }
+    if (s == "false") {
+        return false;
+    }
+    return null;
+}
+
+/**
+ * Converts a byte to its decimal string representation.
+ *
+ * @param value The byte value.
+ * @return The decimal string.
+ */
+func byte_to_string(value: byte) -> string {
+    return byte_to_string_base(value, 10);
+}
+
+/**
+ * Converts a byte to its string representation in the specified base.
+ *
+ * @param value The byte value.
+ * @param base The numeric base (2-16).
+ * @return The string representation.
+ */
+func byte_to_string_base(value: byte, base: int) -> string {
+    assert(base >= 2 && base <= 16, "Base must be between 2 and 16");
+    return int_to_string_base(value as int, base);
+}
+
+/**
+ * Converts an unsigned integer to its decimal string representation.
+ *
+ * @param value The unsigned integer value.
+ * @return The decimal string.
+ */
+func uint_to_string(value: uint) -> string {
+    return uint_to_string_base(value, 10);
+}
+
+/**
+ * Converts an unsigned integer to a string representation in the specified base.
+ *
+ * @param value The unsigned integer value.
+ * @param base The numeric base (2-16).
+ * @return The string representation.
+ */
+func uint_to_string_base(value: uint, base: int) -> string {
+    assert(base >= 2 && base <= 16, "Base must be between 2 and 16");
+    let zero: uint = 0;
+    if (value == zero) {
+        return "0";
+    }
+
+    let base_u = base as uint;
+    with (let cb = cb_create() => cb_free(cb)) {
+        while (value != zero) {
+            let digit = value % base_u;
+            cb_append(cb, digit_to_char(digit as int));
+            value = value / base_u;
+        }
+        cb_reverse(cb);
+        return cb_to_string(cb);
+    }
+}
+
+/**
+ * Converts a long integer to its decimal string representation.
+ *
+ * @param value The long integer value.
+ * @return The decimal string.
+ */
+func long_to_string(value: long) -> string {
+    return long_to_string_base(value, 10);
+}
+
+/**
+ * Converts a long integer to a string representation in the specified base.
+ *
+ * @param value The long integer value.
+ * @param base The numeric base (2-16).
+ * @return The string representation.
+ */
+func long_to_string_base(value: long, base: int) -> string {
+    assert(base >= 2 && base <= 16, "Base must be between 2 and 16");
+    if (value == 0) {
+        return "0";
+    }
+
+    let sign_value: long = 1;
+    if (value < 0) {
+        sign_value = -1;
+    }
+
+    let base_l = base as long;
+    with (let cb = cb_create() => cb_free(cb)) {
+        let digit = emod_l(value, base_l);
+        if (sign_value < 0 && digit != 0) {
+            digit = base_l - digit;
+        }
+        cb_append(cb, digit_to_char(digit as int));
+        value = value / (sign_value * base_l);
+
+        while (value != 0) {
+            digit = emod_l(value, base_l);
+            cb_append(cb, digit_to_char(digit as int));
+            value = value / base_l;
+        }
+        if (sign_value < 0) {
+            cb_append(cb, '-' as byte);
+        }
+
+        cb_reverse(cb);
+        return cb_to_string(cb);
+    }
+}
+
+/**
+ * Converts an unsigned long integer to its decimal string representation.
+ *
+ * @param value The unsigned long integer value.
+ * @return The decimal string.
+ */
+func ulong_to_string(value: ulong) -> string {
+    return ulong_to_string_base(value, 10);
+}
+
+/**
+ * Converts an unsigned long integer to a string representation in the specified base.
+ *
+ * @param value The unsigned long integer value.
+ * @param base The numeric base (2-16).
+ * @return The string representation.
+ */
+func ulong_to_string_base(value: ulong, base: int) -> string {
+    assert(base >= 2 && base <= 16, "Base must be between 2 and 16");
+    let zero: ulong = 0;
+    if (value == zero) {
+        return "0";
+    }
+
+    let base_ul = base as ulong;
+    with (let cb = cb_create() => cb_free(cb)) {
+        while (value != zero) {
+            let digit = value % base_ul;
+            cb_append(cb, digit_to_char(digit as int));
+            value = value / base_ul;
+        }
+        cb_reverse(cb);
+        return cb_to_string(cb);
+    }
+}
+
+/**
+ * Converts a decimal numeric string to an integer.
+ * Returns null when parsing fails or overflows 32-bit signed range.
+ *
+ * @param s The string to parse.
+ * @return The integer value, or null.
+ */
+func string_to_int(s: string) -> int? {
+    return string_to_int_base(s, 10);
+}
+
+/**
+ * Converts a decimal numeric string to a byte.
+ *
+ * @param s The string to parse.
+ * @return The byte value, or null if invalid or out of range (0-255).
+ */
+func string_to_byte(s: string) -> byte? {
+    return string_to_byte_base(s, 10);
+}
+
+/**
+ * Converts a numeric string in the specified base to a byte.
+ *
+ * @param s The string to parse.
+ * @param base The numeric base (2-16).
+ * @return The byte value, or null if invalid or out of range.
+ */
+func string_to_byte_base(s: string, base: int) -> byte? {
+    assert(base >= 2 && base <= 16, "Base must be between 2 and 16");
+    let parsed = string_to_int_base(s, base)?;
+    if (parsed < 0 || parsed > 255) {
+        return null;
+    }
+    return parsed as byte;
+}
+
+/**
+ * Converts a decimal numeric string to an unsigned integer.
+ *
+ * @param s The string to parse.
+ * @return The unsigned integer value, or null.
+ */
+func string_to_uint(s: string) -> uint? {
+    return string_to_uint_base(s, 10);
+}
+
+/**
+ * Converts a numeric string in the specified base to an unsigned integer.
+ *
+ * @param s The string to parse.
+ * @param base The numeric base (2-16).
+ * @return The unsigned integer value, or null.
+ */
+func string_to_uint_base(s: string, base: int) -> uint? {
+    assert(base >= 2 && base <= 16, "Base must be between 2 and 16");
+    if (len_s(s) == 0) {
+        return null;
+    }
+    if (char_at_s(s, 0) == '-') {
+        return null;
+    }
+
+    let start_index: int = 0;
+    while (start_index < len_s(s) && char_at_s(s, start_index) == '0') {
+        start_index = start_index + 1;
+    }
+    if (start_index == len_s(s)) {
+        return 0 as uint;
+    }
+
+    let result: uint = 0;
+    let base_u = base as uint;
+    for (let i: int = start_index; i < len_s(s); i = i + 1) {
+        let c = char_at_s(s, i);
+        if (!is_digit_base(c, base)) {
+            return null;
+        }
+        let digit = to_digit_base(c, base)?;
+        let digit_u = digit as uint;
+        if (result > (uint_max() - digit_u) / base_u) {
+            return null;
+        }
+        result = result * base_u + digit_u;
+    }
+    return result;
+}
+
+/**
+ * Converts a decimal numeric string to a long integer.
+ *
+ * @param s The string to parse.
+ * @return The long integer value, or null.
+ */
+func string_to_long(s: string) -> long? {
+    return string_to_long_base(s, 10);
+}
+
+/**
+ * Converts a numeric string in the specified base to a long integer.
+ *
+ * @param s The string to parse.
+ * @param base The numeric base (2-16).
+ * @return The long integer value, or null.
+ */
+func string_to_long_base(s: string, base: int) -> long? {
+    assert(base >= 2 && base <= 16, "Base must be between 2 and 16");
+    if (len_s(s) == 0) {
+        return null;
+    }
+
+    let sign_value: long = 1;
+    let start_index: int = 0;
+    if (char_at_s(s, 0) == '-') {
+        if (len_s(s) == 1) {
+            return null;
+        }
+        sign_value = -1;
+        start_index = 1;
+    }
+    while (start_index < len_s(s) && char_at_s(s, start_index) == '0') {
+        start_index = start_index + 1;
+    }
+    if (start_index == len_s(s)) {
+        return 0 as long;
+    }
+
+    let result: long = 0;
+    let base_l = base as long;
+    for (let i: int = start_index; i < len_s(s); i = i + 1) {
+        let c = char_at_s(s, i);
+        if (!is_digit_base(c, base)) {
+            return null;
+        }
+        let digit = to_digit_base(c, base)?;
+        let digit_l = digit as long;
+        if (sign_value < 0) {
+            if (result < (long_min() + digit_l) / base_l) {
+                return null;
+            }
+            result = result * base_l - digit_l;
+        } else {
+            if (result > (long_max() - digit_l) / base_l) {
+                return null;
+            }
+            result = result * base_l + digit_l;
+        }
+    }
+    return result;
+}
+
+/**
+ * Converts a decimal numeric string to an unsigned long integer.
+ *
+ * @param s The string to parse.
+ * @return The unsigned long integer value, or null.
+ */
+func string_to_ulong(s: string) -> ulong? {
+    return string_to_ulong_base(s, 10);
+}
+
+/**
+ * Converts a numeric string in the specified base to an unsigned long integer.
+ *
+ * @param s The string to parse.
+ * @param base The numeric base (2-16).
+ * @return The unsigned long integer value, or null.
+ */
+func string_to_ulong_base(s: string, base: int) -> ulong? {
+    assert(base >= 2 && base <= 16, "Base must be between 2 and 16");
+    if (len_s(s) == 0) {
+        return null;
+    }
+    if (char_at_s(s, 0) == '-') {
+        return null;
+    }
+
+    let start_index: int = 0;
+    while (start_index < len_s(s) && char_at_s(s, start_index) == '0') {
+        start_index = start_index + 1;
+    }
+    if (start_index == len_s(s)) {
+        return 0 as ulong;
+    }
+
+    let result: ulong = 0;
+    let base_ul = base as ulong;
+    for (let i: int = start_index; i < len_s(s); i = i + 1) {
+        let c = char_at_s(s, i);
+        if (!is_digit_base(c, base)) {
+            return null;
+        }
+        let digit = to_digit_base(c, base)?;
+        let digit_ul = digit as ulong;
+        if (result > (ulong_max() - digit_ul) / base_ul) {
+            return null;
+        }
+        result = result * base_ul + digit_ul;
+    }
+    return result;
+}
+
+/**
+ * Converts a numeric string 's' expressed in base 'base' to an integer.
+ * Handles optional leading '-' for negative numbers and ignores leading zeros.
+ * No special prefixes like "0x" for hex or "0b" for binary are expected or allowed.
+ * Checks for overflow and invalid characters.
+ * Returns null if the string is not a valid 32-bit signed integer.
+ *
+ * @param s The string to parse.
+ * @param base The numeric base (2-16).
+ * @return The integer value, or null.
+ */
+func string_to_int_base(s: string, base: int) -> int? {
+    assert(base >= 2 && base <= 16, "Base must be between 2 and 16");
+
+    let sign_value = 1; // 1 for positive, -1 for negative
+    let start_index: int = 0;
+    if (len_s(s) == 0) {
+        return null;
+    }
+    if (char_at_s(s, 0) == '-') {
+        if (len_s(s) == 1) {
+            return null; // Just a '-' is not valid
+        }
+        sign_value = -1;
+        start_index = 1;
+    }
+    // Ignore leading zeros
+    while (start_index < len_s(s) && char_at_s(s, start_index) == '0') {
+        start_index = start_index + 1;
+    }
+    if (start_index == len_s(s)) {
+        return 0; // The string is "0" or all zeros
+    }
+    let result: int = 0;
+    // read first digit
+    let first_char = char_at_s(s, start_index);
+    if (!is_digit_base(first_char, base)) {
+        return null; // Invalid character
+    }
+    result = sign_value * to_digit_base(first_char, base)?;
+    start_index = start_index + 1;
+    for (let i: int = start_index; i < len_s(s); i = i + 1) {
+        let c = char_at_s(s, i);
+        if (!is_digit_base(c, base)) {
+            return null; // Invalid character
+        }
+        let digit = to_digit_base(c, base)?;
+        // Check for overflow before multiplying and adding
+        if (sign_value < 0) {
+            if (result < (-2147483648 + digit) / base) {
+                return null; // Underflow
+            }
+        } else {
+            if (result > (2147483647 - digit) / base) {
+                return null; // Overflow
+            }
+        }
+        result = result * base + sign_value * digit;
+    }
+    return result;
+}

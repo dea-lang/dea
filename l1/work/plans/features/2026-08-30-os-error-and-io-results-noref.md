@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: High
 - Priority: 1
-- Stage: L1
+- Stage: Canonical
 - Parent Initiative: `l1/work/initiatives/0005-filesystem-and-stream-io.md`
 - Subsystem: Stdlib / runtime / filesystem / process / networking
 - Modules:
@@ -20,12 +20,12 @@
   - `l1/compiler/shared/runtime/dea_rt.symbols`
   - `l1/compiler/shared/runtime/dea_rt_traced.symbols`
 - Test modules:
-  - `l1/compiler/stage1_l0/tests/os_runtime_test.l0`
-  - `l1/compiler/stage1_l0/tests/l0c_lib_test.l0`
+  - `l1/compiler/tests/os_runtime_test.l0`
+  - `l1/compiler/tests/l0c_lib_test.l0`
 - Related:
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
   - `l1/docs/reference/standard-library.md`
-- Repro: `make -C l1 test-stage1 TESTS="os_runtime_test l0c_lib_test"`
+- Repro: `make -C l1 test-compiler TESTS="os_runtime_test l0c_lib_test"`
 
 ## Summary
 

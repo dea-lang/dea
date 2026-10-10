@@ -7,6 +7,7 @@ members = [
     "dea-monorepo",
     "l0c",
     "l1c",
+    "l2c",
 ]
 
 [[package]]
@@ -125,6 +126,11 @@ wheels = [
 name = "l0c"
 version = "2.1.1.dev0"
 source = { virtual = "l0" }
+
+[[package]]
+name = "l2c"
+version = "0.1.0.dev0"
+source = { virtual = "l2" }
 
 [[package]]
 name = "l1c"

@@ -1,6 +1,6 @@
 ---
 name: squash-recent-commits
-description: Squash the most recent N Git commits into one cohesive local commit while consolidating transient bug-fix documents and preserving durable findings in surviving documentation. Use when the user asks to squash, fold, or combine a recent linear commit suffix; default N to 2 when the user does not specify it.
+description: Squash the most recent N Git commits into one cohesive local commit while consolidating transient bug-fix documents and preserving durable findings in surviving documentation. Use when the project maintainer asks to squash, fold, or combine a recent linear commit suffix; default N to 2 when the project maintainer does not specify it.
 ---
 
 # Squash Recent Commits
@@ -11,14 +11,14 @@ as part of that final tree, not as a reason to discard useful knowledge.
 ## Required context
 
 1. Read root `AGENTS.md`.
-2. Read the level-local `AGENTS.md` guide for every affected `l0/` or `l1/` subtree.
+2. Read the level-local `AGENTS.md` guide for every affected `l0/`, `l1/`, or `l2/` subtree.
 3. Read `.agents/skills/finalize-dea-work/SKILL.md` and follow its current history-rewrite validation, staged-check,
    pre-commit, and commit-message rules.
 4. Prefer repository instructions over this workflow when they are stricter.
 
 ## Inputs and authorization
 
-- Use the user-supplied `N`; use `2` when it is omitted.
+- Use the project maintainer-supplied `N`; use `2` when it is omitted.
 - Require `N` to be a decimal integer of at least 2. Treat `N = 1` as a no-op and ask for correction rather than
   manufacturing a replacement commit.
 - Interpret invocation as authorization to rewrite exactly the selected local suffix and create its replacement commit.
@@ -37,17 +37,17 @@ as part of that final tree, not as a reason to discard useful knowledge.
 4. Record the branch name, base commit, original `HEAD`, and original `HEAD` tree. Keep the original `HEAD` available in
    the handoff as the reflog recovery point; do not create a backup tag.
 5. Inspect the selected commits in chronological order, including each subject, body, changed paths, and full diff.
-6. Detect merge commits in the range. Stop unless the user explicitly authorizes flattening their topology into one
-   ordinary commit.
+6. Detect merge commits in the range. Stop unless the project maintainer explicitly authorizes flattening their topology
+   into one ordinary commit.
 7. Check the configured upstream and locally known remote-tracking refs. Exclude reachability through remote branches
    named `wip/*` or exactly `ci-probe` when deciding whether the rewrite affects published history requiring explicit
    confirmation. This exemption applies even if the current local branch has a different name. If a selected commit is
    reachable from the upstream or any remaining remote-tracking ref, disclose that the rewrite affects published
    history. When the current branch name starts with `wip/` or is exactly `ci-probe`, continue without additional
-   confirmation: these are working branches whose local history may be rewritten under the user's squash authorization,
-   even when already published. On all other branches, continue only after the user explicitly confirms that
-   consequence. These exceptions do not authorize a push or force-push, widen the selected range, or waive other safety
-   checks. Do not fetch merely to perform this check.
+   confirmation: these are working branches whose local history may be rewritten under the project maintainer's squash
+   authorization, even when already published. On all other branches, continue only after the project maintainer
+   explicitly confirms that consequence. These exceptions do not authorize a push or force-push, widen the selected
+   range, or waive other safety checks. Do not fetch merely to perform this check.
 
 ## 2. Define the cohesive final state
 

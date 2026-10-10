@@ -8,7 +8,7 @@
 - Kind: Feature
 - Severity: Medium
 - Priority: 3
-- Stage: L1
+- Stage: Canonical
 - Parent Initiative: `l1/work/initiatives/0007-blocking-networking.md`
 - Subsystem: Stdlib / runtime / networking
 - Modules:
@@ -23,13 +23,13 @@
   - `l1/docs/reference/standard-library.md`
   - `l1/docs/reference/design-decisions.md`
 - Test modules:
-  - `l1/compiler/stage1_l0/tests/net_runtime_test.l0`
-  - `l1/compiler/stage1_l0/tests/analysis_trace_test.l0`
+  - `l1/compiler/tests/net_runtime_test.l0`
+  - `l1/compiler/tests/analysis_trace_test.l0`
 - Related:
   - `l1/work/initiatives/0007-blocking-networking.md`
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
   - `l1/work/plans/features/2026-08-30-time-width-sleep-and-deadlines-noref.md`
-- Repro: `make -C l1 test-stage1 TESTS="net_runtime_test analysis_trace_test"`
+- Repro: `make -C l1 test-compiler TESTS="net_runtime_test analysis_trace_test"`
 
 ## Summary
 

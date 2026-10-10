@@ -22,12 +22,12 @@ from productization_inventory import (
 )
 from productization_provenance import PackageProvenance
 
-DOCS_PATH = "share/doc/dea/l1/autodocs/stage2"
+DOCS_PATH = "share/doc/dea/l1/autodocs"
 DOCUMENTS = ("README.md", "README-WINDOWS.md", "share/doc/dea/l1/toolchain.md")
 BASE_FILES = {*DOCUMENTS, "VERSION", "LICENSE-MIT", "LICENSE-APACHE", "THIRD_PARTY_NOTICES",
               MANIFEST_PATH, "share/dea/l1/smoke/hello.l1", "include/dea_rt.h", "include/l1_real.h",
-              "bin/l1c", "bin/l1c-stage2", "bin/l1c-stage2.native", "bin/l1-env.sh"}
-WINDOWS_FILES = {"bin/l1c.cmd", "bin/l1c-stage2.cmd", "bin/l1-env.cmd"}
+              "bin/l1c", "bin/l1c.native", "bin/l1-env.sh"}
+WINDOWS_FILES = {"bin/l1c.cmd", "bin/l1-env.cmd"}
 
 
 def digest(path: Path) -> str:
@@ -95,7 +95,7 @@ def verify_distribution(prefix: Path) -> dict:
             or any(source.get(key) != package_source.get(key) for key in ("revision", "tree_state"))
             or not re.fullmatch("[0-9a-f]{64}", str(source.get("input_digest")))):
         raise ValueError("documentation source differs from package provenance")
-    verify_tree(docs_root, stage="stage2", version=record["package_version"], source=source)
+    verify_tree(docs_root, version=record["package_version"], source=source)
     for name in DOCUMENTS:
         document = prefix / name
         text = document.read_text(encoding="utf-8")

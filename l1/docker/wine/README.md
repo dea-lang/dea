@@ -1,6 +1,6 @@
 # Experimental L1 Wine/MSYS2 runner
 
-Version: 2026-09-14
+Version: 2026-10-10
 
 Run these commands from `l1/`. Docker must provide Linux amd64 containers and the host needs Python 3.10 or newer. The
 container uses Windows UCRT64 GCC and Python through patched Wine, including L0 Stage 2 bootstrap for L1. Native Windows
@@ -10,9 +10,9 @@ CI remains the authority for Windows support. ARM64 emulation has not been valid
 make docker-wine-toolchain                 # expensive first setup; independently cached
 make docker-wine-image                     # adds the cached Windows workspace venv
 make docker-wine CMD=help                  # automatically prepares missing images
-make docker-wine CMD=test-stage1 TESTS=preparation_support_test
+make docker-wine CMD=test-compiler TESTS=preparation_support_test
 make docker-wine CMD='clean test-ci' L1_TEST_JOBS=2 L1_TRACE_TEST_JOBS=1
-make docker-wine CMD=test-stage1-trace TESTS=string_vector_test L1_TRACE_ARTIFACT_DIR="$PWD/build/wine-traces"
+make docker-wine CMD=test-compiler-trace TESTS=string_vector_test L1_TRACE_ARTIFACT_DIR="$PWD/build/wine-traces"
 ```
 
 ## Cache and build stages

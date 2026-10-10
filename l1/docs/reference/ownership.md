@@ -1,6 +1,6 @@
 # L1 Ownership and Memory Management Reference
 
-Version: 2026-09-28
+Version: 2026-10-10
 
 This document describes how ownership works in current Dea/L1 bootstrap builds, covering:
 
@@ -11,9 +11,8 @@ This document describes how ownership works in current Dea/L1 bootstrap builds, 
 
 ## Scope and Status
 
-- Stage 1 in `compiler/stage1_l0/` remains the semantic oracle alongside the shared L1 stdlib/runtime.
-- The self-hosted compiler in `compiler/stage2_l1/` implements the same ownership rules and has its own normal and trace
-  validation suites.
+- The canonical `.l0` compiler in `compiler/` implements the documented contract with the owned L1 stdlib/runtime.
+- Normal and trace validation exercise compiler implementation ownership and generated L1 program ownership separately.
 - If runtime or codegen behavior differs from this document, treat that as a bug.
 
 ## 1. Ownership Model at a Glance
@@ -261,23 +260,23 @@ For ownership issues, provide:
 Useful local checks:
 
 ```bash
-make use-dev-stage1
+make use-dev
 source build/dea/bin/l1-env.sh
 l1c --gen examples/hello.l1
-python compiler/stage1_l0/scripts/run_trace_tests.py
+python compiler/scripts/run_trace_tests.py
 ```
 
 ## 10. Ground-Truth References
 
 Primary implementation references:
 
-- `compiler/stage1_l0/src/backend/lower.l0`
-- `compiler/stage1_l0/src/backend/lifetime.l0`
-- `compiler/stage1_l0/src/c_emitter/lifetime.l0`
-- `compiler/stage1_l0/src/expr_types/liveness.l0`
-- `compiler/stage1_l0/src/expr_types/stmt.l0`
-- `compiler/stage1_l0/src/lexer.l0`
-- `compiler/stage1_l0/src/parser.l0`
+- `compiler/src/backend/lower.l0`
+- `compiler/src/backend/lifetime.l0`
+- `compiler/src/c_emitter/lifetime.l0`
+- `compiler/src/expr_types/liveness.l0`
+- `compiler/src/expr_types/stmt.l0`
+- `compiler/src/lexer.l0`
+- `compiler/src/parser.l0`
 - `compiler/shared/l1/stdlib/std/vector.l1`
 - `compiler/shared/l1/stdlib/std/hashmap.l1`
 - `compiler/shared/l1/stdlib/std/hashset.l1`

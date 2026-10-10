@@ -44,3 +44,4 @@
 | [0040](0040-warm-preparation-semantic-validation-reuse.md)                                               | Warm Preparation Reuses Completed-Profile Semantic Validation  | Accepted   |
 | [l1/docs/decisions/0041-stage-separated-source-references.md](0041-stage-separated-source-references.md) | Stage-Separated Source References                              | Accepted   |
 | [l1/docs/decisions/0042-self-hosted-toolchain-delivery.md](0042-self-hosted-toolchain-delivery.md)       | Self-Hosted Toolchain Delivery                                 | Accepted   |
+| [0043](0043-canonical-compiler-toolchain-delivery.md)                                                    | Canonical Compiler Toolchain Delivery                          | Accepted   |

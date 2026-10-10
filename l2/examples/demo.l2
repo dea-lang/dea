@@ -1,0 +1,84 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+module demo;
+
+import std.io;
+import std.string;
+import std.text;
+import std.system;
+
+// A simple expression language with integers, addition, and multiplication.
+enum Expr {
+    Num(value: int);
+    Add(left: Expr*, right: Expr*);
+    Mul(left: Expr*, right: Expr*);
+}
+
+struct Cursor { pos: int; } // current position in argv
+
+/* Recursively evaluate an expression tree. */
+func eval(e: Expr*) -> int {
+    match (*e) {
+        Num(value)       => { return value; }
+        Add(left, right) => { return eval(left) + eval(right); }
+        Mul(left, right) => { return eval(left) * eval(right); }
+    }
+}
+
+/* Recursively free an expression tree. */
+func free_expr(e: Expr*?) {
+    if (e == null) return;
+    match (*(e as Expr*)) { // unwrap
+        Num(value)       => {}
+        Add(left, right) => { free_expr(left); free_expr(right); }
+        Mul(left, right) => { free_expr(left); free_expr(right); }
+    }
+    drop e;
+}
+
+/* A simple recursive-descent parser for our expression language.
+   Returns null on bad input; ? propagates failure upward. */
+func parse(c: Cursor*) -> Expr*? {
+    if (c.pos >= argc()) { return null; }
+
+    let tok: string = argv(c.pos);
+    c.pos = c.pos + 1;
+
+    let n: int? = string_to_int(tok);
+    if (n != null) { return new Num(n as int); }
+
+    let result: Expr*? = null;
+    with (let left: Expr*? = parse(c)?,
+          let right: Expr*? = parse(c)?) {
+        case (tok) {
+            "add" => { result = new Add(left as Expr*, right as Expr*); }
+            "mul" => { result = new Mul(left as Expr*, right as Expr*); }
+            // unrecognized operator: leave result as null to signal failure
+        }
+        return result;
+    }
+    cleanup {
+        if (result == null) { // on parse failure, free any subtrees we allocated
+            free_expr(left);
+            free_expr(right);
+        }
+    }
+}
+
+/* Main entry point. Expects prefix-notation arguments:
+   demo add 2 3          # prints "= 5"
+   demo mul 6 add 5 2    # prints "= 42" */
+func main() -> int {
+    with (let c = new Cursor(1) => drop c,
+          let expr = parse(c) => free_expr(expr)) { // release c and expr on exit
+        if (expr == null || c.pos != argc()) {
+            printl_s("usage: demo <expr>\n<expr> ::= add|mul <expr> <expr> | <int>");
+            return 1;
+        }
+        printl_si("=", eval(expr as Expr*)); // unwrap
+        return 0;
+    }
+}

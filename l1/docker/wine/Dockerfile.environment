@@ -11,6 +11,7 @@ WORKDIR /root/.wine/drive_c/dea
 COPY Makefile pyproject.toml uv.lock ./
 COPY l0/pyproject.toml l0/pyproject.toml
 COPY l1/pyproject.toml l1/pyproject.toml
+COPY l2/pyproject.toml l2/pyproject.toml
 ENV MSYSTEM=UCRT64 L0_CC=gcc L1_CC=gcc L1_RUNTIME_CC=gcc
 RUN msys2 -c 'set -e; cd /c/dea; make venv; if test -x .venv/bin/python; then p=.venv/bin/python; else p=.venv/Scripts/python.exe; fi; "$p" -c "import os; assert os.name == \"nt\""'
 COPY run.sh /usr/local/bin/dea-wine-run

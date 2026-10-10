@@ -1,0 +1,89 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2025-2026 gwz
+ */
+
+/**
+ * Standard System Module
+ *
+ * This module provides system-level functionalities such as exiting the program,
+ * retrieving environment variables, aborting execution, and accessing error codes.
+ */
+module std.system;
+
+import sys.rt;
+
+/**
+ * Exits the program with the given exit code.
+ *
+ * @param code The integer exit code.
+ */
+func exit(code: int) -> void {
+    rt_exit(code);
+}
+
+/**
+ * Retrieves the value of the specified environment variable.
+ *
+ * @param var_name The name of the environment variable.
+ * @return The value of the environment variable, or null if not set.
+ */
+func env_get(var_name: string) -> string? {
+    return rt_get_env_var(var_name);
+}
+
+/**
+ * Retrieves the number of command-line arguments.
+ *
+ * @return The number of arguments.
+ */
+func argc() -> int {
+    return rt_get_argc();
+}
+
+/**
+ * Retrieves the current process identifier.
+ *
+ * @return The current process identifier.
+ */
+func get_pid() -> int {
+    return rt_get_pid();
+}
+
+/**
+ * Retrieves the command-line argument at the specified index.
+ *
+ * @param index The argument index.
+ * @return The command-line argument string.
+ */
+func argv(index: int) -> string {
+    return rt_get_argv(index);
+}
+
+/**
+ * Aborts the program with the specified message.
+ *
+ * @param message The abort message.
+ */
+func abort(message: string) -> void {
+    rt_abort(message);
+}
+
+/**
+ * Retrieves the last runtime error number.
+ *
+ * @return The error number (errno).
+ */
+func errno() -> int {
+    return rt_errno();
+}
+
+/**
+ * Execute a system command and return its exit code.
+ *
+ * @param cmd The command string to execute.
+ * @return The exit status code.
+ */
+func system(cmd: string) -> int {
+    return rt_system(cmd);
+}

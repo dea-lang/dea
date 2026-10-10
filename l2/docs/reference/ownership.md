@@ -1,0 +1,286 @@
+# L2 Ownership and Memory Management Reference
+
+Version: 2026-10-10
+
+This document describes how ownership works in current Dea/L2 bootstrap builds, covering:
+
+- `new` / `drop` heap object lifetime
+- ARC-managed `string`
+- ownership rules for the copied L2 stdlib containers
+- optional-string unwrap behavior
+
+## Scope and Status
+
+- The canonical `.l1` compiler in `compiler/` implements the documented contract with the owned L2 stdlib/runtime.
+- Normal and trace validation exercise compiler implementation ownership and generated L2 program ownership separately.
+- If runtime or codegen behavior differs from this document, treat that as a bug.
+
+## 1. Ownership Model at a Glance
+
+L2 currently uses four cooperating lifetime systems:
+
+1. `new` / `drop` for heap-allocated objects
+2. raw allocation through `rt_alloc` / `rt_calloc` / `rt_realloc` / `rt_free`
+3. ARC for `string`
+4. container-level ownership rules inside stdlib collections
+
+These systems are separate:
+
+- generated drop cleanup releases only memory allocated by `new`
+- `rt_free` and `rt_realloc` accept only raw allocations, never `new`, ARC, static, or registered foreign storage
+- `rt_string_release` frees a string payload when its refcount reaches zero
+- dropping an object does not recursively free unrelated child pointers for you
+
+## 2. Normative Rules Matrix
+
+| Operation                                                                   | Ownership result                      | What you need to do                                                                                            |
+| --------------------------------------------------------------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `let p = new T(...)`                                                        | Caller owns the heap object           | Call `drop p` exactly once unless you transfer ownership deliberately.                                         |
+| Normal L2 assignment of a `string` (`dst = s`, `*dest = val`, field assign) | Destination takes a managed reference | The compiler emits retain/release automatically. Do not add manual retain/release around ordinary assignments. |
+| Removing or clearing string entries from raw storage                        | Container owns stored strings         | Release owned strings before zeroing or removing the storage.                                                  |
+| Byte-copy move (`rt_memcpy`) of string-bearing data                         | Ownership moves with the bytes        | Do not release the moved-from slot again.                                                                      |
+| `string` returned by value from a container helper                          | Caller receives a managed value       | Follow normal ARC lifetime unless crossing a raw-memory boundary.                                              |
+| `return local_var` where `local_var` is owned                               | Ownership moves to caller             | Backend may skip final cleanup for that binding.                                                               |
+| `return expr` for a non-local/non-owned value                               | Caller receives a managed reference   | Backend retains the result before scope cleanup.                                                               |
+
+## 3. `new` / `drop` Semantics
+
+Current lowering policy:
+
+- `new` lowers to runtime allocation helpers
+- `drop` lowers to a sized begin/finish protocol; begin validates exact-base `new` provenance, live state, pointee
+  extent, and alignment before cleanup, and finish releases the allocation
+- `new Struct` and `new Struct()` allocate one zero-initialized object
+- `new Struct(args...)` allocates and initializes fields positionally
+- `new Variant(args...)` allocates the owning enum object for that active variant
+- `new T[N]` and `new T[N]()` allocate one zero-initialized array wrapper
+- `new T[N]([ ... ])` and `new T[N](value)` use the same array literal and fill construction rules as stack array
+  values; the fill value has element type `T`, which may itself be an array
+- `drop` accepts both `T*` and `T*?`
+- dropping `null` is a safe no-op
+
+Before generated cleanup dereferences a pointee, the backend validates that the pointer is still registered as a `new`
+allocation. This makes stale `drop` failures deterministic even when cleanup must release ARC fields or fixed-array
+elements first.
+
+Before calling the final drop helper, compiler-generated cleanup may release owned fields such as `string` members.
+Pointer children with independent ownership are still your responsibility.
+
+### Raw and foreign memory boundaries
+
+Use `rt_free`/`rt_realloc` only for pointers returned by the raw allocation family, and use `drop` only for pointers
+returned by `new`. Cross-family release is a checked-runtime error.
+
+External C storage becomes accessible to checked generated pointers only after
+`rt_register_foreign(ptr, bytes, read_only)`. Registration records its lifetime and extent without transferring
+ownership. `rt_unregister_foreign(ptr)` removes tracking without freeing the payload, and must run before the external
+lifetime ends. Later access fails as unregistered in the fully checked runtime; `--check-basic` retains its general
+hash-miss-as-untracked behavior. In checked modes, identical live registrations are idempotent; conflicts and invalid
+unregistration panic. Registered foreign storage cannot be dropped, freed, or reallocated by the checked Dea runtime;
+unchecked mode validates basic registration arguments but keeps no registration state. Both registration calls are
+`unsafe` in L2.
+
+Fixed-size arrays are value types. Copying an array copies the full wrapper value; if the element type transitively
+contains ARC-managed data, generated code retains copied elements and releases overwritten or leaving-scope elements.
+Array cleanup runs elements in reverse index order, recursively applying the same rules to nested arrays, structs,
+enums, nullable non-pointers, and `string`.
+
+Slices (`T[]`) are non-owning views and carry no ownership. A slice descriptor is `{ dea_int len; T *data; }`, copied by
+value with no retain, release, or cleanup for the descriptor itself; the underlying fixed array remains the sole owner
+of the storage. Because slices never own their elements, they are restricted to locals, parameters, and call arguments
+and may not be returned or stored in long-lived locations (see [design-decisions]). Passing, assigning, or copying a
+slice emits only the descriptor copy. If the compiler materializes a fixed-array rvalue to back a slice, that backing
+temporary is still an owned array and is cleaned up by the normal array rules when its element type transitively
+contains ARC-managed data.
+
+An ordinary variadic call owns a compiler-materialized fixed array containing copies of its trailing arguments. That
+array follows the same recursive retain and cleanup rules as any other `T[N]` value and remains alive through the call;
+the callee receives only its `T[]` descriptor. Mutating the callee pack therefore does not mutate the original argument
+places. A spread call `f(pack...)` forwards existing slice backing storage without copying, so mutations retain normal
+slice aliasing behavior.
+
+## 4. ARC `string` Semantics
+
+Every runtime `string` value is reference-counted.
+
+In normal code:
+
+- ordinary assignments are ARC-balanced by the compiler
+- local scope cleanup releases initialized owned values
+- explicit retain/release calls are reserved for raw-memory boundaries and low-level container internals
+
+## 4.1 ARC assignment replacement semantics
+
+Ordinary assignment to an ARC-managed destination is a slot replacement operation.
+
+That rule applies to:
+
+- local `string` variables
+- struct or enum string fields
+- dereferenced pointer destinations
+- raw-pointer indexed destinations such as `ptr[i]` inside `unsafe func`
+- fixed-size array element destinations such as `arr[i]`
+- other ordinary assignment destinations whose type is `string`
+
+The intended behavior is:
+
+1. evaluate the right-hand side completely
+2. materialize and stabilize any temporary ARC values needed by that expression
+3. release the old value currently stored in the destination slot exactly once
+4. move the stabilized result into the destination slot without requiring a clone-like copy
+5. release temporary ARC values after their last use
+
+This means self-referential ARC assignments are valid ordinary code. For example:
+
+```dea
+name = name + "." + suffix;
+```
+
+must behave as though the old `name` value remains live while the right-hand side is evaluated, then the destination
+slot is replaced exactly once by the newly computed string.
+
+Likewise, replacing one owned string value with another is valid ordinary code:
+
+```dea
+let s = "";
+s = build_name();
+```
+
+and:
+
+```dea
+let exe_path = default_exe_path();
+if (opts.output != null) {
+    exe_path = opts.output as string;
+}
+```
+
+These forms must work without manual retain/release and without restoring clone-like helper functions. If generated code
+or runtime behavior differs from this contract, treat it as a compiler bug.
+
+Raw-pointer writes inherit that same slot-replacement rule. In checked builds, `ptr[i] = value` inside an `unsafe func`
+still validates the pointer access dynamically before identifying the destination slot; in `--check-basic` builds it
+keeps exact-base validation and hash-miss overflow/alignment checks; in `--unchecked` builds the access lowers directly
+and trusts the `unsafe func` contract. Once the destination slot is identified, every mode must retain the incoming
+ARC-managed value before releasing the overwritten contents of that slot.
+
+## 5. Optional Unwrap
+
+When you unwrap `string?` with `opt as string`, the resulting `string` is ownership-stabilized by the backend.
+
+In ordinary L2 code, you should not need to add a compensating manual retain after `opt as string`.
+
+Parentheses and chains of identity casts, unwrap casts, or `?` extraction preserve the source's borrowed-place
+classification. A non-niche ARC `T -> T?` wrap remains an ownership-producing boundary and retains a borrowed payload
+exactly once, including when its source is itself an unwrap or identity-cast chain. Further casts of that new owner
+preserve its temporary ownership.
+
+## 6. Container Ownership Contracts
+
+### `std.vector` / `StringVector`
+
+- `sv_push` uses assignment semantics
+- `sv_clear` and `sv_free` release stored strings before clearing/freeing storage
+- the generic `vec_*` layer is not ARC-aware by itself
+
+### `std.hashmap`
+
+- map keys are ARC strings owned by the map
+- insert/update retains new keys and releases replaced keys
+- remove/clear/free release all occupied keys
+- `spm_keys` and `sim_keys` return caller-owned `StringVector*`
+
+### `std.hashset`
+
+- set keys are ARC strings owned by the set
+- add/remove/clear/free follow the same retain/release discipline as map keys
+- `ss_to_vector` returns caller-owned `StringVector*`
+
+### `std.linear_map`
+
+- `LinearMapBase` is byte-oriented and does not provide deep ownership on its own
+- ARC-aware specializations release owned strings on remove/free paths
+
+## 7. Manual `rt_string_retain` / `rt_string_release`
+
+Manual retain/release is required when you:
+
+1. manipulate string-bearing storage through raw memory operations
+2. implement remove/clear/free loops for owned string slots
+3. cross an ownership boundary outside ordinary assignment semantics
+
+It is usually wrong when you:
+
+1. perform ordinary assignment on ARC-managed fields or locals
+2. use stdlib helpers that already own the ARC transitions for you
+
+## 8. Control Flow and Cleanup
+
+Comparisons borrow their operands for evaluation. An owned temporary consumed by a comparison is registered for normal
+ARC cleanup, including a `string?` or ARC-bearing aggregate compared with `null` and a temporary string used in equality
+or ordering. Binding a function result to a local first is not required for cleanup. Comparing an existing local or
+field does not consume that binding, and pointer comparisons do not take ownership of the pointee.
+
+Condition temporaries are released on either outgoing path before entering the selected branch or loop body. Each loop
+evaluation creates and cleans its own temporaries; skipped `&&` and `||` operands are neither evaluated nor cleaned.
+Comparisons used as ordinary boolean values register their owned operands in the surrounding scope for normal cleanup.
+An ARC-bearing temporary aggregate used as a field or index base is also registered, so selecting one field or element
+does not lose ownership of the others. A fresh array base is registered before evaluating its index, so an early `?`
+exit from the index also cleans the array. Nested rows keep the enclosing array's ownership, and indexing a borrowed
+array preserves its storage. A `for` update has its own temporary cleanup scope inside each loop iteration, while header
+`break` and `continue` retain their enclosing-loop targets.
+
+Optional-to-optional equality evaluates each operand exactly once. The backend captures the left operand before lowering
+the right, retaining a borrowed ARC payload so right-hand evaluation cannot invalidate the captured value. Both operand
+snapshots receive normal scope cleanup, including when the right operand returns early through `?`. Scalar optional
+operands also use snapshots because the generated equality expression reads presence and payload separately.
+
+Current compiler behavior:
+
+- scope cleanup runs in reverse declaration order
+- `continue` cleans only the current iteration body scope before control returns to the loop update/condition path
+- `return`, `break`, and `expr?` early exits run pending `with` cleanup before ordinary owned-value cleanup
+- direct return of an owned local may be treated as a move
+- `for` initialization and update execute in the surrounding loop context; header `break` / `continue` targets an
+  enclosing loop, while body loop control targets the `for` itself
+- normal `for` condition-false and body-break exits clean initialization-scope ARC values exactly once
+- drop liveness is definite across loop fixed points; `if`, `match`, and `case` alternatives start from the same
+  incoming state and meet only reachable fallthrough states, while assignment to a bare local revives it only after the
+  right-hand side checks successfully
+- abrupt `with` cleanup replaces the pending exit; cleanup fallthrough resumes it, and inline cleanup is LIFO
+
+## 9. Validation and Bug Reporting
+
+For ownership issues, provide:
+
+1. a minimal `.l2` reproducer
+2. the generated C excerpt showing retain/release/drop order
+3. trace logs when applicable
+
+Useful local checks:
+
+```bash
+make use-dev
+source build/dea/bin/l1-env.sh
+l2c --gen examples/hello.l2
+python compiler/scripts/run_trace_tests.py
+```
+
+## 10. Ground-Truth References
+
+Primary implementation references:
+
+- `compiler/src/backend/lower.l1`
+- `compiler/src/backend/lifetime.l1`
+- `compiler/src/c_emitter/lifetime.l1`
+- `compiler/src/expr_types/liveness.l1`
+- `compiler/src/expr_types/stmt.l1`
+- `compiler/src/lexer.l1`
+- `compiler/src/parser.l1`
+- `compiler/shared/l1/stdlib/std/vector.l2`
+- `compiler/shared/l1/stdlib/std/hashmap.l2`
+- `compiler/shared/l1/stdlib/std/hashset.l2`
+- `compiler/shared/l1/stdlib/std/linear_map.l2`
+- `compiler/shared/runtime/include/dea_rt.h`
+
+[design-decisions]: design-decisions.md

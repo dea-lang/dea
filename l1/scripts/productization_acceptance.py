@@ -78,14 +78,14 @@ def verify(directory: Path, env: dict[str, str]) -> None:
     report = directory / "acceptance.json"
     report.unlink(missing_ok=True)
     record = json.loads((directory / "result.json").read_text(encoding="utf-8"), object_pairs_hook=_unique_object)
-    fields = {"schema_version", "archive_path", "archive_sha256", "archive_size", "level", "stage",
+    fields = {"schema_version", "archive_path", "archive_sha256", "archive_size", "level",
               "package_version", "maturity", "os", "arch", "provenance", "docs_bundle_sha256", "docs_source"}
     if not isinstance(record, dict) or record.keys() != fields:
-        raise ValueError("distribution result must contain exactly the schema-1 fields")
+        raise ValueError("distribution result must contain exactly the schema-2 fields")
     if not isinstance(record["docs_bundle_sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", record["docs_bundle_sha256"]):
         raise ValueError("distribution result must record the documentation bundle digest")
-    if (type(record["schema_version"]) is not int or record["schema_version"] != 1
-            or record["level"] != "l1" or type(record["stage"]) is not int or record["stage"] != 2
+    if (type(record["schema_version"]) is not int or record["schema_version"] != 2
+            or record["level"] != "l1"
             or record["maturity"] != "development" or type(record["archive_size"]) is not int):
         raise ValueError("unsupported distribution result identity")
     original = Path(record["archive_path"])
@@ -99,14 +99,14 @@ def verify(directory: Path, env: dict[str, str]) -> None:
     with tempfile.TemporaryDirectory(prefix="l1-acceptance-identity-") as temporary:
         prefix = extract_archive(archive, Path(temporary).resolve())
         inventory = verify_distribution(prefix)
-        for key in ("level", "stage", "package_version", "maturity", "os", "arch", "provenance"):
+        for key in ("level", "package_version", "maturity", "os", "arch", "provenance"):
             if record[key] != inventory[key]:
                 raise ValueError(f"distribution result disagrees with payload: {key}")
-        docs = json.loads((prefix / "share/doc/dea/l1/autodocs/stage2/manifest.json").read_text(encoding="utf-8"))
+        docs = json.loads((prefix / "share/doc/dea/l1/autodocs/manifest.json").read_text(encoding="utf-8"))
         if record["docs_source"] != docs["source"]:
             raise ValueError("distribution result disagrees with documentation source")
     smoke(archive, env)
-    report.write_text(json.dumps({"schema_version": 1, "status": "passed",
+    report.write_text(json.dumps({"schema_version": 2, "status": "passed",
                                  "archive_sha256": record["archive_sha256"],
                                  "package_version": record["package_version"],
                                  "os": record["os"], "arch": record["arch"]}, indent=2) + "\n", encoding="utf-8")
