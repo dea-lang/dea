@@ -46,6 +46,24 @@ _DEFAULT_TOOLCHAIN_FLAGS = (
     ),
 )
 
+# A successful compile and normal startup do not prove instrumentation: some
+# compilers silently accept unsupported sanitizer flags. The second invocation
+# must diagnose this volatile out-of-bounds read, not merely crash.
+_SUPPORT_SOURCE = """#include <stdlib.h>
+
+int main(int argc, char **argv) {
+    volatile unsigned char *bytes;
+    (void)argv;
+    if (argc == 1) return 0;
+    bytes = (volatile unsigned char *)malloc(8);
+    if (bytes == NULL) return 2;
+    (void)bytes[8];
+    free((void *)bytes);
+    return 0;
+}
+"""
+_INSTRUMENTATION_REPORT = "ERROR: AddressSanitizer: heap-buffer-overflow"
+
 
 def run_asan_command(
     command: Sequence[str | os.PathLike[str]],
@@ -135,11 +153,11 @@ def detect_asan_toolchain(
         explicit_compiler: Compiler requested through a level ASan variable.
         configured_compilers: Ordinary level compiler selections in priority order.
         fallback_compilers: Conventional compiler names for local discovery.
-        work_dir: Directory for the empty support source and executable.
+        work_dir: Directory for the capability source and executable.
         label: Harness label used in diagnostics.
         cwd: Optional working directory for probe subprocesses.
-        compile_timeout_seconds: Empty-probe compile deadline.
-        run_timeout_seconds: Empty-probe execution deadline.
+        compile_timeout_seconds: Capability-probe compile deadline.
+        run_timeout_seconds: Deadline for each capability-probe execution.
 
     Returns:
         A working ASan toolchain, or ``None`` for optional unavailability.
@@ -153,7 +171,7 @@ def detect_asan_toolchain(
     )
     support_source = work_dir / "asan-support.c"
     support_executable = work_dir / ("asan-support.exe" if os.name == "nt" else "asan-support")
-    support_source.write_text("int main(void) { return 0; }\n", encoding="utf-8")
+    support_source.write_text(_SUPPORT_SOURCE, encoding="utf-8")
     diagnostics: list[str] = []
     seen_compilers: set[str] = set()
 
@@ -186,7 +204,10 @@ def detect_asan_toolchain(
                 continue
 
             support_env = os.environ.copy()
-            support_env["ASAN_OPTIONS"] = "detect_leaks=0"
+            support_env["ASAN_OPTIONS"] = (
+                "detect_leaks=0:halt_on_error=1:abort_on_error=0:"
+                "exitcode=86:symbolize=0:disable_coredump=1"
+            )
             try:
                 executed = run_asan_command(
                     [str(support_executable)],
@@ -202,6 +223,25 @@ def detect_asan_toolchain(
                 diagnostics.append(
                     f"{compiler} ({mode}) runtime exited {executed.returncode}: "
                     f"{_output_detail(executed)}"
+                )
+                continue
+
+            try:
+                instrumented = run_asan_command(
+                    [str(support_executable), "overflow"],
+                    phase=f"{label} {mode} capability instrumentation",
+                    timeout_seconds=run_timeout_seconds,
+                    cwd=cwd,
+                    env=support_env,
+                )
+            except (AsanTimeoutError, OSError) as error:
+                diagnostics.append(f"{compiler} ({mode}): {error}")
+                continue
+            if instrumented.returncode == 0 or _INSTRUMENTATION_REPORT not in instrumented.stderr:
+                diagnostics.append(
+                    f"{compiler} ({mode}) instrumentation probe did not report an ASan "
+                    f"heap-buffer-overflow (exit {instrumented.returncode}): "
+                    f"{_output_detail(instrumented)}"
                 )
                 continue
 

@@ -27,6 +27,18 @@ the root, so `make venv` from any level directory converges on the same `./.venv
 absent, `make venv` falls back to `python -m venv` plus `pip install` of the dependency-group specifiers extracted from
 the root `pyproject.toml`.
 
+## AddressSanitizer capability checks
+
+Sanitizer tests use `scripts/asan_test_support.py` to verify both normal executable startup and an actual ASan
+heap-buffer-overflow diagnostic from a deliberately invalid read. Accepting `-fsanitize=address` is insufficient:
+compilers such as TinyCC that silently ignore instrumentation flags are reported as unavailable.
+
+An ordinary configured C compiler remains the selected compiler. If it lacks ASan, only the ASan-dependent checks skip;
+there is no automatic substitution with another compiler. An explicit sanitizer selection such as `L0_ASAN_CC=clang`
+requests mandatory coverage and fails if that compiler cannot demonstrate working ASan. Same-compiler non-PIE retries
+remain available; compiler-name discovery applies only when neither ordinary nor sanitizer compiler selection is set.
+The capability probe has bounded compilation/execution deadlines and disables core dumps for its intentional error.
+
 ## Cleanup contract
 
 Each level provides bootstrap-free cleanup using the shared Python helper. `clean` removes all contents of the standard

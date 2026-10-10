@@ -26,6 +26,12 @@ def _completed(returncode: int = 0, stderr: str = "") -> subprocess.CompletedPro
     return subprocess.CompletedProcess(["probe"], returncode, "", stderr)
 
 
+def _detected() -> subprocess.CompletedProcess[str]:
+    """Return the diagnostic from an instrumented heap overflow."""
+
+    return _completed(86, "==123==ERROR: AddressSanitizer: heap-buffer-overflow\nREAD of size 1")
+
+
 class AsanTestSupportTests(unittest.TestCase):
     """Exercise strict compiler identity and fallback-mode policy."""
 
@@ -49,7 +55,7 @@ class AsanTestSupportTests(unittest.TestCase):
     def test_configured_compiler_succeeds_without_substitution(self, run, _which) -> None:
         """A working configured compiler uses the default sanitizer mode."""
 
-        run.side_effect = [_completed(), _completed()]
+        run.side_effect = [_completed(), _completed(), _detected()]
 
         selected = self._detect()
 
@@ -57,7 +63,11 @@ class AsanTestSupportTests(unittest.TestCase):
         self.assertEqual(selected.compiler, "/tools/gcc-selected")
         self.assertEqual(selected.mode, "default")
         self.assertEqual(selected.compile_flags, ("-fsanitize=address",))
-        self.assertEqual(run.call_count, 2)
+        self.assertEqual(run.call_count, 3)
+        self.assertEqual(run.call_args_list[2].args[0][-1], "overflow")
+        self.assertEqual(run.call_args_list[2].kwargs["timeout_seconds"],
+                         asan_test_support.ASAN_RUN_TIMEOUT_SECONDS)
+        self.assertIn("abort_on_error=0", run.call_args_list[2].kwargs["env"]["ASAN_OPTIONS"])
 
     @mock.patch("scripts.asan_test_support.shutil.which", return_value="/tools/gcc-selected")
     @mock.patch("scripts.asan_test_support.run_asan_command")
@@ -69,6 +79,7 @@ class AsanTestSupportTests(unittest.TestCase):
             asan_test_support.AsanTimeoutError("default startup stalled"),
             _completed(),
             _completed(),
+            _detected(),
         ]
 
         selected = self._detect()
@@ -115,13 +126,64 @@ class AsanTestSupportTests(unittest.TestCase):
         """Unconfigured local discovery retains conventional fallback names."""
 
         which.side_effect = lambda candidate: f"/tools/{candidate}"
-        run.side_effect = [_completed(1), _completed(1), _completed(), _completed()]
+        run.side_effect = [_completed(1), _completed(1), _completed(), _completed(), _detected()]
 
         selected = self._detect(configured_compilers=())
 
         assert selected is not None
         self.assertEqual(selected.compiler, "/tools/gcc")
         self.assertEqual(selected.mode, "default")
+
+    @mock.patch("scripts.asan_test_support.shutil.which", return_value="/tools/tcc")
+    @mock.patch("scripts.asan_test_support.run_asan_command", return_value=_completed())
+    def test_ignored_sanitizer_flags_skip_without_compiler_substitution(self, run, which) -> None:
+        """Successful uninstrumented executables cannot establish ASan support."""
+
+        output = io.StringIO()
+        with mock.patch("sys.stdout", output):
+            selected = self._detect(configured_compilers=("tcc",))
+
+        self.assertIsNone(selected)
+        which.assert_called_once_with("tcc")
+        self.assertEqual(run.call_count, 6)
+        self.assertIn("instrumentation probe did not report", output.getvalue())
+
+    @mock.patch("scripts.asan_test_support.shutil.which", return_value="/tools/tcc")
+    @mock.patch("scripts.asan_test_support.run_asan_command", return_value=_completed())
+    def test_explicit_ignored_sanitizer_flags_fail(self, _run, _which) -> None:
+        """Explicit ASan requests remain mandatory even when flags are accepted."""
+
+        with self.assertRaisesRegex(asan_test_support.AsanUnavailableError, "instrumentation probe"):
+            self._detect(explicit_compiler="tcc")
+
+    @mock.patch("scripts.asan_test_support.shutil.which", return_value="/tools/compiler")
+    @mock.patch("scripts.asan_test_support.run_asan_command")
+    def test_instrumentation_requires_the_expected_failure(self, run, _which) -> None:
+        """A crash, timeout, unrelated ASan error, or successful exit is insufficient."""
+
+        for result in (
+            _completed(-11),
+            _completed(1, "AddressSanitizer:DEADLYSIGNAL"),
+            _completed(1, "ERROR: AddressSanitizer: heap-use-after-free"),
+            _completed(0, _detected().stderr),
+            asan_test_support.AsanTimeoutError("instrumentation stalled"),
+            OSError("instrumentation executable unavailable"),
+        ):
+            with self.subTest(result=str(result)):
+                run.side_effect = [_completed(), _completed(), result] * 2
+                with mock.patch("sys.stdout", io.StringIO()):
+                    self.assertIsNone(self._detect())
+
+    @mock.patch("scripts.asan_test_support.shutil.which", return_value="/tools/compiler")
+    @mock.patch("scripts.asan_test_support.run_asan_command")
+    def test_instrumentation_failure_can_retry_non_pie(self, run, _which) -> None:
+        """Each fallback mode must independently establish functioning instrumentation."""
+
+        run.side_effect = [_completed(), _completed(), _completed(),
+                           _completed(), _completed(), _detected()]
+        selected = self._detect()
+        self.assertIsNotNone(selected)
+        self.assertEqual(selected.mode, "non-PIE compatibility")
 
     @mock.patch("scripts.asan_test_support.subprocess.run")
     def test_command_timeout_has_bounded_diagnostic(self, run) -> None:
