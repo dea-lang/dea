@@ -64,10 +64,13 @@ changing one subsystem. Dedicated trace discovery has a separate slow-case polic
 `test-compiler-trace-all`. CI-only classification in normal discovery does not suppress dedicated trace coverage.
 
 `test-productization` checks fixture-based installation, inventory/recovery, installed startup, archives, and atomic
-results. `test-productization-acceptance` separately builds and verifies actual documented artifacts with portable exact
-archive/result/harness evidence. `ACCEPTANCE_PHASE=build` creates the build handoff; the existing four-platform workflow
-verifies on fresh runners without checkout or bootstrap artifacts. A combined local invocation does not demonstrate
-checkout unavailability. None of `test`, `test-extended`, or `test-ci` establishes artifact acceptance.
+results. Its native startup fixture selects `L1_RUNTIME_CC`, then `L1_CC`, or defaults to TinyCC/GCC/Clang/cc
+independently of `L0_CC`. It builds from the fixture directory with a relative output name so TinyCC's macOS signing
+helper works even when that directory contains spaces. `test-productization-acceptance` separately builds and verifies
+actual documented artifacts with portable exact archive/result/harness evidence. `ACCEPTANCE_PHASE=build` creates the
+build handoff; the existing four-platform workflow verifies on fresh runners without checkout or bootstrap artifacts. A
+combined local invocation does not demonstrate checkout unavailability. None of `test`, `test-extended`, or `test-ci`
+establishes artifact acceptance.
 
 ## Delivery and Documentation
 

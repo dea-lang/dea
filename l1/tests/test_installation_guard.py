@@ -14,8 +14,47 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from build_l1c import host_compiler
 from productization_inventory import MANIFEST_PATH, InventoryError, install_payload, validate_inventory
+
+
+def native_compiler(env):
+    """Resolve the L1 support fixture compiler independently of L0 bootstrap.
+
+    Args:
+        env: Calling environment with optional L1 compiler overrides.
+
+    Returns:
+        Resolved compiler executable path.
+
+    Raises:
+        RuntimeError: The explicit compiler or all default compilers are absent.
+    """
+    configured = env.get("L1_RUNTIME_CC") or env.get("L1_CC")
+    candidates = [configured] if configured else ["tcc", "gcc", "clang", "cc", env.get("CC", "")]
+    for candidate in candidates:
+        if candidate and (resolved := shutil.which(candidate)):
+            return os.path.abspath(resolved)
+    raise RuntimeError(f"native fixture compiler not found: {configured or 'tcc/gcc/clang/cc'}")
+
+
+@pytest.mark.parametrize("env, expected", [
+    ({}, "tcc"),
+    ({"L0_CC": "clang"}, "tcc"),
+    ({"L1_CC": "tcc"}, "tcc"),
+    ({"L1_RUNTIME_CC": "tcc", "L1_CC": "custom cc"}, "tcc"),
+    ({"L1_CC": "custom cc"}, "custom cc"),
+    ({"L1_RUNTIME_CC": "runtime cc", "L1_CC": "custom cc"}, "runtime cc"),
+    ({"L1_CC": "missing"}, None),
+    ({"L1_RUNTIME_CC": "missing", "L1_CC": "custom cc"}, None),
+])
+def test_native_compiler_selection(monkeypatch, env, expected):
+    available = {"tcc", "clang", "gcc", "custom cc", "runtime cc"}
+    monkeypatch.setattr(shutil, "which", lambda name: name if name in available else None)
+    if expected is None:
+        with pytest.raises(RuntimeError, match="missing"):
+            native_compiler(env)
+    else:
+        assert native_compiler(env) == os.path.abspath(expected)
 
 
 @pytest.fixture(scope="module")
@@ -37,9 +76,12 @@ int main(void) {
 ''')
     executable = root / ("probe.exe" if os.name == "nt" else "probe")
     support = ROOT / "compiler/support"
-    subprocess.run([host_compiler(dict(os.environ)), "-std=c99", "-O2", "-Wall", "-Wextra", "-Werror", "-pedantic",
+    # Run in the space-bearing fixture directory and pass a relative output
+    # name: TinyCC's Darwin codesign command interpolates that name unquoted.
+    # Source paths, installation, relocation, and execution still cover spaces.
+    subprocess.run([native_compiler(dict(os.environ)), "-std=c99", "-O2", "-Wall", "-Wextra", "-Werror", "-pedantic",
                     str(source), str(support / "compiler_support.c"), str(support / "preparation_support.c"),
-                    "-o", str(executable)], check=True)
+                    "-o", executable.name], cwd=root, check=True)
     return executable
 
 
