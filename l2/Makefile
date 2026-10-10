@@ -208,9 +208,9 @@ help:
 		'                     Build, run, and analyze L2 child runtime fixtures independently; TESTS selects fixture names.' \
 		'  test-tooling       Run L2 tooling and bootstrap regressions.' \
 		'  check-examples     Validate all `examples/*.l2` sources with the repo-local canonical compiler; fail on warnings or errors.' \
-		'  clean              Remove repo-local build artifacts under `build/*`.' \
+		'  clean              Remove standard build contents, including hidden artifacts, and temporary outputs.' \
 		'  clean-runtime      Remove only repo-local runtime build products under `$(L2_BUILD_DIR)`.' \
-		'  clean-all          Run both `clean` and `clean-runtime`.' \
+		'  clean-all          Remove standard artifacts and the complete validated configured build tree.' \
 		'  test-isolation     Build and run in Docker with sibling checkouts and artifacts inaccessible.' \
 		'' \
 		'Compiler construction variables:' \
@@ -302,7 +302,7 @@ test-compiler-trace-children:
 	"$(VENV_PYTHON)" compiler/scripts/run_trace_tests.py --children $(TESTS)
 
 test-tooling: venv
-	"$(VENV_PYTHON)" -m pytest -q -n 0 tests
+	"$(VENV_PYTHON)" -m pytest -q -n 0 tests ../scripts/tests/test_cleanup.py
 
 check-examples: build
 	"$(PYTHON)" ../scripts/check_examples.py --compiler "$(L2_BUILD_DIR)/bin/l2c" --examples-dir examples --extension .l2 --label L2
@@ -319,11 +319,14 @@ test-isolation: export L2_ISOLATION_BOOTSTRAP_PREFIX := $(L2_ISOLATION_BOOTSTRAP
 test-isolation:
 	"$(PYTHON)" scripts/test_isolation.py
 
+# Export path values without interpolating them into shell command text.
+clean clean-runtime clean-all: export L2_BUILD_DIR := $(L2_BUILD_DIR)
+
 clean:
-	rm -rf ./build/*
-	rm -f ./a.out ./a.exe
+	"$(PYTHON)" ../scripts/dea_tooling/cleanup.py clean --build-variable L2_BUILD_DIR
 
 clean-runtime:
-	rm -rf "$(RUNTIME_BUILD_DIR)" "$(RUNTIME_LIB_DIR)"
+	"$(PYTHON)" ../scripts/dea_tooling/cleanup.py clean-runtime --build-variable L2_BUILD_DIR
 
-clean-all: clean clean-runtime
+clean-all:
+	"$(PYTHON)" ../scripts/dea_tooling/cleanup.py clean-all --build-variable L2_BUILD_DIR

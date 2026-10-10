@@ -27,6 +27,32 @@ the root, so `make venv` from any level directory converges on the same `./.venv
 absent, `make venv` falls back to `python -m venv` plus `pip install` of the dependency-group specifiers extracted from
 the root `pyproject.toml`.
 
+## Cleanup contract
+
+Each level provides bootstrap-free cleanup using the shared Python helper. `clean` removes all contents of the standard
+`build/` directory, including hidden entries, plus known temporary executables and test files. It preserves custom build
+trees outside `build/`. `clean-all` additionally removes the complete selected build tree: `DEA_BUILD_DIR` for L0,
+`L1_BUILD_DIR` for L1, or `L2_BUILD_DIR` for L2. With the default `build/dea`, their effects overlap.
+
+L0 `clean-dea-build` removes only the selected tree. L1/L2 `clean-runtime` removes the selected tree's `runtime/`,
+`lib/`, and copied `include/dea_rt.h` and `include/l1_real.h`, preserving compiler binaries, caches, and other headers.
+Cleanup needs Python but does not prepare a virtual environment or bootstrap compiler.
+
+Cleanup prints each removal before attempting it: directory contents and wildcard matches are grouped, while isolated
+files and selected build/runtime directories are listed individually. Paths are absolute to identify the owning level in
+root aggregate output. Absent outputs are omitted; an already clean level reports `cleanup: nothing to remove`.
+
+Custom cleanup directories must be inside the owning level, in an output namespace such as `out/dea` or `build/custom`.
+Empty paths, the level root, paths outside the level, parent traversal, hidden top-level namespaces, source-owned
+namespaces (`compiler`, `docker`, `docs`, `examples`, `scripts`, `tests`, `work`, `tools`, `editors`, and level names),
+and symlink/junction directory aliases are rejected. Source-name checks are case-insensitive. Validation precedes all
+deletions in each level operation, including standard cleanup within `clean-all`. Missing outputs are harmless;
+permission and other deletion failures produce a nonzero exit. Generated child symlinks are unlinked without following
+them. Cleanup is not transactional after deletion begins.
+
+Run `make test-cleanup` in L0 or `make test-tooling` in L1/L2 for cleanup regressions. The tests use copied Makefiles
+and disposable directories; they do not clean the working checkout.
+
 ## Language Levels
 
 | Directory  | Description                                                        |

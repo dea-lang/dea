@@ -108,7 +108,7 @@ help:
 		'  refresh-goldens    Regenerate Stage 2 backend golden C fixtures from Stage 1.' \
 		'  list-installed     List files installed by `make install` under PREFIX.' \
 		'  help               Show this help text.' \
-		'  clean              Remove all repo-local build artifacts under `build/*` (including temporary `dist` trees and archives), temporary test files, and default executables.' \
+		'  clean              Remove standard build contents, including hidden artifacts, temporary test files, and default executables.' \
 		'  clean-dea-build    Remove the repo-local Dea build tree (override with `DEA_BUILD_DIR`, see below).' \
 		'  clean-all          Remove both repo-local build artifacts and the Dea build tree.' \
 		'' \
@@ -254,7 +254,12 @@ test-release-tags: | venv
 test-shuffle-sources: | venv
 	"$(VENV_PYTHON)" ./tests/test_shuffle_sources.py
 
-test-workflows: test-compiler-runtime-flags test-dist test-dea-build test-dist-fallback test-release-tags test-shuffle-sources
+test-cleanup: | venv
+	"$(VENV_PYTHON)" -m pytest -q -n 0 ../scripts/tests/test_cleanup.py
+
+.PHONY: test-cleanup
+
+test-workflows: test-cleanup test-compiler-runtime-flags test-dist test-dea-build test-dist-fallback test-release-tags test-shuffle-sources
 	@printf 'All workflow tests passed!\n'
 
 test: test-stage1 test-stage2 check-examples test-workflows
@@ -278,16 +283,17 @@ docs-pdf:
 docs-artifacts:
 	$(PYTHON) ./scripts/gen_docs.py --strict --pdf --artifacts --stage $(DOC_STAGE)
 
+# Export path values without interpolating them into shell command text.
+clean clean-dea-build clean-all: export DEA_BUILD_DIR := $(DEA_BUILD_DIR)
+
 clean:
-	rm -rf ./build/*
-	rm -f ./a.out ./a.exe
-	rm -f ./compiler/stage2_l0/a.out ./compiler/stage2_l0/a.exe
-	rm -f ./compiler/stage2_l0/tests/.tmp*
+	"$(PYTHON)" ../scripts/dea_tooling/cleanup.py clean --build-variable DEA_BUILD_DIR
 
 clean-dea-build:
-	$(PYTHON) ./scripts/gen_dist_tools.py clean-dea-build --dea-build-dir "$(DEA_BUILD_DIR)"
+	"$(PYTHON)" ../scripts/dea_tooling/cleanup.py clean-build --build-variable DEA_BUILD_DIR
 
-clean-all: clean clean-dea-build
+clean-all:
+	"$(PYTHON)" ../scripts/dea_tooling/cleanup.py clean-all --build-variable DEA_BUILD_DIR
 
 test-docker:
 	$(MAKE) docker CMD=test-extended

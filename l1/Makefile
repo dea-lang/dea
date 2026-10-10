@@ -147,9 +147,9 @@ help:
 		'  bench-runtime      Benchmark the checked runtime allocation tracker across C compilers and quarantine settings (informational; not part of `test-extended`). Variables: `BENCH_CC="tcc clang gcc-16"`, `BENCH_SCALE=<n>`, `BENCH_RUNS=<n>`.' \
 		'  bench-link-provenance' \
 		'                     Benchmark standalone-link provenance validation across chain and DAG shapes (informational; not part of `test-extended`). Variables: `BENCH_PROVENANCE_SHAPES=<csv>`, `BENCH_PROVENANCE_SIZES=<csv>`, `BENCH_PROVENANCE_WARMUPS=<n>`, `BENCH_PROVENANCE_RUNS=<n>`, `BENCH_PROVENANCE_JSON=<path>`, `BENCH_PROVENANCE_COMPARE=<path>`.' \
-		'  clean              Remove repo-local build artifacts under `build/*`.' \
+		'  clean              Remove standard build contents, including hidden artifacts, and temporary outputs.' \
 		'  clean-runtime      Remove only repo-local runtime build products under `$(L1_BUILD_DIR)`.' \
-		'  clean-all          Run both `clean` and `clean-runtime`.' \
+		'  clean-all          Remove standard artifacts and the complete validated configured build tree.' \
 		'' \
 		'Docker:' \
 		'  docker             Explicitly run a target in the repo-owned Linux Docker container (CMD=<target>).' \
@@ -358,13 +358,6 @@ bench-runtime:
 bench-link-provenance: _ensure-bootstrap-l0-stage2
 	$(PYTHON) ./scripts/bench_link_provenance.py $(if $(strip $(BENCH_PROVENANCE_SHAPES)),--shapes "$(BENCH_PROVENANCE_SHAPES)") $(if $(strip $(BENCH_PROVENANCE_SIZES)),--sizes "$(BENCH_PROVENANCE_SIZES)") $(if $(strip $(BENCH_PROVENANCE_WARMUPS)),--warmups "$(BENCH_PROVENANCE_WARMUPS)") $(if $(strip $(BENCH_PROVENANCE_RUNS)),--runs "$(BENCH_PROVENANCE_RUNS)") $(if $(strip $(BENCH_PROVENANCE_JSON)),--json "$(BENCH_PROVENANCE_JSON)") $(if $(strip $(BENCH_PROVENANCE_COMPARE)),--compare "$(BENCH_PROVENANCE_COMPARE)")
 
-clean-runtime:
-	rm -rf "$(RUNTIME_BUILD_DIR)" "$(RUNTIME_LIB_DIR)"
-
-clean-all:
-	@$(MAKE) clean
-	@$(MAKE) clean-runtime
-
 build: venv $(RUNTIME_PUBLIC_HEADERS) _ensure-bootstrap-l0-stage2
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" \
 	L1_COMPILER_RT_CHECK_BASIC="$(L1_COMPILER_RT_CHECK_BASIC)" \
@@ -452,7 +445,7 @@ test-env: venv
 	"$(VENV_PYTHON)" ./tests/test_env_stackability.py
 
 test-tooling: venv
-	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_compiler_tooling.py
+	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_compiler_tooling.py ../scripts/tests/test_cleanup.py
 
 test-productization: venv
 	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_bootstrap_productization.py tests/test_productization_provenance.py tests/test_installation_guard.py tests/test_productization_payload.py tests/test_install_toolchain.py tests/test_distribution.py tests/test_productization_acceptance.py
@@ -481,12 +474,17 @@ test-docker:
 print-l1-build-dir:
 	@printf '%s\n' "$(L1_BUILD_DIR)"
 
+# Export path values without interpolating them into shell command text.
+clean clean-runtime clean-all: export L1_BUILD_DIR := $(L1_BUILD_DIR)
+
 clean:
-	rm -rf ./build/*
-	rm -f ./a.out ./a.exe
-	rm -f ./compiler/a.out ./compiler/a.exe
-	rm -f ./compiler/tests/.tmp*
-	rm -f ./compiler/tests/.tmp*
+	"$(PYTHON)" ../scripts/dea_tooling/cleanup.py clean --build-variable L1_BUILD_DIR
+
+clean-runtime:
+	"$(PYTHON)" ../scripts/dea_tooling/cleanup.py clean-runtime --build-variable L1_BUILD_DIR
+
+clean-all:
+	"$(PYTHON)" ../scripts/dea_tooling/cleanup.py clean-all --build-variable L1_BUILD_DIR
 
 docker:
 	@if [ -z "$(CMD)" ]; then \

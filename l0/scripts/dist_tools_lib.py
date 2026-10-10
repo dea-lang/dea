@@ -26,6 +26,8 @@ SCRIPTS_ROOT = Path(__file__).resolve().parents[2] / "scripts"
 if str(SCRIPTS_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_ROOT))
 
+from dea_tooling.cleanup import remove_path, validate_build_directory
+
 from docs_artifacts import package_version, source_identity, unpack_bundle, verify_tree
 
 from dea_tooling.launchers import (
@@ -590,9 +592,18 @@ def write_relative_symlink(path: Path, target_name: str) -> None:
 
 
 def remove_dea_build_tree(layout: DeaBuildLayout) -> None:
-    """Delete one validated repo-local Dea build tree."""
+    """Validate and delete one repo-local Dea build tree.
 
-    shutil.rmtree(layout.dea_build_dir, ignore_errors=True)
+    Args:
+        layout: Selected development artifact layout.
+
+    Raises:
+        ValueError: The destination is unsafe for cleanup.
+        OSError: The tree cannot be removed.
+    """
+
+    path = validate_build_directory(layout.repo_root, str(layout.dea_build_dir))
+    remove_path(path)
 
 
 def copy_tree(source: Path, destination: Path) -> None:

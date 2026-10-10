@@ -41,6 +41,7 @@ from dist_tools_lib import (
     write_stage1_wrapper,
     write_stage2_wrapper,
 )
+from dea_tooling.cleanup import validate_build_directory
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -273,6 +274,8 @@ def main() -> int:
                 print(f"gen-dea-build-tools: {exc}", file=sys.stderr)
                 return 1
 
+        if args.command == "clean-dea-build":
+            validate_build_directory(REPO_ROOT, args.dea_build_dir)
         layout = normalize_dea_build_dir(args.dea_build_dir)
         if args.command == "write-stage1-wrapper":
             path = write_stage1_wrapper(layout)
@@ -298,7 +301,7 @@ def main() -> int:
             print(f"gen-dea-build-tools: removed {layout.dea_build_dir}")
             return 0
         raise AssertionError(f"unhandled command: {args.command}")
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
         print(f"gen-dea-build-tools: {exc}", file=sys.stderr)
         return 1
 

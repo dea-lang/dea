@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
 WORKDIR /project
 # Permitted root-owned tooling only; no sibling source or build tree is copied.
 COPY scripts/dea_tooling /project/scripts/dea_tooling
+COPY scripts/tests/test_cleanup.py /project/scripts/tests/test_cleanup.py
 COPY scripts/check_examples.py scripts/asan_test_support.py /project/scripts/
 COPY l2 /project/l2
 COPY --from=bootstrap / /opt/l1/
