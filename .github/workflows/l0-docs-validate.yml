@@ -17,6 +17,21 @@ jobs:
       run:
         working-directory: l0
     steps:
+      - name: Show inputs
+        shell: bash
+        working-directory: .
+        env:
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+        run: |
+          echo "$INPUTS_JSON"
+
+          {
+            echo '### Workflow inputs'
+            echo '```json'
+            printf '%s\n' "$INPUTS_JSON"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Check out repository
         uses: actions/checkout@v6
 

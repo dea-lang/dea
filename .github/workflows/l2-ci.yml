@@ -67,6 +67,21 @@ jobs:
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
     steps:
+      - name: Show inputs
+        shell: bash
+        working-directory: .
+        env:
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+        run: |
+          echo "$INPUTS_JSON"
+
+          {
+            echo '### Workflow inputs'
+            echo '```json'
+            printf '%s\n' "$INPUTS_JSON"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Select matrix
         id: select
         env:
@@ -127,6 +142,21 @@ jobs:
       matrix: ${{ fromJson(needs.select-matrix.outputs.matrix) }}
     runs-on: ${{ matrix.runner }}
     steps:
+      - name: Show inputs
+        shell: bash
+        working-directory: .
+        env:
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+        run: |
+          echo "$INPUTS_JSON"
+
+          {
+            echo '### Workflow inputs'
+            echo '```json'
+            printf '%s\n' "$INPUTS_JSON"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Check out repository
         uses: actions/checkout@v6
 

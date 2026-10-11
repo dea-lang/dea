@@ -27,6 +27,12 @@ the root, so `make venv` from any level directory converges on the same `./.venv
 absent, `make venv` falls back to `python -m venv` plus `pip install` of the dependency-group specifiers extracted from
 the root `pyproject.toml`.
 
+## Workflow inputs
+
+Every workflow job starts with `Show inputs`, which prints the current `inputs` context as JSON in the job log and
+appends it under `Workflow inputs` in the job summary. Reusable workflows report the inputs received by their own jobs.
+The step uses Bash and the workspace root so it can run before checkout on Linux, macOS, and Windows.
+
 ## Compiler CI
 
 Unified CI runs selected level delegates sequentially on each native runner. A successful L0 delegate hands its Stage 2

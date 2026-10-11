@@ -22,6 +22,21 @@ jobs:
   docs:
     runs-on: ubuntu-latest
     steps:
+      - name: Show inputs
+        shell: bash
+        working-directory: .
+        env:
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+        run: |
+          echo "$INPUTS_JSON"
+
+          {
+            echo '### Workflow inputs'
+            echo '```json'
+            printf '%s\n' "$INPUTS_JSON"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Check out selected source
         uses: actions/checkout@v6
         with:
@@ -75,6 +90,21 @@ jobs:
       L1_RUNTIME_CC: ${{ matrix.cc }}
       ACCEPTANCE_PHASE: build
     steps:
+      - name: Show inputs
+        shell: bash
+        working-directory: .
+        env:
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+        run: |
+          echo "$INPUTS_JSON"
+
+          {
+            echo '### Workflow inputs'
+            echo '```json'
+            printf '%s\n' "$INPUTS_JSON"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Preserve source bytes on Windows
         if: runner.os == 'Windows'
         run: git config --global core.autocrlf false
@@ -181,6 +211,21 @@ jobs:
       L1_CC: ${{ matrix.cc }}
       L1_RUNTIME_CC: ${{ matrix.cc }}
     steps:
+      - name: Show inputs
+        shell: bash
+        working-directory: .
+        env:
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+        run: |
+          echo "$INPUTS_JSON"
+
+          {
+            echo '### Workflow inputs'
+            echo '```json'
+            printf '%s\n' "$INPUTS_JSON"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # Deliberately no checkout or compiler build artifacts on these fresh runners.
       - name: Set up Python
         if: runner.os != 'Windows'

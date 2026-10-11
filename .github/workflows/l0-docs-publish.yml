@@ -55,6 +55,21 @@ jobs:
       resolved_release_tag: ${{ steps.resolve.outputs.resolved_release_tag }}
       resolved_target_commitish: ${{ steps.resolve.outputs.resolved_target_commitish }}
     steps:
+      - name: Show inputs
+        shell: bash
+        working-directory: .
+        env:
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+        run: |
+          echo "$INPUTS_JSON"
+
+          {
+            echo '### Workflow inputs'
+            echo '```json'
+            printf '%s\n' "$INPUTS_JSON"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Resolve target draft release
         id: resolve
         env:
@@ -136,6 +151,21 @@ jobs:
       resolved_release_tag: ${{ steps.resolve.outputs.resolved_release_tag }}
       resolved_target_commitish: ${{ steps.resolve.outputs.resolved_target_commitish }}
     steps:
+      - name: Show inputs
+        shell: bash
+        working-directory: .
+        env:
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+        run: |
+          echo "$INPUTS_JSON"
+
+          {
+            echo '### Workflow inputs'
+            echo '```json'
+            printf '%s\n' "$INPUTS_JSON"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Resolve source ref and release tag
         id: resolve
         env:
@@ -173,6 +203,21 @@ jobs:
     outputs:
       pages_enabled: ${{ steps.probe.outputs.pages_enabled }}
     steps:
+      - name: Show inputs
+        shell: bash
+        working-directory: .
+        env:
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+        run: |
+          echo "$INPUTS_JSON"
+
+          {
+            echo '### Workflow inputs'
+            echo '```json'
+            printf '%s\n' "$INPUTS_JSON"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Check GitHub Pages availability
         id: probe
         env:
@@ -213,6 +258,21 @@ jobs:
     outputs:
       page_url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Show inputs
+        shell: bash
+        working-directory: .
+        env:
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+        run: |
+          echo "$INPUTS_JSON"
+
+          {
+            echo '### Workflow inputs'
+            echo '```json'
+            printf '%s\n' "$INPUTS_JSON"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
@@ -235,6 +295,21 @@ jobs:
       run:
         working-directory: l0
     steps:
+      - name: Show inputs
+        shell: bash
+        working-directory: .
+        env:
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+        run: |
+          echo "$INPUTS_JSON"
+
+          {
+            echo '### Workflow inputs'
+            echo '```json'
+            printf '%s\n' "$INPUTS_JSON"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Check out source repository
         if: inputs.publish_blog
         uses: actions/checkout@v6
@@ -418,6 +493,21 @@ jobs:
       PAGE_URL: ${{ needs.deploy-pages.outputs.page_url }}
       TARGET_RELEASE_TAG: ${{ needs.resolve-targets.outputs.target_release_tag }}
     steps:
+      - name: Show inputs
+        shell: bash
+        working-directory: .
+        env:
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+        run: |
+          echo "$INPUTS_JSON"
+
+          {
+            echo '### Workflow inputs'
+            echo '```json'
+            printf '%s\n' "$INPUTS_JSON"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Check out source repository
         uses: actions/checkout@v6
 
