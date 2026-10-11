@@ -445,7 +445,7 @@ test-env: venv
 	"$(VENV_PYTHON)" ./tests/test_env_stackability.py
 
 test-tooling: venv
-	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_compiler_tooling.py ../scripts/tests/test_cleanup.py
+	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_compiler_tooling.py ../scripts/tests/test_cleanup.py ../scripts/tests/test_l1_release.py
 
 test-productization: venv
 	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_bootstrap_productization.py tests/test_productization_provenance.py tests/test_installation_guard.py tests/test_productization_payload.py tests/test_install_toolchain.py tests/test_distribution.py tests/test_productization_acceptance.py

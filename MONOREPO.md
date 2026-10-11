@@ -128,7 +128,8 @@ Bare `v*` tags are therefore a closed pre-monorepo namespace. New monorepo relea
 ## Release-line Gating Policy
 
 L0 stable releases (`l0-v*`) and L0 snapshots (`l0-snapshot-*`) are the only currently active release workflows. L1
-release namespaces (`l1-v*` and `l1-snapshot-*`) remain reserved but are not yet active.
+release namespaces (`l1-v*` and `l1-snapshot-*`) remain reserved. The snapshot, release, and reusable documentation
+workflows are implemented and locally validated; hosted acceptance and activation remain pending.
 
 The following prerequisites must be met before the first L1 release or snapshot workflow is added:
 
@@ -149,8 +150,8 @@ The following prerequisites must be met before the first L1 release or snapshot 
    deliberately prepared L1 release or snapshot. Check the authoritative remote tag state before activation; historical
    checks and local tag lists are insufficient.
 
-The 2026-10-09 acceptance established the former Stage 2 product only. The canonical L0-implemented L1 artifact must
-receive fresh four-platform exact-artifact acceptance before hosted release workflows are implemented. The existing
+The 2026-10-09 acceptance established the former Stage 2 product only. Fresh four-platform exact-artifact acceptance for
+canonical L0-implemented L1 passed on 2026-10-11, satisfying the artifact prerequisite. The existing
 `l1-productization-acceptance.yml` remains the separate build/fresh-host verification gate. Namespace reservations and
 compiler CI do not establish publication readiness. The current delivery contract is
 [l1/docs/decisions/0043-canonical-compiler-toolchain-delivery.md](l1/docs/decisions/0043-canonical-compiler-toolchain-delivery.md).
@@ -165,6 +166,19 @@ in [AGENTS.md](AGENTS.md); implementing the plan does not authorize those action
 `publish_release=false` still creates/pushes a tag and uploads a draft release, so it also requires authorization. If
 hosted acceptance is deferred, record implementation and pending acceptance separately and leave the workflow plan open.
 Do not create a dummy stable tag to close it.
+
+The implemented workflows are [.github/workflows/l1-snapshot.yml](.github/workflows/l1-snapshot.yml),
+[.github/workflows/l1-release.yml](.github/workflows/l1-release.yml), and
+[.github/workflows/l1-docs-build.yml](.github/workflows/l1-docs-build.yml). Snapshot inputs are `ref` (empty selects the
+default branch once), optional `snapshot_tag`, and `publish_release` (default `true`). The reusable docs workflow
+requires an immutable `source_ref`, `package_version`, and `release_tag`. Every executable job reports its inputs in
+both its log and summary. Both release types retain `make_latest=false` and development-toolchain labeling.
+
+Rerun all jobs after a failed release attempt. Original source/tag identity is retained, while docs, builds, reports,
+and logs are isolated by attempt; partial reruns fail rather than mix attempts. Matching drafts may replace their own
+older timestamped archives. Published releases remain immutable. The publisher validates four native archives, one
+matching docs bundle, its byte-identical standalone PDF, and `SHA256SUMS` before publication. Local policy validation is
+available through `.venv/bin/python -m pytest -q -n 0 scripts/tests/test_l1_release.py` and L1 `make test-tooling`.
 
 Delivery documentation distinguishes implementation, fresh acceptance, publication, and language maturity. L1 0.1.0 will
 contain the canonical L0-implemented `l1c`, matching toolchain inputs and canonical offline HTML/full PDF, `VERSION`,

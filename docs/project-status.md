@@ -6,8 +6,8 @@ This document summarizes the current status of the Dea project at the monorepo l
 
 The repository contains one active release line, Dea/L0, and independent development levels L1 and L2. L0 remains the
 current stable toolchain. L1 has one compiler implemented in L0; L2 has one compiler implemented in L1. L1 0.1.0 is the
-intended future canonical L1 development-toolchain release. Fresh artifact acceptance and hosted release work remain
-prerequisites.
+intended future canonical L1 development-toolchain release. Fresh canonical artifact acceptance is complete; hosted
+release acceptance remains a prerequisite.
 
 ## Scope and Canonical References
 
@@ -88,19 +88,20 @@ Its repository status today is:
 - supporting private installed-compiler construction, verified bundled semantic inputs, stage-free schema-2 inventory
   and offline HTML/PDF documentation, local distribution archives, and reusable archive smoke validation.
 
-The former Stage 2 artifact passed native acceptance on Linux x86_64, macOS Intel/ARM, and Windows UCRT64. That record
-is historical: the retargeted canonical artifact requires fresh build/verify acceptance on all four platforms, including
-fresh verification hosts without a checkout or bootstrap compiler. The existing acceptance workflow is adapted for that
-artifact; local implementation checks alone do not satisfy the release prerequisite.
+Fresh canonical L1 artifact acceptance passed on Linux x86_64, macOS Intel/ARM, and Windows UCRT64 on 2026-10-11,
+including verification without checkout or bootstrap compilers. Historical Stage 2 acceptance is retained separately;
+compiler CI alone does not establish artifact or publication readiness.
 
 The unified `ci.yml` routes L1 changes through `l1-ci.yml`. Its `make test-ci` gate covers canonical normal tests,
 CI-only cases, environment/bootstrap integration, ARC/memory traces, child fixtures, and examples on Linux, macOS, and
 Windows. Manual platform, compiler, and Make-target selection remain available.
 
-L1 release and snapshot workflows (`l1-v*` and `l1-snapshot-*`) are not implemented or active.
-[work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md](../work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md)
-remains deferred until the split and fresh artifact acceptance are complete. Its eventual implementation, tags,
-dispatches, and hosted publication retain separate authorization boundaries.
+L1 snapshot, tag-triggered release, and reusable documentation workflows are implemented with local syntax and policy
+validation. They retain exact source/version/docs handoff, four fresh verification jobs, seven public assets, and
+`make_latest=false`. Hosted snapshot and versioned-release acceptance remain pending under
+[work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md](../work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md).
+Remote installation, namespace checks, tags, dispatches, and publication remain separate work; L0 is still the active
+release line.
 
 ### Dea/L2
 

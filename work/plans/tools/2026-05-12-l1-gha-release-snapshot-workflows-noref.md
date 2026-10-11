@@ -4,7 +4,7 @@
 
 - Date: 2026-06-22
 - Last reviewed: 2026-10-11
-- Status: In progress (workflow implementation and hosted publication acceptance pending)
+- Status: In progress (local implementation complete; hosted acceptance and publication pending)
 - Title: Add L1 snapshot and release GHA workflows
 - Kind: Tooling
 - Scope: Shared
@@ -20,16 +20,19 @@
 - Porting rule: Shared. Trigger, namespace, and publication policy belong here. L1 install layout, archive construction,
   launcher behavior, and installed smoke tests remain owned by the L1 productization plan.
 - Target status:
-  - L1 snapshot GHA workflow: Implementation pending; canonical split and artifact-acceptance prerequisites complete
-  - L1 release GHA workflow: Implementation pending; the same canonical-artifact prerequisites are complete
-  - L1 docs build integration: Canonical strict HTML/full PDF and fresh four-platform acceptance passed; reusable
-    release job pending
+  - L1 snapshot GHA workflow: Implemented and locally validated; hosted snapshot acceptance pending
+  - L1 release GHA workflow: Implemented and locally validated; hosted versioned-release acceptance pending
+  - L1 docs build integration: Reusable canonical strict HTML/full-PDF job implemented; hosted release integration
+    pending
   - Monorepo release-line policy: Readiness and hosted-publication acceptance policy documented
 - Subsystem: GitHub Actions / release tagging / monorepo release-line policy
 - Modules:
   - `.github/workflows/l1-snapshot.yml`
   - `.github/workflows/l1-release.yml`
   - `.github/workflows/l1-docs-build.yml`
+  - `scripts/l1_release.py`
+  - `scripts/tests/test_l1_release.py`
+  - `l1/Makefile`
   - `MONOREPO.md`
   - `docs/project-status.md`
   - `l1/docs/project-status.md`
@@ -50,8 +53,8 @@
 L1 0.1.0 must distribute the sole L0-implemented canonical `l1c` and matching stage-free schema-2 documentation. The
 split and fresh canonical-artifact acceptance completed on 2026-10-11, satisfying this plan's implementation
 prerequisites. Historical 2026-10-09 Stage 2 acceptance below remains prior-product evidence. The existing acceptance
-workflow validates canonical artifacts; release workflow implementation and hosted publication acceptance remain
-separate.
+workflow validates canonical artifacts. The three release/documentation workflows are implemented and locally validated;
+hosted publication acceptance remains pending.
 
 Keep the exact immutable source/version/docs handoff, four platforms, seven public assets, reserved L1 namespaces,
 `make_latest=false`, safe retries, and separate authorization gates. No workflow dispatch, release tag, push, or
@@ -85,7 +88,7 @@ check or an empty local tag list does not establish the current remote state.
 Reviewed on 2026-10-11 against the completed split and fresh hosted acceptance:
 
 1. The canonical split and artifact-acceptance prerequisites recorded in `MONOREPO.md` are met. L1 release/snapshot
-   workflow implementation remains pending.
+   workflows and their local policy checks are implemented; hosted acceptance remains pending.
 2. Existing L1 compiler CI and productization acceptance cover Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64.
 3. L1 has one L0-implemented canonical compiler. Installation builds it privately and ignores development selections.
 4. Installation/inventory/dist/smoke/evidence helpers retain their distinct responsibilities. The old native acceptance
@@ -192,9 +195,9 @@ make test-productization-acceptance ACCEPTANCE_PHASE=build \
 | `harness/`                      | Six standard-library-only Python files copied by the helper; transport the directory intact.                           |
 | `acceptance.json`               | Created only after successful verification; schema 2, `status: passed`, archive digest, version, OS, and architecture. |
 
-Upload build evidence as `l1-dist-evidence-<os>-<arch>` for exactly `linux-x86_64`, `macos-x86_64`, `macos-arm64`, and
-`windows-x86_64`. On a fresh matching verification runner, download only that evidence, set `L1_CC` and `L1_RUNTIME_CC`
-to supported native tools, and run from an unrelated working directory:
+Upload build evidence as `l1-dist-evidence-<attempt>-<os>-<arch>` for exactly `linux-x86_64`, `macos-x86_64`,
+`macos-arm64`, and `windows-x86_64`. On a fresh matching verification runner, download only that evidence, set `L1_CC`
+and `L1_RUNTIME_CC` to supported native tools, and run from an unrelated working directory:
 
 ```bash
 python3 -I "$ACCEPTANCE_DIR/harness/productization_acceptance.py" \
@@ -216,12 +219,12 @@ these fresh jobs.
 
 ## Canonical L1 Documentation and Release Assets
 
-Add reusable `l1-docs-build.yml` with read-only repository permissions and explicit immutable `source_ref`, package
-version and release tag inputs. Release callers select canonical L1 references and require strict HTML plus full PDF
-generation. Use Linux with Doxygen, Graphviz, the shared docs dependencies, vendored m.css, and TeX, following L0's
+The implemented reusable `l1-docs-build.yml` has read-only repository permissions and explicit immutable `source_ref`,
+package version and release tag inputs. Release callers select canonical L1 references and require strict HTML plus full
+PDF generation. Use Linux with Doxygen, Graphviz, the shared docs dependencies, vendored m.css, and TeX, following L0's
 toolchain setup. Invoke `make docs-artifacts DEA_DIST_VERSION=<version>` with `L1_DOCS_RELEASE_TAG` set to the selected
-tag. Upload the verified `dea_l1_autodocs.tar.gz` as `l1-autodocs`; expose the PDF from that same bundle, not a
-separately regenerated build. No Pages artifact/deployment or blog export is required.
+tag. Upload the verified `dea_l1_autodocs.tar.gz` as `l1-autodocs-<attempt>`; expose the PDF from that same bundle, not
+a separately regenerated build. No Pages artifact/deployment or blog export is required.
 
 The generation plan owns the exact bundle layout and manifest. `build-docs` must finish before `build-dist` starts, and
 publication needs successful docs, all four dist builds, and all four fresh-host verification jobs. Missing,
@@ -256,6 +259,45 @@ draft for the same tag, serialize publication per tag, and leave an already publ
 published asset set requires explicit recovery rather than silently replacing assets. Failed builds leave publication
 incomplete; do not delete tags automatically.
 
+## Local implementation and validation
+
+The three workflows use [scripts/l1_release.py][release-policy] for immutable source/tag identity, strict version
+mapping, release-note baselines, cross-host evidence validation, and draft publication. Each executable job begins with
+`Show inputs`, logging the JSON input context and appending it to the job summary before checkout. The reusable docs job
+reports its own source/version/tag inputs.
+
+Snapshot preparation uploads the original run identity before creating its tag. Full reruns restore that identity
+instead of resolving a moving branch again; automatic tags use the original run creation time. If no original identity
+was retained, a rerun fails and requires a new dispatch. Documentation, build evidence, reports, and logs carry the run
+attempt in their artifact names. Rerun all jobs after failure: partial reruns cannot combine prior-attempt artifacts
+with new builds. Build and verification jobs retain read-only repository permissions; write permission is limited to
+snapshot tag creation and publication.
+
+Publication revalidates exact archive/result/report identity, the four-host set, clean selected source, matching docs
+bundle and embedded PDF bytes, and the transported harness before staging seven assets. Windows result paths are parsed
+with Windows path semantics on the Linux publisher. Matching draft retries may replace recognized older timestamped
+archives; unexpected assets or mismatched draft identity fail. Uploaded asset sizes and digests must match the complete
+staged set before publication. Already published releases are never modified. Both release types use
+`make_latest=false`.
+
+Local validation passed:
+
+- `actionlint .github/workflows/l1-snapshot.yml .github/workflows/l1-release.yml .github/workflows/l1-docs-build.yml`.
+
+- `.venv/bin/python -m pytest -q -n 0 scripts/tests/test_l1_release.py l1/tests/test_productization_acceptance.py l1/tests/test_distribution.py`:
+  145 cases passed, including mocked GitHub effects, isolated Git-history fixtures, seven-asset aggregation, failed and
+  stale evidence, draft retries, and Bash input reporting. Windows archive/path fixtures are simulated on the local
+  host; these results do not establish native Windows workflow execution.
+
+- `.venv/bin/python -m pytest -q -n 0 l1/tests/test_compiler_tooling.py scripts/tests/test_cleanup.py`: 113 cases passed
+  and the inapplicable L0 `clean-runtime` case was skipped.
+
+- `.venv/bin/python l0/tests/test_release_tag_policy.py`, active-plan ADR validation, staged whitespace checks, and
+  repository pre-commit hooks passed.
+
+The new policy suite is included in L1 `test-tooling`. No remote namespace check, workflow installation, dispatch, tag
+creation, or publication was performed. Phase 4 and the repository/tooling ADR remain pending; this plan stays active.
+
 ## Goal
 
 1. Document the pre-implementation prerequisites without requiring workflows to exist first.
@@ -273,7 +315,7 @@ The prerequisite checklist for Phases 2 and 3 is retargeted to canonical L1:
 
 - [x] Canonical compiler split and schema-2 install/dist implementation are complete.
 - [x] Fresh matching canonical strict HTML/full-PDF bundle and consumption pass validation.
-- [ ] Exact retargeted archives pass native build/fresh-host verification across the supported four-platform matrix.
+- [x] Exact retargeted archives pass native build/fresh-host verification across the supported four-platform matrix.
 - [x] Version conversion, release-note baselines, tag validation, and publication behavior are documented.
 - [ ] The reserved namespaces remain dedicated to L1 and their authoritative remote state is checked at activation.
 
@@ -282,8 +324,8 @@ separately authorized work. No tag, dispatch, push, or publication is authorized
 
 ### Phase 2: Add `l1-snapshot.yml`
 
-After the prerequisite checklist is complete, implement the following workflow and check authoritative namespaces before
-activation:
+Implemented locally on 2026-10-11. The following workflow is ready for separately authorized hosted acceptance; check
+authoritative namespaces before activation:
 
 - Define `workflow_dispatch` inputs `ref` (optional string, empty means the repository default branch), `snapshot_tag`
   (optional explicit tag in the chosen format), and `publish_release` (boolean, default `true`). An explicit tag with an
@@ -308,6 +350,8 @@ GitHub manual dispatch requires the workflow to be present on the default branch
 and subsequent branch dispatch in that order; a branch-only new workflow is not sufficient for the first hosted check.
 
 ### Phase 3: Add `l1-release.yml`
+
+Implemented locally on 2026-10-11; hosted versioned-release acceptance remains pending.
 
 Use `push` on `l1-v*` tags, validate the strict version format before any release side effects, and build the tagged
 revision on the same four platforms. Convert the tag to `DEA_DIST_VERSION` using the handoff above. Require all smoke
@@ -394,3 +438,4 @@ links.
 [inventory]: ../../../l1/docs/reference/productization-inventory.md
 [monorepo]: ../../../MONOREPO.md
 [productization]: ../../../l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md
+[release-policy]: ../../../scripts/l1_release.py

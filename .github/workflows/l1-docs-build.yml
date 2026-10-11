@@ -1,0 +1,69 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 gwz
+
+name: L1 Build Documentation
+'on':
+  workflow_call:
+    inputs:
+      source_ref:
+        required: true
+        type: string
+      package_version:
+        required: true
+        type: string
+      release_tag:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show inputs
+        shell: bash
+        working-directory: .
+        env:
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+        run: |
+          echo "$INPUTS_JSON"
+
+          {
+            echo '### Workflow inputs'
+            echo '```json'
+            printf '%s\n' "$INPUTS_JSON"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Check out selected source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_ref }}
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+      - name: Install full documentation toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y doxygen graphviz make texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended
+      - name: Sync documentation dependencies
+        run: uv sync --all-groups
+      - name: Validate immutable documentation inputs
+        run: python3 scripts/l1_release.py docs-inputs
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+      - name: Build verified canonical L1 HTML and full PDF
+        run: make -C l1 docs-artifacts
+      - name: Upload shared documentation bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: l1-autodocs-${{ github.run_attempt }}
+          path: l1/build/docs/artifacts/dea_l1_autodocs.tar.gz
+          if-no-files-found: error
+    env:
+      DEA_DIST_VERSION: ${{ inputs.package_version }}
+      L1_DOCS_RELEASE_TAG: ${{ inputs.release_tag }}

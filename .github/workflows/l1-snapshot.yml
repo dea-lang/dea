@@ -1,0 +1,372 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 gwz
+
+name: L1 Snapshot Release
+'on':
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Source ref (empty selects the default branch once)
+        required: false
+        default: ''
+        type: string
+      snapshot_tag:
+        description: Optional l1-snapshot-YYYYMMDD-HHMM-<shorthash> tag
+        required: false
+        default: ''
+        type: string
+      publish_release:
+        description: Publish after uploading assets (false still creates a tag and draft)
+        required: true
+        default: true
+        type: boolean
+permissions:
+  contents: read
+jobs:
+  prepare-snapshot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    outputs:
+      source: ${{ steps.identity.outputs.source }}
+      tag: ${{ steps.identity.outputs.tag }}
+      version: ${{ steps.identity.outputs.version }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_KIND: snapshot
+      REQUESTED_REF: ${{ inputs.ref }}
+      REQUESTED_TAG: ${{ inputs.snapshot_tag }}
+    steps:
+      - name: Show inputs
+        shell: bash
+        working-directory: .
+        env:
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+        run: |
+          echo "$INPUTS_JSON"
+
+          {
+            echo '### Workflow inputs'
+            echo '```json'
+            printf '%s\n' "$INPUTS_JSON"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Check out workflow policy
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - name: Restore original run identity
+        if: github.run_attempt > 1
+        uses: actions/download-artifact@v8
+        with:
+          name: l1-release-identity
+          path: ${{ runner.temp }}/l1-identity
+      - name: Resolve immutable source and tag
+        id: identity
+        run: python3 scripts/l1_release.py prepare
+      - name: Retain original run identity before tag creation
+        if: github.run_attempt == 1
+        uses: actions/upload-artifact@v6
+        with:
+          name: l1-release-identity
+          path: ${{ runner.temp }}/l1-identity/identity.json
+          if-no-files-found: error
+      - name: Ensure exact remote tag
+        run: python3 scripts/l1_release.py tag
+  build-docs:
+    needs: prepare-snapshot
+    uses: ./.github/workflows/l1-docs-build.yml
+    with:
+      source_ref: ${{ needs.prepare-snapshot.outputs.source }}
+      package_version: ${{ needs.prepare-snapshot.outputs.version }}
+      release_tag: ${{ needs.prepare-snapshot.outputs.tag }}
+  build-dist:
+    needs:
+      - prepare-snapshot
+      - build-docs
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux-x86_64
+            cc: gcc
+          - runner: macos-15-intel
+            platform: macos-x86_64
+            cc: clang
+          - runner: macos-latest
+            platform: macos-arm64
+            cc: clang
+          - runner: windows-latest
+            platform: windows-x86_64
+            cc: gcc
+    runs-on: ${{ matrix.runner }}
+    env:
+      L0_CC: ${{ matrix.cc }}
+      L1_CC: ${{ matrix.cc }}
+      L1_RUNTIME_CC: ${{ matrix.cc }}
+      ACCEPTANCE_PHASE: build
+      DEA_DIST_VERSION: ${{ needs.prepare-snapshot.outputs.version }}
+    steps:
+      - name: Show inputs
+        shell: bash
+        working-directory: .
+        env:
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+        run: |
+          echo "$INPUTS_JSON"
+
+          {
+            echo '### Workflow inputs'
+            echo '```json'
+            printf '%s\n' "$INPUTS_JSON"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve source bytes on Windows
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+      - name: Check out selected source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare-snapshot.outputs.source }}
+          persist-credentials: false
+      - name: Set up Python
+        if: runner.os != 'Windows'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - name: Install Linux native tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential make
+      - name: Set up UCRT64 native tools
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          path-type: inherit
+          install: make diffutils mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-python mingw-w64-ucrt-x86_64-python-pip
+            mingw-w64-ucrt-x86_64-uv
+      - name: Record native compiler
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          command -v "$L1_CC"
+          "$L1_CC" --version
+      - name: Record native compiler (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          command -v "$L1_CC"
+          "$L1_CC" --version
+      - name: Set up uv
+        if: runner.os != 'Windows'
+        uses: astral-sh/setup-uv@v7
+      - name: Download shared documentation bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: l1-autodocs-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/l1-docs
+      - name: Build native acceptance evidence
+        env:
+          ACCEPTANCE_DIR: ${{ runner.temp }}/l1-acceptance
+          DOCS_ARTIFACT: ${{ runner.temp }}/l1-docs/dea_l1_autodocs.tar.gz
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -o pipefail
+          make -C l1 test-productization-acceptance 2>&1 | tee "$RUNNER_TEMP/l1-acceptance-build.log"
+      - name: Build native acceptance evidence (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          PYTHON: python
+          ACCEPTANCE_DIR: ${{ runner.temp }}/l1-acceptance
+          DOCS_ARTIFACT: ${{ runner.temp }}/l1-docs/dea_l1_autodocs.tar.gz
+        run: |
+          set -o pipefail
+          make -C l1 test-productization-acceptance 2>&1 | tee "$(cygpath -u "$RUNNER_TEMP")/l1-acceptance-build.log"
+      - name: Upload archive, original result, and portable harness
+        uses: actions/upload-artifact@v6
+        with:
+          name: l1-dist-evidence-${{ github.run_attempt }}-${{ matrix.platform }}
+          path: ${{ runner.temp }}/l1-acceptance
+          if-no-files-found: error
+      - name: Retain build log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: l1-build-log-${{ github.run_attempt }}-${{ matrix.platform }}
+          path: ${{ runner.temp }}/l1-acceptance-build.log
+          if-no-files-found: warn
+  verify-dist:
+    needs: build-dist
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux-x86_64
+            cc: gcc
+          - runner: macos-15-intel
+            platform: macos-x86_64
+            cc: clang
+          - runner: macos-latest
+            platform: macos-arm64
+            cc: clang
+          - runner: windows-latest
+            platform: windows-x86_64
+            cc: gcc
+    runs-on: ${{ matrix.runner }}
+    env:
+      L1_CC: ${{ matrix.cc }}
+      L1_RUNTIME_CC: ${{ matrix.cc }}
+    steps:
+      - name: Show inputs
+        shell: bash
+        working-directory: .
+        env:
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+        run: |
+          echo "$INPUTS_JSON"
+
+          {
+            echo '### Workflow inputs'
+            echo '```json'
+            printf '%s\n' "$INPUTS_JSON"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Set up Python
+        if: runner.os != 'Windows'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - name: Install Linux native tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential make
+      - name: Set up UCRT64 native tools
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          path-type: strict
+          install: make diffutils mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-python mingw-w64-ucrt-x86_64-python-pip
+            mingw-w64-ucrt-x86_64-uv
+      - name: Record native compiler
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          command -v "$L1_CC"
+          "$L1_CC" --version
+      - name: Record native compiler (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          command -v "$L1_CC"
+          "$L1_CC" --version
+      - name: Download exact archive and portable harness
+        uses: actions/download-artifact@v8
+        with:
+          name: l1-dist-evidence-${{ github.run_attempt }}-${{ matrix.platform }}
+          path: ${{ runner.temp }}/l1-acceptance
+      - name: Verify without source checkout or bootstrap compilers
+        env:
+          ACCEPTANCE_DIR: ${{ runner.temp }}/l1-acceptance
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -o pipefail
+          cd "$RUNNER_TEMP"
+          python3 -I "$ACCEPTANCE_DIR/harness/productization_acceptance.py" --phase verify 2>&1 | tee "$RUNNER_TEMP/l1-acceptance-smoke.log"
+      - name: Verify without source checkout or bootstrap compilers (Windows)
+        env:
+          ACCEPTANCE_DIR: ${{ runner.temp }}/l1-acceptance
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          set -o pipefail
+          cd "$(cygpath -u "$RUNNER_TEMP")"
+          python -I "$ACCEPTANCE_DIR/harness/productization_acceptance.py" --phase verify 2>&1 | tee "$(cygpath -u "$RUNNER_TEMP")/l1-acceptance-smoke.log"
+      - name: Retain successful acceptance report
+        if: success()
+        uses: actions/upload-artifact@v6
+        with:
+          name: l1-verification-${{ github.run_attempt }}-${{ matrix.platform }}
+          path: ${{ runner.temp }}/l1-acceptance/acceptance.json
+          if-no-files-found: error
+      - name: Retain verification log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: l1-smoke-log-${{ github.run_attempt }}-${{ matrix.platform }}
+          path: ${{ runner.temp }}/l1-acceptance-smoke.log
+          if-no-files-found: warn
+  publish-release:
+    needs:
+      - prepare-snapshot
+      - build-docs
+      - build-dist
+      - verify-dist
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: l1-publication-${{ needs.prepare-snapshot.outputs.tag }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_REF: ${{ needs.prepare-snapshot.outputs.source }}
+      RELEASE_TAG: ${{ needs.prepare-snapshot.outputs.tag }}
+      PUBLISH_RELEASE: ${{ inputs.publish_release }}
+    steps:
+      - name: Show inputs
+        shell: bash
+        working-directory: .
+        env:
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+        run: |
+          echo "$INPUTS_JSON"
+
+          {
+            echo '### Workflow inputs'
+            echo '```json'
+            printf '%s\n' "$INPUTS_JSON"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Check out immutable source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare-snapshot.outputs.source }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - name: Download exact build evidence
+        uses: actions/download-artifact@v8
+        with:
+          pattern: l1-dist-evidence-${{ github.run_attempt }}-*
+          path: ${{ runner.temp }}/l1-release/evidence
+      - name: Download matching acceptance reports
+        uses: actions/download-artifact@v8
+        with:
+          pattern: l1-verification-${{ github.run_attempt }}-*
+          path: ${{ runner.temp }}/l1-release/reports
+      - name: Download shared documentation bytes
+        uses: actions/download-artifact@v8
+        with:
+          name: l1-autodocs-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/l1-release/docs
+      - name: Validate seven assets and resume draft publication
+        run: python3 scripts/l1_release.py publish

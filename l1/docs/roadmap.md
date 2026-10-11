@@ -8,8 +8,8 @@ been promoted to initiatives or plans.
 
 L1 has one canonical L0-implemented compiler and is being prepared as the L1 0.1.0 development toolchain. The former L1
 Stage 2 is now the L1-implemented L2 compiler. L0 remains the active release line. The canonical split and fresh
-four-platform artifact acceptance are complete; hosted L1 release workflow implementation remains separate work. L1
-scope is not frozen and its feature backlog remains assigned here pending individual decisions.
+four-platform artifact acceptance are complete. L1 release workflows are implemented locally; hosted acceptance remains
+pending. L1 scope is not frozen and its feature backlog remains assigned here pending individual decisions.
 
 ## Current position
 
@@ -314,7 +314,7 @@ split dependency or implementing that work now.
 - Tool [l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md][bootstrap-productization] completed
   canonical L1 installation/distribution, stage-free schema-2 provenance, and strict HTML/full PDF. Fresh artifact
   builds and checkout-free verification passed on all four hosted platforms. ADR-0043 records the delivery contract;
-  hosted release workflow implementation remains separate work.
+  hosted release acceptance remains separate work.
 
 - Feature [2026-07-11-shared-l1-stage2-self-hosting-port-noref][stage2-self-hosting] ported the settled Stage 1 compiler
   to `.l1`, added the Stage 2 build and test workflow, and established strict triple-bootstrap validation.
@@ -330,8 +330,8 @@ split dependency or implementing that work now.
   preparation compatibility, with persistent reuse gated on configuration isolation, discovery, identity, and
   invalidation validation, and private fallback when reuse cannot be authorized.
 - Tool [work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md][release-workflows] consumes the
-  validated build/result/harness handoff for planned snapshot and release workflows. Implementation and separately
-  authorized hosted publication acceptance remain pending.
+  validated build/result/harness handoff through implemented snapshot, release, and reusable documentation workflows.
+  Local policy validation passes; separately authorized hosted snapshot and versioned-release acceptance remain pending.
 - Feature [2026-06-21-cheap-string-slices-noref][cheap-string-slices] extends `dea::slice` to ARC-backed string views
   while preserving internal terminated copies for native runtime calls that require them.
 - Feature [2026-08-30-typed-formatting-noref][typed-formatting] is the Priority 2 replacement for the combinatorial
@@ -401,8 +401,8 @@ backlog does not imply missing work where L1 already has a narrower surface.
 
 ### Tooling and delivery
 
-- Hosted L1 release/snapshot workflows consuming the retargeted canonical distribution contract, followed by separately
-  authorized publication acceptance under the active release-workflow plan.
+- Separately authorized hosted acceptance of the implemented L1 release/snapshot workflows under the active
+  release-workflow plan.
 - Hosted documentation publication and broader delivery tooling beyond the existing four-platform CI and isolated
   artifact acceptance gates.
 
