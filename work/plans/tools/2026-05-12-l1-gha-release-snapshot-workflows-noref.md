@@ -40,7 +40,7 @@
   - separately authorized hosted snapshot and release acceptance checks
 - Related:
   - [work/plans/tools/closed/2026-04-02-l1-ci-release-line-noref.md][ci-release-plan]
-  - [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization]
+  - [l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md][productization]
   - [l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md][autodocs]
   - [MONOREPO.md][monorepo]
   - [AGENTS.md][agent-policy] (remote and publication authorization)
@@ -69,8 +69,8 @@ implementation is retained and retargeted under the split plan. Canonical L1 use
 documentation, result, and acceptance records. Fresh canonical artifact builds and checkout-free verification passed on
 Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64. The current delivery contract is
 [l1/docs/decisions/0043-canonical-compiler-toolchain-delivery.md][delivery] with the amended
-[l1/docs/decisions/0001-bootstrap-adaptation-strategy.md][bootstrap]. The original productization plan awaits formal
-closure without reopening its completed implementation wholesale.
+[l1/docs/decisions/0001-bootstrap-adaptation-strategy.md][bootstrap]. The productization plan is closed with its
+delivery and documentation handoff complete.
 
 The old stage-separated reference plan is historical. Release integration consumes the newly generated canonical L1
 HTML/full-PDF bundle matching the retained `.l0` compiler and its actual support. No old stage-selected bundle may be
@@ -393,4 +393,4 @@ links.
 [delivery]: ../../../l1/docs/decisions/0043-canonical-compiler-toolchain-delivery.md
 [inventory]: ../../../l1/docs/reference/productization-inventory.md
 [monorepo]: ../../../MONOREPO.md
-[productization]: ../../../l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
+[productization]: ../../../l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md

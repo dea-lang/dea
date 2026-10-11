@@ -133,7 +133,7 @@ release namespaces (`l1-v*` and `l1-snapshot-*`) remain reserved but are not yet
 The following prerequisites must be met before the first L1 release or snapshot workflow is added:
 
 1. L1 `make install` and `make dist` must be implemented with a stable artifact contract through
-   [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md](l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md)
+   [l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md](l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md)
    or a successor.
 2. The exact archive-path output and reusable installed/archive smoke command must be documented and validated from a
    clean, relocated prefix on Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64. The installed `l1c` must work

@@ -24,7 +24,7 @@
 - Related:
   - `l1/docs/roadmap.md`
   - `l1/work/initiatives/closed/0002-runtime-static-library.md`
-  - `l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md`
+  - `l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md`
 - Repro: `make -C l1 test-stage1`
 
 ## Summary
@@ -161,3 +161,11 @@ so the install layout reflects the new archive/header split.
    current targeted replacement.
 2. Add a Windows CI lane before claiming Windows tcc end-to-end coverage; confirm `nm` underscore normalization there.
 3. Consider `DOCKER_RUNTIME_CC` only if Docker runtime-compiler override ergonomics become necessary.
+
+## ADR Impact
+
+- Decision: Separate public runtime declarations from native link inputs and select traced support in the build driver.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0027-runtime-archive-and-trace-selection-boundary.md`
+  - Rationale: ADR-0027 records this completed runtime split, archive selection, and compiler-family fallback contract.

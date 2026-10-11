@@ -311,6 +311,11 @@ split dependency or implementing that work now.
 
 ## Completed standalone plans
 
+- Tool [l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md][bootstrap-productization] completed
+  canonical L1 installation/distribution, stage-free schema-2 provenance, and strict HTML/full PDF. Fresh artifact
+  builds and checkout-free verification passed on all four hosted platforms. ADR-0043 records the delivery contract;
+  hosted release workflow implementation remains separate work.
+
 - Feature [2026-07-11-shared-l1-stage2-self-hosting-port-noref][stage2-self-hosting] ported the settled Stage 1 compiler
   to `.l1`, added the Stage 2 build and test workflow, and established strict triple-bootstrap validation.
 
@@ -324,11 +329,6 @@ split dependency or implementing that work now.
 - Bug Fix [2026-09-27-legacy-clang-preparation-compatibility-noref][legacy-clang-preparation] drafts Clang 14/15
   preparation compatibility, with persistent reuse gated on configuration isolation, discovery, identity, and
   invalidation validation, and private fallback when reuse cannot be authorized.
-- Tool [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][bootstrap-productization] implements the
-  canonical L0-implemented L1 install/dist workflow. Stage-free schema-2 archives, provenance, strict HTML/full PDF, and
-  fresh exact-artifact builds and checkout-free verification passed on all four hosted platforms. ADR-0043 records the
-  current delivery contract; former Stage 2 acceptance remains historical. The release-workflow prerequisites are met;
-  productization's formal plan closure remains.
 - Tool [work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md][release-workflows] consumes the
   validated build/result/harness handoff for planned snapshot and release workflows. Implementation and separately
   authorized hosted publication acceptance remain pending.
@@ -423,7 +423,7 @@ update to be promoted to an initiative or plan:
 [artifact-graph]: ../work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md
 [bitwise-operators]: ../work/plans/features/closed/2026-04-18-l1-bitwise-operators-noref.md
 [blocking-networking]: ../work/initiatives/0007-blocking-networking.md
-[bootstrap-productization]: ../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
+[bootstrap-productization]: ../work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md
 [build-run]: ../work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [c-ffi]: ../work/initiatives/0003-c-ffi.md
 [case-builtin-literals]: ../work/plans/bug-fixes/closed/2026-06-08-stage1-case-builtin-literal-support-noref.md

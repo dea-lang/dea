@@ -43,7 +43,7 @@ make test-all
 - **Runtime-toggleable tracing.** Trace and non-trace builds ship as distinct archives; switching tracing on at runtime
   through function pointers is explicitly out of scope.
 - **Release-bearing L1 distribution policy** beyond the bootstrap packaging tracked under
-  [`l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md`][bootstrap-productization].
+  [`l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md`][bootstrap-productization].
 - **Backporting to L0.** L0 keeps its header-only runtime per the `1.0.0` scope boundary. Everything in this initiative
   lands in `l1/`'s copy of the runtime tree.
 
@@ -214,7 +214,7 @@ The implementation of the runtime split itself remains owned by
 - **Trace archive**: `libdea_rt_traced.a`, the variant compiled with `DEA_TRACE_ARC` and `DEA_TRACE_MEMORY` defined.
 - **Symbol manifest**: a checked-in list of symbols exported by `libdea_rt.a` used as a validation contract.
 
-[bootstrap-productization]: ../../plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
+[bootstrap-productization]: ../../plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md
 [c-ffi]: ../0003-c-ffi.md
 [roadmap]: ../../../docs/roadmap.md
 [runtime-split]: ../../plans/refactors/closed/2026-04-24-runtime-static-library-split-noref.md

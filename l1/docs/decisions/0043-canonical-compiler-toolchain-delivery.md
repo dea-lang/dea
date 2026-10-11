@@ -45,8 +45,8 @@ new stage-free schema-2 product; use fresh prefixes and regenerate matching docu
 
 - [work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../../work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md):
   completed canonical delivery retargeting and fresh four-platform artifact acceptance.
-- [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md](../../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md):
-  prior implementation and historical acceptance.
+- [l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md](../../work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md):
+  completed installation/distribution contract, documentation handoff, and canonical four-platform acceptance.
 
 ## Current Docs
 

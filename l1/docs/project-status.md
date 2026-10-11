@@ -200,7 +200,7 @@ and the [l1/docs/decisions/0001-bootstrap-adaptation-strategy.md](decisions/0001
 amendment record the current delivery/bootstrap contracts. Fresh canonical artifact acceptance passed on all four hosted
 platforms, satisfying the prerequisite for
 [work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md](../../work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md);
-hosted workflow implementation and publication acceptance remain pending. Productization awaits formal plan closure. See
+hosted workflow implementation and publication acceptance remain pending. The productization plan is closed. See
 [l1/docs/reference/productization-inventory.md](reference/productization-inventory.md) and
 [l1/docs/reference/stdlib-preparation.md](reference/stdlib-preparation.md).
 

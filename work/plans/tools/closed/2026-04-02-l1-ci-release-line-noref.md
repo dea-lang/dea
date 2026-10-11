@@ -17,8 +17,8 @@
 - Porting rule: Shared policy at root; L1-local implementation details stay in `l1/` but should not fork the shared
   release-line rules
 - Target status:
-  - Monorepo release policy: Pending
-  - L1 bootstrap CI: Pending
+  - Monorepo release policy: Completed
+  - L1 bootstrap CI: Completed
 - Subsystem: GitHub Actions / release tagging / monorepo release policy
 - Modules:
   - `.github/workflows/`
@@ -30,9 +30,9 @@
   - workflow trigger and tag-policy validation
 - Related:
   - `work/plans/refactors/closed/2026-04-02-l1-bootstrap-scaffold-noref.md`
-  - `l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md`
+  - `l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md`
 
-## Summary
+## Historical scope
 
 The monorepo currently ships only L0 automation workflows: `l0-ci.yml`, `l0-release.yml`, `l0-snapshot.yml`, and the L0
 docs workflows. Monorepo policy already reserves the `l1-v*` and `l1-snapshot-*` namespaces, but L1 is not yet an
@@ -42,7 +42,7 @@ This plan defines the first L1 automation policy after productization exists. Th
 CI only. Release and snapshot automation come later, and only after the L1 install/dist artifact contract is stable
 enough to support smoke-tested publication.
 
-## Current State
+## Historical baseline
 
 1. There is no L1 CI workflow under `.github/workflows/`.
 2. The repo currently publishes only L0 release/snapshot workflows.
@@ -54,9 +54,9 @@ enough to support smoke-tested publication.
 
 ## Dependency Statement
 
-This plan depends on `l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md` landing first. No L1 release
-or snapshot workflow should be implemented before the install/dist artifact shape, launcher behavior, and smoke tests
-are defined.
+The release/snapshot phase depended on `l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md`
+defining installation, artifacts, launchers, and smoke verification. That prerequisite is now complete; hosted release
+workflows remain owned by the separate release-workflow plan.
 
 The dependency above is implementation-local detail, not a reason to split this shared work into a separate follow-up
 root plan and L1 plan pair.
@@ -159,3 +159,13 @@ by any workflow; (5) policy is consistent across all three doc sites.
 1. L1 CI must consume the artifact and launcher behavior defined by the productization plan rather than redefining them.
 2. Release automation should appear only after L1 has smoke-testable install/dist outputs.
 3. Root workflow files remain monorepo-owned even when they primarily validate `l1/`.
+
+## ADR Impact
+
+- Decision: Stage the initial L1 CI rollout while deferring hosted release workflow implementation.
+  - Scope: N/A
+  - Disposition: ADR not warranted
+  - ADR: None
+  - Rationale: This plan implemented bootstrap CI and documented rollout prerequisites under the existing monorepo
+    release namespaces. Hosted release architecture was deferred to the separate release-workflow plan; the rollout
+    sequence does not require a separate architectural record.

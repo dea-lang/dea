@@ -58,7 +58,7 @@
   - `l1/compiler/stage1_l0/tests/io_runtime_test.py`
 - Related:
   - [l1/work/plans/features/closed/2026-09-07-standalone-link-interface-discovery-noref.md][link-discovery] (superseded)
-  - [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][bootstrap-productization]
+  - [l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md][bootstrap-productization]
   - [docs/specs/compiler/cli-contract.md][cli-contract]
   - [docs/specs/compiler/diagnostic-code-catalog.md][diagnostics]
   - [l1/docs/reference/separate-compilation.md][separate-compilation]
@@ -310,9 +310,9 @@ configuration, trace configuration, or other native setting.
 ### Productization Handoff
 
 This ownership model supersedes the installed-native assumptions in
-[l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][bootstrap-productization]. Align that companion
-plan before this plan closes; remove its default native-profile payload, native-profile export/lookup handoff, and
-shipped-native-profile acceptance requirements from this delivery contract.
+[l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md][bootstrap-productization]. Align that
+companion plan before this plan closes; remove its default native-profile payload, native-profile export/lookup handoff,
+and shipped-native-profile acceptance requirements from this delivery contract.
 
 In particular, productization must remove:
 
@@ -1378,7 +1378,7 @@ Validation includes focused CLI, graph, link, preparation/cache, bootstrap and i
 the complete unit before finalization.
 
 [backend]: ../../../../docs/reference/c-backend-design.md
-[bootstrap-productization]: ../../tools/2026-04-02-l1-bootstrap-productization-noref.md
+[bootstrap-productization]: ../../tools/closed/2026-04-02-l1-bootstrap-productization-noref.md
 [build-run]: ../../../../docs/decisions/0033-multi-compilation-unit-build-and-run-pipeline.md
 [cli-contract]: ../../../../../docs/specs/compiler/cli-contract.md
 [diagnostics]: ../../../../../docs/specs/compiler/diagnostic-code-catalog.md

@@ -7,7 +7,7 @@ toolchain. Prefix ownership, recoverable payload copying, installed-context laun
 startup validation and optional canonical L1 documentation installation are implemented. `make dist` creates a local
 archive with required canonical L1 documentation, and `make smoke-dist` validates that exact artifact. Historical Stage
 2 four-platform acceptance evidence is recorded in
-[l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization].
+[l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md][productization].
 
 ## Local distribution workflow
 
@@ -331,5 +331,5 @@ host prerequisites are absent.
 [installation]: ../../compiler/support/installation.h
 [inventory]: ../../scripts/productization_inventory.py
 [launchers]: ../../scripts/productization_launchers.py
-[productization]: ../../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
+[productization]: ../../work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md
 [provenance]: ../../scripts/productization_provenance.py

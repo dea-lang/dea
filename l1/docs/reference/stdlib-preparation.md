@@ -210,7 +210,7 @@ aliases, and never writes into the installation.
 Installed payloads provide equivalent verified semantic interfaces plus the canonical executable, stdlib/runtime
 sources, headers, and other rebuild inputs. Installation, distribution, and relocated standalone verification are
 implemented and passed native four-platform artifact acceptance under
-[l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][productization]. The delivery commands and
+[l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md][productization]. The delivery commands and
 immutable installed-payload boundary are documented in
 [l1/docs/reference/productization-inventory.md][delivery-contract].
 
@@ -360,4 +360,4 @@ users compiling outside `l1c` arrange their own matching runtime.
 [cli]: ../../../docs/specs/compiler/cli-contract.md
 [delivery-contract]: productization-inventory.md
 [legacy-clang-plan]: ../../work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md
-[productization]: ../../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md
+[productization]: ../../work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md
