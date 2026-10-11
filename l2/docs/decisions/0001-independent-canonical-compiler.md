@@ -43,8 +43,8 @@ boundaries, since historical proof applies to the tested implementation.
 
 ## Related Plans
 
-- [work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../../work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md):
-  shared implementation and validation.
+- [work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../../work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md):
+  completed independent target ownership, explicit installed/development construction, and native/isolation validation.
 
 ## Current Docs
 

@@ -1,7 +1,7 @@
 # ADR-0014: Intentional Cross-Level Divergence and Parity Exceptions
 
 - Decision date: 2026-06-08
-- Last edited: 2026-10-10
+- Last edited: 2026-10-11
 - Status: Accepted
 
 ## Context
@@ -57,7 +57,7 @@ is removed.
 
 ## Related Plans
 
-- [work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md):
+- [work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md):
   oracle applicability amendment.
 
 - [l1/work/plans/features/closed/2026-06-08-case-else-removal-l1-phase2-noref.md](../../l1/work/plans/features/closed/2026-06-08-case-else-removal-l1-phase2-noref.md):

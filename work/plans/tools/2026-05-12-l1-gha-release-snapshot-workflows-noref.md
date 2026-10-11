@@ -3,8 +3,8 @@
 ## Add L1 snapshot and release GHA workflows
 
 - Date: 2026-06-22
-- Last reviewed: 2026-10-10
-- Status: In progress (canonical artifact acceptance incomplete; workflow implementation and hosted publication pending)
+- Last reviewed: 2026-10-11
+- Status: In progress (workflow implementation and hosted publication acceptance pending)
 - Title: Add L1 snapshot and release GHA workflows
 - Kind: Tooling
 - Scope: Shared
@@ -20,10 +20,10 @@
 - Porting rule: Shared. Trigger, namespace, and publication policy belong here. L1 install layout, archive construction,
   launcher behavior, and installed smoke tests remain owned by the L1 productization plan.
 - Target status:
-  - L1 snapshot GHA workflow: Deferred until the canonical split and fresh four-platform artifact acceptance complete
-  - L1 release GHA workflow: Deferred behind the same canonical-artifact prerequisite
-  - L1 docs build integration: Canonical strict HTML/full PDF generation passed; fresh four-platform acceptance and
-    reusable release job pending
+  - L1 snapshot GHA workflow: Implementation pending; canonical split and artifact-acceptance prerequisites complete
+  - L1 release GHA workflow: Implementation pending; the same canonical-artifact prerequisites are complete
+  - L1 docs build integration: Canonical strict HTML/full PDF and fresh four-platform acceptance passed; reusable
+    release job pending
   - Monorepo release-line policy: Readiness and hosted-publication acceptance policy documented
 - Subsystem: GitHub Actions / release tagging / monorepo release-line policy
 - Modules:
@@ -47,15 +47,16 @@
 
 ## Split prerequisite and current readiness
 
-L1 0.1.0 must distribute the sole L0-implemented canonical `l1c` and matching stage-free schema-2 documentation.
-Implement this deferred workflow plan only after the split and fresh canonical-artifact acceptance complete. Historical
-2026-10-09 Stage 2 acceptance below is prior-product evidence and cannot satisfy this gate. The existing acceptance
-workflow is locally adapted by the split; it is not a release workflow or evidence of publication readiness.
+L1 0.1.0 must distribute the sole L0-implemented canonical `l1c` and matching stage-free schema-2 documentation. The
+split and fresh canonical-artifact acceptance completed on 2026-10-11, satisfying this plan's implementation
+prerequisites. Historical 2026-10-09 Stage 2 acceptance below remains prior-product evidence. The existing acceptance
+workflow validates canonical artifacts; release workflow implementation and hosted publication acceptance remain
+separate.
 
 Keep the exact immutable source/version/docs handoff, four platforms, seven public assets, reserved L1 namespaces,
 `make_latest=false`, safe retries, and separate authorization gates. No workflow dispatch, release tag, push, or
 publication is authorized by this plan. Retargeting is tracked in
-[work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md).
+[work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md).
 
 ## Dependency Statement
 
@@ -65,8 +66,8 @@ plan owns that deferred work and the gate's implementation details.
 
 The former Stage 2 installation/distribution and four-platform fresh-host acceptance were completed on 2026-10-09. That
 implementation is retained and retargeted under the split plan. Canonical L1 uses stage-free schema-2 install,
-documentation, result, and acceptance records. Fresh canonical-artifact acceptance is pending; the old evidence does not
-establish the new prerequisite. The current delivery contract is
+documentation, result, and acceptance records. Fresh canonical artifact builds and checkout-free verification passed on
+Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64. The current delivery contract is
 [l1/docs/decisions/0043-canonical-compiler-toolchain-delivery.md][delivery] with the amended
 [l1/docs/decisions/0001-bootstrap-adaptation-strategy.md][bootstrap]. The original productization plan awaits formal
 closure without reopening its completed implementation wholesale.
@@ -81,13 +82,14 @@ check or an empty local tag list does not establish the current remote state.
 
 ## Current State
 
-Reviewed on 2026-10-10 against the split implementation:
+Reviewed on 2026-10-11 against the completed split and fresh hosted acceptance:
 
-1. `MONOREPO.md` records the fresh canonical-artifact prerequisite. L1 release/snapshot workflows remain deferred.
+1. The canonical split and artifact-acceptance prerequisites recorded in `MONOREPO.md` are met. L1 release/snapshot
+   workflow implementation remains pending.
 2. Existing L1 compiler CI and productization acceptance cover Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64.
 3. L1 has one L0-implemented canonical compiler. Installation builds it privately and ignores development selections.
 4. Installation/inventory/dist/smoke/evidence helpers retain their distinct responsibilities. The old native acceptance
-   belongs to the Stage 2 artifact; fresh canonical product evidence remains pending.
+   belongs to the Stage 2 artifact; fresh canonical product acceptance passed on all four native platforms.
 5. L0 workflows provide examples, but Pages/blog work remains outside scope. L0 remains the active release line.
 
 ## Defaults Chosen

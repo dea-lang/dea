@@ -1,7 +1,7 @@
 # ADR-0043: Canonical Compiler Toolchain Delivery
 
 - Decision date: 2026-10-10
-- Last edited: 2026-10-10
+- Last edited: 2026-10-11
 - Status: Accepted
 - Supersedes: [ADR-0041](0041-stage-separated-source-references.md)
 - Supersedes: [ADR-0042](0042-self-hosted-toolchain-delivery.md)
@@ -43,8 +43,8 @@ new stage-free schema-2 product; use fresh prefixes and regenerate matching docu
 
 ## Related Plans
 
-- [work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../../work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md):
-  compiler retargeting and new evidence.
+- [work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../../work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md):
+  completed canonical delivery retargeting and fresh four-platform artifact acceptance.
 - [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md](../../work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md):
   prior implementation and historical acceptance.
 

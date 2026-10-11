@@ -1,17 +1,18 @@
 # L1 Project Status
 
-Version: 2026-10-10
+Version: 2026-10-11
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
 Dea/L1 has one canonical compiler, `l1c`, implemented in `.l0` under `compiler/src/`. It owns L1 stdlib/runtime inputs
 under `compiler/shared/`. The former L1 Stage 2 is transplanted into L2 and no longer selects the L1 product.
 
-Installation/distribution and offline HTML/full PDF are being retargeted to the canonical compiler. Recorded native
-Stage 2 acceptance on 2026-10-09 is historical; fresh four-platform exact-artifact acceptance is required for the new
-product. Hosted L1 release workflows remain deferred. L1 0.1.0 is intended as the canonical development toolchain,
-without freezing its feature scope or requiring its entire backlog. See the shared split plan in
-[work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md).
+Installation/distribution and offline HTML/full PDF now target the canonical compiler. Hosted compiler CI and fresh
+four-platform exact-artifact acceptance passed on 2026-10-11, including verification without checkout or bootstrap
+artifacts. Stage 2 acceptance remains historical. Hosted L1 release workflows await separate implementation. L1 0.1.0 is
+intended as the canonical development toolchain, without freezing its feature scope or requiring its entire backlog. See
+the shared split plan in
+[work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md).
 
 ## Scope and Canonical References
 
@@ -196,8 +197,8 @@ and retained archive/result/harness evidence; ordinary `test-ci` does not replac
 
 [l1/docs/decisions/0043-canonical-compiler-toolchain-delivery.md](decisions/0043-canonical-compiler-toolchain-delivery.md)
 and the [l1/docs/decisions/0001-bootstrap-adaptation-strategy.md](decisions/0001-bootstrap-adaptation-strategy.md)
-amendment record the current delivery/bootstrap contracts. Fresh canonical artifact acceptance remains pending before
-handoff to
+amendment record the current delivery/bootstrap contracts. Fresh canonical artifact acceptance passed on all four hosted
+platforms, satisfying the prerequisite for
 [work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md](../../work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md);
 hosted workflow implementation and publication acceptance remain pending. Productization awaits formal plan closure. See
 [l1/docs/reference/productization-inventory.md](reference/productization-inventory.md) and

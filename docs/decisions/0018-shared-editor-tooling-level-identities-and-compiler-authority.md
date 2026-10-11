@@ -1,7 +1,7 @@
 # ADR-0018: Shared Editor Tooling, Level Identities, and Compiler Authority
 
 - Decision date: 2026-06-30
-- Last edited: 2026-10-10
+- Last edited: 2026-10-11
 - Status: Accepted
 
 ## Context
@@ -66,7 +66,7 @@ reimplementing the language independently.
 
 ## Related Plans
 
-- [work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md):
+- [work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md):
   L2 editor identity.
 
 - [work/plans/features/closed/2026-06-30-shared-editor-support-noref.md](../../work/plans/features/closed/2026-06-30-shared-editor-support-noref.md):

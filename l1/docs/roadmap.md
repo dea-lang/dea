@@ -1,14 +1,14 @@
 # Dea/L1 Roadmap
 
-Version: 2026-10-10
+Version: 2026-10-11
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
 been promoted to initiatives or plans.
 
 L1 has one canonical L0-implemented compiler and is being prepared as the L1 0.1.0 development toolchain. The former L1
-Stage 2 is now the L1-implemented L2 compiler. L0 remains the active release line. Fresh canonical artifact acceptance
-must complete before hosted L1 release workflows; historical Stage 2 acceptance does not satisfy that prerequisite. L1
+Stage 2 is now the L1-implemented L2 compiler. L0 remains the active release line. The canonical split and fresh
+four-platform artifact acceptance are complete; hosted L1 release workflow implementation remains separate work. L1
 scope is not frozen and its feature backlog remains assigned here pending individual decisions.
 
 ## Current position
@@ -17,7 +17,7 @@ scope is not frozen and its feature backlog remains assigned here pending indivi
 
 - Canonical references describe that compiler and L1 stdlib/runtime, with stage-free verified offline HTML/full PDF.
   Direct installs may include docs; distribution archives require matching docs. Fresh four-platform exact-artifact
-  acceptance is pending for the retargeted product.
+  acceptance passed for the canonical product, including checkout-free verification.
 
 - The current L1 runtime and stdlib inputs live under `compiler/shared/runtime/` and `compiler/shared/l1/stdlib/`.
 
@@ -60,8 +60,9 @@ scope is not frozen and its feature backlog remains assigned here pending indivi
 ## Compiler-lineage split
 
 The former self-hosted port and source review are completed historical milestones. Their compiler now belongs to L2; the
-closed plans and evidence remain unchanged. The immediate shared split implementation is tracked in
-[2026-10-10-shared-l1-l2-canonical-compiler-split-noref](../../work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md).
+closed plans and evidence remain unchanged. The completed shared split and fresh compiler/artifact acceptance are
+recorded in
+[work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md).
 Explicit profiles/composable builds remain intended for canonical L1 first and subsequent L2 porting, without adding a
 split dependency or implementing that work now.
 
@@ -325,9 +326,9 @@ split dependency or implementing that work now.
   invalidation validation, and private fallback when reuse cannot be authorized.
 - Tool [l1/work/plans/tools/2026-04-02-l1-bootstrap-productization-noref.md][bootstrap-productization] implements the
   canonical L0-implemented L1 install/dist workflow. Stage-free schema-2 archives, provenance, strict HTML/full PDF, and
-  exact-artifact verification passed locally on Linux x86_64 and macOS Intel with source/bootstrap access unavailable.
-  ADR-0043 records the current delivery contract; former Stage 2 acceptance remains historical. Fresh hosted matrix
-  completion, macOS ARM and native Windows acceptance, release-workflow handoff, and formal plan closure remain.
+  fresh exact-artifact builds and checkout-free verification passed on all four hosted platforms. ADR-0043 records the
+  current delivery contract; former Stage 2 acceptance remains historical. The release-workflow prerequisites are met;
+  productization's formal plan closure remains.
 - Tool [work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md][release-workflows] consumes the
   validated build/result/harness handoff for planned snapshot and release workflows. Implementation and separately
   authorized hosted publication acceptance remain pending.
@@ -400,7 +401,6 @@ backlog does not imply missing work where L1 already has a narrower surface.
 
 ### Tooling and delivery
 
-- Complete the canonical compiler split and fresh retargeted artifact acceptance.
 - Hosted L1 release/snapshot workflows consuming the retargeted canonical distribution contract, followed by separately
   authorized publication acceptance under the active release-workflow plan.
 - Hosted documentation publication and broader delivery tooling beyond the existing four-platform CI and isolated

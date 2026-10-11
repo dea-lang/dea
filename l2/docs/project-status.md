@@ -15,6 +15,7 @@ source suffixes are `.l2`, interfaces are `.l2m`, and level-specific driver diag
 retain their registered meanings. Extensionless logical module names remain valid. Compatibility ABI/header symbols may
 retain historical names such as `l1_real.h` without changing target ownership.
 
-The shared split plan tracks implementation, local validation, and outstanding platform evidence separately. L2 has no
-self-hosting, parity/triple-bootstrap gate, release productization, or new feature scope. See
-[work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md).
+The shared split is complete: hosted compiler CI passed on Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64,
+including coordinated development handoffs; both Linux isolation phases passed. L2 has no self-hosting,
+parity/triple-bootstrap gate, release productization, or new feature scope. See
+[work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md).

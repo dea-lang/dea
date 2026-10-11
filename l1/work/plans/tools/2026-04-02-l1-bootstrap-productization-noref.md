@@ -3,7 +3,7 @@
 ## Canonical L1 install and distribution workflow
 
 - Date: 2026-04-02
-- Last reviewed: 2026-10-10
+- Last reviewed: 2026-10-11
 - Status: In progress
 - Title: Canonical L1 install and distribution workflow
 - Kind: Tooling
@@ -15,11 +15,12 @@
   - Distribution archives, atomic result metadata, and artifact smoke command: Implemented and retargeted
   - Canonical HTML/full PDF: Strict canonical HTML and full indexed PDF passed; required for distributions and optional
     as a verified bundle for direct installs
-  - Fresh canonical artifact acceptance: Linux x86_64 and macOS Intel exact archives passed local isolated verification;
-    fresh hosted matrix completion, macOS ARM, and Windows UCRT64 remain pending
+  - Fresh canonical artifact acceptance: Documentation, native artifact builds, and checkout-free verification passed on
+    Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64
   - Architectural records: Canonical delivery recorded in ADR-0043; former Stage 2 decisions retained as superseded
     history
-  - Hosted release-workflow handoff: Deferred until the shared split and fresh artifact acceptance are complete
+  - Hosted release-workflow handoff: Canonical split and fresh four-platform acceptance prerequisites complete; workflow
+    implementation and publication remain separate work
   - Formal plan closure: Pending
 - Subsystem: Build workflow / install layout / distribution packaging / bootstrap docs
 - Modules:
@@ -83,16 +84,16 @@ The former Stage 2 implementation and 2026-10-09 four-platform acceptance below 
 product. Do not rerun the obsolete stage recipes as current instructions or relabel its acceptance. Its completed
 implementation is retained; formal closure remains pending, and the initiative is not reopened wholesale.
 
-The current shared split implementation is tracked by
-[work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../../../work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md).
+The completed shared split and its fresh hosted acceptance are recorded in
+[work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../../../work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md).
 It retargets installation/distribution to the sole L0-implemented `l1c`, with private installed construction, canonical
 semantic-input verification, stage-free schema-2 references/inventory/results, and fresh prefixes. Ownership/recovery,
 relocation, exact-artifact handoff, four-platform fresh-host acceptance, and mandatory dist HTML/full PDF are unchanged.
-Fresh local exact-artifact acceptance passed on Linux x86_64 and macOS Intel; the remaining platform and hosted gates
-are pending. Current operational contracts live in
+Fresh hosted canonical artifact builds and checkout-free verification passed on all four native platforms on 2026-10-11,
+with a matching verified canonical HTML/full-PDF bundle. Current operational contracts live in
 [l1/docs/decisions/0043-canonical-compiler-toolchain-delivery.md](../../../docs/decisions/0043-canonical-compiler-toolchain-delivery.md)
-and [l1/AGENTS.md](../../../AGENTS.md). The split plan owns new implementation work and its consolidated evidence. The
-ADR Impact section reflects the current accepted contract.
+and [l1/AGENTS.md](../../../AGENTS.md). The closed split plan records the retargeting decisions and final acceptance.
+The ADR Impact section reflects the current accepted contract.
 
 ### Canonical verification (2026-10-10)
 

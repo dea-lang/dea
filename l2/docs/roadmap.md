@@ -1,15 +1,15 @@
 # Dea/L2 Roadmap
 
-Version: 2026-10-10
+Version: 2026-10-11
 
 L2 establishes an independent canonical compiler implemented in L1, with owned `.l2` stdlib/runtime inputs and `.l2m`
-interfaces. The first milestone is successful build, representative language and separate-compilation tests, and actual
-isolation with sibling trees inaccessible and an explicitly installed L1 bootstrap toolchain.
+interfaces. The initial milestone passed native compiler CI on all four platforms and two-phase Linux isolation with
+sibling trees inaccessible and an explicitly installed L1 bootstrap toolchain.
 
-## Active shared work
+## Completed shared milestone
 
-- [2026-10-10-shared-l1-l2-canonical-compiler-split-noref](../../work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md):
-  canonical split, independent ownership, and validation. No duplicate L2 implementation plan is opened.
+- [work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md):
+  completed the canonical split, independent ownership, coordinated development reuse, and optional isolation.
 
 ## Future placement
 

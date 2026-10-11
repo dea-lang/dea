@@ -1,7 +1,7 @@
 # ADR-0001: Bootstrap Adaptation Strategy
 
 - Decision date: 2026-04-02
-- Last edited: 2026-10-10
+- Last edited: 2026-10-11
 - Status: Accepted
 
 ## Context
@@ -58,7 +58,7 @@ verification remain separate tooling operations. The delivery contract is record
 
 ## Related Plans
 
-- [work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../../work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md):
+- [work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../../work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md):
   canonical compiler delivery amendment.
 
 - [work/plans/refactors/closed/2026-04-02-l1-bootstrap-scaffold-noref.md][scaffold]

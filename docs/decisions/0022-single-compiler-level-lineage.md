@@ -1,7 +1,7 @@
 # ADR-0022: Single-Compiler Level Lineage
 
 - Decision date: 2026-10-10
-- Last edited: 2026-10-10
+- Last edited: 2026-10-11
 - Status: Accepted
 - Supersedes: [ADR-0001](0001-two-stage-architecture.md)
 
@@ -85,8 +85,8 @@ cross-level ports require an explicit scope decision.
   established the retained L0 self-hosting validation.
 - [work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md](../../work/plans/features/closed/2026-07-11-shared-l1-stage2-self-hosting-port-noref.md):
   supplied the proven L1 implementation subsequently transplanted into L2.
-- [work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../work/plans/refactors/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md):
-  implementation and fresh acceptance tracking.
+- [work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md):
+  completed the canonical split and fresh compiler, isolation, and artifact acceptance.
 
 ## Current Docs
 
