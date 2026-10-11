@@ -17,9 +17,8 @@
 - Porting rule: Mechanically transplant the former L1 Stage 2 into L2; preserve semantics and physical ownership.
 - Target status:
   - L1: Implemented; local compiler and macOS Intel/Linux artifact gates passed; remaining native acceptance pending
-  - L2: Implemented; local exhaustive compiler and two-phase container isolation gates passed; hosted Linux/Windows
-    rerun pending
-  - Shared tooling: Implemented; focused regressions passed
+  - L2: Implemented; installed-bootstrap baseline and opt-in isolation passed; coordinated development hosted CI pending
+  - Shared tooling: Implemented; focused regressions passed; explicit hosted validation of the new tree pending
 
 ## Summary
 
@@ -40,11 +39,11 @@ workflows are implemented.
   - Disposition: Covered by ADR
   - ADR: `l1/docs/decisions/0043-canonical-compiler-toolchain-delivery.md`
   - Rationale: The new artifact requires explicit construction, identity, and acceptance boundaries.
-- Decision: L2 owns its target inputs and builds only through an installed L1 toolchain.
+- Decision: L2 owns its target inputs and builds through an explicit installed or development L1 toolchain.
   - Scope: L2
-  - Disposition: Covered by ADR
+  - Disposition: Amend ADR
   - ADR: `l2/docs/decisions/0001-independent-canonical-compiler.md`
-  - Rationale: Record the initial independent level boundary without a duplicate implementation plan.
+  - Rationale: Preserve the independent target boundary while permitting explicit same-run development bootstrap reuse.
 
 ## Implementation
 
@@ -53,11 +52,16 @@ workflows are implemented.
 2. Build the installed L1 artifact in private scratch with an installed overlay; preserve semantic-input verification,
    prefix ownership/recovery, immutable inputs, writable caches, optional install docs and mandatory verified dist docs.
    New install/docs identities use stage-free schema 2 and fresh prefixes; reject obsolete schema-1 stage artifacts.
-3. Physically copy target support into L2. Require explicit installed `L2_BOOTSTRAP_L1C`; use `.l2`/`.l2m`, `l2c`, and
-   equivalent `L2C-xxxx` codes. Preserve extensionless logical targets, ABI, algorithms, and shared diagnostics.
+3. Physically copy target support into L2. Require explicit `L2_BOOTSTRAP_L1C`, installed by default with optional
+   `L2_BOOTSTRAP_MODE=development` for a generated development toolchain; use `.l2`/`.l2m`, `l2c`, and equivalent
+   `L2C-xxxx` codes. Preserve extensionless logical targets, ABI, algorithms, and shared diagnostics.
 4. Retarget live docs, applicable open plans, skills, selectors, workspace membership, editor identities, and existing
    CI. Preserve closed plans, attachments, and historical acceptance. Keep L1 features owned by L1 pending individual
    review.
+5. Reuse explicit same-run L0/L1 predecessor outputs in Unified CI. Prepare a missing development bootstrap once; reject
+   invalid handoffs. Keep standalone L2's installed bootstrap and make Docker isolation explicitly opt-in. Central L2
+   routing defaults off, with `default`/`on`/`off` manual overrides; an enabled default selects L2/shared-tooling
+   changes.
 
 ## Diagnostic Planning
 
@@ -75,6 +79,11 @@ reserved. Reconcile emitted L2 codes with the live shared catalog. Shared famili
 - Independent L2 build with installed L1 and sibling checkouts/artifacts inaccessible; target execution without L1.
   Include valid `.l2`, invalid `.l0`/`.l1`/other suffixes, logical targets, `.l2m` interfaces, and separate
   compile/link.
+- Same-run predecessor handoffs, missing-bootstrap preparation, invalid explicit selection, and installed/development
+  bootstrap modes. Central L2 routing defaults and manual overrides, unavailable diff endpoints, and default-disabled
+  Docker isolation retain native compiler and intentional construction coverage.
+- Explicit Unified CI against the finalized tree with `platform=all`, `run_l2_ci=on`, and `l2_run_isolation=true`.
+  Default routing does not establish acceptance for these changes.
 - L2 source discovery and focused test routing, preserved L0 stage selectors, portable path tests, ADR Impact,
   whitespace, and root pre-commit. Simulated Windows paths do not replace native Windows validation.
 
@@ -85,8 +94,12 @@ reserved. Reconcile emitted L2 codes with the live shared catalog. Shared famili
 Both levels now have canonical source, support, launcher, build, test, and target-input ownership. L1 installation uses
 two private L0 constructions, including the installed-mode overlay, records the actual construction command and runtime
 controls, and checks the installed semantic graph against immutable captured inputs. Schema-2 inventory, documentation,
-distribution, and acceptance identities reject former stage artifacts. L2 requires an explicit installed L1 bootstrap
-and preserves implementation ABI helpers while separating `.l2` programs and `.l2m` interfaces.
+distribution, and acceptance identities reject former stage artifacts. L2 requires an explicit L1 bootstrap, installed
+by default or a complete generated development toolchain in explicit development mode, and preserves implementation ABI
+helpers while separating `.l2` programs and `.l2m` interfaces. Unified CI passes predecessor paths between delegates
+without redundant L1 installation; intentional construction fixtures retain their builds. Linux Docker isolation is
+opt-in and keeps its installed Bookworm bootstrap. Automatic L2 routing and default manual selection share one initially
+disabled setting; explicit manual `off` always suppresses L2.
 
 Workspace, CI routing, editor associations, selectors, guidance, shared contracts, active-plan metadata, and the
 required ADRs are updated. Other feature plans remain owned by L1. Existing Stage 2 product evidence remains historical
@@ -128,46 +141,52 @@ instead of repeating an entire aggregate after a focused correction.
 - L1 canonical build/tooling regressions passed nine cases; the minimal Wine-context regressions passed six. Portable
   path checks include POSIX, Windows, mixed separators, spaces, and distinct-path rejection; these are simulations of
   Windows spelling, not native Windows execution.
-- L2 `compiler/scripts/run_tests.py`: all 66 normal cases and all five CI-only cases passed. Focused reruns cover the
-  final source-path correction, migrated fixture expectations, native support fixtures, and construction/preparation
-  checks; unchanged AST, type, and backend results remain applicable. No timeout bounds were relaxed. Existing
-  suffixless output files preserve logical module resolution; explicit paths and existing suffixed files reject wrong
-  source extensions before module fallback, including shadowing dotted-module names.
-- L2 `compiler/scripts/run_trace_tests.py`: all 47 default cases and both `--children` fixtures passed with no leaks.
-  The final canonical build verified all 23 semantic interfaces; six tooling tests and all four examples passed. These
-  complete the constituent checks of `make -C l2 test-ci`.
-- `L2_ISOLATION_BOOTSTRAP_PREFIX=<installed-linux-l1> make -C l2 test-isolation` passed. The fresh Bookworm build
-  contains only L2, the installed L1 prefix, and explicitly enumerated root tooling; its tooling and source-path,
+- Installed-bootstrap L2 baseline, `compiler/scripts/run_tests.py`: all 66 normal cases and all five CI-only cases
+  passed. Focused reruns cover the final source-path correction, migrated fixture expectations, native support fixtures,
+  and construction/preparation checks; unchanged AST, type, and backend results remain applicable. No timeout bounds
+  were relaxed. Existing suffixless output files preserve logical module resolution; explicit paths and existing
+  suffixed files reject wrong source extensions before module fallback, including shadowing dotted-module names.
+- Installed-bootstrap L2 baseline, `compiler/scripts/run_trace_tests.py`: all 47 default cases and both `--children`
+  fixtures passed with no leaks. The final canonical build verified all 23 semantic interfaces; six tooling tests and
+  all four examples passed. These complete the constituent checks of `make -C l2 test-ci`.
+- Reused-development L1 construction passed all 71 L2 normal/CI-only cases, 17 trace cases, and both child trace
+  fixtures. The complete development-bootstrap trace gate remains pending. Required acceptance comes from explicit
+  hosted CI against the new tree.
+- The opt-in `L2_ISOLATION_BOOTSTRAP_PREFIX=<installed-linux-l1> make -C l2 test-isolation` passed using a fresh
+  Bookworm prefix from `docker build -f l1/Dockerfile` and container `make install`. The construction image contains
+  only L2, the installed L1 prefix, and explicitly enumerated root tooling; its available tooling and source-path,
   filesystem-support, and language-identity checks passed. A separate operation image omits L1, L0, Python, and Make,
   clears bootstrap/target caches, cold-prepares L2-owned stdlib/runtime, produces and consumes `.l2m` after removing the
   provider source, links/runs the result, and rejects a `.l1` input with `L2C-0011`.
-- A fresh `docker build -f l1/Dockerfile` and container `make install` passed after the builder copied the three root
-  license/notice files required by L1 payload assembly. The resulting installed Linux prefix passed the complete L2
-  Docker isolation gate, including tooling, focused compiler checks, cold preparation, and target execution.
-- `uv run --group dev pytest -q l2/tests/test_build_tooling.py` passed all eight cases, including simulated Windows and
-  POSIX launcher selection for the cleanup-policy ICE regression. This does not replace native Windows validation.
+- Focused CI/bootstrap checks passed all 67 cases: 40 routing/delegate cases and 27 L2 construction cases. They cover
+  central defaults, all manual overrides, shared/level/unrelated paths, unavailable diffs, same-run reuse, missing
+  bootstrap preparation, invalid explicit paths, both modes, incomplete support, incompatible identities, environment
+  sanitation, and paths with spaces. Windows launcher selection is simulated, not native Windows validation.
 - `make -C l2 test-compiler TESTS=l2c_cleanup_policy_ice_test.py` passed the actual cleanup-policy ICE regression
   against a fresh native L1 installation, with `L1_CC`, `L2_CC`, and `L2_RUNTIME_CC` set to Clang.
-- Root `make clean test` passed on macOS Intel across L0, L1, and L2 with an explicit installed L1 bootstrap and Clang
-  selected for L1/L2 construction and target programs.
-- L0 Stage 1: 1,601 cases passed in the broad run; all 14 trace-checker tests passed after correcting the three failures
-  caused by the moved L1 checker path. L0 Stage 2 passed all 58 cases, and all eight examples passed. Runtime-build
+- Root `make clean test` passed on macOS Intel across L0, L1, and L2 with explicit `L2_BOOTSTRAP_MODE=development`, the
+  generated L1 launcher from the preceding level, and Clang for construction/target programs. Fresh installed-mode L2
+  construction and source-path, filesystem-support, and language-identity checks also passed using a separate L2 build
+  directory.
+- L0 Stage 1: all 1,614 cases passed. L0 Stage 2 passed all 58 cases, and all eight examples passed. Runtime-build
   controls passed 13 cases. Distribution, installation/build layout, fallback, release-tag policy, and source-selector
   workflow checks all passed. `make -C l0 test-stage2-trace` passed all 34 cases with no leaks. These complete the
-  constituent checks of `make -C l0 test-extended`, reusing the unchanged successful Stage 1 cases after the focused
-  trace-checker path correction.
+  constituent checks of `make -C l0 test-extended`, reusing the unchanged Stage 2 trace evidence.
 - Shared checks passed: 37 ADR-validator tests, source/plan selectors and stage rejection, both owned L1 diagnostic
   contracts, five cross-editor checks, seven VS Code checks, all workflow/action YAML parsing, and the offline workspace
   lock check. No closed plans or historical attachments were modified.
 
 ### Outstanding verification and release prerequisites
 
-Unified hosted compiler CI passed both macOS jobs and all L0/L1 delegates. The Ubuntu L2 isolation step failed when its
-L1 builder image omitted root license/notice files; the Windows L2 delegate failed when a cleanup-policy regression
-invoked an extensionless installed launcher under native Python. Both paths have local corrections, but hosted
-Linux/Windows reruns remain pending. Fresh macOS ARM and Windows UCRT64 artifact build/checkout-free verification and
-hosted product acceptance require their native environments. No workflow dispatch is authorized by this implementation.
-Keep this plan and the productization/release prerequisites open until all required fresh evidence exists. L1 0.1.0
+Run Unified CI explicitly against the finalized tree with `platform=all`, `run_l2_ci=on`, and `l2_run_isolation=true`.
+This must validate predecessor reuse and exhaustive L2 coverage across the native matrix, including both Linux isolation
+phases. Previous hosted evidence and default-disabled automatic routing do not satisfy this gate. The earlier Ubuntu
+builder license/notice omission and Windows extensionless installed-launcher invocation have local corrections awaiting
+this hosted validation.
+
+Fresh macOS ARM and Windows UCRT64 artifact build/checkout-free verification and hosted product acceptance remain
+separate native gates. Keep this plan and the productization/release prerequisites open until all required fresh
+evidence exists. Public pushes and workflow dispatches require separate fresh project maintainer confirmation. L1 0.1.0
 release workflows, the seven-asset/four-platform contract with `make_latest=false`, and publication remain separate
 future work.
 
@@ -175,5 +194,5 @@ future work.
 
 No new language feature, automatic backlog migration, L1 freeze, L2 productization, self-hosting, frozen-C bootstrap, or
 profiles/composable-build implementation. Profiles remain intended for L1 first and subsequent L2 porting. Do not add
-hosted snapshot/release/docs-build workflows, tags, pushes, dispatches, or publication. Those actions retain separate
-project-maintainer authorization under [AGENTS.md](../../../AGENTS.md).
+hosted snapshot/release/docs-build workflows, tags, or publication. Public pushes and CI dispatches retain separate
+project maintainer authorization under [AGENTS.md](../../../AGENTS.md).

@@ -18,6 +18,12 @@ import l2c_cleanup_policy_ice_test as cleanup_ice
 from dea_tooling import bootstrap
 
 
+@pytest.fixture(autouse=True)
+def installed_bootstrap_default(monkeypatch):
+    """Keep unit fixtures independent of the enclosing CI construction mode."""
+    monkeypatch.delenv("L2_BOOTSTRAP_MODE", raising=False)
+
+
 def test_no_implicit_or_development_bootstrap(monkeypatch, tmp_path):
     monkeypatch.delenv("L2_BOOTSTRAP_L1C", raising=False)
     with pytest.raises(RuntimeError, match="installed canonical L1"):
@@ -26,6 +32,115 @@ def test_no_implicit_or_development_bootstrap(monkeypatch, tmp_path):
     fake.parent.mkdir()
     fake.write_text("development binary")
     monkeypatch.setenv("L2_BOOTSTRAP_L1C", str(fake))
+    with pytest.raises(RuntimeError, match="complete installed L1 prefix"):
+        builder.resolve_bootstrap()
+
+
+def development_toolchain(tmp_path):
+    """Create the required generated development toolchain layout."""
+    layout = tmp_path / "L1 checkout/build/with spaces"
+    for relative in ("bin/l1c", "bin/l1c.cmd", "bin/l1c.native", "include/dea_rt.h",
+                     "include/l1_real.h", "interfaces/std/types.l1m"):
+        path = layout / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("fixture")
+    return layout
+
+
+@pytest.mark.parametrize("windows", [False, True])
+def test_explicit_development_bootstrap_preserves_selected_launcher(monkeypatch, tmp_path, windows):
+    layout = development_toolchain(tmp_path)
+    compiler = layout / "bin/l1c"
+    monkeypatch.setenv("L2_BOOTSTRAP_MODE", "development")
+    monkeypatch.setenv("L2_BOOTSTRAP_L1C", str(compiler))
+    monkeypatch.setenv("L2_BUILD_DIR", "build/bootstrap with spaces")
+    monkeypatch.setenv("L1_HOME", "unrelated checkout")
+    monkeypatch.setenv("L1_STDLIB_CACHE", "unrelated cache")
+    monkeypatch.setattr(bootstrap, "is_windows_host", lambda: windows)
+    if windows:
+        compiler.unlink()
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, "Dea language / L1 compiler\n", "")
+
+    monkeypatch.setattr(builder.subprocess, "run", run)
+    selected = compiler.with_suffix(".cmd") if windows else compiler
+    assert builder.resolve_bootstrap() == selected
+    assert calls[0][0] == [str(selected), "--version"]
+    assert "L1_HOME" not in calls[0][1]["env"]
+    assert calls[0][1]["env"]["L1_STDLIB_CACHE"] == str(L2_ROOT / "build/bootstrap with spaces/bootstrap-cache")
+    # A generated development toolchain is still rejected in default mode.
+    monkeypatch.delenv("L2_BOOTSTRAP_MODE")
+    with pytest.raises(RuntimeError, match="complete installed L1 prefix"):
+        builder.resolve_bootstrap()
+
+
+@pytest.mark.parametrize("missing", ["bin/l1c", "bin/l1c.native", "include/dea_rt.h",
+                                     "include/l1_real.h", "interfaces/std/types.l1m"])
+def test_development_bootstrap_rejects_missing_owned_support(monkeypatch, tmp_path, missing):
+    layout = development_toolchain(tmp_path)
+    (layout / missing).unlink()
+    if missing == "bin/l1c":
+        (layout / "bin/l1c.cmd").unlink()
+    monkeypatch.setenv("L2_BOOTSTRAP_MODE", "development")
+    monkeypatch.setenv("L2_BOOTSTRAP_L1C", str(layout / "bin/l1c"))
+    with pytest.raises(RuntimeError, match="generated bin/l1c launcher"):
+        builder.resolve_bootstrap()
+
+
+@pytest.mark.parametrize("banner", ["Dea language / L2 compiler", "Dea language / L1 compiler (Stage 2)", ""])
+@pytest.mark.parametrize("mode", ["installed", "development"])
+def test_bootstrap_rejects_incompatible_identity(monkeypatch, tmp_path, banner, mode):
+    layout = development_toolchain(tmp_path)
+    if mode == "installed":
+        manifest = layout / "share/dea/l1/install-manifest.json"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text('{"level":"l1","state":"complete"}')
+    monkeypatch.setenv("L2_BOOTSTRAP_MODE", mode)
+    monkeypatch.setenv("L2_BOOTSTRAP_L1C", str(layout / "bin/l1c"))
+    monkeypatch.setattr(builder.subprocess, "run", lambda command, **kwargs:
+                        subprocess.CompletedProcess(command, 0, banner, ""))
+    with pytest.raises(RuntimeError, match="incompatible L1 bootstrap identity"):
+        builder.resolve_bootstrap()
+
+
+def test_invalid_bootstrap_mode_has_no_fallback(monkeypatch, tmp_path):
+    monkeypatch.setenv("L2_BOOTSTRAP_MODE", "automatic")
+    monkeypatch.setenv("L2_BOOTSTRAP_L1C", str(tmp_path / "missing"))
+    with pytest.raises(RuntimeError, match="L2_BOOTSTRAP_MODE must be"):
+        builder.resolve_bootstrap()
+
+
+def test_installed_windows_executable_selection_is_preserved(monkeypatch, tmp_path):
+    layout = development_toolchain(tmp_path)
+    (layout / "bin/l1c").unlink()
+    (layout / "bin/l1c.cmd").unlink()
+    compiler = layout / "bin/l1c.exe"
+    compiler.write_text("Windows executable fixture")
+    manifest = layout / "share/dea/l1/install-manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text('{"level":"l1","state":"complete"}')
+    monkeypatch.setenv("L2_BOOTSTRAP_L1C", str(layout / "bin/l1c"))
+    monkeypatch.setattr(bootstrap, "is_windows_host", lambda: True)
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "Dea language / L1 compiler", "")
+
+    monkeypatch.setattr(builder.subprocess, "run", run)
+    assert builder.resolve_bootstrap() == compiler
+    assert calls == [[str(compiler), "--version"]]
+
+
+@pytest.mark.parametrize("record", ["[]", "null", '{"level":"l1","state":"incomplete"}', "invalid json"])
+def test_installed_bootstrap_rejects_invalid_inventory(monkeypatch, tmp_path, record):
+    manifest = tmp_path / "share/dea/l1/install-manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(record)
+    monkeypatch.setenv("L2_BOOTSTRAP_L1C", str(tmp_path / "bin/l1c"))
     with pytest.raises(RuntimeError, match="complete installed L1 prefix"):
         builder.resolve_bootstrap()
 

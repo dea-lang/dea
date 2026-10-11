@@ -7,8 +7,9 @@ Read `AGENTS.md` first for monorepo structure, then read the level-local guide b
 The root `Makefile` is monorepo-only orchestration (`help`, `venv`, `test`, `test-extended`, `clean`, `clean-all`). Root
 `test` and `test-extended` delegate to the corresponding target in each registered level. The extended tier varies by
 level: L0 includes its Stage 2 trace sweep, while L1 and L2 cover their canonical normal suites. Use level-local
-`test-ci` for exhaustive compiler validation. L2 construction requires explicit installed `L2_BOOTSTRAP_L1C`; focused
-level-specific commands run inside the owning directory.
+`test-ci` for exhaustive compiler validation. L2 construction requires explicit `L2_BOOTSTRAP_L1C`, installed by default
+or a development toolchain with explicit `L2_BOOTSTRAP_MODE=development`; focused level-specific commands run inside the
+owning directory.
 
 For Dea/L0 work, use `l0/AGENTS.md`.
 

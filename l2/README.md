@@ -12,7 +12,11 @@ make test
 L2_ISOLATION_BOOTSTRAP_PREFIX=/absolute/installed-bookworm-l1 make test-isolation
 ```
 
-A compatible installed L1 toolchain is an explicit build dependency. L2 never resolves target inputs from L1 and the
-built compiler operates on L2 programs without invoking L1. See [l2/AGENTS.md](AGENTS.md),
-[l2/docs/project-status.md](docs/project-status.md), and [l2/docs/roadmap.md](docs/roadmap.md). L2
-installation/distribution and hosted release workflows are outside this initial split.
+A compatible L1 toolchain is an explicit build dependency, installed by default. For coordinated development reuse, set
+`L2_BOOTSTRAP_MODE=development` and point `L2_BOOTSTRAP_L1C` at a generated L1 development launcher with its native
+binary, headers, and semantic interfaces. There is no implicit sibling-checkout or PATH fallback. L2 never resolves
+target inputs from L1 and the built compiler operates on L2 programs without invoking L1. Docker isolation is opt-in;
+routine Unified CI reuses explicit predecessor outputs and standalone L2 CI constructs an installed bootstrap. See
+[l2/AGENTS.md](AGENTS.md), [l2/docs/project-status.md](docs/project-status.md), and
+[l2/docs/roadmap.md](docs/roadmap.md). L2 installation/distribution and hosted release workflows are outside this
+initial split.

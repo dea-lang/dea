@@ -192,7 +192,7 @@ def subject_compiler(build_dir: Path | None = None) -> Path:
 
 
 def bootstrap_command() -> list[str]:
-    """Invoke the explicit installed L1 compiler for L2 implementation tests."""
+    """Invoke the explicitly selected L1 compiler for L2 implementation tests."""
     return wrapper_command(resolve_bootstrap())
 
 

@@ -88,17 +88,18 @@ Pushing any `l0-v*` tag starts `.github/workflows/l0-release.yml`. For a valid s
 
 Therefore:
 
-- Create a release tag only after a separate, explicit user request naming the exact tag and target commit. A request to
-  implement a release plan that mentions the tag does not satisfy this gate.
-- Before pushing the tag, stop and obtain a separate, fresh user confirmation. Show the exact tag, its target commit,
-  the remote URL, and the release, asset, Pages, and blog-dispatch effects listed above.
+- Create a release tag only after a separate, explicit project maintainer request naming the exact tag and target
+  commit. A request to implement a release plan that mentions the tag does not satisfy this gate.
+- Before pushing the tag, stop and obtain a separate, fresh project maintainer confirmation. Show the exact tag, its
+  target commit, the remote URL, and the release, asset, Pages, and blog-dispatch effects listed above.
 - Do not treat authorization to mirror commits, prepare a release, or create a tag as authorization to push the tag.
 - Do not push L0 commits to a public repository unless the root public-push requirements are satisfied, including an
   explicitly designated target and a checked-out branch that already tracks the exact public remote and branch.
 - Treat manual runs of `.github/workflows/l0-docs-publish.yml` as publication actions whenever they deploy Pages, attach
-  release assets, or dispatch a blog update. Obtain fresh user confirmation immediately before dispatching them.
-- Do not claim that release notes, announcement copy, or other publication material is reviewed unless the user has
-  reviewed its exact final contents.
+  release assets, or dispatch a blog update. Obtain fresh project maintainer confirmation immediately before dispatching
+  them.
+- Do not claim that release notes, announcement copy, or other publication material is reviewed unless the project
+  maintainer has reviewed its exact final contents.
 
 ## Commands
 
@@ -106,8 +107,8 @@ Run L0-specific commands from the `l0/` directory. The monorepo root `Makefile` 
 `test-extended`, `clean`, and `clean-all`; root targets delegate to the corresponding target in each registered level.
 L0 `test-extended` includes the dedicated Stage 2 trace sweep. Root `test-extended` does not include L1/L2 exhaustive
 `test-ci` categories; run each level's `test-ci` when required. L1/L2 each have one canonical compiler; only L0 retains
-stage selection and triple bootstrap. L2 requires an explicitly installed L1 bootstrap toolchain. For normal
-development, prefer the repo-local switchable `l0c` alias:
+stage selection and triple bootstrap. L2 requires an explicit L1 bootstrap, installed by default or selected in
+development mode under `l2/AGENTS.md`. For normal development, prefer the repo-local switchable `l0c` alias:
 
 ```bash
 make use-dev-stage2 # or `make use-dev-stage1`; each builds and installs the launcher automatically

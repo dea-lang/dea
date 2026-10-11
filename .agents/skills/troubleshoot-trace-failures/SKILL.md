@@ -138,5 +138,6 @@ make test-compiler-trace
 - related normal tests pass
 
 For L2, read `l2/AGENTS.md` and `l2/docs/reference/ownership.md`. Run canonical `test-compiler-trace` from `l2/` with
-the explicit installed L1 toolchain. `.l1` implementation traces and `.l2` target-program traces are different subjects;
+the explicit L1 toolchain, installed by default or a generated development toolchain selected with
+`L2_BOOTSTRAP_MODE=development`. `.l1` implementation traces and `.l2` target-program traces are different subjects;
 choose the reproducer extension and child-trace harness accordingly. Never require cross-level source parity.

@@ -21,6 +21,11 @@ on:
         required: false
         default: test-ci
         type: string
+      run_isolation:
+        description: Explicitly run the additional Linux Docker isolation gate
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       platform:
@@ -47,6 +52,11 @@ on:
         required: true
         default: test-ci
         type: string
+      run_isolation:
+        description: Explicitly run the additional Linux Docker isolation gate
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -186,3 +196,4 @@ jobs:
           make_target: ${{ inputs.make_target }}
           c_compiler: ${{ steps.select-cc.outputs.value }}
           artifact_name_suffix: ${{ matrix.platform }}-${{ steps.select-cc.outputs.value }}
+          run_isolation: ${{ inputs.run_isolation }}

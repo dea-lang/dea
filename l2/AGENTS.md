@@ -10,11 +10,14 @@ Read [AGENTS.md](../AGENTS.md) first. Run L2 commands from `l2/`.
 supported. L2C diagnostics preserve the corresponding L1C numeric meanings; shared diagnostic families remain shared.
 
 The physical L2 stdlib/runtime/support copies belong to L2. Never resolve `.l2` imports or preparation inputs from L1,
-symlink sibling sources, or rely on sibling build outputs. No intra-L2 stages, parity, or triple bootstrap exist.
+symlink sibling sources, or borrow sibling target build outputs. An explicitly selected L1 development toolchain is
+permitted only for `.l1` compiler construction and implementation tests. No intra-L2 stages, parity, or triple bootstrap
+exist.
 
 ## Bootstrap and Commands
 
-Supply a compatible installed L1 toolchain explicitly; there is no sibling-checkout or ambient PATH fallback:
+Supply a compatible L1 toolchain explicitly; installed mode is the default, with no sibling-checkout or ambient PATH
+fallback:
 
 ```sh
 export L2_BOOTSTRAP_L1C=/absolute/installed-l1/bin/l1c
@@ -30,11 +33,26 @@ make test-ci
 L2_ISOLATION_BOOTSTRAP_PREFIX=/absolute/installed-bookworm-l1 make test-isolation
 ```
 
+For coordinated development reuse, first build L1, then explicitly select its generated launcher and mode:
+
+```sh
+export L2_BOOTSTRAP_MODE=development
+export L2_BOOTSTRAP_L1C=/absolute/checkout/l1/build/dea/bin/l1c
+make build
+make test
+```
+
+Development mode requires the adjacent native binary, public headers, and semantic interfaces. The launcher supplies its
+matching L1 source/build roots; unrelated active-shell roots and runtime overrides are removed, and upstream preparation
+caches remain under L2's build directory. Invalid explicit selection fails without fallback.
+
 `test-isolation` is the Docker Linux gate and requires an installed Linux/Bookworm-compatible L1 prefix through
 `L2_ISOLATION_BOOTSTRAP_PREFIX`, separately from native macOS/Windows prefixes. Native four-platform compiler CI remains
-distinct from this Linux isolation proof.
+distinct from this Linux isolation proof. Docker isolation never runs by default: explicitly request `run_isolation` in
+standalone L2 CI or `l2_run_isolation` in Unified CI. Unified uses same-run development L1 handoffs; standalone L2 CI
+retains an installed bootstrap. Unified's central L2 default remains off, with `default`/`on`/`off` manual choices.
 
-The upstream compiler builds the `.l1` implementation using its installed L1 interfaces and native facilities. Set
+The upstream compiler builds the `.l1` implementation using its selected L1 interfaces and native facilities. Set
 `L1_CC` for that construction, and `L2_CC`/`L2_RUNTIME_CC` for L2 native target operations. Use supported GCC or Clang
 16+ (Apple Clang must provide the required configuration controls); inspect the actual compiler executable/version in
 all builders. The inherited legacy Clang limitation is not resolved by this split.

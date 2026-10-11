@@ -1,6 +1,6 @@
 name: L2 CI Delegate
 
-description: Build canonical L2 through an installed L1 toolchain and validate isolation.
+description: Validate canonical L2 through an explicit predecessor, with optional Linux isolation.
 
 inputs:
   make_target:
@@ -12,11 +12,27 @@ inputs:
   artifact_name_suffix:
     description: Artifact suffix
     required: true
+  bootstrap_l0c:
+    description: Explicit same-run L0 compiler for preparing a missing L1 bootstrap
+    required: false
+    default: ""
+  bootstrap_l1c:
+    description: Explicit same-run L1 compiler; prepare one only when this is empty
+    required: false
+    default: ""
+  bootstrap_mode:
+    description: Installed bootstrap by default, or development for coordinated CI reuse
+    required: false
+    default: installed
+  run_isolation:
+    description: Explicitly run the additional Linux Docker isolation gate
+    required: false
+    default: "false"
 
 runs:
   using: composite
   steps:
-    - name: Install explicit L1 bootstrap and validate L2
+    - name: Select explicit L1 bootstrap and validate L2
       if: runner.os != 'Windows'
       shell: bash
       env:
@@ -25,16 +41,16 @@ runs:
         L1_RUNTIME_CC: ${{ inputs.c_compiler }}
         L2_CC: ${{ inputs.c_compiler }}
         L2_RUNTIME_CC: ${{ inputs.c_compiler }}
-        L2_MAKE_TARGET: ${{ inputs.make_target }}
+        CI_MAKE_TARGET: ${{ inputs.make_target }}
+        CI_BOOTSTRAP_L0C: ${{ inputs.bootstrap_l0c }}
+        CI_BOOTSTRAP_L1C: ${{ inputs.bootstrap_l1c }}
+        CI_BOOTSTRAP_MODE: ${{ inputs.bootstrap_mode }}
       run: |
         command -v "$L2_CC"
         "$L2_CC" --version
-        prefix="$RUNNER_TEMP/l2-bootstrap-l1"
-        make -C l1 install PREFIX="$prefix"
-        export L2_BOOTSTRAP_L1C="$prefix/bin/l1c"
-        make -C l2 "$L2_MAKE_TARGET"
+        python3 scripts/ci_bootstrap.py l2
 
-    - name: Install explicit L1 bootstrap and validate L2 (Windows)
+    - name: Select explicit L1 bootstrap and validate L2 (Windows)
       if: runner.os == 'Windows'
       shell: msys2 {0}
       env:
@@ -43,18 +59,18 @@ runs:
         L1_RUNTIME_CC: ${{ inputs.c_compiler }}
         L2_CC: ${{ inputs.c_compiler }}
         L2_RUNTIME_CC: ${{ inputs.c_compiler }}
-        L2_MAKE_TARGET: ${{ inputs.make_target }}
+        CI_MAKE_TARGET: ${{ inputs.make_target }}
+        CI_BOOTSTRAP_L0C: ${{ inputs.bootstrap_l0c }}
+        CI_BOOTSTRAP_L1C: ${{ inputs.bootstrap_l1c }}
+        CI_BOOTSTRAP_MODE: ${{ inputs.bootstrap_mode }}
         PYTHON: python
       run: |
         command -v "$L2_CC"
         "$L2_CC" --version
-        prefix="$(cygpath -u "$RUNNER_TEMP")/l2-bootstrap-l1"
-        make -C l1 install PREFIX="$prefix"
-        export L2_BOOTSTRAP_L1C="$prefix/bin/l1c"
-        make -C l2 "$L2_MAKE_TARGET"
+        python scripts/ci_bootstrap.py l2
 
     - name: Verify Linux checkout and bootstrap isolation
-      if: runner.os == 'Linux'
+      if: runner.os == 'Linux' && inputs.run_isolation == 'true'
       shell: bash
       run: |
         prefix="$RUNNER_TEMP/l2-bookworm-bootstrap"

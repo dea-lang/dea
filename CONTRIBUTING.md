@@ -126,9 +126,10 @@ uncertain L0 validation uses `make test-extended`.
 
 For L1 and L2, `make test` is the fast development gate and `make test-extended` runs the canonical compiler's normal
 suite without CI-only cases. Use `make test-ci` for the exhaustive gate, which adds CI-only normal tests, applicable
-environment/bootstrap integration, trace suites, and child fixtures. L2 requires an explicitly selected installed L1
-bootstrap. For trace-, bootstrap-, preparation-, or environment-sensitive changes, run the relevant focused targets
-locally instead of routinely running the entire CI suite. L2 isolation and L1 artifact acceptance are separate gates.
+environment/bootstrap integration, trace suites, and child fixtures. L2 requires an explicitly selected L1 bootstrap,
+installed by default; `L2_BOOTSTRAP_MODE=development` permits explicit reuse of a generated L1 development toolchain.
+For trace-, bootstrap-, preparation-, or environment-sensitive changes, run the relevant focused targets locally instead
+of routinely running the entire CI suite. L2 isolation and L1 artifact acceptance are separate gates.
 
 L0's `make triple-test` is a focused test for its triple-bootstrap process, validating the compiler's ability to build
 itself and produce a stable artifact. L1 and L2 each have one canonical compiler and no triple-bootstrap target.

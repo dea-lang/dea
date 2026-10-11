@@ -41,8 +41,9 @@ consumes the L0 Stage 2 compiler as its upstream toolchain and is not yet a rele
 [l1/README.md](l1/README.md) and [l1/docs/roadmap.md](l1/docs/roadmap.md).
 
 **Dea/L2** starts from the former L1 Stage 2 implementation. Its canonical `l2c` compiles `.l2` programs, emits `.l2m`
-interfaces, and owns its stdlib, runtime, and support inputs. Construction requires an explicitly installed L1
-toolchain; ordinary L2 use does not invoke it. See [l2/README.md](l2/README.md).
+interfaces, and owns its stdlib, runtime, and support inputs. Construction requires an explicit L1 toolchain, installed
+by default or a development toolchain selected with `L2_BOOTSTRAP_MODE=development`; ordinary L2 use does not invoke it.
+See [l2/README.md](l2/README.md).
 
 ## Stability and Evolution
 

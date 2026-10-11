@@ -48,8 +48,9 @@ runs each registered level's normal validation, and root `make test-extended` ru
 contents vary by level: L0 `test-extended` includes its Stage 2 trace sweep, while L1/L2 `test-extended` cover their
 canonical compiler normal suites without CI-only cases. Use level-local `test-ci` for exhaustive compiler validation,
 including applicable environment, trace, and child fixtures. L1 artifact acceptance remains a separate gate; L2
-additionally provides `test-isolation`. L2 requires an explicitly supplied installed `L2_BOOTSTRAP_L1C`, including when
-root aggregate tests enter L2. For targeted level work, enter that level's directory first.
+additionally provides opt-in `test-isolation`. L2 requires explicit `L2_BOOTSTRAP_L1C`, including when root aggregate
+tests enter L2. Installed L1 is the default; `L2_BOOTSTRAP_MODE=development` permits explicit development-toolchain
+reuse as described in `l2/AGENTS.md`. For targeted level work, enter that level's directory first.
 
 ## Shared Environment
 

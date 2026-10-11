@@ -365,9 +365,10 @@ git log -1 --oneline
 
 L1 and L2 each have one compiler. Use `test-compiler` and `test-compiler-trace` with focused `TESTS` selectors, `test`
 for ordinary changes, `test-extended` for broad normal validation, and `test-ci` for exhaustive coverage. No intra-L1/L2
-parity, stage selection, or triple bootstrap is required. L2 builds require explicit installed `L2_BOOTSTRAP_L1C`;
-changes to independence require `test-isolation`. Resolve compiler ownership from the path and subject, not `.l0`/`.l1`
-suffix alone. L1 implementation tests are `.l0`; L2 implementation tests are `.l1`.
+parity, stage selection, or triple bootstrap is required. L2 builds require explicit `L2_BOOTSTRAP_L1C`, installed by
+default or a generated development toolchain with explicit `L2_BOOTSTRAP_MODE=development`. Changes to independence
+require opt-in `test-isolation`; routine CI does not run Docker by default. Resolve compiler ownership from the path and
+subject, not `.l0`/`.l1` suffix alone. L1 implementation tests are `.l0`; L2 implementation tests are `.l1`.
 
 L1 delivery changes require affected product fixtures and real `test-productization-acceptance` evidence. Compiler CI
 does not replace artifact acceptance. Reuse evidence only when all covered inputs are unchanged; old Stage 2 artifact

@@ -1,10 +1,12 @@
 # L2 Compiler Architecture
 
-Version: 2026-10-10
+Version: 2026-10-11
 
-The canonical `l2c` implementation uses L1 `.l1` modules under `compiler/src/`, compiled by an explicitly installed L1
-toolchain through `scripts/build_l2c.py`. Its pipeline retains the proven lexer, parser, source/interface module graph,
-name/signature resolution, local/type analysis, per-module C backend, compile/link drivers, and managed preparation.
+The canonical `l2c` implementation uses L1 `.l1` modules under `compiler/src/`, compiled by an explicitly selected L1
+toolchain through `scripts/build_l2c.py`. Installed L1 is the default; `L2_BOOTSTRAP_MODE=development` explicitly
+permits a generated L1 development launcher with matching native binary, headers, and semantic interfaces. Its pipeline
+retains the proven lexer, parser, source/interface module graph, name/signature resolution, local/type analysis,
+per-module C backend, compile/link drivers, and managed preparation.
 
 L2 target discovery accepts `.l2` files and extensionless logical module names, never `.l0` or `.l1` source files.
 Interfaces use `.l2m` in emission, imports, dependency graphs, artifact associations, and preparation. Implementation
@@ -13,10 +15,11 @@ runtime headers may retain `l1_real.h`, and upstream fingerprint bridge symbols 
 These names do not authorize loading another level's files.
 
 Target stdlib/runtime inputs live in `compiler/shared/l2/stdlib/` and `compiler/shared/runtime/`; private compiler
-support is in `compiler/support/`. No symlinks or sibling checkout/build dependencies are permitted. The root shared
-Python environment, vendored tools, and generic development helpers remain identified monorepo tooling.
+support is in `compiler/support/`. Target inputs never use symlinks or sibling checkout/build dependencies. An explicit
+development L1 bootstrap is used only to construct `.l1` implementation programs. The root shared Python environment,
+vendored tools, and generic development helpers remain identified monorepo tooling.
 
-Use `make build`, `make use-dev`, canonical normal/trace targets, and `make test-isolation`. The isolated build supplies
-an installed L1 compiler while sibling level trees are inaccessible, then proves `.l2` execution without invoking L1.
-See [l2/AGENTS.md](../../AGENTS.md), [l2/docs/reference/c-backend-design.md](c-backend-design.md), and
+Use `make build`, `make use-dev`, canonical normal/trace targets, and opt-in `make test-isolation`. The isolated build
+supplies an installed L1 compiler while sibling level trees are inaccessible, then proves `.l2` execution without
+invoking L1. See [l2/AGENTS.md](../../AGENTS.md), [l2/docs/reference/c-backend-design.md](c-backend-design.md), and
 [docs/specs/compiler/cli-contract.md](../../../docs/specs/compiler/cli-contract.md).

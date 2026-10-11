@@ -87,13 +87,26 @@ on:
         default: test-ci
         type: string
       run_l2_ci:
-        description: Run L2 CI
+        description: Run L2 CI (default inherits the central setting)
+        required: false
+        default: default
+        type: choice
+        options:
+          - default
+          - "on"
+          - "off"
+      l2_run_isolation:
+        description: Also run L2 Linux Docker isolation when L2 is selected
         required: false
         default: false
         type: boolean
 
 permissions:
   contents: read
+
+env:
+  # One switch controls default manual selection and automatic L2 routing.
+  L2_CI_DEFAULT_ENABLED: "false"
 
 jobs:
   adr-impact:
@@ -196,10 +209,22 @@ jobs:
           run_l2=false
           run_docs=false
 
+          l2_enabled="${L2_CI_DEFAULT_ENABLED:-false}"
+          case "$l2_enabled" in
+            true|false) ;;
+            *) echo "L2_CI_DEFAULT_ENABLED must be true or false" >&2; exit 2 ;;
+          esac
+
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            case "${INPUT_RUN_L2_CI:-default}" in
+              default) ;;
+              on) l2_enabled=true ;;
+              off) l2_enabled=false ;;
+              *) echo "run_l2_ci must be default, on, or off" >&2; exit 2 ;;
+            esac
             run_l0=true
             run_l1=true
-            run_l2="${INPUT_RUN_L2_CI:-false}"
+            run_l2="$l2_enabled"
             run_docs=true
           else
             if [ "$EVENT_NAME" = "pull_request" ]; then
@@ -213,12 +238,14 @@ jobs:
             if [ -z "$base_sha" ] || [ "$base_sha" = "0000000000000000000000000000000000000000" ]; then
               run_l0=true
               run_l1=true
+              run_l2="$l2_enabled"
               run_docs=true
             elif ! git rev-parse --verify "$base_sha^{commit}" >/dev/null 2>&1 || \
                  ! git rev-parse --verify "$head_sha^{commit}" >/dev/null 2>&1; then
               echo "Diff endpoints unavailable; running default validation workloads."
               run_l0=true
               run_l1=true
+              run_l2="$l2_enabled"
               run_docs=true
             else
               changed_files="$(git diff --name-only "$base_sha" "$head_sha")"
@@ -236,6 +263,10 @@ jobs:
               if [ "$shared" = true ]; then
                 run_l0=true
                 run_l1=true
+              fi
+              if [ "$l2_enabled" = true ] && { [ "$shared" = true ] || \
+                 printf '%s\n' "$changed_files" | grep -Eq '^l2/'; }; then
+                run_l2=true
               fi
               if printf '%s\n' "$changed_files" | grep -Eq '^(\.github/workflows/|README\.md$|CONTRIBUTING\.md$|CLAUDE\.md$|THIRD_PARTY_NOTICES$|tools/|pyproject\.toml$|uv\.lock$|l0/(compiler/(stage1_py|docgen|stage2_l0|shared)/|docs/|README(-WINDOWS)?\.md$|CLAUDE\.md$|pyproject\.toml$|scripts/(docs/|(gen_docs|docs_artifacts|stage_docs_pages|gen_dist_tools|dist_tools_lib)\.py$)))'; then
                 run_docs=true
@@ -435,6 +466,7 @@ jobs:
           fi
 
       - name: Run L0 CI delegate
+        id: l0-delegate
         if: needs.route-levels.outputs.run_l0 == 'true'
         uses: ./.github/actions/l0-ci
         with:
@@ -443,12 +475,14 @@ jobs:
           artifact_name_suffix: ${{ matrix.platform }}-${{ steps.select-cc.outputs.value }}
 
       - name: Run L1 CI delegate
+        id: l1-delegate
         if: needs.route-levels.outputs.run_l1 == 'true'
         uses: ./.github/actions/l1-ci
         with:
           make_target: ${{ steps.select-l1-target.outputs.value }}
           c_compiler: ${{ steps.select-cc.outputs.value }}
           artifact_name_suffix: ${{ matrix.platform }}-${{ steps.select-cc.outputs.value }}
+          bootstrap_l0c: ${{ steps.l0-delegate.outputs.bootstrap_l0c }}
       - name: Run L2 CI delegate
         if: needs.route-levels.outputs.run_l2 == 'true'
         uses: ./.github/actions/l2-ci
@@ -456,3 +490,7 @@ jobs:
           make_target: ${{ steps.select-l2-target.outputs.value }}
           c_compiler: ${{ steps.select-cc.outputs.value }}
           artifact_name_suffix: ${{ matrix.platform }}-${{ steps.select-cc.outputs.value }}
+          bootstrap_l0c: ${{ steps.l0-delegate.outputs.bootstrap_l0c }}
+          bootstrap_l1c: ${{ steps.l1-delegate.outputs.bootstrap_l1c }}
+          bootstrap_mode: development
+          run_isolation: ${{ github.event_name == 'workflow_dispatch' && inputs.l2_run_isolation || false }}

@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # Copyright (c) 2026 gwz
-"""Build canonical L2 using an explicitly installed, compatible L1 toolchain."""
+"""Build canonical L2 using an explicitly selected compatible L1 toolchain."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 import os
 from pathlib import Path
 import shlex
@@ -16,7 +15,7 @@ import tempfile
 
 MONOREPO_SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 sys.path.insert(0, str(MONOREPO_SCRIPTS))
-from dea_tooling.bootstrap import wrapper_command
+from dea_tooling.bootstrap import wrapper_command, resolve_l1_toolchain, l1_bootstrap_environment
 from dea_tooling.launchers import (render_repo_native_wrapper, render_repo_native_cmd_wrapper,
                                   render_repo_env_script, render_repo_env_cmd_script)
 
@@ -55,58 +54,30 @@ def normalize_l2_build_dir(text: str) -> L2BuildLayout:
 
 
 def resolve_bootstrap() -> Path:
-    """Validate the explicitly supplied installed L1 bootstrap.
+    """Validate the explicit L1 bootstrap in its selected construction mode.
 
     Returns:
         Absolute compiler path.
     Raises:
-        RuntimeError: The input is missing, is a development compiler, or is incompatible.
+        RuntimeError: The input is missing, incomplete, or incompatible with the mode.
     """
-    configured = os.environ.get("L2_BOOTSTRAP_L1C", "").strip()
-    if not configured:
-        raise RuntimeError("set L2_BOOTSTRAP_L1C to an installed canonical L1 compiler; no sibling checkout or PATH fallback is used")
-    compiler = Path(configured).expanduser().resolve()
-    if os.name == "nt" and not compiler.is_file():
-        for suffix in (".cmd", ".exe"):
-            candidate = compiler.with_suffix(suffix)
-            if candidate.is_file():
-                compiler = candidate
-                break
-    manifest = compiler.parent.parent / "share/dea/l1/install-manifest.json"
-    try:
-        record = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise RuntimeError("L2_BOOTSTRAP_L1C must belong to a complete installed L1 prefix") from exc
-    if compiler.parent.name != "bin" or record.get("level") != "l1" or record.get("state") != "complete":
-        raise RuntimeError("L2_BOOTSTRAP_L1C must belong to a complete installed L1 prefix")
-    try:
-        result = subprocess.run([*wrapper_command(compiler), "--version"], env=bootstrap_environment(os.environ),
-                                capture_output=True, text=True, check=True)
-    except (OSError, subprocess.CalledProcessError) as exc:
-        raise RuntimeError("L2_BOOTSTRAP_L1C did not start as a valid installed L1 compiler") from exc
-    banner = result.stdout.splitlines()[0] if result.stdout else ""
-    if not banner.startswith("Dea language / L1 compiler") or "Stage" in banner:
-        raise RuntimeError(f"incompatible L1 bootstrap identity: {banner!r}")
-    return compiler
+    return resolve_l1_toolchain(os.environ.get("L2_BOOTSTRAP_L1C", ""),
+                                mode=os.environ.get("L2_BOOTSTRAP_MODE", "installed").strip(),
+                                env=bootstrap_environment(dict(os.environ)))
 
 
 def bootstrap_environment(source: dict[str, str]) -> dict[str, str]:
-    """Keep installed L1 input discovery independent of active development shells.
+    """Keep selected L1 input discovery independent of active development shells.
 
     Args:
         source: Calling environment.
     Returns:
         Independent environment with upstream source and target-cache overrides removed.
     """
-    env = dict(source)
-    for name in ("L0_HOME", "L0_SYSTEM", "L0_RUNTIME_INCLUDE", "L0_RUNTIME_LIB", "L1_HOME", "L1_SYSTEM",
-                 "L1_BUILD_DIR", "L1_RUNTIME_INCLUDE", "L1_RUNTIME_LIB", "L1_STDLIB_CACHE"):
-        env.pop(name, None)
     # Upstream native preparation is an implementation build dependency. Keep
     # its writable cache in L2-owned artifacts, never in a sibling source tree.
     layout = normalize_l2_build_dir(source.get("L2_BUILD_DIR", "build/dea"))
-    env["L1_STDLIB_CACHE"] = str(layout.build_dir / "bootstrap-cache")
-    return env
+    return l1_bootstrap_environment(source, layout.build_dir / "bootstrap-cache")
 
 
 def host_compiler(env: dict[str, str]) -> str:
@@ -129,7 +100,7 @@ def _has_c_define(flags: str, name: str) -> bool:
 
 
 def compiler_build_env(source: dict[str, str]) -> tuple[dict[str, str], list[str]]:
-    """Apply compiler-only runtime settings through the installed L1 compiler.
+    """Apply compiler-only runtime settings through the selected L1 compiler.
 
     Args:
         source: Calling environment with L2 compiler-construction choices.
@@ -255,7 +226,7 @@ def build_semantic_interfaces(layout: L2BuildLayout, native: Path) -> None:
 
 
 def build_compiler(compiler: Path, output: Path, env: dict[str, str], *, keep_c: bool = False) -> None:
-    """Build the L1 implementation through its explicit installed upstream toolchain."""
+    """Build the L1 implementation through its explicit upstream toolchain."""
     output.parent.mkdir(parents=True, exist_ok=True)
     build_env, mode = compiler_build_env(env)
     with tempfile.TemporaryDirectory(prefix="l2-support-", dir=output.parent) as directory:

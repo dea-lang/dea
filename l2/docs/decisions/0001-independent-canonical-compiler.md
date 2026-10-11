@@ -1,7 +1,7 @@
 # ADR-0001: Independent Canonical L2 Compiler
 
 - Decision date: 2026-10-10
-- Last edited: 2026-10-10
+- Last edited: 2026-10-11
 - Status: Accepted
 
 ## Context
@@ -12,14 +12,19 @@ distinct, even though the initial language semantics are substantively the same.
 ## Decision
 
 The canonical compiler implementation is `.l1` under `compiler/src/`; build it with an explicitly supplied compatible
-installed `L2_BOOTSTRAP_L1C`. Its upstream implementation-language interfaces use `.l1m`. The resulting `l2c` accepts
-`.l2` source files and extensionless logical module names, emits/consumes `.l2m`, and uses L2-owned physical runtime and
-stdlib copies. `.l0`, `.l1`, and other source suffixes are rejected as L2 source targets. Shared diagnostic families and
-ABI semantics remain unchanged; level-specific driver diagnostics use `L2C-xxxx`.
+`L2_BOOTSTRAP_L1C`. The default `L2_BOOTSTRAP_MODE=installed` requires a complete installed L1 prefix. Explicit
+`L2_BOOTSTRAP_MODE=development` permits a generated L1 development launcher with matching native binary, public headers,
+and semantic interfaces for coordinated development and same-run Unified CI reuse. Its upstream implementation-language
+interfaces use `.l1m`. The resulting `l2c` accepts `.l2` source files and extensionless logical module names,
+emits/consumes `.l2m`, and uses L2-owned physical runtime and stdlib copies. `.l0`, `.l1`, and other source suffixes are
+rejected as L2 source targets. Shared diagnostic families and ABI semantics remain unchanged; level-specific driver
+diagnostics use `L2C-xxxx`.
 
 L2 owns its tests, scripts, configuration, documentation, and generated artifacts. It must not symlink, read, or prepare
-L2 programs from L1 checkout inputs or depend on sibling build outputs. Installed L1 is a construction dependency only.
-No further language features or automatic migration of L1 feature plans is introduced.
+L2 programs from L1 checkout inputs or depend on sibling target build outputs. Explicitly selected L1 is a construction
+dependency only; development selection has no implicit sibling-checkout or PATH fallback. Bootstrap environments discard
+unrelated active-shell input roots and keep upstream writable preparation caches under L2's build directory. No further
+language features or automatic migration of L1 feature plans is introduced.
 
 ## Rationale
 
@@ -29,9 +34,12 @@ machinery. Mechanical copying preserves the proven behavior without requiring pe
 ## Consequences
 
 L2 has no second implementation, self-bootstrap gate, release productization, or hosted release workflows. Root shared
-development tooling remains permitted; sibling compiler trees and local artifacts are not build inputs. The isolation
-gate builds using an installed L1 toolchain with sibling trees inaccessible, then checks L2 target compilation without
-invoking L1.
+development tooling remains permitted. Sibling target inputs are never borrowed; the selected predecessor may provide
+development construction inputs only in explicit development mode. Unified CI reuses validated predecessor paths on the
+same runner and checkout without reinstalling L1; standalone L2 CI defaults to an installed bootstrap. The opt-in
+isolation gate builds using an installed L1 toolchain with sibling trees inaccessible, then checks L2 target compilation
+without invoking L1. Isolation is not a default CI workload; run it again for changes to construction or ownership
+boundaries, since historical proof applies to the tested implementation.
 
 ## Related Plans
 

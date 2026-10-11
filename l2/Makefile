@@ -217,9 +217,11 @@ help:
 		'  L2_BUILD_DIR=build/dea' \
 		'                     Repo-local L2 build root.' \
 		'  L2_BOOTSTRAP_L1C=<path>' \
-		'                     Required installed L1 compiler; no sibling-checkout or PATH fallback.' \
+		'                     Required explicit L1 compiler; no sibling-checkout or PATH fallback.' \
+		'  L2_BOOTSTRAP_MODE=installed' \
+		'                     Installed prefix by default; development explicitly permits a generated L1 development launcher.' \
 		'  L1_CC=<compiler>' \
-		'                     C compiler used by the installed L1 toolchain to build the `.l1` implementation.' \
+		'                     C compiler used by the selected L1 toolchain to build the `.l1` implementation.' \
 		'  L1_CFLAGS=<flags>' \
 		'                     C flags for compiler construction and `.l1` implementation tests.' \
 		'  L2_COMPILER_RT_CHECK_BASIC=1' \

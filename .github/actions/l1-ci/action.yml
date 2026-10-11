@@ -12,6 +12,15 @@ inputs:
   artifact_name_suffix:
     description: Artifact suffix (usually platform-compiler)
     required: true
+  bootstrap_l0c:
+    description: Explicit same-run L0 Stage 2 compiler handoff
+    required: false
+    default: ""
+
+outputs:
+  bootstrap_l1c:
+    description: Validated development L1 toolchain, or empty if the target produced none
+    value: ${{ steps.run.outputs.bootstrap_l1c || steps.run-windows.outputs.bootstrap_l1c }}
 
 runs:
   using: composite
@@ -43,13 +52,16 @@ runs:
         exit "${missing}"
 
     - name: Run L1 Make target
+      id: run
       if: runner.os != 'Windows'
       shell: bash
       env:
         L0_CC: ${{ inputs.c_compiler }}
         L1_CC: ${{ inputs.c_compiler }}
         L1_RUNTIME_CC: ${{ inputs.c_compiler }}
-      run: make -C l1 ${{ inputs.make_target }}
+        CI_BOOTSTRAP_L0C: ${{ inputs.bootstrap_l0c }}
+        CI_MAKE_TARGET: ${{ inputs.make_target }}
+      run: python3 scripts/ci_bootstrap.py l1
 
     - name: Show selected L1 toolchain (Windows)
       if: runner.os == 'Windows'
@@ -78,6 +90,7 @@ runs:
         exit "${missing}"
 
     - name: Run L1 Make target (Windows)
+      id: run-windows
       if: runner.os == 'Windows'
       shell: msys2 {0}
       env:
@@ -85,7 +98,9 @@ runs:
         L1_CC: ${{ inputs.c_compiler }}
         L1_RUNTIME_CC: ${{ inputs.c_compiler }}
         PYTHON: python
-      run: make -C l1 ${{ inputs.make_target }}
+        CI_BOOTSTRAP_L0C: ${{ inputs.bootstrap_l0c }}
+        CI_MAKE_TARGET: ${{ inputs.make_target }}
+      run: python scripts/ci_bootstrap.py l1
 
     - name: Report L1 preparation reuse
       if: always() && runner.os != 'Windows'

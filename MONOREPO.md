@@ -27,6 +27,27 @@ the root, so `make venv` from any level directory converges on the same `./.venv
 absent, `make venv` falls back to `python -m venv` plus `pip install` of the dependency-group specifiers extracted from
 the root `pyproject.toml`.
 
+## Compiler CI
+
+Unified CI runs selected level delegates sequentially on each native runner. A successful L0 delegate hands its Stage 2
+compiler to L1; L1 hands its generated development toolchain to L2. These explicit paths reuse current-checkout,
+same-run outputs without reinstalling L1. A skipped predecessor or a custom target that produces no compiler causes the
+required development bootstrap to be prepared once. Invalid explicit handoffs fail without reconstruction. Intentional
+compiler-construction fixtures retain their independent builds.
+
+The single `L2_CI_DEFAULT_ENABLED` setting in `.github/workflows/ci.yml` is initially `"false"`. Unified's manual
+`run_l2_ci` choices are `default`, `on`, and `off`; `off` suppresses L2 even when the central default is enabled.
+Push/PR events use the central default. When enabled, L2 is selected for `l2/` or existing shared-tooling changes,
+including build helpers, dependency manifests, CI actions, and compiler workflow files. Missing diff endpoints use the
+same default. L0/L1 routing is unchanged; an L0/L1-only change does not automatically select L2.
+
+Standalone L2 CI constructs an installed L1 bootstrap by default. Linux Docker isolation is independent and disabled by
+default in every delegate invocation: request `run_isolation=true` in L2 CI or `l2_run_isolation=true` in Unified CI.
+The latter still requires L2 to be selected. The optional Linux gate retains a Bookworm-compatible installed L1
+construction environment and a second operation environment without L1. Run it when bootstrap or ownership boundaries
+change; earlier isolation evidence applies to its tested inputs. Compiler CI remains separate from L1 artifact
+acceptance and release workflows.
+
 ## AddressSanitizer capability checks
 
 Sanitizer tests use `scripts/asan_test_support.py` to verify both normal executable startup and an actual ASan
@@ -147,9 +168,11 @@ latest selection. L1 scope is not frozen; release does not imply language stabil
 
 ## Working In `l2/`
 
-L2 has one `.l1` compiler implementation and physically owned `.l2` stdlib/runtime inputs. Supply an installed
-compatible `L2_BOOTSTRAP_L1C=/absolute/prefix/bin/l1c` before `make -C l2 build` or root aggregate tests. L2 never
-resolves bootstrap inputs from sibling checkouts. Run
+L2 has one `.l1` compiler implementation and physically owned `.l2` stdlib/runtime inputs. Supply compatible
+`L2_BOOTSTRAP_L1C=/absolute/prefix/bin/l1c` before `make -C l2 build` or root aggregate tests. The default
+`L2_BOOTSTRAP_MODE=installed` requires a complete prefix. Explicit `L2_BOOTSTRAP_MODE=development` permits a generated
+L1 development launcher with matching native binary, headers, and semantic interfaces. There is no implicit sibling
+checkout or PATH fallback; L2 target inputs remain physically owned by L2. Run
 `L2_ISOLATION_BOOTSTRAP_PREFIX=/absolute/installed-bookworm-l1 make -C l2 test-isolation` to prove this boundary and
 target execution without L1. L2 release productization is outside the split. See [l2/AGENTS.md](l2/AGENTS.md).
 

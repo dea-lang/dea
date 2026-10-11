@@ -100,12 +100,12 @@ explain the correctness impact. Exclude routine style preferences, unsupported s
 
 3. Reuse the narrowest existing route when possible:
 
-   | Source area                                    | Preferred route                                                                                                                                                                  |
-   | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-   | L0 Stage 1 Python or the Stage 2 trace checker | From `l0/`, run direct focused pytest with existing fixtures or a temporary probe.                                                                                               |
-   | L0 Stage 2 or shared L0                        | From `l0/`, run focused `make test-stage2 TESTS=...`; add `test-stage2-trace` for ownership or memory concerns.                                                                  |
-   | Canonical L1 compiler, stdlib, or runtime      | From `l1/`, run focused `make test-compiler TESTS=...`; add `test-compiler-trace` for ownership or memory concerns, or use a temporary L1 program or C harness.                  |
-   | Canonical L2 compiler, stdlib, or runtime      | From `l2/`, use `make test-compiler TESTS=...` and relevant `test-compiler-trace` with installed `L2_BOOTSTRAP_L1C`; distinguish `.l1` implementation tests from `.l2` programs. |
+   | Source area                                    | Preferred route                                                                                                                                                                                                                                     |
+   | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | L0 Stage 1 Python or the Stage 2 trace checker | From `l0/`, run direct focused pytest with existing fixtures or a temporary probe.                                                                                                                                                                  |
+   | L0 Stage 2 or shared L0                        | From `l0/`, run focused `make test-stage2 TESTS=...`; add `test-stage2-trace` for ownership or memory concerns.                                                                                                                                     |
+   | Canonical L1 compiler, stdlib, or runtime      | From `l1/`, run focused `make test-compiler TESTS=...`; add `test-compiler-trace` for ownership or memory concerns, or use a temporary L1 program or C harness.                                                                                     |
+   | Canonical L2 compiler, stdlib, or runtime      | From `l2/`, use `make test-compiler TESTS=...` and relevant `test-compiler-trace` with explicit `L2_BOOTSTRAP_L1C`; installed is default, and development reuse requires explicit mode. Distinguish `.l1` implementation tests from `.l2` programs. |
 
 4. Use controlled inputs only. Do not probe arbitrary filesystem locations, network behavior, or process launching. Run
    focused workflows sequentially when they share bootstrap or build outputs.
@@ -147,5 +147,6 @@ build/cache artifacts. A review request does not authorize a tracked test, a cod
 action.
 
 Canonical L2 sources use `.l1`, while L2 stdlib/fixtures use `.l2`. From `l2/`, run `make test-compiler TESTS=...` and
-appropriate `test-compiler-trace` with explicit installed `L2_BOOTSTRAP_L1C`. L0 S1/S2 selectors remain valid; L1/L2
-stage selectors must fail. Resolve ownership and compiler subject before choosing a harness or reproducer.
+appropriate `test-compiler-trace` with explicit `L2_BOOTSTRAP_L1C`, installed by default or a generated development
+toolchain selected with `L2_BOOTSTRAP_MODE=development`. L0 S1/S2 selectors remain valid; L1/L2 stage selectors must
+fail. Resolve ownership and compiler subject before choosing a harness or reproducer.
