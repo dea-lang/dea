@@ -183,6 +183,17 @@ targets for expensive subsystem changes; choose `test-ci` when hosted-equivalent
 the classification is uncertain, use focused validation plus `test-extended`, and include the relevant expensive
 categories explicitly.
 
+### Hosted CI repair exception
+
+For a narrow repair to hosted CI configuration, packaging inputs, test invocation, or test assertions that does not
+change compiler or runtime behavior, use this exception when the affected hosted jobs will validate the exact proposed
+tree. It takes precedence over the aggregate tier and scope matrix below. Run only fast, focused local checks that can
+catch an implementation mistake; do not run aggregate suites, clean rebuilds, toolchain installations, or container
+builds solely to duplicate those hosted jobs. Run a slower local check only for a specific remaining risk that the
+planned CI run will not cover or that a focused check cannot diagnose; state that reason before starting it. Keep the
+staged whitespace, ADR Impact, and pre-commit gates. In the handoff, identify platform-specific behavior still awaiting
+hosted validation. If the affected jobs will not run on the proposed tree, follow the normal validation rules.
+
 ### Validation scope matrix
 
 Use this matrix for each required validation not already satisfied by a reused result. Scope the remaining runs to the
