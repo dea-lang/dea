@@ -24,6 +24,7 @@ if str(SCRIPTS_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_ROOT))
 
 from build_l2c import build_support_objects, resolve_bootstrap, bootstrap_environment  # noqa: E402
+from dea_tooling.bootstrap import wrapper_command  # noqa: E402
 
 
 class CleanupPolicyIceFailure(RuntimeError):
@@ -82,7 +83,7 @@ def run_ice_case(case_name: str, source: str, expected_ice: str, artifact_dir: P
 
     run_result = subprocess.run(
         [
-            str(compiler),
+            *wrapper_command(compiler),
             "--project-root",
             "compiler/src",
             "--run",

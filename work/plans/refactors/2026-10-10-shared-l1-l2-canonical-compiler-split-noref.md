@@ -17,7 +17,8 @@
 - Porting rule: Mechanically transplant the former L1 Stage 2 into L2; preserve semantics and physical ownership.
 - Target status:
   - L1: Implemented; local compiler and macOS Intel/Linux artifact gates passed; remaining native acceptance pending
-  - L2: Implemented; exhaustive compiler and two-phase container isolation gates passed
+  - L2: Implemented; local exhaustive compiler and two-phase container isolation gates passed; hosted Linux/Windows
+    rerun pending
   - Shared tooling: Implemented; focused regressions passed
 
 ## Summary
@@ -140,6 +141,15 @@ instead of repeating an entire aggregate after a focused correction.
   filesystem-support, and language-identity checks passed. A separate operation image omits L1, L0, Python, and Make,
   clears bootstrap/target caches, cold-prepares L2-owned stdlib/runtime, produces and consumes `.l2m` after removing the
   provider source, links/runs the result, and rejects a `.l1` input with `L2C-0011`.
+- A fresh `docker build -f l1/Dockerfile` and container `make install` passed after the builder copied the three root
+  license/notice files required by L1 payload assembly. The resulting installed Linux prefix passed the complete L2
+  Docker isolation gate, including tooling, focused compiler checks, cold preparation, and target execution.
+- `uv run --group dev pytest -q l2/tests/test_build_tooling.py` passed all eight cases, including simulated Windows and
+  POSIX launcher selection for the cleanup-policy ICE regression. This does not replace native Windows validation.
+- `make -C l2 test-compiler TESTS=l2c_cleanup_policy_ice_test.py` passed the actual cleanup-policy ICE regression
+  against a fresh native L1 installation, with `L1_CC`, `L2_CC`, and `L2_RUNTIME_CC` set to Clang.
+- Root `make clean test` passed on macOS Intel across L0, L1, and L2 with an explicit installed L1 bootstrap and Clang
+  selected for L1/L2 construction and target programs.
 - L0 Stage 1: 1,601 cases passed in the broad run; all 14 trace-checker tests passed after correcting the three failures
   caused by the moved L1 checker path. L0 Stage 2 passed all 58 cases, and all eight examples passed. Runtime-build
   controls passed 13 cases. Distribution, installation/build layout, fallback, release-tag policy, and source-selector
@@ -152,8 +162,11 @@ instead of repeating an entire aggregate after a focused correction.
 
 ### Outstanding verification and release prerequisites
 
-Fresh macOS ARM and Windows UCRT64 artifact build/checkout-free verification require their native environments. Hosted
-canonical compiler and product acceptance remain unexecuted; no workflow dispatch is authorized by this implementation.
+Unified hosted compiler CI passed both macOS jobs and all L0/L1 delegates. The Ubuntu L2 isolation step failed when its
+L1 builder image omitted root license/notice files; the Windows L2 delegate failed when a cleanup-policy regression
+invoked an extensionless installed launcher under native Python. Both paths have local corrections, but hosted
+Linux/Windows reruns remain pending. Fresh macOS ARM and Windows UCRT64 artifact build/checkout-free verification and
+hosted product acceptance require their native environments. No workflow dispatch is authorized by this implementation.
 Keep this plan and the productization/release prerequisites open until all required fresh evidence exists. L1 0.1.0
 release workflows, the seven-asset/four-platform contract with `make_latest=false`, and publication remain separate
 future work.

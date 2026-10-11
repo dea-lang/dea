@@ -4,6 +4,7 @@
 from __future__ import annotations
 import os
 from pathlib import Path
+import subprocess
 import sys
 import pytest
 
@@ -12,6 +13,9 @@ sys.path.insert(0, str(L2_ROOT / "scripts"))
 import build_l2c as builder
 sys.path.insert(0, str(L2_ROOT / "compiler/scripts"))
 import test_runner_common as runner
+sys.path.insert(0, str(L2_ROOT / "compiler/tests"))
+import l2c_cleanup_policy_ice_test as cleanup_ice
+from dea_tooling import bootstrap
 
 
 def test_no_implicit_or_development_bootstrap(monkeypatch, tmp_path):
@@ -78,3 +82,26 @@ def test_unusable_installed_bootstrap_has_actionable_diagnostic(monkeypatch, tmp
     monkeypatch.setenv("L2_BOOTSTRAP_L1C", str(prefix / "bin/l1c"))
     with pytest.raises(RuntimeError, match="did not start as a valid installed L1 compiler"):
         builder.resolve_bootstrap()
+
+
+@pytest.mark.parametrize("windows", [False, True])
+def test_cleanup_policy_ice_selects_host_bootstrap_launcher(monkeypatch, tmp_path, windows):
+    """Use the installed command wrapper when invoking the L1 bootstrap."""
+
+    compiler = tmp_path / "installed prefix/bin/l1c"
+    compiler.parent.mkdir(parents=True)
+    compiler.write_text("native wrapper")
+    compiler.with_suffix(".cmd").write_text("Windows wrapper")
+    monkeypatch.setattr(cleanup_ice, "bootstrap_compiler", lambda: compiler)
+    monkeypatch.setattr(cleanup_ice, "build_support_objects", lambda *args, **kwargs: [])
+    monkeypatch.setattr(bootstrap, "is_windows_host", lambda: windows)
+    commands = []
+
+    def run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 1, b"", b"[ICE-1080]")
+
+    monkeypatch.setattr(cleanup_ice.subprocess, "run", run)
+    cleanup_ice.run_ice_case("missing_enum_info_ice", "module main;", "[ICE-1080]", tmp_path)
+    expected = compiler.with_suffix(".cmd") if windows else compiler
+    assert commands[0][0] == str(expected)

@@ -24,6 +24,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Source layer
 COPY Makefile /project/Makefile
+COPY LICENSE-MIT LICENSE-APACHE THIRD_PARTY_NOTICES /project/
 COPY scripts /project/scripts
 COPY l0 /project/l0
 COPY l1 /project/l1
