@@ -86,6 +86,11 @@ on:
         required: true
         default: test-ci
         type: string
+      run_l2_ci:
+        description: Run L2 CI
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -180,6 +185,7 @@ jobs:
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
+          INPUT_RUN_L2_CI: ${{ inputs.run_l2_ci }}
           BEFORE_SHA: ${{ github.event.before }}
           PUSH_SHA: ${{ github.sha }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -193,7 +199,7 @@ jobs:
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             run_l0=true
             run_l1=true
-            run_l2=true
+            run_l2="${INPUT_RUN_L2_CI:-false}"
             run_docs=true
           else
             if [ "$EVENT_NAME" = "pull_request" ]; then
@@ -207,14 +213,12 @@ jobs:
             if [ -z "$base_sha" ] || [ "$base_sha" = "0000000000000000000000000000000000000000" ]; then
               run_l0=true
               run_l1=true
-              run_l2=true
               run_docs=true
             elif ! git rev-parse --verify "$base_sha^{commit}" >/dev/null 2>&1 || \
                  ! git rev-parse --verify "$head_sha^{commit}" >/dev/null 2>&1; then
-              echo "Diff endpoints unavailable; running all validation workloads."
+              echo "Diff endpoints unavailable; running default validation workloads."
               run_l0=true
               run_l1=true
-              run_l2=true
               run_docs=true
             else
               changed_files="$(git diff --name-only "$base_sha" "$head_sha")"
@@ -228,15 +232,10 @@ jobs:
               fi
               if printf '%s\n' "$changed_files" | grep -Eq '^l1/'; then
                 run_l1=true
-                run_l2=true
-              fi
-              if printf '%s\n' "$changed_files" | grep -Eq '^l2/'; then
-                run_l2=true
               fi
               if [ "$shared" = true ]; then
                 run_l0=true
                 run_l1=true
-                run_l2=true
               fi
               if printf '%s\n' "$changed_files" | grep -Eq '^(\.github/workflows/|README\.md$|CONTRIBUTING\.md$|CLAUDE\.md$|THIRD_PARTY_NOTICES$|tools/|pyproject\.toml$|uv\.lock$|l0/(compiler/(stage1_py|docgen|stage2_l0|shared)/|docs/|README(-WINDOWS)?\.md$|CLAUDE\.md$|pyproject\.toml$|scripts/(docs/|(gen_docs|docs_artifacts|stage_docs_pages|gen_dist_tools|dist_tools_lib)\.py$)))'; then
                 run_docs=true

@@ -1,6 +1,6 @@
 # Dea Project Status
 
-Version: 2026-10-10
+Version: 2026-10-11
 
 This document summarizes the current status of the Dea project at the monorepo level.
 
@@ -110,9 +110,11 @@ adds no language feature and creates no perpetual cross-level parity gate.
 
 Building L2 requires `L2_BOOTSTRAP_L1C` pointing to an installed canonical L1 toolchain. L1 compiles the `.l1`
 implementation and implementation tests; `l2c` handles `.l2` target fixtures and examples. Ordinary L2 compilation and
-native preparation use only L2-owned inputs. CI adds independent L2 routing, four-platform native validation, and a
-Linux isolation gate that excludes sibling checkouts during construction and excludes the bootstrap compiler during
-operation. L2 installation, productization, and hosted releases are outside this split.
+native preparation use only L2-owned inputs. L2 CI provides four-platform native validation and a Linux isolation gate
+that excludes sibling checkouts during construction and excludes the bootstrap compiler during operation. Unified CI
+skips L2 on pushes and pull requests. Manual Unified CI runs expose a `Run L2 CI` boolean flag (`run_l2_ci`), which
+defaults to false; enable it to include L2 validation. The standalone `L2 CI` workflow remains available for manual
+runs. L2 installation, productization, and hosted releases are outside this split.
 
 ## Release Model
 
