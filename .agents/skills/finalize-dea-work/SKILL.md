@@ -317,19 +317,13 @@ Rules:
 
 Summary verb selection:
 
-- Choose the summary verb from the primary repository change, not from the plan lifecycle action.
-- Use `Fix ...` when the commit introduces a bug fix.
-- Use `Implement ...` when the commit introduces a feature or implementation.
-- Use `Refactor ...` when the commit primarily restructures existing behavior without changing semantics.
-- Use `Add ... example.` or `Add ... examples.` when the primary change adds one or more example programs, name each
-  affected level, and use a form such as `Add a new L0 Forth parsing example.`
-- Use `Document ...` when the commit is docs-only.
-- Use `Complete ...` only when prior commits already introduced the main implementation and this commit finishes
-  residual work.
-- Use `Close ...` only when closing, archiving, or updating an already-existing plan or lifecycle artifact is the
-  primary change.
-- If a plan is created and closed in the same commit as the code change, describe the code change in the summary and
-  record the plan action in a body bullet.
+- Follow [AGENTS.md](../../../AGENTS.md#summary-verb-selection) for the open vocabulary, examples, and restrictions on
+  `Complete` and `Close`.
+- Choose a precise imperative verb from the primary repository change. The suggested verbs are examples, not a fixed
+  vocabulary or mandatory assignments by change category. For example, use
+  `Extend L1 trace validation to child fixtures.` when extending existing trace support.
+- Describe the code change even when its plan is created or closed in the same commit; record plan closure in a body
+  bullet unless lifecycle work is the primary change.
 
 ## Commit execution
 

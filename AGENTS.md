@@ -244,19 +244,47 @@ Treat local implementation, remote writes, and publication as separate authoriza
 
 - The commit summary must describe the repository change introduced by the commit, not the lifecycle state of the work
   session or plan file.
-- Use `Fix ...` for a commit that introduces a bug fix, even when the same commit also creates and closes the
-  corresponding bug-fix plan.
-- Use `Implement ...` for a commit that introduces a new feature or completed implementation, even when the same commit
-  also closes the corresponding feature plan.
-- Use `Refactor ...` when the commit primarily restructures existing behavior without changing semantics.
-- Use `Add ... example.` or `Add ... examples.` when the primary change adds one or more example programs, and include
-  each affected level according to the level-naming rule above.
-- Use `Document ...` when the commit is docs-only.
+- Choose a precise imperative verb that describes the primary change. The vocabulary is open; the verbs and examples
+  below are guidance, not an exhaustive list or mandatory assignments by change category.
+- `Fix`, `Implement`, `Refactor`, and `Document` are useful defaults when a more specific verb would not make the
+  summary clearer. `Refactor` describes restructuring without changing semantics. Docs-only changes need not begin with
+  `Document`, and bug fixes may use a more specific verb such as `Restore` when it accurately describes the repair.
+- `Add` applies to any new capability or artifact, including examples, tests, tooling, and documentation.
+- Keep claims supported by the change: use `Optimize` for demonstrated efficiency improvements and `Enforce` when checks
+  actually enforce the stated requirement.
 - Use `Complete ...` only for follow-up completion work where the implementation already exists in prior commits and
   this commit finishes remaining integration, docs, tests, or plan cleanup.
 - Use `Close ...` only when the primary repository change is closing, archiving, or updating an already-existing plan or
   lifecycle artifact. Do not use `Close ...` for a commit whose primary change is a code fix or feature implementation.
 - Mention plan closure in a body bullet, not in the summary, unless the plan lifecycle change is the primary change.
+
+Suggested verbs by intent:
+
+| Verbs                                       | Appropriate change                                                                            |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `Add`, `Introduce`, `Extend`                | Introduce something or expand an existing capability.                                         |
+| `Support`, `Enable`, `Allow`                | Make a platform, workflow, or language construct usable.                                      |
+| `Remove`, `Retire`, `Deprecate`             | Delete something, end its use, or begin phasing it out.                                       |
+| `Restore`, `Preserve`                       | Recover lost behavior or maintain a required property.                                        |
+| `Harden`, `Tighten`                         | Strengthen safety boundaries, validation, or constraints.                                     |
+| `Optimize`, `Reduce`                        | Improve efficiency or lower a specific cost.                                                  |
+| `Port`, `Backport`, `Migrate`               | Move an implementation between languages, levels, or conventions.                             |
+| `Rename`, `Split`, `Consolidate`, `Replace` | Describe a concrete structural change.                                                        |
+| `Integrate`, `Configure`                    | Connect existing components or change their setup.                                            |
+| `Test`, `Cover`                             | Add tests or coverage as the primary change.                                                  |
+| `Clarify`, `Define`, `Record`               | Resolve ambiguous wording, specify a contract, or preserve a decision.                        |
+| `Refresh`, `Revise`, `Align`                | Bring existing documentation or planning into agreement with current requirements.            |
+| `Enforce`                                   | Introduce checks that require a policy to be followed.                                        |
+| `Update`, `Upgrade`, `Bump`                 | Change existing content or dependency versions; prefer the more specific verb where possible. |
+
+Example summaries:
+
+- `` Remove the deprecated L1 `case` default. ``
+- `Integrate L0 documentation validation into Unified CI.`
+- `Extend L1 trace validation to child fixtures.`
+- `Introduce explicit validation tiers and reduce local test cost.`
+- `Prohibit specific CI run references in repository documentation.`
+- `Record Dea architectural decisions and enforce ADR impact requirements.`
 
 ## Quality Standards
 
