@@ -3,6 +3,7 @@
 """Local L1 release policy, workflow wiring, and mocked publication regression tests."""
 
 import copy
+import io
 import json
 import os
 from pathlib import Path
@@ -524,6 +525,33 @@ def test_rerun_without_identity_fails_before_remote_lookup(tmp_path, monkeypatch
     assert api.calls == []
 
 
+@pytest.mark.parametrize("base", ["https://api.github.com", "https://github.example/api/v3/"])
+def test_snapshot_default_branch_through_http_boundary(monkeypatch, base):
+    monkeypatch.setenv("GITHUB_REPOSITORY", "example/fixture")
+    monkeypatch.setenv("GH_TOKEN", "fixture-only")
+    monkeypatch.setenv("GITHUB_API_URL", base)
+    repository_url = base.rstrip("/") + "/repos/example/fixture"
+    responses = {
+        repository_url: {"default_branch": "topic/snapshot"},
+        repository_url + "/commits/topic%2Fsnapshot": {"sha": SOURCE},
+        repository_url + "/actions/runs/12": {"created_at": "2026-10-11T08:09:10Z"},
+    }
+    calls = []
+
+    def respond(request, *, timeout):
+        calls.append(request.full_url)
+        assert request.get_method() == "GET"
+        response = io.BytesIO(json.dumps(responses[request.full_url]).encode())
+        response.status = 200
+        return response
+
+    monkeypatch.setattr(release, "urlopen", respond)
+    record = release.identity(release.GitHub(), kind="snapshot", ref="", tag="", run_id="12")
+    assert record["source"] == SOURCE
+    assert record["tag"] == "l1-snapshot-20261011-0809-aaaaaaaaaaaa"
+    assert calls == list(responses)
+
+
 @pytest.mark.parametrize('code', [401, 403, 404, 500])
 def test_api_errors_do_not_become_missing_releases(monkeypatch, code):
     from urllib.error import HTTPError
@@ -537,4 +565,5 @@ def test_api_errors_do_not_become_missing_releases(monkeypatch, code):
         assert api.api('releases/tags/l1-v0.1.0') is None
     else:
         with pytest.raises(HTTPError): api.api('releases/tags/l1-v0.1.0')
+    with pytest.raises(HTTPError): api.api('')
     with pytest.raises(HTTPError): api.api('releases', {}, method='POST')

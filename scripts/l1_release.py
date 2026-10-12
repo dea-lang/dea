@@ -65,7 +65,7 @@ class GitHub:
         self.token = os.environ["GH_TOKEN"]
 
     def api(self, path: str, data: dict | None = None, *, method: str = "GET"):
-        """Call a repository API; only a genuine GET 404 means absence.
+        """Call a repository API; only a nested GET 404 means resource absence.
 
         Args:
             path: Repository-relative API endpoint.
@@ -73,12 +73,15 @@ class GitHub:
             method: HTTP method.
 
         Returns:
-            Decoded response, or None for a missing GET resource.
+            Decoded response, or None for a missing nested GET resource.
 
         Raises:
-            HTTPError: Authentication, transport, or non-404 API failure.
+            HTTPError: Repository lookup, authentication, or other API failure.
         """
-        request = Request(f"{self.base}/repos/{self.repository}/{path}",
+        endpoint = f"{self.base.rstrip('/')}/repos/{self.repository}"
+        if path:
+            endpoint += "/" + path
+        request = Request(endpoint,
                           data=None if data is None else json.dumps(data).encode(), method=method,
                           headers={"Authorization": f"Bearer {self.token}",
                                    "Accept": "application/vnd.github+json",
@@ -87,7 +90,7 @@ class GitHub:
             with urlopen(request, timeout=120) as response:
                 return None if response.status == 204 else json.load(response)
         except HTTPError as exc:
-            if exc.code == 404 and method == "GET":
+            if exc.code == 404 and method == "GET" and path:
                 return None
             raise
 
