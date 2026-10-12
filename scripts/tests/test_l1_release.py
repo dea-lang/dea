@@ -268,7 +268,7 @@ def test_curated_notes_preserve_source_bytes_through_preparation_and_draft_retry
     assert (root / path).read_bytes() == curated.encode("utf-8")
     asset = tmp_path / "SHA256SUMS"; asset.write_bytes(b"")
     release.publish(api, tag=TAG, source=source, assets=[asset], notes=notes, publish_release=False)
-    assert api.release["body"] == notes and api.release["name"] == "Dea/L1 0.1.0"
+    assert api.release["body"] == notes and api.release["name"] == TAG
     commit("Change branch notes", path, b"Different committed notes\n")
     (root / path).write_bytes(b"Different uncommitted notes\n")
     monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
@@ -379,11 +379,14 @@ def test_draft_then_publish_preserves_l0_latest(tmp_path, publish_release):
     api = FakeGitHub(); api.tag_source = SOURCE
     release.publish(api, tag=TAG, source=SOURCE, assets=assets, notes="Development toolchain", publish_release=publish_release)
     assert api.release["draft"] is not publish_release
+    assert all(data["name"] == TAG for method, _, data in api.calls if method in {"POST", "PATCH"})
     assert api.release["make_latest"] == "false" and api.release["prerelease"] is False
     assert [method for method, _, _ in api.calls if method != "GET"] == ["POST", "UPLOAD", "PATCH"]
     if not publish_release:
+        api.release["name"] = "Dea/L1 0.1.0"
         api.calls.clear()
         release.publish(api, tag=TAG, source=SOURCE, assets=assets, notes="Updated", publish_release=True)
+        assert api.release["name"] == TAG
         assert [method for method, _, _ in api.calls if method != "GET"] == ["UPLOAD", "PATCH"]
     api.calls.clear()
     with pytest.raises(ValueError, match="immutable"):
@@ -475,6 +478,7 @@ def test_snapshot_publishes_as_prerelease(tmp_path):
     tag = "l1-snapshot-20261011-0809-aaaaaaa"
     release.publish(api, tag=tag, source=SOURCE, assets=[path], notes="notes", publish_release=True)
     assert api.release["prerelease"] is True
+    assert all(data["name"] == tag for method, _, data in api.calls if method in {"POST", "PATCH"})
     assert api.release["make_latest"] == "false"
 
 

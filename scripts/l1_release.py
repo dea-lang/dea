@@ -456,13 +456,13 @@ def publish(api: GitHub, *, tag: str, source: str, assets: list[Path], notes: st
     Raises:
         ValueError: Existing tag, release, or uploaded assets disagree.
     """
-    version = package_version(tag, source)
+    package_version(tag, source)
     if tag_commit(api, tag) != source:
         raise ValueError("publication tag differs from validated source")
     prerelease = bool(SNAPSHOT.fullmatch(tag))
     endpoint = "releases/tags/" + quote(tag, safe="")
     release = api.api(endpoint)
-    title = f"Dea/L1 {version}"
+    title = tag
     if release is not None:
         if not release["draft"]:
             raise ValueError("published release is immutable; explicit recovery is required")

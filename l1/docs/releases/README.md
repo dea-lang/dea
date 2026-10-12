@@ -40,11 +40,12 @@ releases select the nearest reachable earlier valid `l1-vX.Y.Z` tag. With no ear
 repository changes in the selected range are included, since shared changes can affect L1.
 
 The composed body has one `# Dea/L1 X.Y.Z` heading and development notice, both supplied by the curated file. Its GitHub
-release title is `Dea/L1 X.Y.Z`. The helper preserves the curated text and never writes generated history back to the
-source document.
+release title is the tag, `l1-vX.Y.Z`. The helper preserves the curated text and never writes generated history back to
+the source document.
 
 Snapshots keep automatically generated notes and require no curated file. Their baseline can be an earlier reachable L1
-snapshot or versioned tag; their introductory phrase also ends with a colon.
+snapshot or versioned tag; their introductory phrase also ends with a colon. Their GitHub release title is the full
+`l1-snapshot-*` tag.
 
 Release assets, `make_latest=false`, and published-release immutability are unchanged. Follow [AGENTS.md][agent-policy]
 for separate tag-creation, tag-push, and publication authorization. The workflow and note-composition policies are
