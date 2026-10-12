@@ -52,9 +52,9 @@ recorded in [docs/decisions/0023-l1-release-workflow-policy.md][release-policy].
 
 ## Releases
 
-No curated versioned-release documents have been prepared yet. Earlier acceptance releases used generated notes; L1
-publication remains pending.
+- [l1/docs/releases/0.1.0.md][release-0-1-0] (prepared; publication pending)
 
 [agent-policy]: ../../../AGENTS.md
 [l0-notes]: ../../../l0/docs/releases/README.md
+[release-0-1-0]: 0.1.0.md
 [release-policy]: ../../../docs/decisions/0023-l1-release-workflow-policy.md
