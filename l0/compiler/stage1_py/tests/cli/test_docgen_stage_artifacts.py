@@ -72,6 +72,26 @@ def test_stage_templates_have_isolated_navigation(stage: str) -> None:
         assert "fonts.googleapis" not in text
 
 
+@pytest.mark.parametrize("stage", ["stage1", "stage2"])
+def test_stage_front_pages_share_tagline(stage: str) -> None:
+    templates = ROOT / "scripts/docs/templates"
+    tagline = (templates / "tagline.txt.j2").read_text(encoding="utf-8").strip()
+    env = Environment(loader=FileSystemLoader(templates))
+    for name in ("mainpage_html.md.j2", "mainpage_latex.md.j2", "markdown_index.md.j2"):
+        text = env.get_template(name).render(stage=stage, stage1=[], stage2=[], shared=[])
+        assert f"Dea/L0 Stage {stage[-1]}" in text
+        assert f"*{tagline}*" in text
+
+
+def test_l0_readmes_match_shared_tagline() -> None:
+    tagline = (ROOT / "scripts/docs/templates/tagline.txt.j2").read_text(encoding="utf-8").strip()
+    for name in ("README.md", "docs/user/README.md", "docs/user/README-WINDOWS.md"):
+        text = (ROOT / name).read_text(encoding="utf-8")
+        quote = next(block for block in text.split("\n\n") if block.startswith("> "))
+        quote = " ".join(line.removeprefix("> ").strip() for line in quote.splitlines())
+        assert quote == f"_{tagline}_"
+
+
 def test_all_runs_independent_pipelines_and_preserves_other_stage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def generate(args):
         manifest = l0_docgen.build_source_manifest(ROOT, args.stage)

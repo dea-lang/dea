@@ -435,7 +435,8 @@ def _generate_stage(args: argparse.Namespace) -> int:
         rewrite_and_prune_raw_html_surface(xml_dir, markdown_render_root, html_dir)
         render_compat_redirect_pages(xml_dir, markdown_render_root, html_dir, templates_dir)
     if latex_enabled:
-        normalize_latex_site(xml_dir, doxygen_root / "latex")
+        tagline = (templates_dir / "tagline.txt.j2").read_text(encoding="utf-8").strip()
+        normalize_latex_site(xml_dir, doxygen_root / "latex", tagline=tagline)
 
     undocumented_functions = _collect_undocumented_functions(xml_dir)
     _write_undocumented_functions_report(undocumented_functions_report, undocumented_functions)

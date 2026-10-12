@@ -120,7 +120,7 @@ def _normalize_prose_arrows(text: str) -> str:
     return "\n".join(_normalize_prose_arrow_line(line) for line in text.splitlines()) + "\n"
 
 
-def _normalize_titlepage_front_matter(text: str) -> str:
+def _normalize_titlepage_front_matter(text: str, tagline: str = "") -> str:
     pattern = re.compile(r"^(?P<indent>\s*)\[1ex\]\\large (?P<content>.*) \\\\$", re.MULTILINE)
     separator_re = re.compile(rf"\s+{re.escape(_FRONT_MATTER_BREAK)}\s+")
 
@@ -141,7 +141,21 @@ def _normalize_titlepage_front_matter(text: str) -> str:
             )
         )
 
-    return pattern.sub(replace, text, count=1)
+    text = pattern.sub(replace, text, count=1)
+    if tagline:
+        block = (r"\vspace*{0.5cm}" + "\n"
+                 + r"\begin{minipage}{0.8\textwidth}\centering\normalsize\itshape" + "\n"
+                 + _escape_latex_texttt(tagline) + "\n"
+                 + r"\end{minipage}\par" + "\n")
+        start = text.find(r"\begin{titlepage}")
+        end = text.find(r"\end{titlepage}", start)
+        titlepage = text[start:end] if start >= 0 and end >= 0 else ""
+        if block not in titlepage:
+            marker = r"\vspace*{1cm}"
+            if marker not in titlepage:
+                raise ValueError("Doxygen title page has no tagline insertion point")
+            text = text[:start] + titlepage.replace(marker, block + marker, 1) + text[end:]
+    return text
 
 
 def _normalize_l0_signature_links(text: str) -> str:
@@ -515,8 +529,17 @@ def _normalize_symbol_tex(
     return normalized
 
 
-def normalize_latex_site(xml_dir: Path, latex_dir: Path) -> None:
-    """Normalize native Doxygen LaTeX output for L0 sources."""
+def normalize_latex_site(xml_dir: Path, latex_dir: Path, *, tagline: str = "") -> None:
+    """Normalize native Doxygen LaTeX output for L0 sources.
+
+    Args:
+        xml_dir: Generated Doxygen XML directory.
+        latex_dir: Generated LaTeX directory to update.
+        tagline: Optional language tagline to place on the PDF cover.
+
+    Raises:
+        ValueError: The requested tagline cannot be placed on the Doxygen cover.
+    """
     if not latex_dir.exists():
         return
 
@@ -578,7 +601,7 @@ def normalize_latex_site(xml_dir: Path, latex_dir: Path) -> None:
     refman_path = latex_dir / "refman.tex"
     if refman_path.exists():
         refman_path.write_text(
-            _normalize_titlepage_front_matter(refman_path.read_text(encoding="utf-8")),
+            _normalize_titlepage_front_matter(refman_path.read_text(encoding="utf-8"), tagline),
             encoding="utf-8",
         )
 
