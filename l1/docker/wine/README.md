@@ -1,6 +1,6 @@
 # Experimental L1 Wine/MSYS2 runner
 
-Version: 2026-10-10
+Version: 2026-10-12
 
 Run these commands from `l1/`. Docker must provide Linux amd64 containers and the host needs Python 3.10 or newer. The
 container uses Windows UCRT64 GCC and Python through patched Wine, including L0 Stage 2 bootstrap for L1. Native Windows
@@ -64,7 +64,12 @@ archive uses stdin, so interactive stdin forwarding from the host is not part of
 fixtures inside the test suite still use their own pipes. Container failure status propagates through Docker and then
 Make's normal failure handling.
 
-## Prototype validation
+## Historical prototype validation
+
+The results below predate the canonical L1/L2 compiler split. Fixture names and suite counts describe that prototype,
+not the current compiler or release artifacts. For current native artifact acceptance, see
+[l1/AGENTS.md](../../AGENTS.md) and
+[l1/docs/reference/productization-inventory.md](../../docs/reference/productization-inventory.md).
 
 The initial amd64 run built Windows GCC 16.2.0 and MSYS2 Python 3.14.7, bootstrapped L0 Stage 2 and L1, and verified all
 23 bundled interfaces. Repeated `CMD=help` calls reused both images without invoking Docker build. A quoted Make
@@ -90,8 +95,8 @@ The two argument-membership failures are consistent with the observed path-forma
 instrumented. The GCC discovery failures require further isolation; this run does not establish whether Wine, the MSYS2
 Python combination, timing, or a compiler-support defect is responsible. No production expectation or timeout was
 changed. The aggregate failure prevented the requested trace-smoke target from running; only the independent focused
-trace above is claimed. Native L1 validation passed all 82 normal cases and 46 dedicated traces. Broader Wine testing is
-substantially slower, and a green native Windows CI run remains necessary for Windows support claims.
+trace above is claimed. At that time, native L1 validation passed all 82 normal cases and 46 dedicated traces. Broader
+Wine testing is substantially slower, and a green native Windows CI run remains necessary for Windows support claims.
 
 ## Upstream limitations
 

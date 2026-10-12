@@ -2,15 +2,15 @@
 
 This `l1/work/` tree holds lifecycle-bound documents for the Dea/L1 subtree.
 
-Use `l1/docs/` for stable references, the L1 roadmap, and future accepted specs. Use `l1/work/` for initiatives, plans,
-and any future proposals.
+Use `l1/docs/` for stable references, the L1 roadmap, and accepted specs. Use `l1/work/` for initiatives, plans, and
+proposals.
 
 ## Layout
 
 - `initiatives/` for multiphase, cross-cutting bodies of work that sequence and motivate future plans (see "Initiatives
   and plans" below)
 - `plans/` for L1-local execution plans and operational work tracking
-- `proposals/` for future in-discussion L1 changes if that tree becomes necessary
+- `proposals/` for in-discussion L1 changes
 
 Use `l1/work/` only for material owned by the L1 subtree. If work spans `l0/` and `l1/`, prefer a single shared document
 under the repository-root `work/` tree with explicit targets rather than separate local follow-ups.
@@ -46,12 +46,12 @@ grep for its filename across `l1/docs/`, `l1/work/`, and any shared root docs/wo
 - Title: [Full descriptive title]
 - Kind: [Bug Fix | Feature | Refactor | Tooling]
 - Severity: [Low | Medium | High | Critical]
-- Stage: [1 | 2 | Shared]
+- Stage: Canonical
 - Subsystem: [Subsystem name]
 - Modules:
-  - `path/to/module.l1`
+  - `compiler/src/module.l0`
 - Test modules:
-  - `path/to/test_module.l1`
+  - `compiler/tests/module_test.l0`
 - Repro: [Reproduction command or path] (optional)
 
 ## Summary
@@ -61,11 +61,14 @@ grep for its filename across `l1/docs/`, `l1/work/`, and any shared root docs/wo
 ## ADR Impact
 
 - Decision: [Short architectural question or durable choice]
-  - Scope: [Dea-wide | Shared | Repository/tooling | L1 | N/A]
+  - Scope: [L1 | N/A]
   - Disposition: [Pending | New ADR | Amend ADR | Covered by ADR | ADR not warranted]
   - ADR: [None | scope-matching decisions directory | exact indexed ADR path]
   - Rationale: [Why this disposition and destination are appropriate]
 ```
+
+L1 has one canonical compiler. Use `Stage: Canonical` for new L1 plans; preserve stage metadata in historical records.
+The compiler implementation and its Dea tests use `.l0`; target programs and the L1 standard library use `.l1`.
 
 Every plan and initiative must contain exactly one `## ADR Impact` section using the complete schema and lifecycle rules
 in root `AGENTS.md`. Repeat the record for independent architectural questions. Use `ADR not warranted` as the sole
@@ -113,8 +116,8 @@ initiatives".
 
 Initiative documents carry two membership fields in their metadata block, after `Kind: Initiative`:
 
-- `Open plans:` — bulleted list of repo-root paths to currently open spawned plans, or `(none)`.
-- `Closed plans:` — bulleted list of repo-root paths to closed spawned plans, or `(none)`.
+- `Open plans:`: bulleted list of repo-root paths to currently open spawned plans, or `(none)`.
+- `Closed plans:`: bulleted list of repo-root paths to closed spawned plans, or `(none)`.
 
 Plans spawned by an initiative carry a `Parent Initiative:` field in their metadata block, immediately after `Stage:`,
 pointing at the initiative file using the repo-root path. Standalone plans must not carry this field.

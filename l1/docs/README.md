@@ -2,10 +2,9 @@
 
 This `l1/docs/` tree holds stable documentation for the Dea/L1 subtree.
 
-At the current bootstrap stage, this tree is still intentionally narrow:
-
-- L1 bootstrap/reference documents
-- normative L1 language/compiler specifications
+It covers the canonical L0-implemented compiler, the L1 language and standard library, installed-toolchain usage, and
+release notes. For a packaged compiler, start with [l1/docs/user/README.md][user-guide]; for source builds and
+development, start with [l1/README.md][developer-guide].
 
 L1-local lifecycle artifacts live in the sibling `l1/work/` tree. Dea-wide stable docs live under the root `docs/` tree,
 while Dea-wide lifecycle artifacts live under the root `work/` tree.
@@ -13,10 +12,10 @@ while Dea-wide lifecycle artifacts live under the root `work/` tree.
 ## Layout
 
 - `roadmap.md` for the singular evergreen L1 roadmap
-- `project-status.md` for the current L1 bootstrap status snapshot
-- `reference/` for L1-local bootstrap and implementation references
+- `project-status.md` for the current L1 development and delivery status snapshot
+- `reference/` for L1 language, library, runtime, and implementation references
 - `specs/` for L1-local compiler and module-interface specifications
-- `user/` for task-oriented L1 bootstrap user guides
+- `user/` for installed-toolchain guides and native linking instructions
 - [l1/docs/releases/README.md][releases] for curated versioned-release notes and authoring requirements
 - `implementation/` for future accepted implementation notes if needed
 - `decisions/` for ADR-style records linking design decisions to the closed plans that shaped them and the current docs
@@ -53,21 +52,20 @@ L1 baseline, direction, or future planning constraints.
 
 For legibility, prefer reference-style file links with short, readable ids and end-of-file definitions.
 
-Use initiative and plan filenames as the visible link text where that is the clearest reader-facing label, for example
-`[0001-separate-compilation-and-linking][separate-compilation]` or
-`[2026-07-17-interface-fingerprint-canonicalization-and-verification-noref][interface-fingerprints]`.
+Use repository-root paths as the visible link text, for example `[l1/docs/project-status.md][project-status]` or
+`[l1/docs/roadmap.md][roadmap]`.
 
 Keep reference ids short and readable, usually one or two words joined with hyphens. Avoid dates, numeric prefixes,
-`noref`, and file extensions in the reference id unless a real uniqueness conflict leaves no cleaner option. For other
-documents, a short document name such as `[project-status][project-status]` is preferred.
+`noref`, and file extensions in the reference id unless a real uniqueness conflict leaves no cleaner option.
 
 ## Generated source references
 
-From `l1/`, `make docs` builds canonical HTML, Markdown, XML, and LaTeX references under `build/docs/reference/`. The
-source inventory includes the retained `.l0` compiler, L1 stdlib/runtime, and native support actually used by its
-builder. There is no stage selector. HTML requires Doxygen, Graphviz, the shared Python environment, and vendored m.css;
-`make docs-pdf` additionally requires a complete TeX toolchain and builds the full indexed
-`pdf/dea_l1_api_reference.pdf`. Preview PDF builds cannot produce distribution evidence.
+From `l1/`, run `make venv` to prepare the shared Python environment. Then `make docs` builds canonical HTML, Markdown,
+XML, and LaTeX references under `build/docs/reference/`. The source inventory includes the canonical `.l0` compiler, L1
+stdlib/runtime, and native support actually used by its builder. There is no stage selector. HTML requires Doxygen,
+Graphviz, the shared Python environment, and vendored m.css; `make docs-pdf` additionally requires a complete TeX
+toolchain and builds the full indexed `pdf/dea_l1_api_reference.pdf`. Preview PDF builds cannot produce distribution
+evidence.
 
 ```sh
 make docs-artifacts DEA_DIST_VERSION=dev
@@ -88,5 +86,7 @@ Direct `make install PREFIX=... DOCS_ARTIFACT=/absolute/bundle.tar.gz` optionall
 `share/doc/dea/l1/autodocs/`. `make dist` requires it and never generates documentation. `make smoke-dist ARCHIVE=...`
 checks the exact archive after extraction. Local generation and packaging do not publish or dispatch workflows.
 
+[developer-guide]: ../README.md
 [releases]: releases/README.md
 [roadmap]: roadmap.md
+[user-guide]: user/README.md

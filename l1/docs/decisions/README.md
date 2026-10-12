@@ -40,4 +40,4 @@ contain every ADR in this directory.
 ## Current Docs
 ```
 
-See [INDEX.md](INDEX.md) for the current list.
+See [l1/docs/decisions/INDEX.md](INDEX.md) for the current list.

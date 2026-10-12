@@ -5,9 +5,16 @@ prints `42`.
 
 ## Build and Run
 
-You need `l1c`, GNU Make 3.81 or later, and a C99 compiler.
+You need `l1c`, GNU Make 3.81 or later, and a supported host C compiler/linker and preparation tools. Use GCC, upstream
+Clang 16 or newer, or Apple Clang with the required configuration capabilities. See
+[l1/docs/user/README.md](../../docs/user/README.md) for installed-toolchain requirements and
+[l1/docs/user/README-WINDOWS.md](../../docs/user/README-WINDOWS.md) for Windows setup.
 
-From the repository's `l1` directory, build and activate the canonical compiler, then enter the example:
+With an installed toolchain already activated, enter `l1/examples/make/` in the source checkout and run `make run`. The
+release package does not bundle this example. Building it with an installed compiler needs no L0 or Python.
+
+To use a development compiler instead, follow the prerequisites and bootstrap selection in
+[l1/README.md](../../README.md). From the repository's `l1/` directory:
 
 ```sh
 make use-dev
