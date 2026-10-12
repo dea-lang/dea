@@ -1,64 +1,129 @@
-# The Dea Programming Language
+# Dea/L1
 
-> _C-family syntax, UB-free semantics, ARC strings, sum types and pattern matching._
+> _C-family syntax, modules and separate compilation, checked arrays and slices, nullable types, and ARC-managed
+> strings._
 
-## Dea/L<sub>1</sub>
+**Dea/L1** is a systems language whose `l1c` compiler translates `.l1` programs through C into native executables. This
+package contains the standalone compiler, standard library, runtime support, and a small program to get you started.
 
-This package contains the standalone, canonical L0-implemented Dea/L1 development compiler. The package version does not
-imply stable language or toolchain maturity. Exact build and version metadata are recorded in [VERSION].
+**Development status:** L1 is under active development. The package version does not promise stable language,
+module-interface, or binary compatibility across future releases. Exact package and build metadata are recorded in
+[VERSION].
 
-## What is included
+## Prerequisites
 
-- `bin/` for the `l1c` launchers and environment helpers
-- `interfaces/` for bundled semantic interfaces
-- `shared/` for standard library and runtime rebuild sources
-- `include/` for public runtime headers
-- `share/dea/l1/smoke/hello.l1` for a runnable smoke program
-- `share/doc/dea/l1/toolchain.md` for usage, native preparation, cache controls, and relocation instructions
+Using this package needs no L0, Python, Make, or source checkout. To build and run native programs, install a supported
+C compiler, linker, and host preparation tools: GCC, upstream Clang 16 or newer, or Apple Clang with the required
+configuration capabilities. Set `L1_CC` to select the C compiler explicitly.
 
-The compiler needs no Python, Make, upstream L0, or bootstrap L1 compiler. Native compilation and stdlib preparation
-require a compatible host C compiler/linker and host tools. GCC and upstream Clang 16+ are supported; Apple Clang must
-support the compiler's configuration controls.
+Native packages target Linux x86_64, macOS Intel, macOS Apple Silicon, and Windows x86_64. Use the package matching your
+operating system and architecture.
 
-## Quick start
+**Windows:** follow [README-WINDOWS.md][windows] for platform setup, activation, and build/run commands. The shell
+examples below use bash or zsh on Linux and macOS; the language example and package information apply to all platforms.
 
-From the package directory in bash or zsh:
+## First run
+
+Replace `/path/to/dea-l1` with this package's directory. Quote paths containing spaces.
 
 ```bash
+cd /path/to/dea-l1
 source ./bin/l1-env.sh
 l1c --version
 l1c --check share/dea/l1/smoke/hello.l1
 l1c --run share/dea/l1/smoke/hello.l1
 ```
 
-The smoke program prints `hello from Dea L1`. To build an executable:
+Activation selects this compiler in the current shell. `--check` analyzes the program without producing an executable.
+`--run` builds and executes the bundled smoke program, printing:
+
+```text
+hello from Dea L1
+```
+
+The first native build prepares matching standard-library and runtime support in a writable per-user cache and can take
+longer. Later builds reuse compatible support. The installation itself remains unchanged.
+
+To keep an executable, choose a writable output directory. For example, from a writable package directory:
 
 ```bash
 l1c --build share/dea/l1/smoke/hello.l1 -o hello
 ./hello
 ```
 
-On Windows, see [README-WINDOWS.md][windows] before using native build/run commands. The L1 Windows package targets
-MSYS2 UCRT64.
+If the package directory is read-only, pass an output path in your project directory instead.
 
-## Reference docs
+## Your own program
 
-See the bundled [share/doc/dea/l1/toolchain.md][toolchain] for native preparation, writable cache selection, and
-relocation. Keep the entire prefix together when moving it. Activation is optional; direct launcher invocation works
-from any directory.
+With the environment still active, create `hello.l1` in a writable project directory:
 
-Distribution archives include autodocs; direct installations may omit them. Open
-`share/doc/dea/l1/autodocs/html/index.html` for the offline HTML reference or
-`share/doc/dea/l1/autodocs/pdf/dea_l1_api_reference.pdf` for the full PDF. Compiler-only installations omit these
+```l1
+module hello;
+
+import std.io;
+
+func main() {
+    printl_s("Hello, L1!");
+}
+```
+
+From that directory:
+
+```bash
+l1c --check hello.l1
+l1c --run hello.l1
+l1c --build hello.l1 -o hello
+./hello
+```
+
+The program prints `Hello, L1!`. Run `l1c --help` to explore compiler options.
+
+## What is included
+
+- `bin/`: compiler launchers and environment helpers.
+- `interfaces/`: bundled semantic module interfaces.
+- `shared/`: standard-library and runtime sources used to prepare native support.
+- `include/`: public runtime headers.
+- [share/dea/l1/smoke/hello.l1][hello]: the runnable smoke program.
+- [share/doc/dea/l1/toolchain.md][toolchain]: compiler usage, native preparation, cache controls, and relocation.
+
+Release archives also include offline HTML and PDF references. Direct compiler-only installations may omit those
 optional files.
 
-Project source and reference documentation are available at <https://github.com/dea-lang/dea>.
+## Cache and relocation
+
+Set `L1_STDLIB_CACHE` or use `--stdlib-cache` to select another writable support cache. Different native configurations
+select different profiles; matching support is prepared as needed. See [share/doc/dea/l1/toolchain.md][toolchain] for
+explicit preparation and cache-reuse controls.
+
+Keep the entire package directory together when moving it, including hidden and metadata files. A read-only installation
+is supported. After moving the package, source `bin/l1-env.sh` from its new location. Activation is optional: direct
+launcher invocation works from any directory.
+
+## Documentation and examples
+
+For the offline HTML reference, open `share/doc/dea/l1/autodocs/html/index.html`. The full PDF is at
+`share/doc/dea/l1/autodocs/pdf/dea_l1_api_reference.pdf`. These references are included in distribution archives; keep
+the documentation tree intact so its relative links continue to work.
+
+The bundled [share/doc/dea/l1/toolchain.md][toolchain] covers separate compile/link commands and installation repair.
+Further reading is available online in the [Dea repository](https://github.com/dea-lang/dea):
+
+- [l1/examples/](https://github.com/dea-lang/dea/tree/main/l1/examples): language and standard-library examples.
+- [l1/docs/user/linking.md](https://github.com/dea-lang/dea/blob/main/l1/docs/user/linking.md): external libraries and
+  native linking options.
+- [l1/docs/releases/0.1.0.md](https://github.com/dea-lang/dea/blob/main/l1/docs/releases/0.1.0.md): the first release's
+  feature baseline and compatibility notes.
+
+Online examples and guides follow repository development and may describe changes newer than this package. Use the
+bundled references for the installed version.
 
 ## Licensing
 
 See [LICENSE-MIT][mit], [LICENSE-APACHE][apache], and [THIRD_PARTY_NOTICES][notices].
 
 [apache]: LICENSE-APACHE
+[hello]: share/dea/l1/smoke/hello.l1
 [mit]: LICENSE-MIT
 [notices]: THIRD_PARTY_NOTICES
 [toolchain]: share/doc/dea/l1/toolchain.md
