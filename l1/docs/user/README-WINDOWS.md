@@ -25,21 +25,18 @@ Open Command Prompt (`cmd.exe`). Replace `C:\path\to\dea-l1` with the extracted 
 cd /d "C:\path\to\dea-l1"
 call bin\l1-env.cmd
 l1c --version
-l1c --check share\dea\l1\smoke\hello.l1
-l1c --run share\dea\l1\smoke\hello.l1
+l1c --check examples/hello.l1
+l1c --run examples/hello.l1
 ```
 
 Activation selects this package in the current shell and discovers MSYS2 to add the toolchain to `PATH`. `--check`
-analyzes the program; `--run` builds and executes it. The smoke program prints:
-
-```text
-hello from Dea L1
-```
+analyzes the program; `--run` builds and executes it. The example prints greetings in 25 languages in a shuffled order,
+including `Hello, world! This is Dea/L1.`. Use a UTF-8 terminal with suitable fonts to display the greetings.
 
 To keep an executable, run from a writable package directory:
 
 ```cmd
-l1c --build share\dea\l1\smoke\hello.l1 -o hello.exe
+l1c --build examples/hello.l1 -o hello.exe
 .\hello.exe
 ```
 
@@ -71,19 +68,34 @@ Open the UCRT64 shell and replace `/c/path/to/dea-l1` with the package location 
 cd "/c/path/to/dea-l1"
 source ./bin/l1-env.sh
 l1c --version
-l1c --check share/dea/l1/smoke/hello.l1
-l1c --run share/dea/l1/smoke/hello.l1
+l1c --check examples/hello.l1
+l1c --run examples/hello.l1
 ```
 
-The output is the same `hello from Dea L1` greeting. To keep and run an executable from a writable package directory:
+The output is the same set of multilingual greetings. To keep and run an executable from a writable package directory:
 
 ```bash
-l1c --build share/dea/l1/smoke/hello.l1 -o hello.exe
+l1c --build examples/hello.l1 -o hello.exe
 ./hello.exe
 ```
 
 Use forward-slash paths in these shell commands and quote paths containing spaces. The UCRT64 shell supplies the host
 toolchain environment; sourcing `l1-env.sh` selects the Dea package within it.
+
+## More bundled examples
+
+From the package directory, these commands work in either shell:
+
+```text
+l1c --run examples/slices.l1
+l1c --run examples/demo.l1 -- mul 6 add 5 2
+l1c --run examples/hamurabi.l1
+```
+
+See [README.md][readme] for descriptions and the equivalent `-Rp` module form for multi-module projects. To edit
+examples, copy them into a writable project directory. The `examples/make/` project additionally requires GNU Make in
+the UCRT64 shell; install it with `pacman -S make`, then follow its README in your writable copy. Use
+`make run PROGRAM=build/main.exe` and `make clean PROGRAM=build/main.exe` on Windows.
 
 ## Your own program
 

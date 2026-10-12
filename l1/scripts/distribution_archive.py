@@ -16,6 +16,7 @@ import zipfile
 from urllib.parse import unquote, urlsplit
 
 from docs_artifacts import verify_tree
+from productization_examples import REQUIRED_EXAMPLES, is_example_path
 from productization_inventory import (
     MANIFEST_PATH, _relative_path, _unique_object, _validate_entries,
     read_inventory, validate_inventory, verify_payload,
@@ -26,7 +27,7 @@ DOCS_PATH = "share/doc/dea/l1/autodocs"
 DOCUMENTS = ("README.md", "README-WINDOWS.md", "share/doc/dea/l1/toolchain.md")
 BASE_FILES = {*DOCUMENTS, "VERSION", "LICENSE-MIT", "LICENSE-APACHE", "THIRD_PARTY_NOTICES",
               MANIFEST_PATH, "share/dea/l1/smoke/hello.l1", "include/dea_rt.h", "include/l1_real.h",
-              "bin/l1c", "bin/l1c.native", "bin/l1-env.sh"}
+              "bin/l1c", "bin/l1c.native", "bin/l1-env.sh"} | REQUIRED_EXAMPLES
 WINDOWS_FILES = {"bin/l1c.cmd", "bin/l1-env.cmd"}
 
 
@@ -67,6 +68,10 @@ def verify_distribution(prefix: Path) -> dict:
         raise ValueError("distribution contents differ from inventory")
     support = {}
     for path, entry in entries.items():
+        if is_example_path(path):
+            if entry["kind"] != "file":
+                raise ValueError(f"example must be an ordinary file: {path}")
+            continue
         if path in required:
             if path.startswith("include/"):
                 support[path] = entry.get("sha256")
@@ -96,7 +101,8 @@ def verify_distribution(prefix: Path) -> dict:
             or not re.fullmatch("[0-9a-f]{64}", str(source.get("input_digest")))):
         raise ValueError("documentation source differs from package provenance")
     verify_tree(docs_root, version=record["package_version"], source=source)
-    for name in DOCUMENTS:
+    documents = set(DOCUMENTS) | {path for path in entries if is_example_path(path) and path.endswith(".md")}
+    for name in sorted(documents):
         document = prefix / name
         text = document.read_text(encoding="utf-8")
         targets = re.findall(r"\]\(([^)]+)\)", text) + re.findall(r"^\[[^]]+\]: (\S+)", text, re.MULTILINE)

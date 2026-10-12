@@ -70,11 +70,11 @@ export L1_BOOTSTRAP_L0C=/absolute/path/to/l0c-stage2
 make use-dev
 source build/dea/bin/l1-env.sh
 l1c --version
-l1c --check scripts/package/hello.l1
-l1c --run scripts/package/hello.l1
+l1c --check -Rp examples hello
+l1c --run -Rp examples hello
 ```
 
-The small smoke program prints `hello from Dea L1`. `make use-dev` includes `make build` and prepares the development
+The example prints greetings in 25 languages. `make use-dev` includes `make build` and prepares the development
 launchers. Native program builds prepare matching standard-library and runtime support on demand in a writable cache;
 the first run can take longer.
 

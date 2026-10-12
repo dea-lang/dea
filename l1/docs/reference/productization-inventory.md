@@ -1,6 +1,6 @@
 # L1 Installation and Distribution Contract
 
-Version: 2026-10-10
+Version: 2026-10-12
 
 L1 exposes `make install PREFIX=...` and `make list-installed PREFIX=...` for a curated, canonical L0-implemented
 toolchain. Prefix ownership, recoverable payload copying, installed-context launchers, generated provenance, and native
@@ -297,8 +297,15 @@ outputs, and unrelated build files are excluded.
 The helper captures support bytes before construction and records every captured support digest in provenance. It
 validates the captured interface graph with the canonical compiler, then builds a separate marked native compiler with a
 private provenance overlay. The private payload adds installed launchers/activation, `VERSION`, notices, a bundled smoke
-program, and standalone instructions with package-relative or canonical repository links. Windows payloads include both
-MSYS2 shell entrypoints and native Command Prompt counterparts.
+program reserved for release verification, runnable examples, and standalone instructions with package-relative or
+canonical repository links. Windows payloads include both MSYS2 shell entrypoints and native Command Prompt
+counterparts.
+
+The `examples/` tree contains `.l1` programs, Markdown guides, and Makefiles. Hidden entries, `build/` and
+`__pycache__/` directories, and generated native artifacts are excluded. Selected example files and directories must not
+be symlinks. Examples are covered by the installation inventory and archive digests, not native-preparation provenance.
+Copy examples elsewhere before editing or running a Make project. The archive verifier checks packaged example Markdown
+links as well as the top-level guides.
 
 Packaged guides come from `l1/docs/user/`, following the L0 convention. `README.md` and `README-WINDOWS.md` go to the
 prefix root; `toolchain.md` goes to `share/doc/dea/l1/toolchain.md`.

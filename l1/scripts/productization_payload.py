@@ -15,6 +15,7 @@ import tempfile
 
 from build_l1c import build_compiler
 from dea_tooling.bootstrap import wrapper_command
+from productization_examples import snapshot_examples
 from productization_inventory import MANIFEST_PATH, inventory_payload, verify_payload
 from productization_launchers import env_cmd_script, env_script, native_cmd_wrapper, native_wrapper
 from productization_provenance import collect_provenance
@@ -128,6 +129,7 @@ def build_payload(root: Path, layout: Path, seed: Path, env: dict[str, str], *,
                            ("toolchain.md", "share/doc/dea/l1/toolchain.md")):
         extra[target] = _read(root, "docs/user/" + source)
     extra["share/dea/l1/smoke/hello.l1"] = _read(root, "scripts/package/hello.l1")
+    extra.update(snapshot_examples(root))
     provenance, build_env = collect_provenance(
         root, env, upstream=upstream, compiler=seed,
         compiler_options=compiler_options,

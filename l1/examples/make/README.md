@@ -6,15 +6,16 @@ prints `42`.
 ## Build and Run
 
 You need `l1c`, GNU Make 3.81 or later, and a supported host C compiler/linker and preparation tools. Use GCC, upstream
-Clang 16 or newer, or Apple Clang with the required configuration capabilities. See
-[l1/docs/user/README.md](../../docs/user/README.md) for installed-toolchain requirements and
-[l1/docs/user/README-WINDOWS.md](../../docs/user/README-WINDOWS.md) for Windows setup.
+Clang 16 or newer, or Apple Clang with the required configuration capabilities. See the top-level
+[README.md](../../README.md) for toolchain setup. Installed packages include Windows instructions in their top-level
+`README-WINDOWS.md`.
 
-With an installed toolchain already activated, enter `l1/examples/make/` in the source checkout and run `make run`. The
-release package does not bundle this example. Building it with an installed compiler needs no L0 or Python.
+This project is included in the package under `examples/make/`. With an installed toolchain activated, copy this
+directory to a writable location, enter the copy, and run `make run`. Building it with an installed compiler needs no L0
+or Python. On Windows, use the MSYS2 UCRT64 shell and `make run PROGRAM=build/main.exe`.
 
 To use a development compiler instead, follow the prerequisites and bootstrap selection in
-[l1/README.md](../../README.md). From the repository's `l1/` directory:
+[l1/README.md](https://github.com/dea-lang/dea/blob/main/l1/README.md). From the repository's `l1/` directory:
 
 ```sh
 make use-dev
@@ -29,7 +30,8 @@ The Makefile uses `l1c` from `PATH` by default. To select another compiler, set 
 make run L1C=/absolute/path/to/l1c
 ```
 
-Run `make clean` to remove the generated files. All build output stays under `build/`.
+Run `make clean` (on Windows, `make clean PROGRAM=build/main.exe`) to remove the generated files. All build output stays
+under `build/`.
 
 ## What Make Builds
 
@@ -55,4 +57,4 @@ Keep each object and its same-stem interface together, and make consumers depend
 changing the compiler or compiler options.
 
 For the complete artifact and dependency rules, see
-[l1/docs/reference/separate-compilation.md](../../docs/reference/separate-compilation.md).
+[l1/docs/reference/separate-compilation.md](https://github.com/dea-lang/dea/blob/main/l1/docs/reference/separate-compilation.md).

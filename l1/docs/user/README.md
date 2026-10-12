@@ -4,7 +4,7 @@
 > strings._
 
 **Dea/L1** is a systems language whose `l1c` compiler translates `.l1` programs through C into native executables. This
-package contains the standalone compiler, standard library, runtime support, and a small program to get you started.
+package contains the standalone compiler, standard library, runtime support, and runnable examples.
 
 **Development status:** L1 is under active development. The package version does not promise stable language,
 module-interface, or binary compatibility across future releases. Exact package and build metadata are recorded in
@@ -30,16 +30,13 @@ Replace `/path/to/dea-l1` with this package's directory. Quote paths containing 
 cd /path/to/dea-l1
 source ./bin/l1-env.sh
 l1c --version
-l1c --check share/dea/l1/smoke/hello.l1
-l1c --run share/dea/l1/smoke/hello.l1
+l1c --check examples/hello.l1
+l1c --run examples/hello.l1
 ```
 
 Activation selects this compiler in the current shell. `--check` analyzes the program without producing an executable.
-`--run` builds and executes the bundled smoke program, printing:
-
-```text
-hello from Dea L1
-```
+`--run` builds and executes `examples/hello.l1`, which prints greetings in 25 languages in a shuffled order. The output
+includes `Hello, world! This is Dea/L1.`; displaying every language requires suitable terminal fonts.
 
 The first native build prepares matching standard-library and runtime support in a writable per-user cache and can take
 longer. Later builds reuse compatible support. The installation itself remains unchanged.
@@ -47,11 +44,44 @@ longer. Later builds reuse compatible support. The installation itself remains u
 To keep an executable, choose a writable output directory. For example, from a writable package directory:
 
 ```bash
-l1c --build share/dea/l1/smoke/hello.l1 -o hello
+l1c --build examples/hello.l1 -o hello
 ./hello
 ```
 
 If the package directory is read-only, pass an output path in your project directory instead.
+
+The file-path form is convenient for a one-shot run. You can equivalently select the project root with `-Rp` and name
+its entry module:
+
+```bash
+l1c --run -Rp examples hello
+```
+
+Here, `-Rp examples` (or its long form, `--project-root examples`) sets the project root and `hello` selects
+`examples/hello.l1`. This form is especially useful for multi-module programs, where the project root gives module
+lookup a common base.
+
+## More bundled examples
+
+From the package directory, try:
+
+```bash
+l1c --run examples/slices.l1
+l1c --run examples/demo.l1 -- mul 6 add 5 2
+l1c --run examples/hamurabi.l1
+```
+
+- [examples/hello.l1][hello] prints multilingual greetings using arrays and randomness.
+- [examples/slices.l1][slices] demonstrates slice views and mutations shared with their backing arrays.
+- [examples/demo.l1][demo] evaluates prefix-notation expressions using enums and recursive parsing. The command above
+  prints `= 42`; arguments after `--` are passed to the program.
+- [examples/hamurabi.l1][hamurabi] is an interactive text game.
+- [examples/make/README.md][make-example] explains a small project that reuses a separately compiled module. This
+  example additionally needs GNU Make 3.81 or newer.
+
+These examples match the packaged compiler version. Copy examples into a writable project directory before editing or
+using the Make project; keep the installed package intact. From the copied examples directory, run `l1c --run hello.l1`,
+or use the equivalent module form `l1c --run -Rp . hello`.
 
 ## Your own program
 
@@ -84,7 +114,7 @@ The program prints `Hello, L1!`. Run `l1c --help` to explore compiler options.
 - `interfaces/`: bundled semantic module interfaces.
 - `shared/`: standard-library and runtime sources used to prepare native support.
 - `include/`: public runtime headers.
-- [share/dea/l1/smoke/hello.l1][hello]: the runnable smoke program.
+- `examples/`: runnable language and standard-library examples, plus a separate-compilation Make project.
 - [share/doc/dea/l1/toolchain.md][toolchain]: compiler usage, native preparation, cache controls, and relocation.
 
 Release archives also include offline HTML and PDF references. Direct compiler-only installations may omit those
@@ -123,9 +153,13 @@ bundled references for the installed version.
 See [LICENSE-MIT][mit], [LICENSE-APACHE][apache], and [THIRD_PARTY_NOTICES][notices].
 
 [apache]: LICENSE-APACHE
-[hello]: share/dea/l1/smoke/hello.l1
+[demo]: examples/demo.l1
+[hamurabi]: examples/hamurabi.l1
+[hello]: examples/hello.l1
+[make-example]: examples/make/README.md
 [mit]: LICENSE-MIT
 [notices]: THIRD_PARTY_NOTICES
+[slices]: examples/slices.l1
 [toolchain]: share/doc/dea/l1/toolchain.md
 [version]: VERSION
 [windows]: README-WINDOWS.md

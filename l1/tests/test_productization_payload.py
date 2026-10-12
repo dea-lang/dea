@@ -40,6 +40,7 @@ def inputs(tmp_path):
         payload._write(root.parent, name, b"notice")
     shutil.copytree(ROOT / "scripts/package", root / "scripts/package")
     shutil.copytree(ROOT / "docs/user", root / "docs/user")
+    shutil.copytree(ROOT / "examples", root / "examples", ignore=shutil.ignore_patterns("build", "__pycache__"))
     return root, layout
 
 
@@ -132,7 +133,7 @@ def test_assembly_uses_snapshot_marker_and_private_output(inputs, monkeypatch, t
                                compiler_options=[]) as (tree, provenance):
         assert len(verified) == 2
         assert not (tree / MANIFEST_PATH).exists()
-        for name, data in expected.items():
+        for name, data in {**expected, **payload.snapshot_examples(root)}.items():
             assert (tree / name).read_bytes() == data
         assert (tree / "bin/l1c.cmd").exists() == windows
         assert (tree / "bin/l1-env.cmd").exists() == windows
@@ -184,3 +185,36 @@ def test_failed_build_removes_private_scratch(inputs, monkeypatch, tmp_path, fai
             pytest.fail("must not expose failed payload")
     assert scratch and not scratch[0].exists()
     assert not (layout / "bin").exists()
+
+
+def test_examples_exclude_build_output_and_capture_sources(inputs):
+    root, _ = inputs
+    junk = ("examples/make/build/generated.l1", "examples/make/build/README.md", "examples/.cache/hidden.l1",
+            "examples/__pycache__/cached.md", "examples/make/main.o", "examples/make/main.exe",
+            "examples/.scratch.l1", "examples/make/support.l1m")
+    for name in junk:
+        payload._write(root, name, b"not shipped")
+    payload._write(root, "examples/nested/new.l1", b"module nested.new;")
+    selected = payload.snapshot_examples(root)
+    assert not set(junk) & selected.keys()
+    assert selected["examples/nested/new.l1"] == b"module nested.new;"
+    assert selected["examples/make/Makefile"] == (ROOT / "examples/make/Makefile").read_bytes()
+    (root / "examples/hello.l1").write_bytes(b"changed")
+    assert selected["examples/hello.l1"] == (ROOT / "examples/hello.l1").read_bytes()
+
+
+@pytest.mark.parametrize("kind", ["missing", "file-link", "directory-link"])
+def test_examples_reject_missing_or_linked_inputs(inputs, kind):
+    root, _ = inputs
+    path = root / ("examples/make" if kind == "directory-link" else "examples/hello.l1")
+    if kind == "missing":
+        path.unlink()
+    else:
+        target = root / "moved-example"
+        path.rename(target)
+        try:
+            path.symlink_to(target, target_is_directory=kind == "directory-link")
+        except OSError:
+            pytest.skip("symlink creation unavailable")
+    with pytest.raises(ValueError):
+        payload.snapshot_examples(root)

@@ -20,6 +20,7 @@ import zipfile
 HARNESS = (
     "productization_acceptance.py", "smoke_dist.py", "distribution_archive.py",
     "docs_artifacts.py", "productization_inventory.py", "productization_provenance.py",
+    "productization_examples.py",
 )
 # Explicitly selected sibling modules also work under Python's isolated mode (-I).
 sys.path.insert(0, str(Path(__file__).resolve().parent))

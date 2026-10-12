@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import dist_toolchain as dist
 import distribution_archive as archives
 import smoke_dist
+from productization_examples import snapshot_examples
 from docs_artifacts import create_bundle, unpack_bundle
 from productization_inventory import MANIFEST_PATH, install_payload, read_inventory
 from productization_provenance import PackageProvenance
@@ -37,6 +38,10 @@ def package(tmp_path):
     for name in archives.DOCUMENTS:
         source = ROOT / "docs/user" / Path(name).name
         shutil.copyfile(source, payload / name)
+    for name, content in snapshot_examples(ROOT).items():
+        path = payload / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
     support = {}
     for name in ("interfaces/std/io.l1m", "shared/l1/stdlib/std/io.l1", "shared/runtime/src/dea_rt_io.c",
                  "shared/runtime/internal/private.h", "include/dea_rt.h", "include/l1_real.h"):
@@ -81,6 +86,9 @@ def test_archive_roundtrip_curated_contents_and_modes(package, tmp_path, windows
     if os.name != "nt":
         assert (extracted / "bin/l1c").stat().st_mode & 0o111
     assert not (extracted / "bin/l1c-stage2").exists()
+    for name, content in snapshot_examples(ROOT).items():
+        assert (extracted / name).read_bytes() == content
+    assert not any(name.startswith("examples/") for name in metadata["provenance"]["preparation_inputs"])
 
 
 def test_tar_modes_come_from_inventory_not_host_stat(package, tmp_path, monkeypatch):
@@ -430,3 +438,32 @@ def test_public_commands_fail_without_build_on_missing_input(tmp_path, target, v
     dry = subprocess.run(["make", "--no-print-directory", "-n", target, "PYTHON=/absent"],
                          cwd=ROOT, capture_output=True, text=True)
     assert dry.returncode == 0
+
+
+@pytest.mark.parametrize("problem", ["missing", "output", "build-source", "link", "readme-link", "tamper"])
+def test_examples_are_required_curated_and_integrity_checked(package, problem):
+    payload, prefix, metadata, _ = package
+    if problem == "tamper":
+        (prefix / "examples/hello.l1").write_bytes(b"changed")
+        with pytest.raises(ValueError, match="verification failed"):
+            archives.verify_distribution(prefix)
+        return
+    if problem == "missing":
+        (payload / "examples/hello.l1").unlink()
+    elif problem in {"output", "build-source"}:
+        name = "examples/main.exe" if problem == "output" else "examples/make/build/generated.l1"
+        path = payload / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"unshipped")
+    elif problem == "link":
+        path = payload / "examples/hello.l1"
+        path.unlink()
+        try:
+            path.symlink_to("slices.l1")
+        except OSError:
+            pytest.skip("symlink creation unavailable")
+    else:
+        (payload / "examples/make/README.md").write_text("[checkout](../../docs/user/README.md)")
+    install_payload(payload, prefix, metadata)
+    with pytest.raises(ValueError):
+        archives.verify_distribution(prefix)
