@@ -121,10 +121,10 @@ rather than globbing archives or parsing log prose. The acceptance harness trans
 verification inputs between native build and fresh verification jobs.
 
 [l1/docs/roadmap.md][roadmap], [l1/docs/project-status.md][status], and [MONOREPO.md][monorepo] record the delivered
-capability. [work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md][release-workflows] owns hosted
-snapshot/release workflow implementation, authoritative namespace verification, release notes, and publication
-acceptance. Its canonical artifact prerequisites are satisfied. Tags, workflow dispatches, and publication still require
-separate authorization; closing this plan does not activate the L1 release line.
+capability. [work/plans/tools/closed/2026-05-12-l1-gha-release-snapshot-workflows-noref.md][release-workflows] records
+completed hosted snapshot/release workflow implementation, release notes, and acceptance. Authoritative namespace checks
+remain part of release preparation. Tags, workflow dispatches, and publication still require separate authorization;
+closing this plan does not activate the L1 release line.
 
 ## Verification evidence
 
@@ -169,7 +169,7 @@ Fresh canonical verification recorded by
 [inventory]: ../../../../docs/reference/productization-inventory.md
 [monorepo]: ../../../../../MONOREPO.md
 [preparation]: ../../../../docs/reference/stdlib-preparation.md
-[release-workflows]: ../../../../../work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md
+[release-workflows]: ../../../../../work/plans/tools/closed/2026-05-12-l1-gha-release-snapshot-workflows-noref.md
 [roadmap]: ../../../../docs/roadmap.md
 [split]: ../../../../../work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md
 [status]: ../../../../docs/project-status.md

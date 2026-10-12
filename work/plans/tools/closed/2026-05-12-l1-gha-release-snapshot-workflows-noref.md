@@ -2,9 +2,9 @@
 
 ## Add L1 snapshot and release GHA workflows
 
-- Date: 2026-06-22
+- Date: 2026-10-12
 - Last reviewed: 2026-10-12
-- Status: In progress (local implementation complete; hosted acceptance and publication pending)
+- Status: Completed
 - Title: Add L1 snapshot and release GHA workflows
 - Kind: Tooling
 - Scope: Shared
@@ -14,17 +14,17 @@
   - L1 snapshot GHA workflow (`.github/workflows/l1-snapshot.yml`)
   - L1 release GHA workflow (`.github/workflows/l1-release.yml`)
   - Reusable L1 docs build (`.github/workflows/l1-docs-build.yml`)
+  - Curated L1 versioned-release notes (`l1/docs/releases/`)
   - Monorepo release-line policy
 - Origin: Root monorepo CI policy. Workflow files live at `.github/workflows/` and the release-line gating rules live in
   `MONOREPO.md`; both are monorepo-owned.
 - Porting rule: Shared. Trigger, namespace, and publication policy belong here. L1 install layout, archive construction,
   launcher behavior, and installed smoke tests remain owned by the L1 productization plan.
 - Target status:
-  - L1 snapshot GHA workflow: Implemented and locally validated; hosted snapshot acceptance pending
-  - L1 release GHA workflow: Implemented and locally validated; hosted versioned-release acceptance pending
-  - L1 docs build integration: Reusable canonical strict HTML/full-PDF job implemented; hosted release integration
-    pending
-  - Monorepo release-line policy: Readiness and hosted-publication acceptance policy documented
+  - L1 snapshot GHA workflow: Implemented and verified through hosted acceptance
+  - L1 release GHA workflow: Core workflow verified through hosted acceptance; curated notes locally validated
+  - L1 docs build integration: Canonical strict HTML/full-PDF handoff verified during hosted acceptance
+  - Monorepo release-line policy: Curated-note policy documented; publication remains separately gated
 - Subsystem: GitHub Actions / release tagging / monorepo release-line policy
 - Modules:
   - `.github/workflows/l1-snapshot.yml`
@@ -37,6 +37,8 @@
   - `docs/project-status.md`
   - `l1/docs/project-status.md`
   - `l1/docs/roadmap.md`
+  - `l1/docs/releases/README.md`
+  - `l1/docs/releases/X.Y.Z.md` (planned per prepared version)
 - Test modules:
   - local workflow syntax and trigger/version/release-note policy validation
   - installed/archive smoke entrypoint supplied by L1 productization
@@ -45,21 +47,36 @@
   - [work/plans/tools/closed/2026-04-02-l1-ci-release-line-noref.md][ci-release-plan]
   - [l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md][productization]
   - [l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md][autodocs]
+  - [l0/work/plans/tools/closed/2026-07-13-release-1-1-0-preparation-noref.md][l0-release-plan]
+  - [l0/docs/releases/README.md][l0-release-notes]
   - [MONOREPO.md][monorepo]
   - [AGENTS.md][agent-policy] (remote and publication authorization)
 
-## Split prerequisite and current readiness
+## Completion
+
+Completed on 2026-10-12. The snapshot, versioned-release, and reusable documentation workflows are implemented; hosted
+acceptance passed on all four platforms. Curated versioned-release notes are implemented and locally validated.
+[docs/decisions/0023-l1-release-workflow-policy.md][release-adr] records the release and note-composition policies;
+delivery documentation, the ADR index, and plan links are updated. Publication remains separate release preparation and
+requires its own authorization.
+
+This plan began while L1 had two stages and initially depended on Stage 2 productization. The L1/L2 split retargeted
+that delivery foundation to the sole L0-implemented L1 compiler before the release workflows were implemented. The
+implementation phases below preserve that progression; historical Stage 2 evidence is not canonical L1 acceptance.
+
+## Split prerequisite and delivery baseline
 
 L1 0.1.0 must distribute the sole L0-implemented canonical `l1c` and matching stage-free schema-2 documentation. The
 split and fresh canonical-artifact acceptance completed on 2026-10-11, satisfying this plan's implementation
 prerequisites. Historical 2026-10-09 Stage 2 acceptance below remains prior-product evidence. The existing acceptance
-workflow validates canonical artifacts. The three release/documentation workflows are implemented and locally validated;
-hosted publication acceptance remains pending.
+workflow validates canonical artifacts. The three release/documentation workflows are implemented, locally validated,
+and verified through hosted snapshot and versioned-release acceptance. Curated versioned-release notes are implemented
+with focused local validation; publication remains separately gated.
 
-Keep the exact immutable source/version/docs handoff, four platforms, seven public assets, reserved L1 namespaces,
+Keep the exact immutable source/version/docs handoff, four platforms, seven assets, reserved L1 namespaces,
 `make_latest=false`, safe retries, and separate authorization gates. No workflow dispatch, release tag, push, or
 publication is authorized by this plan. Retargeting is tracked in
-[work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md).
+[work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md).
 
 ## Dependency Statement
 
@@ -83,23 +100,25 @@ The existing gate also requires documented release notes, tag gating, reproducib
 reservation of `l1-v*` / `l1-snapshot-*`. Recheck authoritative remote tags before activation; a historical namespace
 check or an empty local tag list does not establish the current remote state.
 
-## Current State
+## State at closure
 
 Reviewed on 2026-10-12 against the completed split, canonical artifact acceptance, and installed release workflows:
 
 1. The canonical split and artifact-acceptance prerequisites recorded in `MONOREPO.md` are met. L1 release/snapshot
-   workflows are installed on public `main`, and their local policy checks are implemented; hosted release acceptance
-   remains pending.
+   workflows are installed on `main`, and hosted snapshot/versioned-release acceptance passed on 2026-10-12. L1
+   publication remains pending.
 2. Existing L1 compiler CI and productization acceptance cover Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64.
 3. L1 has one L0-implemented canonical compiler. Installation builds it privately and ignores development selections.
 4. Installation/inventory/dist/smoke/evidence helpers retain their distinct responsibilities. The old native acceptance
    belongs to the Stage 2 artifact; fresh canonical product acceptance passed on all four native platforms.
 5. L0 workflows provide examples, but Pages/blog work remains outside scope. L0 remains the active release line.
+6. The L1 helper validates checked-in curated notes before versioned-release builds and appends generated commit history
+   after that content. This behavior is locally validated; snapshots retain automatic notes.
 
 ## Defaults Chosen
 
 1. Use separate manually dispatched snapshot and tag-triggered release workflows, with the same four host platforms as
-   current L1 CI. Recheck runner labels and supported compiler versions at implementation time.
+   current L1 CI. Recheck runner labels and supported compiler versions when changing workflow environments.
 2. Publish four L1 distribution archives, a separate canonical L1 HTML/PDF bundle, the canonical L1 PDF, and
    `SHA256SUMS`. Every compiler archive embeds the same verified canonical L1 HTML/PDF. Each archive contains its own
    `VERSION` and install manifest; do not upload four colliding assets named `VERSION`. Obsolete stage-selected docs are
@@ -107,12 +126,15 @@ Reviewed on 2026-10-12 against the completed split, canonical artifact acceptanc
 3. Snapshot tags use `l1-snapshot-YYYYMMDD-HHMM-<shorthash>` with a UTC timestamp. Releases accept only `l1-vX.Y.Z`,
    with nonnegative numeric components and no leading zeros except zero itself. The broad `l1-v*` event filter requires
    explicit validation before building or publishing; prerelease version suffixes are outside this scope.
-4. Snapshots are GitHub Pre-releases; versioned releases are GitHub Releases. Both titles and notes identify the payload
-   as an L1 canonical L0-implemented development toolchain. GitHub release type does not establish language/toolchain
+4. Snapshots are GitHub Pre-releases; versioned releases are GitHub Releases. Release titles and notes headers use
+   `Dea/L1 {version}`, with the package version rather than the level-prefixed tag. Release notes identify the payload
+   as an L1 canonical L0-implemented development toolchain and state that release does not establish language/toolchain
    stability. Set `make_latest` to false so initial L1 publication does not replace L0 as the repository's latest
    release.
 5. Consume L1's install/dist and smoke helpers; do not reimplement payload construction or compiler smoke logic in YAML.
    Use read permissions for build jobs and grant `contents: write` only to tag/publication jobs.
+6. Versioned releases require checked-in curated notes using L0's version-to-file and heading conventions, followed by a
+   generated commit-history section. Snapshots retain generated notes without requiring a curated version file.
 
 ## Artifact and Build Handoff
 
@@ -154,7 +176,7 @@ build/verify job pattern in [.github/workflows/l1-productization-acceptance.yml]
 Run build commands from `l1/` at the selected immutable source. Set `DEA_DIST_VERSION` from the validated tag mapping
 above and use that same value for the docs job and every native build. Record the actual native compiler executable and
 version on each runner, then set `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC` explicitly. The validated families are GCC on
-Linux/Windows UCRT64 and Apple Clang on macOS; recheck supported versions and runner labels when implementing YAML. On
+Linux/Windows UCRT64 and Apple Clang on macOS; recheck supported versions and runner labels when changing workflows. On
 Windows preserve checkout source bytes with `core.autocrlf=false` before checkout and use native UCRT64 Python.
 
 The docs job runs:
@@ -212,8 +234,8 @@ availability. The smoke helper owns the restricted semantic-only environment and
 
 Keep `result.json` unchanged after transport: its original absolute archive path records construction, while the
 verifier locates that basename inside the evidence directory and checks size/digest. Retain build/smoke logs and
-host-specific acceptance reports as workflow evidence, separate from the seven public release assets. Publication must
-match all four successful reports to the archive bytes being staged, verify the expected host set, shared package/source
+host-specific acceptance reports as workflow evidence, separate from the seven release assets. Publication must match
+all four successful reports to the archive bytes being staged, verify the expected host set, shared package/source
 identity, and identical `docs_bundle_sha256` against the docs job, and reject missing, duplicate, stale, or unexpected
 evidence. Never combine reports and archives from different attempts. A combined local acceptance run does not replace
 these fresh jobs.
@@ -245,13 +267,50 @@ Obsolete stage-selected bundles are rejected; generate a fresh canonical L1 bund
 
 ## Release Notes and Retry Policy
 
+### Curated versioned-release notes
+
+Reuse the conventions established by [l0/docs/releases/README.md][l0-release-notes] and
+[.github/workflows/l0-release.yml][l0-release-workflow]: each `l1-vX.Y.Z` tag requires a checked-in
+`l1/docs/releases/X.Y.Z.md` file whose first line is exactly `# Dea/L1 X.Y.Z`. Maintain `l1/docs/releases/README.md` as
+the release-notes index and author the prose by themes relevant to Dea users, including compatibility or migration
+guidance where needed. Keep the existing canonical L0-implemented development-toolchain notice immediately after the
+heading, including the statement that release does not declare language or toolchain stability.
+
+The authoring contract and index are in [l1/docs/releases/README.md][l1-release-notes]. Per-version prose is prepared
+and reviewed before its release tag; this implementation does not pre-author a future release or modify earlier
+releases.
+
+Read and validate the file from the same immutable source revision used by the builds. The `validate-release` job must
+reject missing or empty notes, a mismatched heading, a missing development notice, or a body with no curated content
+before documentation and distribution jobs start. There is no automatic commit-log-only fallback for a versioned release
+with invalid notes. The publisher and matching draft retries must use the same source-bound content.
+
+Preserve the checked-in Markdown as the opening release body, then append a blank-line-separated `## Commit history`
+section containing `Changes since <baseline>:` (with the baseline formatted as code) and generated commit bullets. For
+the first release, use `Initial L1 publication, including changes since L1 was introduced:` in that same section. Both
+introductory phrases end with a colon for versioned releases and snapshots. The resulting order is:
+
+1. The single `# Dea/L1 X.Y.Z` heading from the curated file, matching the GitHub release title.
+2. The development-toolchain notice from that file.
+3. The complete curated release notes, preserving their wording and section order.
+4. `## Commit history`, the baseline or initial-publication paragraph, and the generated commit list.
+
+L0 publishes its checked-in file as the entire body; L1 retains the generated history as an appended section. Do not
+generate a second title or notice, place the baseline paragraph before the curated text, or write the generated section
+back into the curated source file. Snapshots keep their current generated title, notice, and history; they do not
+require or borrow a curated versioned-release file. Note composition does not add release assets or change the
+immutable-publication policy.
+
+### Generated history and retries
+
 Fetch sufficient history and tags for the selected source revision. For snapshots, choose the nearest reachable prior L1
 snapshot or version tag using Git graph distance (`git describe --tags --abbrev=0` with both namespace patterns and
 excluding the current tag). For versioned releases, use only prior valid `l1-vX.Y.Z` tags so a recent snapshot does not
-truncate the release notes. Exclude malformed version tags. If no eligible prior tag exists, generate an initial-release
-summary from history through the selected revision. Include the full commit range: shared monorepo changes can affect
-L1, so tag scoping does not imply a path filter. Test mixed L0/L1 tags, the first L1 publication, and a source branch
-whose newer repository tags are not ancestors.
+truncate the release notes. Exclude malformed version tags. If no eligible prior tag exists, start with the first
+reachable commit introducing the `l1/` subtree (the April 2, 2026 bootstrap scaffold), including that commit, and end at
+the selected revision. Exclude history preceding L1. Include the full commit range without a path filter: shared
+monorepo changes can affect L1. Test mixed L0/L1 tags, the first L1 publication with and without pre-L1 history, and a
+source branch whose newer repository tags are not ancestors.
 
 Resolve the source ref once and build that immutable revision on every platform. Reuse an existing snapshot tag only
 when it points to that revision; never move tags. A newly dispatched snapshot can have a new timestamp and therefore a
@@ -260,12 +319,17 @@ draft for the same tag, serialize publication per tag, and leave an already publ
 published asset set requires explicit recovery rather than silently replacing assets. Failed builds leave publication
 incomplete; do not delete tags automatically.
 
-## Local implementation and validation
+## Implementation and validation
 
 The three workflows use [scripts/l1_release.py][release-policy] for immutable source/tag identity, strict version
 mapping, release-note baselines, cross-host evidence validation, and draft publication. Each executable job begins with
 `Show inputs`, logging the JSON input context and appending it to the job summary before checkout. The reusable docs job
 reports its own source/version/tag inputs.
+
+For versioned releases, `prepare` validates the curated file directly from the selected Git commit before writing
+identity outputs. This gates documentation and native builds. Publication reads that same immutable file again and
+appends generated history; moving branches and uncommitted note edits cannot change the selected prose. UTF-8 content,
+line endings, and intentional whitespace in the curated body are preserved.
 
 Snapshot preparation uploads the original run identity before creating its tag. Full reruns restore that identity
 instead of resolving a moving branch again; automatic tags use the original run creation time. If no original identity
@@ -293,98 +357,79 @@ Local validation passed:
 - `.venv/bin/python -m pytest -q -n 0 l1/tests/test_compiler_tooling.py scripts/tests/test_cleanup.py`: 113 cases passed
   and the inapplicable L0 `clean-runtime` case was skipped.
 
+- `.venv/bin/python -m pytest -q -n 0 scripts/tests/test_l1_release.py`: 66 cases passed for the current release helper,
+  including early rejection of invalid notes, immutable-source selection across preparation and draft retries, exact
+  curated-text preservation and composition order, colon-terminated introductions, and snapshots without curated files.
+  This reuses the existing Git fixtures and mocked GitHub boundary; it performs no remote publication.
+
 - `.venv/bin/python l0/tests/test_release_tag_policy.py`, active-plan ADR validation, staged whitespace checks, and
   repository pre-commit hooks passed.
 
-The new policy suite is included in L1 `test-tooling`. The workflows are installed on public `main`; no snapshot or
-release dispatch, tag creation, or publication has occurred. Recheck remote namespaces before activation. Phase 4 and
-the repository/tooling ADR remain pending; this plan stays active.
+The policy suite is included in L1 `test-tooling`. Hosted acceptance passed on 2026-10-12 for `L1 Snapshot Release` and
+`L1 Release`: strict documentation generation, Linux x86_64, macOS Intel/ARM, Windows UCRT64 builds, fresh verification
+jobs, and all seven assets completed successfully. Versioned releases also verified matching `Dea/L1 {version}`
+titles/headers and the previous-version baseline. The first-publication baseline is covered by local Git-history
+fixtures and a repository-history check.
 
-## Goal
+The hosted evidence covers the earlier generated-note workflows and unchanged artifact behavior. Curated-note
+composition is locally validated, and delivery docs describe its authoring and publication contract. This documentation
+closure reuses those results because the covered code, tests, workflows, and artifact contracts are unchanged.
+[docs/decisions/0023-l1-release-workflow-policy.md][release-adr] records the completed policy. L1 publication remains a
+separate gated action; recheck its remote namespaces before activation.
 
-1. Document the pre-implementation prerequisites without requiring workflows to exist first.
-2. Implement and locally validate both workflows after productization and canonical L1 documentation generation land.
-3. Exercise hosted publication through separately authorized snapshot and release milestones.
-4. Update delivery documentation and close this plan with its ADR only when the acceptance criteria are met.
+## Outcome
+
+The implemented workflows consume canonical L1 productization and documentation, retain immutable release identity,
+require complete four-platform evidence, and publish the seven validated assets. Snapshot and versioned-release
+milestones passed. Versioned releases now preserve reviewed source-bound notes before generated history. The ADR and
+current delivery docs record these contracts, completing this plan's scope.
 
 ## Implementation Phases
 
-### Phase 1: Refine the readiness gate
+### Phase 1: Establish prerequisites
 
-Completed on 2026-10-05: `MONOREPO.md` now distinguishes prerequisites for adding workflows from hosted acceptance after
-they exist. It records the productization handoff, separate publication authorization, and product maturity boundary.
-The prerequisite checklist for Phases 2 and 3 is retargeted to canonical L1:
-
-- [x] Canonical compiler split and schema-2 install/dist implementation are complete.
-- [x] Fresh matching canonical strict HTML/full-PDF bundle and consumption pass validation.
-- [x] Exact retargeted archives pass native build/fresh-host verification across the supported four-platform matrix.
-- [x] Version conversion, release-note baselines, tag validation, and publication behavior are documented.
-- [ ] The reserved namespaces remain dedicated to L1 and their authoritative remote state is checked at activation.
-
-The first three checks are split prerequisites. Remote namespace verification and hosted publication remain later
-separately authorized work. No tag, dispatch, push, or publication is authorized by existing implementation evidence.
+The release-line gate was documented before workflow implementation. Former Stage 2 productization passed native
+acceptance on 2026-10-09. After the L1/L2 split, canonical L1 passed fresh four-platform artifact acceptance on
+2026-10-11, including matching stage-free schema-2 documentation and verification without checkout or bootstrap
+artifacts. This satisfied the implementation prerequisites.
 
 ### Phase 2: Add `l1-snapshot.yml`
 
-Implemented locally on 2026-10-11. The following workflow is ready for separately authorized hosted acceptance; check
-authoritative namespaces before activation:
-
-- Define `workflow_dispatch` inputs `ref` (optional string, empty means the repository default branch), `snapshot_tag`
-  (optional explicit tag in the chosen format), and `publish_release` (boolean, default `true`). An explicit tag with an
-  immutable `ref` supports review of the exact tag/target before dispatch and repeatable retries. Validate its format
-  and abbreviated source identity before tag creation. With `publish_release=false`, the workflow still pushes a
-  snapshot tag and creates/uploads a draft release; it only skips final publication. It is not a dry run.
-- `prepare-snapshot`: Resolve the requested ref, validate the supplied tag or derive the UTC snapshot tag, derive the
-  package version, create/push the tag, and expose immutable source and tag outputs. Preserve automatically generated
-  identity across full reruns, using the original workflow run's creation time rather than the job's current clock.
-  Apply the identity and retry rules above.
-- `build-docs`: After preparation, invoke the reusable canonical L1 docs build at the same immutable source/version/tag.
-- `build-dist`: Wait for `build-docs`, download the identical verified bundle, and run the handoff
-  `test-productization-acceptance` build phase on all four platforms. Upload each complete evidence directory under a
-  unique host name for verification; this intermediate upload is not a release asset or publication.
-- `verify-dist`: Use separate fresh matching runners, download only their archive/result/harness evidence, and invoke
-  the transported verifier without checkout or bootstrap artifacts. Retain each successful report and smoke log.
-- `publish-release`: Require all builds and all four verification jobs, download and validate the complete asset set and
-  matching acceptance reports, generate scoped notes, create or resume the matching draft pre-release, upload archives,
-  and publish only when `publish_release` is true. Set `make_latest=false`.
-
-GitHub manual dispatch requires the workflow to be present on the default branch. Plan the initial remote installation
-and subsequent branch dispatch in that order; a branch-only new workflow is not sufficient for the first hosted check.
+Implemented on 2026-10-11 and verified through hosted acceptance on 2026-10-12. Manual dispatch resolves and retains
+source/tag identity, then sequences canonical docs, four native builds, fresh verification jobs, asset checks, and
+draft/pre-release publication. Optional `ref`, `snapshot_tag`, and `publish_release` inputs follow the identity, retry,
+and authorization contracts above. Every executable job reports its inputs in its log and summary.
 
 ### Phase 3: Add `l1-release.yml`
 
-Implemented locally on 2026-10-11; hosted versioned-release acceptance remains pending.
+Implemented on 2026-10-11 and verified through hosted acceptance on 2026-10-12. A versioned tag triggers strict
+validation and the same documentation/build/verification handoff before publication with `prerelease=false` and
+`make_latest=false`. The shared helper preserves tag-to-package-version mapping, scoped history, and safe draft retries.
 
-Use `push` on `l1-v*` tags, validate the strict version format before any release side effects, and build the tagged
-revision on the same four platforms. Convert the tag to `DEA_DIST_VERSION` using the handoff above. Require all smoke
-checks and the complete seven-file asset set before creating/resuming the draft GitHub Release and publishing it with
-`prerelease=false` and `make_latest=false`. Apply the same retry rules and the version-release notes baseline. Build
-strict canonical L1 docs first through the same reusable job, pass its bundle into all dist builds, and reuse the
-snapshot workflow's separate build/verify handoff before publication.
+### Phase 3 follow-up: Add curated versioned-release notes
 
-Complete local syntax and policy checks for both workflows before proposing any remote installation, dispatch, or tag
-push. These local checks establish implementation readiness; they do not establish hosted publication success.
+Implemented and locally validated on 2026-10-12. The L1 release-notes index and authoring guide reuse L0 conventions.
+Preparation validates immutable-source notes before builds; publication preserves their complete content and appends
+generated history with colon-terminated introductions. Existing Git-history fixtures and the mocked publication boundary
+cover invalid notes, source selection, ordering, text preservation, baselines, and retries. Snapshots remain automatic.
 
 ### Phase 4: Hosted acceptance, documentation, and closure
 
-Follow [AGENTS.md][agent-policy] for every remote action. Implementation authorization does not authorize publication.
-Before a workflow-dispatching/public/deployment write, present its exact action, destination, source, and known tag,
-release, and asset effects for fresh project maintainer confirmation. Stable release tag creation requires a separate
-explicit request naming the exact tag and target commit; its push requires separate fresh confirmation. Snapshot
-dispatch approval must cover its automatic tag creation/push and draft or public pre-release effects. For agent-executed
-snapshot acceptance, prepare the exact `snapshot_tag` and immutable `ref` for the required tag-creation request, then
-obtain fresh confirmation for the dispatch that pushes that tag. Approval of one action does not cover reruns or
-follow-up writes.
+Completed on 2026-10-12. Snapshot and versioned-release acceptance verified strict docs, all four native builds and
+fresh verification jobs, and all seven release assets. Focused local validation covers curated-note composition; the
+earlier hosted evidence remains applicable to unchanged build/asset behavior. Delivery docs and links are updated, and
+[docs/decisions/0023-l1-release-workflow-policy.md][release-adr] is indexed with its link to this closed plan.
 
-Exercise one authorized snapshot and one deliberately prepared versioned release on all four platforms. Do not create a
-dummy stable tag solely to close the plan. If either hosted check is deferred, record local implementation as complete
-and the corresponding acceptance milestone as pending, leaving this plan open.
+## Release preparation
 
-Update `MONOREPO.md`, `docs/project-status.md`, `l1/docs/project-status.md`, and `l1/docs/roadmap.md` when workflows
-land and again as hosted acceptance completes. Distinguish available workflows, verified publication, and development
-product maturity. Record commands, platforms, workflow names, and outcomes without commit identifiers or individual run
-links. At closure, create the repository/tooling ADR, update its index, move this plan to `closed/`, and repair incoming
-links.
+L1 publication remains pending outside this completed implementation and acceptance scope. Before activation, recheck
+authoritative `l1-v*` and `l1-snapshot-*` tags and confirm the selected source and workflow revisions. Prepare and
+review the version's curated notes, add its release-index entry, and commit them before selecting the tag.
+
+Follow [AGENTS.md][agent-policy] for each remote action. Pushes, dispatches, tag creation, and tag pushes require their
+respective explicit authorizations; show the exact destination, source, and downstream effects. Snapshot dispatch with
+`publish_release=false` still creates/pushes a tag and uploads a draft. Implementation evidence and plan closure do not
+authorize publication, and no duplicate acceptance release is required solely to close this plan.
 
 ## ADR Impact
 
@@ -392,10 +437,17 @@ links.
   four-platform delivery with matching canonical L1 HTML/PDF artifacts.
   - Scope: Repository/tooling
   - Disposition: New ADR
-  - ADR: `docs/decisions/`
+  - ADR: `docs/decisions/0023-l1-release-workflow-policy.md`
   - Rationale: This defines durable monorepo publication policy, including release identity, asset completeness,
     development maturity labeling, and preserving L0's latest-release status. L1 payload and cache design remain owned
     by productization and its level-specific ADRs.
+- Decision: Require canonical checked-in notes for each L1 versioned release and append generated history after the
+  curated content, while keeping snapshots automatic.
+  - Scope: Repository/tooling
+  - Disposition: New ADR
+  - ADR: `docs/decisions/0023-l1-release-workflow-policy.md`
+  - Rationale: Note sourcing, early validation, and deterministic composition are shared workflow publication policy.
+    ADR-0023 records this contract, reusing L0's conventions and documenting L1's history appendix.
 
 ## Non-Goals
 
@@ -428,16 +480,25 @@ links.
 5. No L0 dist/docs assets, L0 release-note baselines, obsolete stage-selected docs, Pages, or blog publishing enter the
    L1 release jobs. Tests verify docs-before-dist ordering, wrong/stale docs rejection, all seven release files,
    checksum coverage, and identical canonical L1 PDF bytes in standalone, docs-bundle, and platform-archive forms.
-6. Delivery docs accurately distinguish implementation and hosted verification. Both hosted milestones, the ADR, and
-   link updates are complete before plan closure.
+6. Versioned releases require valid curated notes at the selected immutable source before builds begin. The published
+   body preserves that content, includes one matching heading and development notice, and places the generated baseline
+   paragraph and commit list after all curated notes under `## Commit history`. Snapshots still work without curated
+   files; existing published releases remain unchanged.
+7. Delivery docs distinguish implementation, hosted verification, and publication. The curated notes follow-up, both
+   hosted milestones, the ADR, and link updates are complete; publication remains separately gated.
 
-[acceptance-workflow]: ../../../.github/workflows/l1-productization-acceptance.yml
-[agent-policy]: ../../../AGENTS.md
-[autodocs]: ../../../l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md
-[bootstrap]: ../../../l1/docs/decisions/0001-bootstrap-adaptation-strategy.md
-[ci-release-plan]: closed/2026-04-02-l1-ci-release-line-noref.md
-[delivery]: ../../../l1/docs/decisions/0043-canonical-compiler-toolchain-delivery.md
-[inventory]: ../../../l1/docs/reference/productization-inventory.md
-[monorepo]: ../../../MONOREPO.md
-[productization]: ../../../l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md
-[release-policy]: ../../../scripts/l1_release.py
+[acceptance-workflow]: ../../../../.github/workflows/l1-productization-acceptance.yml
+[agent-policy]: ../../../../AGENTS.md
+[autodocs]: ../../../../l1/work/plans/tools/closed/2026-10-05-l1-stage-separated-autodocs-noref.md
+[bootstrap]: ../../../../l1/docs/decisions/0001-bootstrap-adaptation-strategy.md
+[ci-release-plan]: 2026-04-02-l1-ci-release-line-noref.md
+[delivery]: ../../../../l1/docs/decisions/0043-canonical-compiler-toolchain-delivery.md
+[inventory]: ../../../../l1/docs/reference/productization-inventory.md
+[l0-release-notes]: ../../../../l0/docs/releases/README.md
+[l0-release-plan]: ../../../../l0/work/plans/tools/closed/2026-07-13-release-1-1-0-preparation-noref.md
+[l0-release-workflow]: ../../../../.github/workflows/l0-release.yml
+[l1-release-notes]: ../../../../l1/docs/releases/README.md
+[monorepo]: ../../../../MONOREPO.md
+[productization]: ../../../../l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md
+[release-adr]: ../../../../docs/decisions/0023-l1-release-workflow-policy.md
+[release-policy]: ../../../../scripts/l1_release.py

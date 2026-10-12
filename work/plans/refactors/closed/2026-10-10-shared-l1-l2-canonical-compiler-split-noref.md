@@ -222,10 +222,10 @@ refactor. The compiler split and artifact-acceptance prerequisites for implement
 
 ## Exclusions and Follow-up
 
-L1 snapshot/release workflow implementation and publication remain separate work under
-[work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md](../../tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md).
-The intended L1 0.1.0 development-toolchain release retains the seven-asset/four-platform contract and
-`make_latest=false`.
+L1 snapshot/release workflow implementation and acceptance completed under
+[work/plans/tools/closed/2026-05-12-l1-gha-release-snapshot-workflows-noref.md](../../tools/closed/2026-05-12-l1-gha-release-snapshot-workflows-noref.md).
+Publication remains separately gated. The intended L1 0.1.0 development-toolchain release retains the
+seven-asset/four-platform contract and `make_latest=false`.
 
 New language features, automatic backlog migration, an L1 freeze, L2 productization, self-hosting, frozen-C bootstrap,
 and profiles/composable-build implementation remain outside this refactor. Profiles remain intended for L1 first and

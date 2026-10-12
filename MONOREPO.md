@@ -120,18 +120,22 @@ Monorepo releases use level-prefixed tags only:
 
 - L0 stable releases: `l0-vX.Y.Z`
 - L0 snapshots: `l0-snapshot-...`
-- Future L1 stable releases: `l1-vX.Y.Z`
-- Future L1 snapshots: `l1-snapshot-...`
+- L1 versioned releases: `l1-vX.Y.Z`
+- L1 snapshots: `l1-snapshot-...`
 
 Bare `v*` tags are therefore a closed pre-monorepo namespace. New monorepo releases should not dual-tag with bare `v*`.
 
 ## Release-line Gating Policy
 
-L0 stable releases (`l0-v*`) and L0 snapshots (`l0-snapshot-*`) are the only currently active release workflows. L1
-release namespaces (`l1-v*` and `l1-snapshot-*`) remain reserved. The snapshot, release, and reusable documentation
-workflows are implemented and locally validated; hosted acceptance and activation remain pending.
+L0 stable releases (`l0-v*`) and L0 snapshots (`l0-snapshot-*`) remain the established release line. L1 owns the `l1-v*`
+and `l1-snapshot-*` namespaces. Its snapshot, release, and reusable documentation workflows are implemented; hosted
+acceptance passed on 2026-10-12. L1 publication remains separately gated.
 
-The following prerequisites must be met before the first L1 release or snapshot workflow is added:
+The release and curated-note policies are recorded in
+[docs/decisions/0023-l1-release-workflow-policy.md](docs/decisions/0023-l1-release-workflow-policy.md). The workflow
+plan is closed; release preparation remains separate.
+
+L1 release workflows retain the following delivery and namespace requirements:
 
 1. L1 `make install` and `make dist` must be implemented with a stable artifact contract through
    [l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md](l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md)
@@ -145,7 +149,7 @@ The following prerequisites must be met before the first L1 release or snapshot 
    relabeled.
 3. Tag validation, conversion to `DEA_DIST_VERSION`, release-note baselines, publication behavior, and the smoke-test
    flow must be documented and reproducible in CI. These contracts are specified in
-   [work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md](work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md).
+   [work/plans/tools/closed/2026-05-12-l1-gha-release-snapshot-workflows-noref.md](work/plans/tools/closed/2026-05-12-l1-gha-release-snapshot-workflows-noref.md).
 4. The existing `l1-v*` and `l1-snapshot-*` tag namespaces must not be used for any other purpose before the first
    deliberately prepared L1 release or snapshot. Check the authoritative remote tag state before activation; historical
    checks and local tag lists are insufficient.
@@ -161,11 +165,12 @@ dispatch is not a prerequisite for writing the workflow. GitHub manual dispatch 
 default branch before the first hosted check. Local validation does not establish successful hosted publication.
 
 Hosted acceptance requires one deliberately prepared snapshot and one versioned release, each building and smoke-testing
-all four archives before publication. Follow the separate tag-creation, tag-push, and remote-write authorization gates
+all four archives before publication. These milestones passed for the generated-note workflows. Curated-note composition
+is covered by focused local validation. Follow the separate tag-creation, tag-push, and remote-write authorization gates
 in [AGENTS.md](AGENTS.md); implementing the plan does not authorize those actions. Snapshot dispatch with
-`publish_release=false` still creates/pushes a tag and uploads a draft release, so it also requires authorization. If
-hosted acceptance is deferred, record implementation and pending acceptance separately and leave the workflow plan open.
-Do not create a dummy stable tag to close it.
+`publish_release=false` still creates/pushes a tag and uploads a draft release, so it also requires authorization. The
+completed milestones and focused local validation establish plan completion without a duplicate acceptance release. They
+do not authorize publication.
 
 The implemented workflows are [.github/workflows/l1-snapshot.yml](.github/workflows/l1-snapshot.yml),
 [.github/workflows/l1-release.yml](.github/workflows/l1-release.yml), and
@@ -173,6 +178,12 @@ The implemented workflows are [.github/workflows/l1-snapshot.yml](.github/workfl
 default branch once), optional `snapshot_tag`, and `publish_release` (default `true`). The reusable docs workflow
 requires an immutable `source_ref`, `package_version`, and `release_tag`. Every executable job reports its inputs in
 both its log and summary. Both release types retain `make_latest=false` and development-toolchain labeling.
+
+Versioned releases require `l1/docs/releases/X.Y.Z.md` at the selected source revision, beginning with `# Dea/L1 X.Y.Z`,
+the development notice, and curated release content. The preparation job validates these requirements before
+documentation and native builds. The publisher preserves the curated document and appends `## Commit history`, the
+baseline paragraph ending with a colon, and generated commits. Snapshots keep automatic notes. Authoring and baseline
+rules are in [l1/docs/releases/README.md](l1/docs/releases/README.md).
 
 Rerun all jobs after a failed release attempt. Original source/tag identity is retained, while docs, builds, reports,
 and logs are isolated by attempt; partial reruns fail rather than mix attempts. Matching drafts may replace their own

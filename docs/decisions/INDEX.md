@@ -24,3 +24,4 @@
 | [0020](0020-native-compiler-private-temporary-workspaces.md)                      | Native Compiler Private Temporary Workspaces                        | Accepted               |
 | [0021](0021-runtime-hash-semantic-domains-and-stability.md)                       | Runtime Hash Semantic Domains and Stability                         | Accepted               |
 | [0022](0022-single-compiler-level-lineage.md)                                     | Single-Compiler Level Lineage                                       | Accepted               |
+| [0023](0023-l1-release-workflow-policy.md)                                        | L1 Release Workflow Policy                                          | Accepted               |

@@ -25,6 +25,19 @@ from productization_provenance import PackageProvenance
 
 SOURCE = "a" * 40
 TAG = "l1-v0.1.0"
+CURATED_NOTES = """# Dea/L1 0.1.0
+
+Canonical L0-implemented L1 development toolchain. This release does not declare language or
+toolchain stability.
+
+## Highlights
+
+- Preserve literal `code`, café, and intentional spacing.\x20\x20
+
+## Compatibility
+
+Review the migration guidance before upgrading.
+"""
 
 
 class FakeGitHub:
@@ -130,20 +143,47 @@ def test_posix_result_paths_preserve_literal_backslashes():
             release.archive_basename(path, "windows-x86_64")
 
 
-def test_notes_use_reachable_level_tags_and_full_history(tmp_path):
+@pytest.fixture
+def history(tmp_path):
     # Tags are confined to this disposable fixture repository, never the working repository.
+    root = tmp_path / "repository with spaces"
+    root.mkdir()
     def git(*args):
-        return subprocess.check_output(["git", *args], cwd=tmp_path, text=True).strip()
+        return subprocess.check_output(["git", *args], cwd=root, text=True).strip()
     git("init", "-b", "main")
     git("config", "user.name", "Fixture")
     git("config", "user.email", "fixture@example.invalid")
-    def commit(name):
-        (tmp_path / "shared").write_text(name)
-        git("add", "shared")
+    git("config", "core.autocrlf", "false")
+    def commit(name, path="shared", content=None):
+        target = root / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(name.encode("utf-8") if content is None else content)
+        git("add", path)
         git("commit", "-m", name)
         return git("rev-parse", "HEAD")
+    return root, git, commit
+
+
+@pytest.mark.parametrize("pre_l1_history", [False, True])
+def test_notes_use_reachable_level_tags_and_full_history(history, pre_l1_history):
+    root, git, commit = history
+    snapshot = "l1-snapshot-20261011-0809-aaaaaaa"
+    if pre_l1_history:
+        source = commit("Before L1")
+        with pytest.raises(ValueError, match="no L1 history"):
+            release.release_notes(root, snapshot, source)
+    commit("Introduce L1", "l1/compiler.l0")
+    commit("Prepare curated notes", "l1/docs/releases/0.1.0.md", CURATED_NOTES.encode("utf-8"))
     first = commit("First shared change")
-    assert "Initial L1 publication" in release.release_notes(tmp_path, TAG, first)
+    for tag in (TAG, snapshot):
+        notes = release.release_notes(root, tag, first)
+        assert "Initial L1 publication, including changes since L1 was introduced:\n\n- " in notes
+        assert "Introduce L1" in notes and "First shared change" in notes
+        assert "Before L1" not in notes
+        if tag == TAG:
+            assert notes.startswith(CURATED_NOTES + "\n## Commit history\n\nInitial L1 publication")
+        else:
+            assert "## Highlights" not in notes and "## Commit history" not in notes
     git("tag", "l1-v0.0.1")
     commit("Second shared change")
     git("tag", "l1-snapshot-20261010-0809-aaaaaaa")
@@ -155,13 +195,89 @@ def test_notes_use_reachable_level_tags_and_full_history(tmp_path):
     commit("Unreachable change")
     git("tag", "l1-v99.0.0")
     git("checkout", "main")
-    notes = release.release_notes(tmp_path, TAG, source)
-    assert "since `l1-v0.0.1`" in notes
+    notes = release.release_notes(root, TAG, source)
+    assert notes.startswith(CURATED_NOTES + "\n## Commit history\n\nChanges since `l1-v0.0.1`:\n\n")
     assert "Second shared change" in notes and "Fourth shared change" in notes
+    assert "Introduce L1" not in notes and "First shared change" not in notes
     assert "Unreachable change" not in notes
-    notes = release.release_notes(tmp_path, "l1-snapshot-20261011-0809-aaaaaaa", source)
-    assert "since `l1-snapshot-20261010-0809-aaaaaaa`" in notes
+    notes = release.release_notes(root, snapshot, source)
+    assert "since `l1-snapshot-20261010-0809-aaaaaaa`:\n\n- " in notes
     assert "Second shared change" not in notes and "Third shared change" in notes
+
+
+@pytest.mark.parametrize("content,error", [
+    (None, "cannot read UTF-8 curated"),
+    (b"", "empty curated"),
+    (b"\xff", "cannot read UTF-8 curated"),
+    (CURATED_NOTES.replace("# Dea/L1 0.1.0", "# Dea/L1 0.2.0").encode(), "must start with"),
+    (b"# Dea/L1 0.1.0\n\nHighlights only.\n", "require the development notice"),
+    (CURATED_NOTES.replace("does not declare", "declares").encode(), "require the development notice"),
+    (CURATED_NOTES.split("## Highlights")[0].encode(), "require content after"),
+])
+def test_invalid_curated_notes_block_preparation_and_composition(history, tmp_path, monkeypatch, content, error):
+    root, _, commit = history
+    source = commit("Introduce L1", "l1/compiler.l0")
+    if content is not None:
+        source = commit("Record invalid notes", "l1/docs/releases/0.1.0.md", content)
+    api = FakeGitHub(); api.tag_source = source
+    monkeypatch.setattr(release, "GitHub", lambda: api)
+    monkeypatch.setattr(release, "ROOT", root)
+    monkeypatch.setattr(sys, "argv", ["l1_release.py", "prepare"])
+    output = tmp_path / "github-output"
+    for key, value in {"RUNNER_TEMP": str(tmp_path), "GITHUB_OUTPUT": str(output), "GITHUB_RUN_ATTEMPT": "1",
+                       "GITHUB_RUN_ID": "12", "RELEASE_KIND": "release", "REQUESTED_TAG": TAG,
+                       "REQUESTED_REF": source}.items():
+        monkeypatch.setenv(key, value)
+    with pytest.raises(ValueError, match=error):
+        release.main()
+    assert not output.exists() and not (tmp_path / "l1-identity").exists()
+    assert all(method == "GET" for method, _, _ in api.calls)
+    with pytest.raises(ValueError, match=error):
+        release.release_notes(root, TAG, source)
+    # Snapshots need no curated file, even when a versioned file is malformed.
+    notes = release.release_notes(root, "l1-snapshot-20261011-0809-" + source[:7], source)
+    assert "Initial L1 publication, including changes since L1 was introduced:" in notes
+    assert "## Commit history" not in notes
+
+
+@pytest.mark.parametrize("line_ending,final_newline", [("\n", True), ("\r\n", True), ("\n", False)])
+def test_curated_notes_preserve_source_bytes_through_preparation_and_draft_retry(
+        history, tmp_path, monkeypatch, line_ending, final_newline):
+    root, _, commit = history
+    curated = CURATED_NOTES.replace("\n", line_ending)
+    if not final_newline:
+        curated = curated.rstrip("\n")
+    path = "l1/docs/releases/0.1.0.md"
+    source = commit("Prepare release notes", path, curated.encode("utf-8"))
+    api = FakeGitHub(); api.tag_source = source
+    monkeypatch.setattr(release, "GitHub", lambda: api)
+    monkeypatch.setattr(release, "ROOT", root)
+    monkeypatch.setattr(sys, "argv", ["l1_release.py", "prepare"])
+    output = tmp_path / "github-output"
+    for key, value in {"RUNNER_TEMP": str(tmp_path), "GITHUB_OUTPUT": str(output), "GITHUB_RUN_ATTEMPT": "1",
+                       "GITHUB_RUN_ID": "12", "RELEASE_KIND": "release", "REQUESTED_TAG": TAG,
+                       "REQUESTED_REF": source}.items():
+        monkeypatch.setenv(key, value)
+    release.main()
+    assert output.read_text().splitlines() == [f"source={source}", f"tag={TAG}", "version=0.1.0"]
+    notes = release.release_notes(root, TAG, source)
+    assert notes.startswith(curated)
+    assert notes.index("## Commit history") >= len(curated)
+    assert notes.count("# Dea/L1 0.1.0") == 1
+    assert notes.count("Canonical L0-implemented L1 development toolchain.") == 1
+    assert (root / path).read_bytes() == curated.encode("utf-8")
+    asset = tmp_path / "SHA256SUMS"; asset.write_bytes(b"")
+    release.publish(api, tag=TAG, source=source, assets=[asset], notes=notes, publish_release=False)
+    assert api.release["body"] == notes and api.release["name"] == "Dea/L1 0.1.0"
+    commit("Change branch notes", path, b"Different committed notes\n")
+    (root / path).write_bytes(b"Different uncommitted notes\n")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
+    release.main()
+    retried = release.release_notes(root, TAG, source)
+    assert retried == notes
+    release.publish(api, tag=TAG, source=source, assets=[asset], notes=retried, publish_release=True)
+    assert api.release["body"] == notes and api.release["draft"] is False
+    assert (root / path).read_bytes() == b"Different uncommitted notes\n"
 
 
 @pytest.fixture
@@ -298,6 +414,7 @@ def test_workflow_graph_permissions_inputs_and_attempt_isolation():
         assert data["permissions"] == {"contents": "read"}
         jobs = data["jobs"]
         assert jobs["build-docs"]["needs"] == prepare
+        assert next(s for s in jobs[prepare]["steps"] if s.get("id") == "identity")["run"] == "python3 scripts/l1_release.py prepare"
         assert set(jobs["build-dist"]["needs"]) == {prepare, "build-docs"}
         assert jobs["verify-dist"]["needs"] == "build-dist"
         assert set(jobs["publish-release"]["needs"]) == {prepare, "build-docs", "build-dist", "verify-dist"}

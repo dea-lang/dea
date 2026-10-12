@@ -28,6 +28,8 @@ from productization_acceptance import HARNESS
 HOSTS = {"linux-x86_64", "macos-x86_64", "macos-arm64", "windows-x86_64"}
 VERSION = re.compile(r"l1-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
 SNAPSHOT = re.compile(r"l1-snapshot-(\d{8}-\d{4})-([0-9a-f]{7,40})")
+DEVELOPMENT_NOTICE = ("Canonical L0-implemented L1 development toolchain. "
+                      "This release does not declare language or toolchain stability.")
 
 
 def package_version(tag: str, source: str | None = None) -> str:
@@ -205,8 +207,46 @@ def ensure_tag(api: GitHub, record: dict) -> None:
         raise ValueError("tag is absent or points to another source; never move tags")
 
 
+def curated_release_notes(root: Path, tag: str, source: str) -> str:
+    """Read and validate the canonical versioned-release Markdown from its source commit.
+
+    Args:
+        root: Repository containing the immutable source revision.
+        tag: Validated versioned L1 tag.
+        source: Full commit identity selected for the release.
+
+    Returns:
+        Original UTF-8 Markdown, including its heading and development notice.
+
+    Raises:
+        ValueError: The identity or required notes are missing or invalid.
+    """
+    if not VERSION.fullmatch(tag) or not re.fullmatch(r"[0-9a-f]{40}", source):
+        raise ValueError("curated notes require a versioned L1 tag and immutable source commit")
+    version = package_version(tag)
+    path = f"l1/docs/releases/{version}.md"
+    try:
+        notes = subprocess.check_output(["git", "show", f"{source}:{path}"], cwd=root,
+                                        stderr=subprocess.PIPE).decode("utf-8")
+    except (subprocess.CalledProcessError, UnicodeDecodeError) as exc:
+        raise ValueError(f"cannot read UTF-8 curated release notes at selected source: {path}") from exc
+    if not notes.strip():
+        raise ValueError(f"empty curated release notes: {path}")
+    lines = notes.splitlines()
+    if lines[0] != f"# Dea/L1 {version}":
+        raise ValueError(f"curated release notes must start with '# Dea/L1 {version}': {path}")
+    paragraphs = re.split(r"\n[ \t]*\n", "\n".join(lines[1:]).strip(), maxsplit=1)
+    if " ".join(paragraphs[0].split()) != DEVELOPMENT_NOTICE:
+        raise ValueError(f"curated release notes require the development notice after the heading: {path}")
+    if len(paragraphs) != 2 or not paragraphs[1].strip():
+        raise ValueError(f"curated release notes require content after the development notice: {path}")
+    return notes
+
+
 def release_notes(root: Path, tag: str, source: str) -> str:
-    """Generate notes from the nearest reachable eligible L1 tag, without path filtering.
+    """Append generated history to curated versioned notes or an automatic snapshot header.
+
+    Without a prior eligible tag, include history from the introduction of L1.
 
     Args:
         root: Repository with complete source history and tags.
@@ -218,7 +258,16 @@ def release_notes(root: Path, tag: str, source: str) -> str:
 
     Raises:
         subprocess.CalledProcessError: Git cannot read the required history.
+        ValueError: Required curated notes are invalid or no L1 history is reachable.
     """
+    version = package_version(tag)
+    if VERSION.fullmatch(tag):
+        opening = curated_release_notes(root, tag, source)
+        if not opening.endswith("\n"):
+            opening += "\n"
+        opening += "\n## Commit history\n\n"
+    else:
+        opening = f"# Dea/L1 {version}\n\n{DEVELOPMENT_NOTICE}\n\n"
     def git(*args: str) -> str:
         return subprocess.check_output(["git", *args], cwd=root, text=True).strip()
     eligible = []
@@ -232,15 +281,20 @@ def release_notes(root: Path, tag: str, source: str) -> str:
         if VERSION.fullmatch(tag) and not VERSION.fullmatch(candidate):
             continue
         eligible.append(candidate)
-    baseline = None
     if eligible:
         matches = [arg for name in eligible for arg in ("--match", name)]
         baseline = git("describe", "--tags", "--abbrev=0", f"--candidates={len(eligible)}", *matches, source)
-    changes = git("log", "--format=- %s", f"{baseline}..{source}" if baseline else source)
-    introduction = f"Changes since `{baseline}`." if baseline else "Initial L1 publication."
-    return (f"# Dea/L1 {tag}\n\nCanonical L0-implemented L1 development toolchain. "
-            "This release does not declare language or toolchain stability.\n\n"
-            f"{introduction}\n\n{changes}\n")
+        revisions = [f"{baseline}..{source}"]
+        introduction = f"Changes since `{baseline}`:"
+    else:
+        history = git("log", "--reverse", "--topo-order", "--format=%H", source, "--", "l1").splitlines()
+        if not history:
+            raise ValueError("no L1 history is reachable from the source revision")
+        # Exclude the introduction's parents, retaining the introduction even at the repository root.
+        revisions = [source, f"{history[0]}^!"]
+        introduction = "Initial L1 publication, including changes since L1 was introduced:"
+    changes = git("log", "--format=- %s", *revisions)
+    return f"{opening}{introduction}\n\n{changes}\n"
 
 
 def read_json(path: Path) -> dict:
@@ -402,13 +456,13 @@ def publish(api: GitHub, *, tag: str, source: str, assets: list[Path], notes: st
     Raises:
         ValueError: Existing tag, release, or uploaded assets disagree.
     """
-    package_version(tag, source)
+    version = package_version(tag, source)
     if tag_commit(api, tag) != source:
         raise ValueError("publication tag differs from validated source")
     prerelease = bool(SNAPSHOT.fullmatch(tag))
     endpoint = "releases/tags/" + quote(tag, safe="")
     release = api.api(endpoint)
-    title = f"Dea/L1 {tag} (canonical L0-implemented development toolchain)"
+    title = f"Dea/L1 {version}"
     if release is not None:
         if not release["draft"]:
             raise ValueError("published release is immutable; explicit recovery is required")
@@ -479,6 +533,8 @@ def main() -> None:
         requested_tag = env.get("REQUESTED_TAG", "")
         record = identity(api, kind=env["RELEASE_KIND"], ref=env.get("REQUESTED_REF", ""),
                           tag=requested_tag, run_id=env["GITHUB_RUN_ID"], saved=saved)
+        if record["kind"] == "release":
+            curated_release_notes(ROOT, record["tag"], record["source"])
         record["requested_tag"] = requested_tag
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")

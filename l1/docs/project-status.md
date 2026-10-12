@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-10-11
+Version: 2026-10-12
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -9,9 +9,9 @@ under `compiler/shared/`. The former L1 Stage 2 is transplanted into L2 and no l
 
 Installation/distribution and offline HTML/full PDF now target the canonical compiler. Hosted compiler CI and fresh
 four-platform exact-artifact acceptance passed on 2026-10-11, including verification without checkout or bootstrap
-artifacts. Stage 2 acceptance remains historical. Hosted L1 release workflows await separate implementation. L1 0.1.0 is
-intended as the canonical development toolchain, without freezing its feature scope or requiring its entire backlog. See
-the shared split plan in
+artifacts. Stage 2 acceptance remains historical. Hosted snapshot/versioned-release acceptance passed on 2026-10-12; L1
+publication remains pending. L1 0.1.0 is intended as the canonical development toolchain, without freezing its feature
+scope or requiring its entire backlog. See the shared split plan in
 [work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md).
 
 ## Scope and Canonical References
@@ -199,9 +199,13 @@ and retained archive/result/harness evidence; ordinary `test-ci` does not replac
 and the [l1/docs/decisions/0001-bootstrap-adaptation-strategy.md](decisions/0001-bootstrap-adaptation-strategy.md)
 amendment record the current delivery/bootstrap contracts. Fresh canonical artifact acceptance passed on all four hosted
 platforms, satisfying the prerequisite for
-[work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md](../../work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md);
-snapshot, release, and reusable docs workflows are implemented and locally validated; hosted publication acceptance
-remains pending. The productization plan is closed. See
+[work/plans/tools/closed/2026-05-12-l1-gha-release-snapshot-workflows-noref.md](../../work/plans/tools/closed/2026-05-12-l1-gha-release-snapshot-workflows-noref.md);
+snapshot, release, and reusable docs workflows are implemented and verified through hosted acceptance. Versioned
+releases require source-bound curated notes and append generated commit history afterward; this composition is locally
+validated. Authoring rules are in [l1/docs/releases/README.md](releases/README.md). The workflow and productization
+plans are closed;
+[docs/decisions/0023-l1-release-workflow-policy.md](../../docs/decisions/0023-l1-release-workflow-policy.md) records the
+release policy. Publication remains pending. See
 [l1/docs/reference/productization-inventory.md](reference/productization-inventory.md) and
 [l1/docs/reference/stdlib-preparation.md](reference/stdlib-preparation.md).
 

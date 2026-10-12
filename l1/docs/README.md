@@ -17,6 +17,7 @@ while Dea-wide lifecycle artifacts live under the root `work/` tree.
 - `reference/` for L1-local bootstrap and implementation references
 - `specs/` for L1-local compiler and module-interface specifications
 - `user/` for task-oriented L1 bootstrap user guides
+- [l1/docs/releases/README.md][releases] for curated versioned-release notes and authoring requirements
 - `implementation/` for future accepted implementation notes if needed
 - `decisions/` for ADR-style records linking design decisions to the closed plans that shaped them and the current docs
   where they are normatively recorded
@@ -87,4 +88,5 @@ Direct `make install PREFIX=... DOCS_ARTIFACT=/absolute/bundle.tar.gz` optionall
 `share/doc/dea/l1/autodocs/`. `make dist` requires it and never generates documentation. `make smoke-dist ARCHIVE=...`
 checks the exact archive after extraction. Local generation and packaging do not publish or dispatch workflows.
 
+[releases]: releases/README.md
 [roadmap]: roadmap.md

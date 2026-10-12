@@ -1,13 +1,13 @@
 # Dea Project Status
 
-Version: 2026-10-11
+Version: 2026-10-12
 
 This document summarizes the current status of the Dea project at the monorepo level.
 
 The repository contains one active release line, Dea/L0, and independent development levels L1 and L2. L0 remains the
 current stable toolchain. L1 has one compiler implemented in L0; L2 has one compiler implemented in L1. L1 0.1.0 is the
-intended future canonical L1 development-toolchain release. Fresh canonical artifact acceptance is complete; hosted
-release acceptance remains a prerequisite.
+intended future canonical L1 development-toolchain release. Fresh canonical artifact acceptance and hosted
+snapshot/versioned-release acceptance are complete; L1 publication remains pending.
 
 ## Scope and Canonical References
 
@@ -65,7 +65,7 @@ minimum. The existing L0 language and CLI contract is unchanged from 2.0.0.
 
 ### Dea/L1
 
-L1 supports canonical development and standalone installation/distribution. Hosted releases remain pending.
+L1 supports canonical development and standalone installation/distribution. Publication remains pending.
 
 Its repository status today is:
 
@@ -97,11 +97,14 @@ CI-only cases, environment/bootstrap integration, ARC/memory traces, child fixtu
 Windows. Manual platform, compiler, and Make-target selection remain available.
 
 L1 snapshot, tag-triggered release, and reusable documentation workflows are implemented with local syntax and policy
-validation. They retain exact source/version/docs handoff, four fresh verification jobs, seven public assets, and
-`make_latest=false`. Hosted snapshot and versioned-release acceptance remain pending under
-[work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md](../work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md).
-Remote installation, namespace checks, tags, dispatches, and publication remain separate work; L0 is still the active
-release line.
+validation. They retain exact source/version/docs handoff, four fresh verification jobs, seven assets, and
+`make_latest=false`. Hosted snapshot and versioned-release acceptance passed on 2026-10-12. Versioned releases now
+require curated notes at the selected source revision and append generated commit history after that content; this
+composition has focused local coverage. See [l1/docs/releases/README.md](../l1/docs/releases/README.md) and
+[work/plans/tools/closed/2026-05-12-l1-gha-release-snapshot-workflows-noref.md](../work/plans/tools/closed/2026-05-12-l1-gha-release-snapshot-workflows-noref.md).
+Activation, namespace checks, tags, dispatches, and publication remain separately gated; L0 is still the release line.
+The workflow plan is closed, with its release and curated-note policies recorded in
+[docs/decisions/0023-l1-release-workflow-policy.md](decisions/0023-l1-release-workflow-policy.md).
 
 ### Dea/L2
 

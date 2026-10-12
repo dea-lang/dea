@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-10-11
+Version: 2026-10-12
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -8,7 +8,7 @@ been promoted to initiatives or plans.
 
 L1 has one canonical L0-implemented compiler and is being prepared as the L1 0.1.0 development toolchain. The former L1
 Stage 2 is now the L1-implemented L2 compiler. L0 remains the active release line. The canonical split and fresh
-four-platform artifact acceptance are complete. L1 release workflows are implemented locally; hosted acceptance remains
+four-platform artifact acceptance are complete. L1 release workflows passed hosted acceptance; publication remains
 pending. L1 scope is not frozen and its feature backlog remains assigned here pending individual decisions.
 
 ## Current position
@@ -314,7 +314,12 @@ split dependency or implementing that work now.
 - Tool [l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md][bootstrap-productization] completed
   canonical L1 installation/distribution, stage-free schema-2 provenance, and strict HTML/full PDF. Fresh artifact
   builds and checkout-free verification passed on all four hosted platforms. ADR-0043 records the delivery contract;
-  hosted release acceptance remains separate work.
+  hosted publication uses separate release workflows.
+
+- Tool [work/plans/tools/closed/2026-05-12-l1-gha-release-snapshot-workflows-noref.md][release-workflows] completed
+  snapshot, versioned-release, and reusable documentation workflows. Hosted acceptance passed; curated notes followed by
+  generated history have focused local validation. [docs/decisions/0023-l1-release-workflow-policy.md][release-policy]
+  records the release policy. Publication remains separately gated.
 
 - Feature [2026-07-11-shared-l1-stage2-self-hosting-port-noref][stage2-self-hosting] ported the settled Stage 1 compiler
   to `.l1`, added the Stage 2 build and test workflow, and established strict triple-bootstrap validation.
@@ -329,9 +334,6 @@ split dependency or implementing that work now.
 - Bug Fix [2026-09-27-legacy-clang-preparation-compatibility-noref][legacy-clang-preparation] drafts Clang 14/15
   preparation compatibility, with persistent reuse gated on configuration isolation, discovery, identity, and
   invalidation validation, and private fallback when reuse cannot be authorized.
-- Tool [work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md][release-workflows] consumes the
-  validated build/result/harness handoff through implemented snapshot, release, and reusable documentation workflows.
-  Local policy validation passes; separately authorized hosted snapshot and versioned-release acceptance remain pending.
 - Feature [2026-06-21-cheap-string-slices-noref][cheap-string-slices] extends `dea::slice` to ARC-backed string views
   while preserving internal terminated copies for native runtime calls that require them.
 - Feature [2026-08-30-typed-formatting-noref][typed-formatting] is the Priority 2 replacement for the combinatorial
@@ -401,8 +403,8 @@ backlog does not imply missing work where L1 already has a narrower surface.
 
 ### Tooling and delivery
 
-- Separately authorized hosted acceptance of the implemented L1 release/snapshot workflows under the active
-  release-workflow plan.
+- Prepare separately authorized L1 publication with reviewed curated versioned-release notes, the release-index entry,
+  and authoritative namespace checks.
 - Hosted documentation publication and broader delivery tooling beyond the existing four-platform CI and isolated
   artifact acceptance gates.
 
@@ -481,7 +483,8 @@ update to be promoted to an initiative or plan:
 [profile-artifacts]: ../work/plans/features/2026-09-30-explicit-profile-artifacts-noref.md
 [profile-boundary]: ../work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md
-[release-workflows]: ../../work/plans/tools/2026-05-12-l1-gha-release-snapshot-workflows-noref.md
+[release-policy]: ../../docs/decisions/0023-l1-release-workflow-policy.md
+[release-workflows]: ../../work/plans/tools/closed/2026-05-12-l1-gha-release-snapshot-workflows-noref.md
 [reuse-report]: ../work/plans/tools/closed/2026-09-13-native-reuse-capability-report-noref.md
 [runtime-library]: ../work/initiatives/closed/0002-runtime-static-library.md
 [runtime-pointer-validation]: ../work/plans/features/closed/2026-06-30-runtime-pointer-access-validation-noref.md

@@ -54,7 +54,7 @@ jobs:
         with:
           name: l1-release-identity
           path: ${{ runner.temp }}/l1-identity
-      - name: Resolve immutable source and tag
+      - name: Resolve immutable source and validate curated notes
         id: identity
         run: python3 scripts/l1_release.py prepare
       - name: Retain original run identity before tag creation
