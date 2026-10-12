@@ -2,9 +2,8 @@
 
 Version: 2026-10-10
 
-This directory contains syntax highlighting, editing configuration, and top-level navigation indexes for Dea/L0 and
-Dea/L1. The compiler remains authoritative: these integrations deliberately accept incomplete code and do not attempt
-semantic validation.
+This directory contains Dea syntax highlighting, editing configuration, and top-level navigation indexes. The compiler
+remains authoritative: these integrations deliberately accept incomplete code and do not attempt semantic validation.
 
 ## Support Matrix
 
@@ -16,8 +15,8 @@ semantic validation.
 | Universal Ctags  | `Dea`, `.l0`                        | `Dea`, `.l1`                        | `ctags/dea.ctags`   |
 | Tree-sitter      | Host-specific `.l0` mapping         | Host-specific `.l1` mapping         | `tree-sitter-dea/`  |
 
-The package contains no LSP client, diagnostics, completion, hover, go-to-definition, document-symbol, semantic-token,
-rename, or refactoring provider.
+**Note:** JetBrains IDEs (IntelliJ IDEA, PyCharm, CLion, etc.) can use the VS Code/TextMate bundle for Dea syntax
+highlighting. See below for setup instructions.
 
 ## VS Code
 
@@ -36,6 +35,23 @@ extension can also be run directly from source with VS Code's Extension Developm
 
 `npm test` uses `vscode-textmate` with VS Code's Oniguruma runtime to tokenize the representative and incomplete
 fixtures under `vscode-dea/test/fixtures/`.
+
+## JetBrains IDEs
+
+JetBrains IDEs such as IntelliJ IDEA, PyCharm, and CLion support TextMate syntax highlighting using the existing VS Code
+bundle.
+
+To enable Dea highlighting:
+
+1. Open **Settings > Editor > TextMate Bundles**.
+2. Add the `editors/vscode-dea` directory as a TextMate bundle.
+3. Verify that `.l0`, `.l1`, and `.l2` files are recognized correctly.
+
+If highlighting does not work, check **Settings > Editor > File Types** for conflicting file associations.
+
+This integration provides syntax highlighting only, not native JetBrains language support or semantic services. The
+package contains no LSP client, diagnostics, completion, hover, go-to-definition, document-symbol, semantic-token,
+rename, or refactoring provider.
 
 ## Vim
 
