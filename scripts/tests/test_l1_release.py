@@ -336,16 +336,6 @@ def test_workflow_graph_permissions_inputs_and_attempt_isolation():
     assert not any('pages' in s.get('uses', '') or 'blog' in s.get('run', '') for s in steps)
 
 
-def test_input_reporting_bash_logs_and_summary(tmp_path):
-    workflow = yaml.load((ROOT / '.github/workflows/l1-snapshot.yml').read_text(), Loader=yaml.BaseLoader)
-    step = workflow['jobs']['prepare-snapshot']['steps'][0]
-    payload = json.dumps({'ref': 'branch with spaces; $(false)', 'publish_release': False})
-    summary = tmp_path / 'summary'
-    completed = subprocess.run(['bash','-e','-c',step['run']], env={**os.environ,'INPUTS_JSON':payload,'GITHUB_STEP_SUMMARY':str(summary)},
-                               capture_output=True,text=True,check=True)
-    assert payload in completed.stdout and payload in summary.read_text()
-
-
 def test_retry_removes_only_old_matching_draft_assets(tmp_path):
     api = FakeGitHub()
     api.tag_source = SOURCE

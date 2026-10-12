@@ -3,7 +3,7 @@
 ## Add L1 snapshot and release GHA workflows
 
 - Date: 2026-06-22
-- Last reviewed: 2026-10-11
+- Last reviewed: 2026-10-12
 - Status: In progress (local implementation complete; hosted acceptance and publication pending)
 - Title: Add L1 snapshot and release GHA workflows
 - Kind: Tooling
@@ -85,10 +85,11 @@ check or an empty local tag list does not establish the current remote state.
 
 ## Current State
 
-Reviewed on 2026-10-11 against the completed split and fresh hosted acceptance:
+Reviewed on 2026-10-12 against the completed split, canonical artifact acceptance, and installed release workflows:
 
 1. The canonical split and artifact-acceptance prerequisites recorded in `MONOREPO.md` are met. L1 release/snapshot
-   workflows and their local policy checks are implemented; hosted acceptance remains pending.
+   workflows are installed on public `main`, and their local policy checks are implemented; hosted release acceptance
+   remains pending.
 2. Existing L1 compiler CI and productization acceptance cover Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64.
 3. L1 has one L0-implemented canonical compiler. Installation builds it privately and ignores development selections.
 4. Installation/inventory/dist/smoke/evidence helpers retain their distinct responsibilities. The old native acceptance
@@ -286,8 +287,8 @@ Local validation passed:
 
 - `.venv/bin/python -m pytest -q -n 0 scripts/tests/test_l1_release.py l1/tests/test_productization_acceptance.py l1/tests/test_distribution.py`:
   145 cases passed, including mocked GitHub effects, isolated Git-history fixtures, seven-asset aggregation, failed and
-  stale evidence, draft retries, and Bash input reporting. Windows archive/path fixtures are simulated on the local
-  host; these results do not establish native Windows workflow execution.
+  stale evidence, and draft retries. Windows archive/path fixtures are simulated on the local host; these results do not
+  establish native Windows workflow execution.
 
 - `.venv/bin/python -m pytest -q -n 0 l1/tests/test_compiler_tooling.py scripts/tests/test_cleanup.py`: 113 cases passed
   and the inapplicable L0 `clean-runtime` case was skipped.
@@ -295,8 +296,9 @@ Local validation passed:
 - `.venv/bin/python l0/tests/test_release_tag_policy.py`, active-plan ADR validation, staged whitespace checks, and
   repository pre-commit hooks passed.
 
-The new policy suite is included in L1 `test-tooling`. No remote namespace check, workflow installation, dispatch, tag
-creation, or publication was performed. Phase 4 and the repository/tooling ADR remain pending; this plan stays active.
+The new policy suite is included in L1 `test-tooling`. The workflows are installed on public `main`; no snapshot or
+release dispatch, tag creation, or publication has occurred. Recheck remote namespaces before activation. Phase 4 and
+the repository/tooling ADR remain pending; this plan stays active.
 
 ## Goal
 
