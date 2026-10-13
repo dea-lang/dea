@@ -1,7 +1,7 @@
 # ADR-0023: L1 Release Workflow Policy
 
 - Decision date: 2026-10-12
-- Last edited: 2026-10-12
+- Last edited: 2026-10-13
 - Status: Accepted
 
 ## Context
@@ -31,9 +31,10 @@ remain owned by [l1/docs/decisions/0043-canonical-compiler-toolchain-delivery.md
 - Resolve one immutable source revision for documentation, builds, verification, and publication. Never move an existing
   tag. Retain the original source/tag identity across full workflow reruns.
 - Publish snapshots as pre-releases and versioned releases as non-prerelease GitHub Releases. Both use
-  `make_latest=false`. Titles and note headings use `Dea/L1 {version}`, with the package version. The notes explicitly
-  identify the canonical L0-implemented development toolchain and state that release does not declare language or
-  toolchain stability.
+  `make_latest=false`. GitHub release titles use the exact tag: `l1-vX.Y.Z` for versioned releases and the full
+  `l1-snapshot-*` tag for snapshots. Note headings use `Dea/L1 {version}`, with the package version. The notes
+  explicitly identify the canonical L0-implemented development toolchain and state that release does not declare
+  language or toolchain stability.
 
 ### Evidence and assets
 
