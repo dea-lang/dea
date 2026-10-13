@@ -8,7 +8,8 @@ Run commands from the `l0/` directory.
 
 ## Project Overview
 
-Dea/L0 is a small, safe, C-family systems language compiling to C99.
+Dea/L0 is the foundational level of the Dea systems programming language, with a small, safe, C-family core compiling to
+C99.
 
 - **Core principle:** No undefined behavior in the language itself.
 - **Stage 1:** Compiler pipeline in Python (lexer → parser → AST → semantic passes → C codegen).

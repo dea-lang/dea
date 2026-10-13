@@ -1,6 +1,6 @@
 # Dea Monorepo
 
-This repository hosts the Dea language family as a monorepo.
+This repository hosts the Dea programming language and its levels as a monorepo.
 
 ## Root Workflow
 
@@ -127,9 +127,10 @@ Bare `v*` tags are therefore a closed pre-monorepo namespace. New monorepo relea
 
 ## Release-line Gating Policy
 
-L0 stable releases (`l0-v*`) and L0 snapshots (`l0-snapshot-*`) remain the established release line. L1 owns the `l1-v*`
-and `l1-snapshot-*` namespaces. Its snapshot, release, and reusable documentation workflows are implemented; hosted
-acceptance passed on 2026-10-12. L1 publication remains separately gated.
+L0 stable releases (`l0-v*`) and L0 snapshots (`l0-snapshot-*`) remain the stable toolchain release line. L1 development
+releases use the `l1-v*` and `l1-snapshot-*` namespaces.
+[L1 0.1.0](https://github.com/dea-lang/dea/releases/tag/l1-v0.1.0) was published on 2026-10-13 after fresh artifact and
+hosted release-workflow acceptance. Subsequent tags, dispatches, and publication actions remain separately gated.
 
 The release and curated-note policies are recorded in
 [docs/decisions/0023-l1-release-workflow-policy.md](docs/decisions/0023-l1-release-workflow-policy.md). The workflow
@@ -150,9 +151,8 @@ L1 release workflows retain the following delivery and namespace requirements:
 3. Tag validation, conversion to `DEA_DIST_VERSION`, release-note baselines, publication behavior, and the smoke-test
    flow must be documented and reproducible in CI. These contracts are specified in
    [work/plans/tools/closed/2026-05-12-l1-gha-release-snapshot-workflows-noref.md](work/plans/tools/closed/2026-05-12-l1-gha-release-snapshot-workflows-noref.md).
-4. The existing `l1-v*` and `l1-snapshot-*` tag namespaces must not be used for any other purpose before the first
-   deliberately prepared L1 release or snapshot. Check the authoritative remote tag state before activation; historical
-   checks and local tag lists are insufficient.
+4. The `l1-v*` and `l1-snapshot-*` tag namespaces are exclusive to L1 releases and snapshots. Check authoritative remote
+   tag state before preparing each new tag; historical checks and local tag lists are insufficient.
 
 The 2026-10-09 acceptance established the former Stage 2 product only. Fresh four-platform exact-artifact acceptance for
 canonical L0-implemented L1 passed on 2026-10-11, satisfying the artifact prerequisite. The existing
@@ -191,8 +191,8 @@ older timestamped archives. Published releases remain immutable. The publisher v
 matching docs bundle, its byte-identical standalone PDF, and `SHA256SUMS` before publication. Local policy validation is
 available through `.venv/bin/python -m pytest -q -n 0 scripts/tests/test_l1_release.py` and L1 `make test-tooling`.
 
-Delivery documentation distinguishes implementation, fresh acceptance, publication, and language maturity. L1 0.1.0 will
-contain the canonical L0-implemented `l1c`, matching toolchain inputs and canonical offline HTML/full PDF, `VERSION`,
+Delivery documentation distinguishes implementation, fresh acceptance, publication, and language maturity. L1 0.1.0
+contains the canonical L0-implemented `l1c`, matching toolchain inputs and canonical offline HTML/full PDF, `VERSION`,
 and the inventory. The release handoff retains seven assets: four native archives, the matching docs bundle and PDF, and
 `SHA256SUMS`. Source/version/docs identities must agree, and release types use `make_latest=false` to preserve L0's
 latest selection. L1 scope is not frozen; release does not imply language stability.
@@ -212,7 +212,7 @@ target execution without L1. L2 release productization is outside the split. See
 Dea/L0 works as a self-contained project inside [`l0/`](l0/). From the monorepo root, `cd l0` before running build,
 test, or docs commands.
 
-- Dea-family monorepo overview: [`README.md`](README.md)
+- Dea monorepo overview: [`README.md`](README.md)
 - Canonical L0 overview and quickstart: [`l0/README.md`](l0/README.md)
 - L0 contributor guidance: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - Repository security policy: [`SECURITY.md`](SECURITY.md)

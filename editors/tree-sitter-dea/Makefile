@@ -1,7 +1,7 @@
 LANGUAGE_NAME := tree-sitter-dea
 HOMEPAGE_URL := https://github.com/dea-lang/dea
 VERSION := 0.1.0
-DESCRIPTION := Tree-sitter grammar for the Dea L0 and L1 languages
+DESCRIPTION := Tree-sitter grammar for levels L0 and L1 of the Dea programming language
 
 # repository
 SRC_DIR := src

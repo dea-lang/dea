@@ -1,7 +1,7 @@
 {
   "name": "tree-sitter-dea",
   "version": "0.1.0",
-  "description": "Tree-sitter grammar for the Dea L0 and L1 languages",
+  "description": "Tree-sitter grammar for levels L0 and L1 of the Dea programming language",
   "type": "module",
   "main": "bindings/node",
   "types": "bindings/node",

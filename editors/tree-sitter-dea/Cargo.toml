@@ -1,6 +1,6 @@
 [package]
 name = "tree-sitter-dea"
-description = "Tree-sitter grammar for the Dea L0 and L1 languages"
+description = "Tree-sitter grammar for levels L0 and L1 of the Dea programming language"
 version = "0.1.0"
 authors = ["Guglielmo Nigri <googlielmo@gmail.com>"]
 license = "MIT OR Apache-2.0"

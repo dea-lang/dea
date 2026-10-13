@@ -2,8 +2,9 @@
 
 ## Supported versions
 
-This repository is experimental. Security fixes, if any, are provided on a best-effort basis for the latest commit on
-the default branch.
+Dea/L0 is stable; L1 and L2 are development levels.
+
+Security fixes, if any, are provided on a best-effort basis for the latest commit on the default branch.
 
 ## Reporting a vulnerability
 

@@ -2,8 +2,8 @@
 
 > _C-family syntax, UB-free semantics, ARC strings, sum types and pattern matching._
 
-**L0 (Level Zero)** is a small systems language that compiles to C99. It is the first level of the
-[Dea language family](../README.md) and the compiler base used to build Dea/L1.
+**L0 (Level Zero)** is the foundational level of the Dea systems programming language. It compiles to C99 and supplies
+the compiler used to build Dea/L1. See [README.md](../README.md) for the overview of Dea and its levels.
 
 **Level 0 is self-hosted.** The latest release is `2.1.1`, tagged `l0-v2.1.1` in the monorepo's level-prefixed release
 namespace. See [l0/docs/releases/2.1.1.md](docs/releases/2.1.1.md) for its complete changes and compatibility guidance.
@@ -20,7 +20,7 @@ precise control over performance characteristics. Many modern languages either r
 under runtime machinery.
 
 Dea/L0 instead keeps a small, explicit core aimed at bootstrap-friendly implementation work. The objective is a small,
-UB-free systems language sufficient to host its own compiler.
+UB-free language core sufficient to host its own compiler.
 
 That constrains the design considerably. The type system needs sum types and pattern matching - a compiler without them
 is fighting its own data. It needs explicit nullable types, because implicit null is a specification gap. It needs

@@ -1,7 +1,7 @@
 [project]
 name = "dea-monorepo"
 version = "0.0.0"
-description = "Dea language family monorepo (workspace root for l0, l1, and l2)"
+description = "Dea programming language monorepo (workspace root for levels l0, l1, and l2)"
 authors = [{ name = "gwz (googlielmo)", email = "googlielmo@gmail.com" }]
 requires-python = ">=3.14"
 dependencies = []

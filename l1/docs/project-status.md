@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-10-12
+Version: 2026-10-13
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -9,9 +9,10 @@ under `compiler/shared/`. The former L1 Stage 2 is transplanted into L2 and no l
 
 Installation/distribution and offline HTML/full PDF now target the canonical compiler. Hosted compiler CI and fresh
 four-platform exact-artifact acceptance passed on 2026-10-11, including verification without checkout or bootstrap
-artifacts. Stage 2 acceptance remains historical. Hosted snapshot/versioned-release acceptance passed on 2026-10-12; L1
-publication remains pending. L1 0.1.0 is intended as the canonical development toolchain, without freezing its feature
-scope or requiring its entire backlog. See the shared split plan in
+artifacts. Stage 2 acceptance remains historical. Hosted snapshot/versioned-release acceptance passed on 2026-10-12.
+[L1 0.1.0](https://github.com/dea-lang/dea/releases/tag/l1-v0.1.0) was published on 2026-10-13 as the canonical
+development toolchain, without freezing its feature scope or promising stable language, module-interface, or binary
+compatibility. See [l1/docs/releases/0.1.0.md](releases/0.1.0.md) for the release baseline. See the shared split plan in
 [work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md).
 
 ## Scope and Canonical References
@@ -205,7 +206,7 @@ releases require source-bound curated notes and append generated commit history 
 validated. Authoring rules are in [l1/docs/releases/README.md](releases/README.md). The workflow and productization
 plans are closed;
 [docs/decisions/0023-l1-release-workflow-policy.md](../../docs/decisions/0023-l1-release-workflow-policy.md) records the
-release policy. Publication remains pending. See
+release policy. L1 0.1.0 is published; future publication actions still require separate authorization. See
 [l1/docs/reference/productization-inventory.md](reference/productization-inventory.md) and
 [l1/docs/reference/stdlib-preparation.md](reference/stdlib-preparation.md).
 

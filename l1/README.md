@@ -3,13 +3,14 @@
 > _C-family syntax, modules and separate compilation, checked arrays and slices, nullable types, and ARC-managed
 > strings._
 
-**Dea/L1** is a systems language in the Dea language family (see [README.md](../README.md)). Its `l1c` compiler
+**Dea/L1** is level one of the Dea systems programming language (see [README.md](../README.md)). Its `l1c` compiler
 translates `.l1` programs through C into native executables. The canonical compiler is implemented in L0; L1 is also the
 implementation language for the next level's compiler, L2.
 
-**Development status:** L1 is under active development. The 0.1.0 feature baseline and compatibility limitations are
-recorded in [l1/docs/releases/0.1.0.md](docs/releases/0.1.0.md). This development release does not promise stable
-language, module-interface, or binary compatibility across future releases. L0 remains the stable toolchain.
+**Development status:** [L1 0.1.0](https://github.com/dea-lang/dea/releases/tag/l1-v0.1.0) is the current published
+development release. Its feature baseline and compatibility limitations are recorded in
+[l1/docs/releases/0.1.0.md](docs/releases/0.1.0.md). This development release does not promise stable language,
+module-interface, or binary compatibility across future releases. L0 remains the stable toolchain.
 
 This README covers the source tree and development workflow. For packaged compiler usage, see
 [l1/docs/user/README.md](docs/user/README.md), which becomes the README in each installed toolchain. Published L1

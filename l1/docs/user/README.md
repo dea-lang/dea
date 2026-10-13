@@ -3,8 +3,9 @@
 > _C-family syntax, modules and separate compilation, checked arrays and slices, nullable types, and ARC-managed
 > strings._
 
-**Dea/L1** is a systems language whose `l1c` compiler translates `.l1` programs through C into native executables. This
-package contains the standalone compiler, standard library, runtime support, and runnable examples.
+**Dea/L1** is level one of the Dea systems programming language. Its `l1c` compiler translates `.l1` programs through C
+into native executables. This package contains the standalone compiler, standard library, runtime support, and runnable
+examples.
 
 **Development status:** L1 is under active development. The package version does not promise stable language,
 module-interface, or binary compatibility across future releases. Exact package and build metadata are recorded in

@@ -1,13 +1,13 @@
 # Dea Project Status
 
-Version: 2026-10-12
+Version: 2026-10-13
 
 This document summarizes the current status of the Dea project at the monorepo level.
 
-The repository contains one active release line, Dea/L0, and independent development levels L1 and L2. L0 remains the
-current stable toolchain. L1 has one compiler implemented in L0; L2 has one compiler implemented in L1. L1 0.1.0 is the
-intended future canonical L1 development-toolchain release. Fresh canonical artifact acceptance and hosted
-snapshot/versioned-release acceptance are complete; L1 publication remains pending.
+The repository contains the stable Dea/L0 release line, the Dea/L1 development release line, and the independent L2
+development level. L0 2.1.1 remains the stable toolchain. L1 0.1.0 is the current published development release, with
+one canonical compiler implemented in L0. L2 has one compiler implemented in L1. Fresh canonical L1 artifact acceptance
+and hosted snapshot/versioned-release acceptance are complete.
 
 ## Scope and Canonical References
 
@@ -18,6 +18,8 @@ Use this file as the Dea-wide status snapshot. For more specific details, use:
 - [l0/docs/project-status.md](../l0/docs/project-status.md) for the current L0 implementation and release status.
 - [l0/docs/releases/2.0.0.md](../l0/docs/releases/2.0.0.md) for L0 2.0.0 changes and migration guidance.
 - [l0/docs/releases/2.1.1.md](../l0/docs/releases/2.1.1.md) for the current L0 2.1.1 release and compatibility guidance.
+- [l1/docs/releases/0.1.0.md](../l1/docs/releases/0.1.0.md) for the current L1 development release and compatibility
+  limitations.
 - [l1/docs/project-status.md](../l1/docs/project-status.md) for the current L1 implementation and delivery status.
 - [l1/README.md](../l1/README.md) for the current L1 development and installation entry point.
 - [l2/docs/project-status.md](../l2/docs/project-status.md) for independent L2 construction and validation.
@@ -45,12 +47,12 @@ L2 compiler implementation sources remain `.l1`. L2 program sources use `.l2` an
 
 ### Dea/L0
 
-L0 is the current release-bearing level.
+L0 is the current stable release line.
 
 Its repository status today is:
 
 - self-hosted through Stage 2,
-- the canonical public CLI and user documentation surface,
+- its own public CLI and user documentation surface,
 - validated through the existing L0 test, bootstrap, packaging, and docs workflows,
 - versioned under the `l0-v*` / `l0-snapshot-*` release namespace,
 - stable at released version `2.1.1`, retaining its namespaced CLI aliases, wildcard-only `case` defaults, and checked
@@ -65,7 +67,9 @@ minimum. The existing L0 language and CLI contract is unchanged from 2.0.0.
 
 ### Dea/L1
 
-L1 supports canonical development and standalone installation/distribution. Publication remains pending.
+L1 0.1.0 was published on 2026-10-13 as the canonical development toolchain, with standalone platform archives and
+matching offline documentation. It does not promise stable language, module-interface, or binary compatibility. See
+[the published release](https://github.com/dea-lang/dea/releases/tag/l1-v0.1.0).
 
 Its repository status today is:
 
@@ -102,8 +106,8 @@ validation. They retain exact source/version/docs handoff, four fresh verificati
 require curated notes at the selected source revision and append generated commit history after that content; this
 composition has focused local coverage. See [l1/docs/releases/README.md](../l1/docs/releases/README.md) and
 [work/plans/tools/closed/2026-05-12-l1-gha-release-snapshot-workflows-noref.md](../work/plans/tools/closed/2026-05-12-l1-gha-release-snapshot-workflows-noref.md).
-Activation, namespace checks, tags, dispatches, and publication remain separately gated; L0 is still the release line.
-The workflow plan is closed, with its release and curated-note policies recorded in
+L1 0.1.0 is published; subsequent tags, dispatches, and publication actions remain separately gated. L0 remains the
+stable release line. The workflow plan is closed, with its release and curated-note policies recorded in
 [docs/decisions/0023-l1-release-workflow-policy.md](decisions/0023-l1-release-workflow-policy.md).
 
 ### Dea/L2
@@ -125,7 +129,7 @@ runs. L2 installation, productization, and hosted releases are outside this spli
 The Dea monorepo uses separate release lines for each language level:
 
 - L0 releases use `l0-v*` and `l0-snapshot-*`.
-- Future L1 releases will use `l1-v*` and `l1-snapshot-*`.
+- L1 development releases use `l1-v*` and `l1-snapshot-*`.
 
 L1 construction consumes L0 as an upstream compiler toolchain; installed use is independent of that bootstrap chain.
 Local development defaults to the repo-local L0 Stage 2 build, while reproducible CI/release-oriented bootstrap flows

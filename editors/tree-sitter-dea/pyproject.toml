@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tree-sitter-dea"
-description = "Tree-sitter grammar for the Dea L0 and L1 languages"
+description = "Tree-sitter grammar for levels L0 and L1 of the Dea programming language"
 version = "0.1.0"
 keywords = ["incremental", "parsing", "tree-sitter", "dea"]
 classifiers = [

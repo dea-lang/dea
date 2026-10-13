@@ -17,7 +17,7 @@
 ;;; Code:
 
 (defgroup dea nil
-  "Editing support for the Dea language family."
+  "Editing support for the Dea programming language and its levels."
   :group 'languages)
 
 (defvar-local dea-language-level 0

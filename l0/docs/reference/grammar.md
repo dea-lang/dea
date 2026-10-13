@@ -1,9 +1,9 @@
 # Dea/L<sub>0</sub> Grammar
 
-Version: 2026-08-25
+Version: 2026-10-13
 
-The following is the formal grammar for the Dea/L<sub>0</sub> programming language in EBNF-style. This describes the
-concrete syntax that lexers and parsers should accept.
+The following is the formal grammar for level 0 of the Dea programming language (Dea/L<sub>0</sub>) in EBNF style. This
+describes the concrete syntax that lexers and parsers should accept.
 
 ## 1. Lexical structure
 

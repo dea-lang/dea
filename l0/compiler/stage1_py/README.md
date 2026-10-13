@@ -1,7 +1,7 @@
 # Stage 1 Dea/L0 Language Compiler
 
-This directory contains the implementation of the Stage 1 compiler (Python) for the Dea/L0 programming language.
-Documentation-generation tooling is maintained separately under `compiler/docgen/`.
+This directory contains the implementation of the Stage 1 compiler (Python) for level zero of the Dea programming
+language (Dea/L0). Documentation-generation tooling is maintained separately under `compiler/docgen/`.
 
 Python 3.14+ is required. Use built-in container annotations (`list[T]`, `dict[K, V]`), `T | None`, and native deferred
 annotations. Prefer keyword class patterns for AST/type dispatch where they make the operation easier to follow. The CI

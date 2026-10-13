@@ -4,7 +4,7 @@ Guidance for AI agents working in this monorepo.
 
 ## Repository Structure
 
-This is a monorepo for the Dea language family. Each language level is a self-contained subtree.
+This is a monorepo for the Dea programming language and its levels. Each level is a self-contained subtree.
 
 | Directory  | Description                                                         |
 | ---------- | ------------------------------------------------------------------- |

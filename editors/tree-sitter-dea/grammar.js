@@ -1,5 +1,5 @@
 /**
- * @file Tree-sitter grammar for the Dea L0 and L1 languages
+ * @file Tree-sitter grammar for levels L0 and L1 of the Dea programming language
  * @author Guglielmo Nigri <googlielmo@gmail.com>
  * @license MIT OR Apache-2.0
  */

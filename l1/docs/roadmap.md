@@ -1,15 +1,16 @@
 # Dea/L1 Roadmap
 
-Version: 2026-10-12
+Version: 2026-10-13
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
 been promoted to initiatives or plans.
 
-L1 has one canonical L0-implemented compiler and is being prepared as the L1 0.1.0 development toolchain. The former L1
-Stage 2 is now the L1-implemented L2 compiler. L0 remains the active release line. The canonical split and fresh
-four-platform artifact acceptance are complete. L1 release workflows passed hosted acceptance; publication remains
-pending. L1 scope is not frozen and its feature backlog remains assigned here pending individual decisions.
+L1 has one canonical L0-implemented compiler, published as the L1 0.1.0 development toolchain. See
+[l1/docs/releases/0.1.0.md](releases/0.1.0.md) for its baseline and compatibility limitations. The former L1 Stage 2 is
+now the L1-implemented L2 compiler. L0 remains the stable release line. The canonical split, fresh four-platform
+artifact acceptance, hosted release-workflow acceptance, and L1 0.1.0 publication are complete. L1 scope is not frozen
+and its feature backlog remains assigned here pending individual decisions.
 
 ## Current position
 
@@ -403,8 +404,6 @@ backlog does not imply missing work where L1 already has a narrower surface.
 
 ### Tooling and delivery
 
-- Prepare separately authorized L1 publication with reviewed curated versioned-release notes, the release-index entry,
-  and authoritative namespace checks.
 - Hosted documentation publication and broader delivery tooling beyond the existing four-platform CI and isolated
   artifact acceptance gates.
 

@@ -53,7 +53,8 @@ recorded in [docs/decisions/0023-l1-release-workflow-policy.md][release-policy].
 
 ## Releases
 
-- [l1/docs/releases/0.1.0.md][release-0-1-0] (prepared; publication pending)
+- [l1/docs/releases/0.1.0.md][release-0-1-0]
+  ([published development release](https://github.com/dea-lang/dea/releases/tag/l1-v0.1.0), 2026-10-13)
 
 [agent-policy]: ../../../AGENTS.md
 [l0-notes]: ../../../l0/docs/releases/README.md

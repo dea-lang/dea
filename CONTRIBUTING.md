@@ -1,24 +1,24 @@
-# Contributing to Dea/L0
+# Contributing to Dea
 
-Thanks for contributing! This document provides guidelines for contributing to the Dea/L0 project, including development
-setup, coding conventions, and testing.
+Thanks for contributing! This document provides shared contribution guidelines for the Dea programming language and its
+levels, plus detailed development setup, coding conventions, and testing instructions for L0.
 
-Dea/L0 now lives under `l0/` inside the Dea monorepo. Unless a section says otherwise, run the commands in this document
-from the `l0/` directory.
+The monorepo contains the `l0/`, `l1/`, and `l2/` language subtrees. Unless a section says otherwise, run the commands
+in this document from the `l0/` directory.
 
 For canonical L1 and L2 development, use [l1/README.md](l1/README.md) and [l2/README.md](l2/README.md). Their compiler
 workflows use `build`, `use-dev`, and `test-compiler`; the stage commands below belong to L0.
 
 ## Scope and status
 
-Dea/L0 remains experimental. `2.1.1` is the latest released, semantically versioned language line; it fixes ARC cleanup
-for comparison temporaries and improves AddressSanitizer test validation while preserving the 2.1.0 public surface.
-Language, compiler CLI, and runtime changes must be documented and versioned; backward-incompatible changes are not
-introduced silently into an existing release line.
+- **L0** is stable; its current release is `2.1.1`.
+- **L1** is under active development; `0.1.0` is its current development release and does not promise stable language,
+  module-interface, or binary compatibility across future releases.
+- **L2** is an independent development level with a canonical compiler implemented in L1.
 
-Current work still prioritizes a solid compiler and language-design foundation. Internal refactors, API changes, and
-design iterations are expected, while user-visible changes follow the level's semantic-versioning and Stage 1/Stage 2
-parity rules.
+Language, compiler CLI, and runtime changes must be documented and versioned within the affected level;
+backward-incompatible changes are not introduced silently into an existing release line. L0 changes must preserve Stage
+1/Stage 2 parity. L1 and L2 each have one canonical compiler and no intra-level stage-parity requirement.
 
 The focus is on correctness, maintainability, and code quality over performance optimizations or feature completeness.
 

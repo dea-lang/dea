@@ -1,7 +1,7 @@
 # tree-sitter-dea
 
-[Tree-sitter](https://tree-sitter.github.io/tree-sitter/) grammar for the [Dea](https://github.com/dea-lang/dea) L0 and
-L1 languages.
+[Tree-sitter](https://tree-sitter.github.io/tree-sitter/) grammar for levels L0 and L1 of the
+[Dea](https://github.com/dea-lang/dea) programming language.
 
 The grammar name is `dea`. It maps both `.l0` and `.l1` files to one structural parser that accepts the richer L1
 syntactic superset. Hosts should keep their L0 and L1 language identities separate while reusing this parser.

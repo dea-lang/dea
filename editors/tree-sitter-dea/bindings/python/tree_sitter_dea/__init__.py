@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # Copyright (c) 2026 gwz
 
-"""Tree-sitter grammar for the Dea L0 and L1 languages"""
+"""Tree-sitter grammar for levels L0 and L1 of the Dea programming language"""
 
 from importlib.resources import files as _files
 

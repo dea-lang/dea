@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.13)
 
 project(tree-sitter-dea
         VERSION "0.1.0"
-        DESCRIPTION "Tree-sitter grammar for the Dea L0 and L1 languages"
+        DESCRIPTION "Tree-sitter grammar for levels L0 and L1 of the Dea programming language"
         HOMEPAGE_URL "https://github.com/dea-lang/dea"
         LANGUAGES C)
 
