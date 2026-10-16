@@ -201,6 +201,39 @@ static void check_probe_output(const char *self) {
     pj_free(words);
 }
 
+/** Preserve synthetic POSIX, drive, UNC and mixed-separator config paths through real argv. */
+static void check_runtime_isolation_argv(const char *self) {
+    static const char *const paths[] = {
+        "/tmp/config directory/empty.cfg",
+        "C:" BS "config directory" BS "empty.cfg",
+        "C:/config directory" BS "nested/empty.cfg",
+        BS BS "server" BS "shared directory" BS "empty.cfg",
+        "/tmp/config with \"quotes\"/empty.cfg"
+    };
+    PcContext c = {0};
+    size_t i;
+    c.compiler = (char *)self;
+    c.runtime_options = pj_new(PJ_ARRAY);
+    pj_add(c.runtime_options, NULL, pj_string("--runtime-isolation-argv"));
+    c.clang_isolation = 2;
+    for (i = 0; i < sizeof(paths) / sizeof(paths[0]); ++i) {
+        PcJson *words;
+        PcProbe probe;
+        c.clang_config_path = (char *)paths[i];
+        words = pc_runtime_words(&c);
+        probe = pc_probe(words, 10000);
+        require_case(probe.status == 0 && !probe.timed_out && !strcmp(probe.out, paths[i]),
+                     "physical config path survives subprocess argv exactly");
+        require_case(!strcmp(pc_runtime_isolation(&c), "clang-explicit-empty-config-v1"),
+                     "different physical paths retain one stable isolation identity");
+        require_case(c.runtime_options->child && !c.runtime_options->child->next,
+                     "physical config arguments do not mutate identity options");
+        pc_probe_free(&probe);
+        pj_free(words);
+    }
+    pj_free(c.runtime_options);
+}
+
 #if defined(_WIN32)
 /** Accept MSYS-style and extensionless tool paths when the compiler is native Windows. */
 static void check_windows_reported_path(const char *self) {
@@ -246,6 +279,10 @@ static void check_image_reads(const char *self, const char *directory) {
 /** Run privately linked production checks in a caller-owned empty directory. */
 int main(int argc, char **argv) {
     char *directory, *self;
+    if (argc == 4 && !strcmp(argv[1], "--runtime-isolation-argv") && !strcmp(argv[2], "--config")) {
+        fputs(argv[3], stdout);
+        return 0;
+    }
     if (argc == 2 && !strcmp(argv[1], "--probe-output")) {
         fputs("probe stdout", stdout);
         fputs("probe stderr", stderr);
@@ -268,6 +305,7 @@ int main(int argc, char **argv) {
     check_image_reads(self, directory);
     check_reported_tool(self);
     check_probe_output(self);
+    check_runtime_isolation_argv(self);
 #if defined(_WIN32)
     check_windows_reported_path(self);
 #endif

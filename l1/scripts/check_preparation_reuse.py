@@ -34,9 +34,12 @@ PRIVATE_REASONS = {
     "unsupported native compiler indirection in the environment",
     "unsupported dynamic-loader indirection in the environment",
     "Clang external assembler selection is outside persistent reuse support",
+    "legacy Clang effective configuration selection is unavailable",
+    "legacy Clang configuration inputs cannot be observed reliably",
     "compiler plugin, profile, or opaque option indirection is outside persistent reuse support",
 }
 ARCHIVER_BOUNDARY = "selected compiler must locate a usable runtime archiver with -print-prog-name=ar"
+ISOLATION_BOUNDARY = "selected Clang cannot isolate runtime configuration"
 EXPECTED_OUTPUT = "preparation-probe-ok\n"
 
 
@@ -56,6 +59,22 @@ def require(condition: bool, message: str) -> None:
     """
     if not condition:
         raise ProbeError(message)
+
+
+def option_rejected(result: subprocess.CompletedProcess[str], option: str) -> bool:
+    """Recognize an explicit driver option rejection, excluding unrelated failures.
+
+    Args:
+        result: Completed compiler probe.
+        option: Exact option whose capability is being tested.
+
+    Returns:
+        Whether a normal compiler failure explicitly rejects the selected option.
+    """
+    return result.returncode == 1 and any(
+        re.search(r"(?:unsupported option|unknown argument|unrecognized command-line option):?\s+['\"]"
+                  + re.escape(option) + r"['\"]", line)
+        for line in result.stderr.splitlines())
 
 
 def fields(stderr: str, label: str) -> list[str]:
@@ -438,21 +457,26 @@ class Probe:
             self.report["compiler"][label] = result.stdout.strip()
         cold = self.consume("cold")
         if cold["exit_code"] != 0:
-            # L1C-2154 alone also describes hard errors. Confirm the existing Clang
-            # configuration boundary with a separate, retained diagnostic probe.
+            # L1C-2154 also describes hard errors. A rejected modern flag alone
+            # cannot establish that the explicit-empty-config fallback is unavailable.
             if (cold["exit_code"] == 1 and len(cold["diagnostics"]) == 1 and
                     cold["diagnostics"][0][0] == "L1C-2154" and
-                    cold["diagnostics"][0][1].startswith(ARCHIVER_BOUNDARY + ": ") and
+                    cold["diagnostics"][0][1].startswith((ARCHIVER_BOUNDARY + ": ", ISOLATION_BOUNDARY)) and
                     "clang" in self.report["compiler"]["version"].lower() and
                     cold["stdlib_validations"] == 0 and not cold["manifests"] and
                     cold["statistics"]["module_compiles"] == cold["statistics"]["build_commands"] == 0):
                 record = self.report["boundary_probe"] = {}
                 result = self.run("runtime-archiver-boundary",
                                   [self.cc, "--no-default-config", "-print-prog-name=ar"], record)
-                if (result.returncode == 1 and "unsupported option" in result.stderr and
-                        "--no-default-config" in result.stderr):
-                    self.report.update(reason=cold["diagnostics"][0][1], stage="cold")
-                    return "unsupported"
+                if option_rejected(result, "--no-default-config"):
+                    empty_config = self.root / "empty runtime config.cfg"
+                    empty_config.write_text("", encoding="utf-8")
+                    record = self.report["legacy_boundary_probe"] = {}
+                    result = self.run("runtime-legacy-config-boundary",
+                                      [self.cc, "--config", str(empty_config), "-print-prog-name=ar"], record)
+                    if option_rejected(result, "--config"):
+                        self.report.update(reason=cold["diagnostics"][0][1], stage="cold")
+                        return "unsupported"
             raise ProbeError("cold consumer failed; no confirmed unsupported preparation boundary")
         count = self.report["module_inventory"]
         self.successful(cold, count)

@@ -325,6 +325,12 @@ tiers are distinct from implementation phases within a plan or initiative.
 
 ## Completed standalone plans
 
+- Bug Fix
+  [l1/work/plans/bug-fixes/closed/2026-09-27-legacy-clang-preparation-compatibility-noref.md][legacy-clang-preparation]
+  enables persistent preparation with validated Debian Clang 14/15 through verified configuration isolation and fresh
+  selection evidence. Configuration invalidation, detached construction, warm reuse, and supported-host regression
+  coverage passed; ADR-0039 records the extended boundary.
+
 - Tool [l1/work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md][bootstrap-productization] completed
   canonical L1 installation/distribution, stage-free schema-2 provenance, and strict HTML/full PDF. Fresh artifact
   builds and checkout-free verification passed on all four hosted platforms. ADR-0043 records the delivery contract;
@@ -345,9 +351,6 @@ tiers are distinct from implementation phases within a plan or initiative.
 
 ## Active standalone plans
 
-- Bug Fix [2026-09-27-legacy-clang-preparation-compatibility-noref][legacy-clang-preparation] drafts Clang 14/15
-  preparation compatibility, with persistent reuse gated on configuration isolation, discovery, identity, and
-  invalidation validation, and private fallback when reuse cannot be authorized.
 - Feature [2026-06-21-cheap-string-slices-noref][cheap-string-slices] extends `dea::slice` to ARC-backed string views
   while preserving internal terminated copies for native runtime calls that require them.
 - Feature [2026-08-30-typed-formatting-noref][typed-formatting] is the Stdlib Tier 2 replacement for the combinatorial
@@ -469,7 +472,7 @@ update to be promoted to an initiative or plan:
 [interface-fingerprints]: ../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [is-intrinsic]: ../work/plans/features/closed/2026-04-20-is-intrinsic-noref.md
 [l1m-authoritative-linking]: ../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
-[legacy-clang-preparation]: ../work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md
+[legacy-clang-preparation]: ../work/plans/bug-fixes/closed/2026-09-27-legacy-clang-preparation-compatibility-noref.md
 [let-initializers]: ../work/plans/features/closed/2026-04-17-l1-let-non-constant-initializers-noref.md
 [library-linking]: ../work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md
 [lifecycle-entrypoints]: ../work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md

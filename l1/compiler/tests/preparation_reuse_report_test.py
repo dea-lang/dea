@@ -63,7 +63,20 @@ class ReporterTest(unittest.TestCase):
                 if "--run" not in argv:
                     self.assertEqual(argv[0], cc)
                     if "--no-default-config" in argv:
-                        message = "unsupported option '--no-default-config'" if scenario == "unsupported" else "random failure"
+                        message = ("unsupported option '--no-default-config'"
+                                   if scenario in ("unsupported", "legacy-supported", "legacy-error", "legacy-timeout")
+                                   else "random failure")
+                        return subprocess.CompletedProcess(argv, 1, "", message)
+                    if "--config" in argv:
+                        config_path = Path(argv[argv.index("--config") + 1])
+                        self.assertTrue(config_path.is_file())
+                        self.assertEqual(config_path.read_bytes(), b"")
+                        self.assertIn(" ", str(config_path))
+                        if scenario == "legacy-timeout":
+                            raise subprocess.TimeoutExpired(argv, 1)
+                        if scenario == "legacy-supported":
+                            return subprocess.CompletedProcess(argv, 0, "/usr/bin/ar\n", "")
+                        message = "unsupported option '--config'" if scenario == "unsupported" else "malformed configuration"
                         return subprocess.CompletedProcess(argv, 1, "", message)
                     if "--version" in argv:
                         return subprocess.CompletedProcess(argv, 0, "clang test version\n", "")
@@ -82,7 +95,10 @@ class ReporterTest(unittest.TestCase):
                 guard = "--no-auto-prepare" in argv
                 invalidated = "CI preparation" in (fixture_root / "toolchain/build/include/dea_rt.h").read_text()
                 key = "b" * 64 if invalidated and scenario != "stale-header" else "a" * 64
-                private = scenario in ("private", "private-cold-error", "private-second-error", "observation-failed")
+                private = scenario in ("private", "legacy-private", "private-cold-error", "private-second-error", "observation-failed")
+                private_reason = ("legacy Clang effective configuration selection is unavailable"
+                                  if scenario == "legacy-private"
+                                  else "opaque archive-tool wrapper cannot authorize persistent reuse")
                 entry = cache / "v1/native" / key
                 selected = str(fixture_root / f"private-{calls}") if private else str(entry)
                 compiles = 0 if guard or (entry / "manifest.json").exists() else 1
@@ -98,23 +114,24 @@ class ReporterTest(unittest.TestCase):
                 stdout, code = reporter.EXPECTED_OUTPUT, 0
                 if guard and (private or not (entry / "manifest.json").exists()):
                     selected, stdout, code = "", "", 1
-                    reason = "opaque archive-tool wrapper cannot authorize persistent reuse" if private else "cache miss"
+                    reason = private_reason if private else "cache miss"
                     lines.append("error: [L1C-2159] automatic preparation is disabled: " + reason)
                 elif compiles:
                     if private:
                         reason = ("compiler family/version observation is unavailable" if scenario == "observation-failed"
-                                  else "opaque archive-tool wrapper cannot authorize persistent reuse")
+                                  else private_reason)
                         lines.append("Fresh preparation: " + reason)
                     else:
                         entry.mkdir(parents=True)
                         (entry / "manifest.json").write_text(json.dumps({"key": key, "identity": identity}))
                 else:
                     lines.append("Reuse prepared profile: " + selected)
-                if scenario in ("unsupported", "archiver-error"):
+                if scenario in ("unsupported", "archiver-error", "legacy-supported", "legacy-error", "legacy-timeout"):
                     code, stdout, selected, key, identity = 1, "", "", "", ""
                     counts.update(module_compiles=0, build_commands=0)
                     (entry / "manifest.json").unlink(missing_ok=True)
-                    lines = ["error: [L1C-2154] " + reporter.ARCHIVER_BOUNDARY + ": " + cc]
+                    boundary = reporter.ARCHIVER_BOUNDARY if scenario == "archiver-error" else reporter.ISOLATION_BOUNDARY
+                    lines = ["error: [L1C-2154] " + boundary + ": " + cc]
                 if (scenario in ("input-stability", "private-cold-error") and calls == 1 or
                         scenario == "private-second-error" and calls == 2):
                     code, stdout = 1, ""
@@ -353,15 +370,37 @@ class ReporterTest(unittest.TestCase):
         result, report, files = self.exercise("unsupported", "observe")
         self.assertEqual((result, report["capability"]), (0, "unsupported"))
         self.assertIn("unsupported option", files["runtime-archiver-boundary.stderr.log"])
+        self.assertIn("unsupported option", files["runtime-legacy-config-boundary.stderr.log"])
         self.assertIsNone(report["invocations"]["warm-auto"])
         self.assertEqual(self.exercise("unsupported")[0], 1)
+
+    def test_option_rejection_is_specific(self):
+        """Keep crashes, unrelated errors and rejected application options as errors."""
+        for diagnostic in ("unsupported option '--config'", "unknown argument: '--config'",
+                           "unrecognized command-line option '--config'"):
+            result = subprocess.CompletedProcess([], 1, "", diagnostic)
+            self.assertTrue(reporter.option_rejected(result, "--config"))
+        for code, diagnostic in ((-11, "unsupported option '--config'"),
+                                 (1, "unsupported option '--config-user-dir'; --config requested"),
+                                 (1, "unknown argument '--confog'; did you mean '--config'?"),
+                                 (1, "cannot read --config file")):
+            self.assertFalse(reporter.option_rejected(subprocess.CompletedProcess([], code, "", diagnostic),
+                                                      "--config"))
+
+    def test_unobservable_legacy_selection_requires_private_evidence(self):
+        """Require successful private rebuilds and guarded refusal for legacy selection."""
+        result, report, _ = self.exercise("legacy-private", "private")
+        self.assertEqual((result, report["capability"]), (0, "private"))
+        self.assertEqual(report["reason"], "legacy Clang effective configuration selection is unavailable")
+        self.assertEqual(self.exercise("legacy-private", "available")[0], 1)
 
     def test_false_positive_and_inconclusive_evidence_always_fail(self):
         """Reject missing proof, changed identities, unexpected work and process errors."""
         for scenario in ("input-stability", "private-cold-error", "private-second-error", "observation-failed",
                          "archiver-error", "substitution", "wrong-output", "warm-build", "warm-compile", "warm-key",
                          "warm-no-reuse", "guard-crash", "duplicate-validation", "duplicate-resolution", "stale-header", "bad-counters",
-                         "missing-stats", "duplicate-stats", "timeout", "launch-error"):
+                         "missing-stats", "duplicate-stats", "timeout", "launch-error",
+                         "legacy-supported", "legacy-error", "legacy-timeout"):
             with self.subTest(scenario=scenario):
                 result, report, files = self.exercise(scenario, "observe")
                 self.assertEqual((result, report["capability"], report["result"]), (1, "error", "FAIL"))

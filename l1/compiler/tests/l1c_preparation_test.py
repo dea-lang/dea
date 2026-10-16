@@ -101,7 +101,7 @@ def main() -> int:
         warm = call("--run", *common, "--no-auto-prepare", "app")
         assert warm.stdout == "prepared-ok\n" and warm.stderr == ""
         warm_counts = call("--run", *common, "--no-auto-prepare", "app", "-vvv")
-        assert statistics(warm_counts)["module_compiles"] == 0
+        assert statistics(warm_counts)["module_compiles"] == statistics(warm_counts)["build_commands"] == 0
         assert analysis_count(warm_counts, "app") == 2 and analysis_count(warm_counts, "_dea_preparation") == 0
         assert not re.search(r"Starting analysis for entry module '(?:std|sys)\.", warm_counts.stderr), warm_counts.stderr
         warm_observations = observations(warm_counts)
@@ -214,13 +214,16 @@ def main() -> int:
                    for item in observations(malformed))
         if os.name != "nt":
             wrapper = root / "failing-cc"
-            wrapper.write_text('#!/bin/sh\nfor word do\n if [ "$word" = -c ]; then\n'
-                               '  echo "intentional native failure" >&2\n  exit 42\n fi\ndone\nexec ' +
+            wrapper.write_text('#!/bin/sh\nfixture_compile=0\nfixture_probe=0\nfor word do\n'
+                               ' if [ "$word" = -c ]; then fixture_compile=1; fi\n'
+                               ' if [ "$word" = "-###" ]; then fixture_probe=1; fi\ndone\n'
+                               'if [ "$fixture_compile" = 1 ] && [ "$fixture_probe" = 0 ]; then\n'
+                               ' echo "intentional native failure" >&2\n exit 42\nfi\nexec ' +
                                shlex.quote(cc) + ' "$@"\n')
             wrapper.chmod(0o755)
             failure = call("--run", "--c-compiler", str(wrapper), "--stdlib-cache", str(root / "failed"),
                              "app", "-vvv", expected=1)
-            assert "intentional native failure" in failure.stderr and "L1C-2156" in failure.stderr
+            assert "intentional native failure" in failure.stderr and "L1C-2156" in failure.stderr, failure.stderr
             assert any(item["event"] in ("probe", "decision", "span") for item in observations(failure))
             assert not list((root / "failed").glob("v1/native/*/manifest.json"))
     print("automatic native preparation, private recovery and concurrent misses: PASS")

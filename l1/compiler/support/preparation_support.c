@@ -36,6 +36,7 @@ static PcJson *pc_managed_construction_inputs(PcContext *c) {
     pj_set_string(inputs, "variant", pj_field(pj_get(c->native, "runtime"), "variant"));
     pj_add(inputs, "options", pj_clone(c->options));
     pj_add(inputs, "runtime_options", pj_clone(c->runtime_options));
+    pj_set_string(inputs, "runtime_configuration_isolation", pc_runtime_isolation(c));
     pj_add(inputs, "modules", pj_clone(c->modules));
     pj_add(inputs, "interfaces", pj_clone(c->interfaces));
     pj_add(inputs, "codegen", pj_get(c->config, "codegen") ?
@@ -128,8 +129,9 @@ void l1c_prep_free(void *context) {
     pc_unlock(c->lock);
     pc_construction_free(c->construction);
     if (c->private_root) pc_remove_owned_tree(c->private_root);
+    pc_clang_isolation_free(c);
     pj_free(c->config); pj_free(c->options); pj_free(c->runtime_options); pj_free(c->dea); pj_free(c->native);
-    pj_free(c->old_files); pj_free(c->new_files); pj_free(c->digest_donor);
+    pj_free(c->old_files); pj_free(c->new_files); pj_free(c->digest_donor); pj_free(c->legacy_configuration);
     free(c->digest_seed_key);
     free(c->local); free(c->home); free(c->compiler); free(c->self); free(c->semantic_root); free(c->include);
     free(c->dea_key); free(c->native_key); free(c->selected); free(c->error); free(c->description);

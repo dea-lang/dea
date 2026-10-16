@@ -16,12 +16,14 @@ typedef struct {
 
 typedef struct {
     PcJson *config, *options, *runtime_options, *dea, *native, *modules, *interfaces;
-    PcJson *old_files, *new_files, *digest_donor;
+    PcJson *old_files, *new_files, *digest_donor, *legacy_configuration;
     char *digest_seed_key;
     int digest_seed_loaded;
     char *local, *home, *compiler, *self, *semantic_root, *include;
     char *dea_key, *native_key, *selected, *error, *description, *family, *archiver;
     char *private_root, *ineligible, *unusable;
+    char *clang_config_directory, *clang_config_path;
+    int clang_isolation;
     int error_code, force, native_resolved, begun, explicit_root, writable, installed, runtime_config_observed;
     int64_t identity_reads, artifact_reads, probes, metadata_checks, resolutions;
     int64_t build_commands, module_compiles;

@@ -5,9 +5,9 @@ prints `42`.
 
 ## Build and Run
 
-You need `l1c`, GNU Make 3.81 or later, and a supported host C compiler/linker and preparation tools. Use GCC, upstream
-Clang 16 or newer, or Apple Clang with the required configuration capabilities. See the top-level
-[README.md](../../README.md) for toolchain setup. Installed packages include Windows instructions in their top-level
+You need `l1c`, GNU Make 3.81 or later, and a supported host C compiler/linker and preparation tools. Use supported GCC
+or capability-verified Clang/Apple Clang, including validated Debian Clang 14/15. See the top-level
+[l1/README.md](../../README.md) for toolchain setup. Installed packages include Windows instructions in their top-level
 `README-WINDOWS.md`.
 
 This project is included in the package under `examples/make/`. With an installed toolchain activated, copy this

@@ -1,7 +1,7 @@
 # ADR-0039: Native Preparation Identity and Reuse Boundary
 
 - Decision date: 2026-09-11
-- Last edited: 2026-10-01
+- Last edited: 2026-10-16
 - Status: Accepted
 
 ## Context
@@ -38,6 +38,23 @@ opaque wrappers, unavailable observations, plugins and similar configurations de
 separate: consuming commands may prepare fresh support, while explicit preparation fails. Force reobserves and rebuilds
 but never bypasses eligibility. TinyCC's complete raw-object runtime path has no archive dependency.
 
+Clang runtime isolation is selected by capability before observation-memo lookup. Modern drivers use
+`--no-default-config`; validated legacy drivers use an owned empty regular configuration file with `--config PATH`. The
+context owns and removes that file. Only runtime command construction receives its physical path; native identity
+records a stable isolation marker and never retains scratch paths or metadata. Generated-C arguments retain their
+original configuration semantics, and only supported target/CPU/ABI/sysroot settings reach runtime compilation.
+Normalized construction inputs retain the same isolation choice. Direct constructors recreate owned empty configuration
+scratch without discovery, preserving runtime policy after the original preparation context is destroyed.
+
+Legacy resolution reobserves effective configuration selection on every command, including warm requests. Its ordered
+signature covers selected configuration files, fresh content digests, transitive response inputs, and extracted runtime
+settings. The signature and isolation mechanism enter observation-memo selection alongside existing directory and
+toolchain evidence. Original configuration inputs remain content-based native inputs. Missing selection evidence
+declines persistent reuse; private preparation still requires safe runtime isolation. Unexpected errors and timeouts
+never establish unsupported-option capability. Without observable legacy selection, private preparation requires one
+absolute explicit config with readable target settings; unknown implicit target selection is an error. This adds no
+concurrent external mutation guarantee.
+
 Machine-local toolchain and artifact memos are accelerators. Reliable file identity/change metadata can reuse prior
 content checks; absent, malformed or stale memo records cause fresh validation. Toolchain memo selection includes `D`,
 so implementation changes cannot inherit old observation rules. There is no host identifier, cross-host portability
@@ -73,6 +90,8 @@ general toolchain or project build system.
 - Default cache hits remain quiet; verbosity explains observations, configuration and validation.
 - A first invocation under changed environment text pays for fresh observations even when it retains a profile hit.
 - A first invocation in a new cwd still observes selection but can avoid hashing unchanged files through a donor memo.
+- Legacy warm requests retain bounded configuration probes and fresh configuration reads while reusing completed
+  profiles with zero managed compilations and preparation build commands.
 - Old discovery memos missing runtime target evidence are reobserved; compiler-content identity changes keep old
   profiles separate without migration.
 - Working compiler/stdlib/runtime edits conservatively select a new native profile.
@@ -82,6 +101,8 @@ general toolchain or project build system.
 - Native integrity checks do not authenticate caller-owned object/interface pairs or infer compatible ABIs.
 
 ## Related Plans
+
+- [l1/work/plans/bug-fixes/closed/2026-09-27-legacy-clang-preparation-compatibility-noref.md][legacy-clang]
 
 - [l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md][profile-boundary]
 
@@ -104,6 +125,7 @@ general toolchain or project build system.
 [backend]: ../reference/c-backend-design.md
 [cli]: ../../../docs/specs/compiler/cli-contract.md
 [environment-identity]: ../../work/plans/refactors/closed/2026-09-15-native-identity-environment-text-reassessment-noref.md
+[legacy-clang]: ../../work/plans/bug-fixes/closed/2026-09-27-legacy-clang-preparation-compatibility-noref.md
 [preparation]: ../reference/stdlib-preparation.md
 [preparation-economy]: ../../work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md
 [preparation-plan]: ../../work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md

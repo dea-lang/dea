@@ -14,8 +14,9 @@ module-interface, or binary compatibility across future releases. Exact package 
 ## Prerequisites
 
 Using this package needs no L0, Python, Make, or source checkout. To build and run native programs, install a supported
-C compiler, linker, and host preparation tools: GCC, upstream Clang 16 or newer, or Apple Clang with the required
-configuration capabilities. Set `L1_CC` to select the C compiler explicitly.
+C compiler, linker, and host preparation tools: supported GCC or capability-verified Clang/Apple Clang. Validated Debian
+Clang 14/15 use isolated empty configuration files for runtime preparation; modern Clang uses `--no-default-config`. Set
+`L1_CC` to select the C compiler explicitly.
 
 Native packages target Linux x86_64, macOS Intel, macOS Apple Silicon, and Windows x86_64. Use the package matching your
 operating system and architecture.

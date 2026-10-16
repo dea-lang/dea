@@ -59,7 +59,9 @@ changes directory.
 You need Python 3.14 or newer, Make, a supported C compiler/linker and host tools, and an L0 Stage 2 bootstrap compiler.
 `uv` is optional: Make creates or reuses the shared repository environment at `../.venv`.
 
-Use a supported GCC toolchain, upstream Clang 16 or newer, or Apple Clang with the required configuration capabilities.
+Use a supported GCC toolchain or capability-verified Clang/Apple Clang. Validated Debian Clang 14/15 support managed
+preparation through an isolated empty configuration; modern Clang uses `--no-default-config`. See
+[l1/docs/reference/stdlib-preparation.md](docs/reference/stdlib-preparation.md) for reuse requirements and tested scope.
 Windows development uses MSYS2 UCRT64. `L0_CC` selects the C compiler used while building L1 through L0; `L1_CC` selects
 it for L1 native program builds and defaults `L1_RUNTIME_CC`. See [l1/AGENTS.md](AGENTS.md) for the full
 compiler-selection requirements and [l0/README.md](../l0/README.md) for L0 setup.

@@ -1,18 +1,17 @@
 # L1 Bundled Interfaces and Native Preparation
 
-Version: 2026-10-10
+Version: 2026-10-16
 
 L1 supplies bundled semantic interfaces with the toolchain and derives native stdlib/runtime support when a command
 needs it. Preparation covers only compiler-owned `std.*` and `sys.*` modules and runtime implementation sources.
 Application and third-party objects remain caller-owned inputs.
 
-Full L1 support with upstream Clang currently requires version 16 or newer, including support for `--no-default-config`.
-Clang 14/15 are unsupported for current managed preparation, even if individual C compilations succeed. Version alone
-does not authorize reuse: the selected installation must also satisfy the adapter's observation and toolchain
-requirements. Apple Clang has independent version numbering and requires capability validation. Legacy compatibility and
-safe persistent reuse are planned in
-[l1/work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md][legacy-clang-plan]; that Draft plan
-does not change the current support boundary.
+Clang configuration isolation is selected by capability, independently of version numbering. Modern Clang uses
+`--no-default-config`; validated Clang 14/15 installations use a compiler-owned empty regular file through the separate
+`--config PATH` spelling. Supported GCC and capability-verified Apple Clang remain available. Successful invocation
+alone does not authorize persistent reuse: configuration selection and the adapter's existing toolchain observations
+must also succeed. The validated compiler matrix and its limits are recorded in
+[l1/work/plans/bug-fixes/closed/2026-09-27-legacy-clang-preparation-compatibility-noref.md][legacy-clang-plan].
 
 ## Bootstrap and semantic discovery
 
@@ -146,11 +145,12 @@ timing thresholds.
 
 Results are `available`, `private`, `unsupported`, `error`, or `not-run`. Private capability requires two successful
 ordinary consumers that rebuild managed support, a repeatable recognized ineligibility reason, no publication, and
-guarded refusal. Unsupported capability currently recognizes the Clang runtime-archiver boundary only when a separate
-probe confirms rejection of `--no-default-config`. Other resolution failures remain errors until their boundary is
-explicitly supported by the reporter. Neither `L1C-2154` nor zero compilations alone establishes a capability outcome.
-Input-stability failures, failed compiler observations, invalid fixtures, timeouts and crashes remain errors. Missing
-bootstrap artifacts produce `not-run`; both categories fail even with `--expect observe`.
+guarded refusal. Unsupported capability requires a matching Clang isolation diagnostic and separate probes confirming
+explicit rejection of both `--no-default-config` and `--config PATH` with an owned empty regular file. Rejection of the
+modern flag alone cannot classify a successful legacy fallback as unsupported. Other resolution failures remain errors
+until their boundary is explicitly supported by the reporter. Neither `L1C-2154` nor zero compilations alone establishes
+a capability outcome. Input-stability failures, failed compiler observations, invalid fixtures, timeouts and crashes
+remain errors. Missing bootstrap artifacts produce `not-run`; both categories fail even with `--expect observe`.
 
 `--expect available` is the CI requirement for the existing full-suite configurations. `--expect private`,
 `--expect unsupported`, and `--expect observe` are explicit local probe modes; observation accepts only completed
@@ -218,9 +218,11 @@ immutable installed-payload boundary are documented in
 
 Managed and command-private preparation share one in-process constructor. Its immutable input snapshot contains the
 selected compiler and archiver, ordered effective generated-C options, separate runtime options and variant, frontend
-code-generation settings, source and semantic roots, verified interface digests, module set, and public-header root. The
-caller supplies the validated dependency order and an already owned staging directory. The constructor does not reread
-compiler selection, `L1_CFLAGS`, runtime defaults, or cache selection.
+code-generation settings, source and semantic roots, verified interface digests, module set, and public-header root. A
+stable runtime-isolation descriptor lets a direct legacy constructor recreate its own empty config after the original
+context is gone, without retaining scratch paths or repeating discovery. The caller supplies the validated dependency
+order and an already owned staging directory. The constructor does not reread compiler selection, `L1_CFLAGS`, runtime
+defaults, or cache selection.
 
 The constructor writes declared interface/object/runtime roles and registered `generated/` and `runtime-build/` scratch.
 It validates payload paths, hashes and exact semantic copies and returns an owned inventory. This internal description
@@ -279,7 +281,25 @@ as well as its wrapper; it never appends them as arbitrary final-link words. Run
 compiler-owned `-O2 -std=c99` baseline, variant defines, and default checked quarantine tuning of 16 MiB / 4096 records.
 Supported target, CPU, ABI, and sysroot settings reach both classes; arbitrary application defines/optimization flags do
 not become runtime flags. Clang configuration/response files are observed, target settings are extracted, and automatic
-config loading is disabled for runtime compilation after successful observation.
+config loading is isolated for runtime compilation after successful observation.
+
+Clang isolation capability is checked once per preparation context, before discovery-memo lookup. Legacy contexts own an
+empty configuration file until context destruction, including cleanup after failure. Its absolute path is inserted only
+into runtime commands, including archiver discovery, dependency/target probes, and compilation. It never enters native
+identity or persistent input evidence. Original generated-C arguments retain their compiler semantics; unsupported
+configuration syntax is not translated.
+
+Every legacy resolution reobserves effective configuration selection, including warm requests. An ordered signature
+covers selected files, content digests, transitive response inputs, and extracted runtime settings. The signature and a
+stable isolation marker select the observation memo, supplementing existing file and directory checks. Newly selected or
+higher-priority configurations, including application-only changes, invalidate discovery. Original configuration inputs
+still enter the content-based native identity. Separate processes and scratch locations retain the same key for
+identical inputs, and completed profiles never require an earlier scratch file. Bounded fresh probes and configuration
+reads remain visible in warm statistics; warm reuse still performs zero managed compilations and preparation build
+commands. Failure to establish safe isolation is an error; insufficient reuse evidence permits only safe private
+preparation. When legacy configuration selection cannot be observed, private preparation additionally requires exactly
+one absolute explicit `--config PATH` whose readable contents supply the runtime target settings and suppress implicit
+configuration search. Unobservable implicit target selection is an error. Force never overrides eligibility.
 
 `L1_RUNTIME_CC`, `RUNTIME_CFLAGS`, `AR`, and `L1_RT_QUARANTINE_MAX_*` are Make/developer controls, not managed
 preparation inputs. Process-time `DEA_RT_QUARANTINE_MAX_*` retuning does not change a profile. A runtime-include
@@ -359,5 +379,5 @@ users compiling outside `l1c` arrange their own matching runtime.
 
 [cli]: ../../../docs/specs/compiler/cli-contract.md
 [delivery-contract]: productization-inventory.md
-[legacy-clang-plan]: ../../work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md
+[legacy-clang-plan]: ../../work/plans/bug-fixes/closed/2026-09-27-legacy-clang-preparation-compatibility-noref.md
 [productization]: ../../work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md

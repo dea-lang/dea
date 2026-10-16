@@ -71,6 +71,23 @@ static int pc_begin_construction(PcContext *c, const PcJson *inputs, const char 
         for (item = words->child; item; item = item->next)
             if (!pj_str(item)) return pc_fail(c, 2151, "construction options require strings", arrays[i]);
     }
+    {
+        const PcJson *choice = pj_get(inputs, "runtime_configuration_isolation");
+        const char *isolation = pj_str(choice);
+        int legacy = isolation && !strcmp(isolation, "clang-explicit-empty-config-v1"),
+            modern = isolation && !strcmp(isolation, "clang-no-default-config-v1");
+        if (choice && (!isolation || (!legacy && !modern && strcmp(isolation, "none"))))
+            return pc_fail(c, 2151, "invalid construction runtime configuration isolation", NULL);
+        if ((legacy || modern) && strcmp(pc_construction_field(p, "family"), "clang"))
+            return pc_fail(c, 2151, "construction configuration isolation requires Clang", NULL);
+        if (legacy) {
+            if (!pc_clang_config_workspace(c)) {
+                pc_clang_isolation_free(c);
+                return 0;
+            }
+            c->clang_isolation = 2;
+        } else if (modern) c->clang_isolation = 1;
+    }
     codegen = pj_get(inputs, "codegen");
     if (!codegen || codegen->type != PJ_OBJECT)
         return pc_fail(c, 2151, "construction requires frontend settings", NULL);

@@ -17,21 +17,18 @@ checkout, Python, or Make; native output still needs supported host compiler/lin
 
 ## C Compiler Support for Agent Work
 
-- Full L1 support currently requires upstream Clang 16 or newer when selecting Clang. Clang 14/15 lack
-  `--no-default-config`, which current managed preparation requires. A successful direct C compilation does not
-  establish full L1 compatibility or persistent reuse capability.
-- Do not use Clang older than 16 for routine L1 builds, tests, benchmarks, experiments, or candidate validation until
-  legacy support is implemented and this guidance is updated. Use a supported GCC toolchain or verified modern Clang.
+- Select a supported GCC toolchain or capability-verified Clang explicitly. Validated Debian Clang 14/15 use an owned
+  empty configuration file for managed runtime preparation; modern Clang uses `--no-default-config`. Version alone does
+  not establish support or persistent reuse eligibility. Apple Clang has independent version numbering.
 - Verify and record the selected compiler executable and version in each actual builder, test, and measurement
-  environment. An image name or the host compiler version is not sufficient evidence. Apple Clang has separate version
-  numbering; verify its required configuration capabilities and L1 preparation behavior.
-- The repo-owned `l1-test` image uses Bookworm and supplies Clang 14. Keep the normal Docker lane on GCC; do not select
-  `DOCKER_CC=clang` in that image for full validation. A modern investigation runtime does not upgrade the separate
-  builder/test image. Set `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC` explicitly for custom validation invocations.
-- The sole exception is deliberate, isolated legacy compatibility or regression validation under
-  [l1/work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md][legacy-clang-plan]. Label these
-  runs as compatibility investigations and retain a supported compiler control. Do not use their results as evidence of
-  full support before the plan's acceptance criteria pass.
+  environment. An image name or the host compiler version is not sufficient evidence.
+- The repo-owned `l1-test` image uses Bookworm and supplies Clang 14. GCC remains its normal default; explicit
+  `DOCKER_CC=clang` may exercise validated legacy preparation. A modern investigation runtime does not upgrade the
+  separate builder/test image. Set `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC` explicitly for custom validation invocations.
+- Legacy persistent reuse requires fresh configuration-selection evidence on every resolution and all existing toolchain
+  eligibility checks. Safe private preparation remains available when reuse cannot be authorized. The tested scope and
+  acceptance evidence are recorded in
+  [l1/work/plans/bug-fixes/closed/2026-09-27-legacy-clang-preparation-compatibility-noref.md][legacy-clang-plan].
 
 ## Commands and Validation
 
@@ -99,4 +96,4 @@ planned for L1 first, then L2, with no implementation in the split.
 - This is a preferred style for new L1 docs and work docs. It is not a blanket backfill requirement for existing closed
   plans, and it does not require rewriting existing initiative documents unless the task explicitly asks for it.
 
-[legacy-clang-plan]: work/plans/bug-fixes/2026-09-27-legacy-clang-preparation-compatibility-noref.md
+[legacy-clang-plan]: work/plans/bug-fixes/closed/2026-09-27-legacy-clang-preparation-compatibility-noref.md

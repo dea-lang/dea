@@ -365,8 +365,15 @@ def check_executable_dependencies(library: Path, root: Path, config: dict) -> No
     if before[2]["toolchain"]["family"] == "clang":
         identity(library, selected)  # Establish a warm observation before it becomes unavailable.
         marker.touch()
-        identity(library, selected, eligible=False)
-        identity(library, {**selected, "force": 1}, eligible=False)
+        for force in (0, 1):
+            if before[2]["runtime"].get("configuration_isolation") == "clang-explicit-empty-config-v1":
+                # This fixture suppresses every -### response, including the legacy
+                # isolation capability; a prior memo cannot authorize compilation.
+                with Service(library, {**selected, "force": force}) as unavailable:
+                    assert unavailable.call("resolve") == 0 and unavailable.call("error_code") == 2154
+                    assert "isolation capability" in unavailable.get("error")
+            else:
+                identity(library, {**selected, "force": force}, eligible=False)
         marker.unlink()
     subordinate = root / "subordinate-tools"
     subordinate.mkdir()
@@ -728,7 +735,11 @@ def check_option_file_reuse(library: Path, root: Path, config: dict, compiler: s
         "-fPIC", "-fno-pic", "-fPIC", "-fPIC"]
     assert before[3]["option_file_parses"] == 2 and before[3]["option_root_expansions"] == 1
     warm = identity(library, selected)
-    assert warm[:2] == before[:2] and warm[3]["identity_content_reads"] == 0
+    assert warm[:2] == before[:2]
+    if warm[2]["runtime"].get("configuration_isolation") == "clang-explicit-empty-config-v1":
+        assert warm[3]["identity_content_reads"] == 2, "legacy selection must freshly hash both response inputs"
+    else:
+        assert warm[3]["identity_content_reads"] == 0
     assert warm[3]["option_file_parses"] == 2 and warm[3]["option_root_expansions"] == 1
     if configuration_files:
         assert warm[3]["probes"] > 0, "command-local reuse must preserve fresh Clang configuration observation"
@@ -898,7 +909,7 @@ def check_option_expansion_boundaries(library: Path, root: Path, config: dict, c
 
 
 def check_clang_configuration_support(library: Path, root: Path, config: dict, compiler: str) -> bool:
-    """Verify the existing refusal when Clang cannot disable default configuration.
+    """Require safe persistent isolation while preserving each driver's config syntax.
 
     Args:
         library: Compiled preparation service.
@@ -907,26 +918,32 @@ def check_clang_configuration_support(library: Path, root: Path, config: dict, c
         compiler: Available Clang executable.
 
     Returns:
-        Whether the successful modern Clang configuration cases can run.
+        Whether the modern Clang configuration syntax cases can run.
     """
     probe = subprocess.run([compiler, "--no-default-config", "-print-prog-name=ar"],
                            capture_output=True, text=True)
     if probe.returncode == 0:
+        observed = identity(library, {**config, "compiler": compiler})
+        assert observed[2]["runtime"]["configuration_isolation"] == "clang-no-default-config-v1"
         return True
-    assert "unsupported option" in probe.stderr and "--no-default-config" in probe.stderr, probe.stderr
-    configuration = root / "unsupported-clang.cfg"
-    configuration.write_text("-fPIC\n")
+    assert "--no-default-config" in probe.stderr and any(
+        phrase in probe.stderr for phrase in ("unsupported option", "unknown argument")), probe.stderr
+    configuration = root / "legacy-clang.cfg"
+    configuration.write_text("-DDEA_LEGACY_APPLICATION=1 -fPIC\n")
     for force in (0, 1):
         selected = {**config, "compiler": compiler, "force": force}
-        with Service(library, selected) as plain:
-            assert plain.call("resolve") == 0 and plain.call("error_code") == 2154
-            assert "selected compiler must locate a usable runtime archiver" in plain.get("error")
+        plain = identity(library, selected)
+        assert plain[2]["runtime"]["configuration_isolation"] == "clang-explicit-empty-config-v1"
+        configured = identity(library, {**selected, "options": ["--config", str(configuration)]})
+        assert has_component(configured[2], configuration)
+        assert "-fPIC" in configured[2]["runtime"]["options"]
+        assert "-DDEA_LEGACY_APPLICATION=1" not in configured[2]["runtime"]["options"]
+        assert "--config" not in configured[2]["runtime"]["options"], "scratch belongs only in physical argv"
+        # Legacy drivers reject joined config syntax; do not silently repair application arguments.
         with Service(library, {**selected, "options": ["--config=" + str(configuration)]}) as configured:
-            configured.require("resolve")
-            reason = configured.get("ineligible")
-            assert "effective configuration target options" in reason and "unsupported option '--config=" in reason
-    print("Clang lacks --no-default-config: existing plain failure and config reuse refusal verified; "
-          "modern Clang configuration cases unavailable")
+            assert configured.call("resolve") == 0 and configured.call("error_code") == 2154
+            assert "--config=" in configured.get("error")
+    print("Clang legacy explicit-empty configuration isolation and persistent eligibility: PASS")
     return False
 
 
@@ -1005,7 +1022,7 @@ def main() -> int:
             plain = identity(library, config)
             warm = identity(library, config)
             assert warm[:2] == plain[:2] and warm[3]["identity_content_reads"] == 0
-            assert warm[3]["probes"] <= 4
+            assert warm[3]["probes"] <= 6, "warm resolution must remain bounded, including isolation capability"
             check_cwd_digest_seeds(library, root / "cwd-seeds", config)
             if os.name != "nt":
                 check_environment_identity(library, root / "environment-primary", config)
@@ -1066,8 +1083,6 @@ def main() -> int:
             clang_configuration = bool(clang and check_clang_configuration_support(library, root, config, clang))
             compilers = {str(Path(path).resolve()) for name in ("gcc", "clang", "tcc") if (path := shutil.which(name))}
             for index, compiler in enumerate(sorted(compilers)):
-                if clang and compiler == str(Path(clang).resolve()) and not clang_configuration:
-                    continue  # The unavailable adapter's exact failure was asserted above.
                 observed = identity(library, {**config, "compiler": compiler})
                 assert observed[2]["toolchain"]["family"] in ("gcc", "clang", "tcc")
                 family = observed[2]["toolchain"]["family"]

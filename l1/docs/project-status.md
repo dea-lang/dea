@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-10-13
+Version: 2026-10-16
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -295,9 +295,10 @@ intentionally slow trace cases such as `math_runtime_compile_test`; pass the tes
 `make test-compiler-trace-all` when that slow trace coverage is needed. `make check-examples` adds warning-free
 canonical `--check` coverage for `examples/*.l1`. `make test` runs representative canonical tests, examples, and
 tooling; `test-extended` runs the complete local-normal suite. `test-ci` adds CI-only normal cases, environment checks,
-default traces, and child fixtures. There is no L1 fixed-point or stage-parity gate. Linux Docker uses supported GCC;
-upstream Clang 16+ or capability-verified Apple Clang is required for full managed preparation. Child trace fixtures are
-analyzed separately, and failures retain evidence. Product artifact acceptance remains a distinct gate.
+default traces, and child fixtures. There is no L1 fixed-point or stage-parity gate. Linux Docker defaults to supported
+GCC. Validated Debian Clang 14/15 support persistent managed preparation through owned empty configurations and fresh
+configuration-selection evidence; modern Clang and Apple Clang retain capability-based isolation. Child trace fixtures
+are analyzed separately, and failures retain evidence. Product artifact acceptance remains a distinct gate.
 
 Validation is currently centered on:
 

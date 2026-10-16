@@ -201,6 +201,7 @@ int32_t l1c_prep_runtime(void *context) {
         PcBuffer filename = {0};
         char *source, *output, *stem, *relative;
         PcJson *words = pc_construction_words(p, 1);
+        pc_runtime_isolation_words(c, words);
         pc_text(&filename, name);
         pc_text(&filename, ".c");
         stem = pc_join(pc_construction_field(p, "home"), "shared/runtime/src");

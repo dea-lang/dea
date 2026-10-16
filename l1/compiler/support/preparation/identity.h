@@ -315,11 +315,23 @@ static char *pc_cpu_identity(const PcJson *options) {
     free(b.s);
     return pc_string(hex);
 }
+/** Physical scratch names belong only to invocation argv, never to native identity. */
+static void pc_runtime_isolation_words(PcContext *c, PcJson *words) {
+    if (c->clang_isolation == 2) {
+        pj_add(words, NULL, pj_string("--config"));
+        pj_add(words, NULL, pj_string(c->clang_config_path));
+    }
+}
+static const char *pc_runtime_isolation(PcContext *c) {
+    return c->clang_isolation == 2 ? "clang-explicit-empty-config-v1" :
+        c->clang_isolation == 1 ? "clang-no-default-config-v1" : "none";
+}
 static PcJson *pc_runtime_words(PcContext *c) {
     PcJson *words = pj_new(PJ_ARRAY);
     const PcJson *o;
     pj_add(words, NULL, pj_string(c->compiler));
     for (o = c->runtime_options->child; o; o = o->next) pj_add(words, NULL, pj_clone(o));
+    pc_runtime_isolation_words(c, words);
     return words;
 }
 static PcJson *pc_words(PcContext *c, int options) {
@@ -563,7 +575,7 @@ static char *pc_probe_directory(void) {
 #endif
 }
 static void pc_probe_directory_free(const char *directory) {
-    static const char *const children[] = {"probe.c", "dependencies.d", NULL};
+    static const char *const children[] = {"probe.c", "dependencies.d", "empty.cfg", NULL};
     int i;
     for (i = 0; children[i]; ++i) {
         char *p = pc_join(directory, children[i]);
@@ -575,6 +587,28 @@ static void pc_probe_directory_free(const char *directory) {
 #else
     rmdir(directory);
 #endif
+}
+/** Release context-owned isolation scratch after failures or context destruction. */
+static void pc_clang_isolation_free(PcContext *c) {
+    if (c->clang_config_directory) pc_probe_directory_free(c->clang_config_directory);
+    free(c->clang_config_directory); c->clang_config_directory = NULL;
+    free(c->clang_config_path); c->clang_config_path = NULL;
+}
+/** Recreate only compiler-owned invocation scratch from a frozen isolation choice. */
+static int pc_clang_config_workspace(PcContext *c) {
+    char *absolute;
+    if (c->clang_config_path) return 1;
+    c->clang_config_directory = pc_probe_directory();
+    if (!c->clang_config_directory)
+        return pc_fail(c, 2150, "cannot create Clang configuration isolation workspace", NULL);
+    absolute = pc_path_call(c->clang_config_directory, l1c_fs_absolute_path);
+    if (!absolute)
+        return pc_fail(c, 2150, "cannot resolve Clang configuration isolation workspace", c->clang_config_directory);
+    free(c->clang_config_directory); c->clang_config_directory = absolute;
+    c->clang_config_path = pc_join(c->clang_config_directory, "empty.cfg");
+    if (!pc_write_file(c->clang_config_path, "", 0) || pc_kind(c->clang_config_path, 0) != 1)
+        return pc_fail(c, 2150, "cannot create owned empty Clang configuration", c->clang_config_path);
+    return 1;
 }
 /** Decode one compiler-emitted Make prerequisite into a caller-owned reusable buffer. */
 static int pc_dependency_token(const char **cursor, PcBuffer *token) {
@@ -1498,6 +1532,128 @@ static int pc_runtime_known_configs(PcContext *c, PcOptionInputs *inputs) {
     return 1;
 }
 
+/** A known absolute explicit root suppresses legacy implicit selection even without observation. */
+static int pc_legacy_private_configuration(PcContext *c, PcOptionInputs *inputs) {
+    const PcJson *option;
+    int selected = 0;
+    for (option = inputs->direct->child; option; option = option->next) {
+        const char *word = option->text;
+        if (!strncmp(word, "--config=", 9)) break;
+        if (!strcmp(word, "--config")) {
+            char *absolute;
+            int exact;
+            if (!option->next || selected) break;
+            option = option->next;
+            absolute = pc_path_call(option->text, l1c_fs_absolute_path);
+            exact = absolute && pc_path_equal(absolute, option->text);
+            free(absolute);
+            if (!exact) break;
+            ++selected;
+        }
+    }
+    if (option || selected != 1)
+        return pc_fail(c, 2154, "cannot establish safe legacy Clang runtime configuration without observable selection or one absolute explicit config", c->compiler);
+    pc_decline(c, "legacy Clang effective configuration selection is unavailable");
+    return pc_runtime_known_configs(c, inputs);
+}
+
+/** Only an explicit option rejection authorizes trying the legacy mechanism. */
+static int pc_rejected_option(const PcProbe *probe, const char *option) {
+    static const char *const rejections[] = {
+        "unsupported option", "unknown argument", "unrecognized command-line option", NULL};
+    const char *line = probe->err;
+    size_t length = strlen(option);
+    if (probe->status != 1 || probe->timed_out) return 0;
+    while (line && *line) {
+        const char *end = strchr(line, '\n');
+        int i;
+        for (i = 0; rejections[i]; ++i) {
+            const char *rejection = strstr(line, rejections[i]), *flag;
+            if (!rejection || (end && rejection >= end)) continue;
+            flag = rejection + strlen(rejections[i]);
+            while (*flag == ' ' || *flag == '\t' || *flag == '\r') ++flag;
+            if (*flag == ':') ++flag;
+            while (*flag == ' ' || *flag == '\t' || *flag == '\r') ++flag;
+            if ((*flag == '\'' || *flag == '"') && !strncmp(flag + 1, option, length) &&
+                flag[length + 1] == *flag) return 1;
+        }
+        line = end ? end + 1 : NULL;
+    }
+    return 0;
+}
+
+/** Preserve compiler diagnostics while identifying a confirmed isolation failure. */
+static int pc_clang_isolation_failure(PcContext *c, const PcProbe *probe) {
+    PcBuffer reason = {0};
+    pc_text(&reason, "selected Clang cannot isolate runtime configuration");
+    if (probe->err && *probe->err) { pc_char(&reason, '\n'); pc_text(&reason, probe->err); }
+    if (probe->out && *probe->out) { pc_char(&reason, '\n'); pc_text(&reason, probe->out); }
+    pc_fail(c, 2154, reason.s, c->compiler);
+    free(reason.s);
+    return 0;
+}
+
+/** Select a capability once before consulting any native observation memo. */
+static int pc_clang_isolation(PcContext *c) {
+    PcJson *words;
+    PcProbe probe;
+    const char *line;
+    int observed = 0, isolated = 1;
+    if (strcmp(c->family, "clang") || c->clang_isolation) return 1;
+    words = pc_words(c, 0);
+    pj_add(words, NULL, pj_string("--no-default-config"));
+    pj_add(words, NULL, pj_string("-print-prog-name=ar"));
+    probe = pc_context_probe(c, words, "Clang default-configuration suppression capability");
+    if (!probe.status && !probe.timed_out) {
+        c->clang_isolation = 1;
+        pc_probe_free(&probe);
+        return 1;
+    }
+    if (!pc_rejected_option(&probe, "--no-default-config")) {
+        pc_probe_ok(c, &probe, "Clang default-configuration suppression capability");
+        pc_probe_free(&probe);
+        return 0;
+    }
+    pc_probe_free(&probe);
+    if (!pc_clang_config_workspace(c)) return 0;
+    words = pc_words(c, 0);
+    pj_add(words, NULL, pj_string("--config"));
+    pj_add(words, NULL, pj_string(c->clang_config_path));
+    pj_add(words, NULL, pj_string("-###"));
+    pj_add(words, NULL, pj_string("-x")); pj_add(words, NULL, pj_string("c"));
+    pj_add(words, NULL, pj_string("-c"));
+#if defined(_WIN32)
+    pj_add(words, NULL, pj_string("NUL"));
+#else
+    pj_add(words, NULL, pj_string("/dev/null"));
+#endif
+    probe = pc_context_probe(c, words, "Clang runtime configuration isolation capability");
+    if (probe.status || probe.timed_out) {
+        if (pc_rejected_option(&probe, "--config")) pc_clang_isolation_failure(c, &probe);
+        else pc_probe_ok(c, &probe, "Clang runtime configuration isolation capability");
+        pc_probe_free(&probe);
+        return 0;
+    }
+    line = probe.err;
+    while ((line = strstr(line, "Configuration file: ")) != NULL) {
+        const char *end;
+        char *path;
+        line += strlen("Configuration file: "); end = strchr(line, '\n');
+        path = pc_slice(line, end ? (size_t)(end - line) : strlen(line)); pc_trim(path);
+        isolated = isolated && pc_path_equal(path, c->clang_config_path);
+        ++observed;
+        free(path);
+    }
+    if (!isolated || observed != 1 || !strstr(probe.err, "\"-cc1\"")) {
+        pc_clang_isolation_failure(c, &probe);
+        pc_probe_free(&probe);
+        return 0;
+    }
+    c->clang_isolation = 2;
+    pc_probe_free(&probe);
+    return 1;
+}
+
 /** Observe Clang's selected configuration files before extracting target options only. */
 static int pc_runtime_explicit_configs(PcContext *c, PcOptionInputs *inputs) {
     PcJson *words;
@@ -1516,8 +1672,20 @@ static int pc_runtime_explicit_configs(PcContext *c, PcOptionInputs *inputs) {
 #endif
     probe = pc_context_probe(c, words, "effective configuration target options");
     if (!pc_probe_ok(c, &probe, "effective configuration target options")) {
+        if (probe.timed_out || (probe.err && *probe.err)) {
+            pc_probe_free(&probe);
+            return 0;
+        }
+        if (c->clang_isolation == 2) {
+            pc_clear_error(c); pc_probe_free(&probe);
+            return pc_legacy_private_configuration(c, inputs);
+        }
         pc_decline(c, c->error); pc_clear_error(c); pc_probe_free(&probe);
         return pc_runtime_known_configs(c, inputs);
+    }
+    if (c->clang_isolation == 2 && !strstr(probe.err, "\"-cc1\"")) {
+        pc_probe_free(&probe);
+        return pc_legacy_private_configuration(c, inputs);
     }
     c->runtime_config_observed = 1;
     line = probe.err;
@@ -1530,6 +1698,12 @@ static int pc_runtime_explicit_configs(PcContext *c, PcOptionInputs *inputs) {
         expanded = pc_config_options(c, inputs, path);
         if (expanded) pc_option_eligibility(c, expanded);
         ok = expanded && pc_runtime_target_options(c, expanded);
+        if (ok && c->legacy_configuration) {
+            PcJson *selected = pj_new(PJ_OBJECT);
+            pj_set_string(selected, "path", path);
+            pj_add(selected, "options", pj_clone(expanded));
+            pj_add(pj_get(c->legacy_configuration, "selected"), NULL, selected);
+        }
         free(path);
     }
     pc_probe_free(&probe);
@@ -1537,8 +1711,48 @@ static int pc_runtime_explicit_configs(PcContext *c, PcOptionInputs *inputs) {
     return 1;
 }
 
+/** Fresh file content supplements directory observations for legacy search precedence. */
+static void pc_legacy_configuration_signature(PcContext *c, const PcOptionInputs *inputs) {
+    const PcOptionFile *file;
+    PcJson *files;
+    if (c->clang_isolation != 2) return;
+    if (!c->runtime_config_observed) {
+        pc_decline(c, "legacy Clang effective configuration selection is unavailable");
+        return;
+    }
+    files = pj_new(PJ_ARRAY);
+    pj_add(c->legacy_configuration, "inputs", files);
+    pj_add(c->legacy_configuration, "runtime_options", pj_clone(c->runtime_options));
+    for (file = inputs->files; file; file = file->next) {
+        char digest[65];
+        PcJson *metadata = NULL, *record, *evidence;
+        ++c->identity_reads;
+        if (!pc_hash_observed(c, file->path, digest, &metadata, "toolchain-input", "legacy-configuration-selection")) {
+            pc_decline(c, "legacy Clang configuration inputs cannot be observed reliably");
+            pj_free(metadata);
+            return;
+        }
+        record = pj_new(PJ_OBJECT);
+        pj_set_string(record, "path", file->path);
+        pj_set_number(record, "configuration", file->configuration);
+        pj_set_string(record, "sha256", digest);
+        pj_add(files, NULL, record);
+        if (!pj_get(c->new_files, file->path)) {
+            evidence = pj_new(PJ_OBJECT);
+            pj_set_string(evidence, "sha256", digest);
+            pj_add(evidence, "metadata", metadata);
+            pj_add(c->new_files, file->path, evidence);
+        } else pj_free(metadata);
+    }
+}
+
 /** The runtime baseline and tuning are compiler-owned, independent of legacy Make variables. */
 static int pc_runtime_configuration(PcContext *c, const char *variant, PcOptionInputs *inputs) {
+    if (!pc_clang_isolation(c)) return 0;
+    if (c->clang_isolation == 2) {
+        c->legacy_configuration = pj_new(PJ_OBJECT);
+        pj_add(c->legacy_configuration, "selected", pj_new(PJ_ARRAY));
+    }
     c->runtime_options = pj_new(PJ_ARRAY);
     pj_add(c->runtime_options, NULL, pj_string("-O2"));
     pj_add(c->runtime_options, NULL, pj_string("-std=c99"));
@@ -1546,7 +1760,7 @@ static int pc_runtime_configuration(PcContext *c, const char *variant, PcOptionI
         !pc_runtime_target_options(c, inputs->direct)) return 0;
     /* All effective config targets were extracted above. Do not reload arbitrary
        generated-C configuration flags while compiling the runtime implementation. */
-    if (c->runtime_config_observed) pj_add(c->runtime_options, NULL, pj_string("--no-default-config"));
+    if (c->clang_isolation == 1) pj_add(c->runtime_options, NULL, pj_string("--no-default-config"));
     if (!strcmp(variant, "traced")) {
         pj_add(c->runtime_options, NULL, pj_string("-DDEA_TRACE_ARC"));
         pj_add(c->runtime_options, NULL, pj_string("-DDEA_TRACE_MEMORY"));
@@ -1556,6 +1770,7 @@ static int pc_runtime_configuration(PcContext *c, const char *variant, PcOptionI
         pj_add(c->runtime_options, NULL, pj_string("-D_RT_QUARANTINE_MAX_BYTES=16777216"));
         pj_add(c->runtime_options, NULL, pj_string("-D_RT_QUARANTINE_MAX_COUNT=4096"));
     }
+    pc_legacy_configuration_signature(c, inputs);
     return 1;
 }
 /** Record a conservative refusal without preventing command-private compilation. */
@@ -1623,10 +1838,12 @@ static int pc_compilation_toolchain(PcContext *c) {
     words = pc_runtime_words(c);
     pj_add(words, NULL, pj_string("-print-prog-name=ar"));
     p = pc_context_probe(c, words, "runtime archiver");
-    if (p.status == 0 && !p.timed_out) {
-        pc_trim(p.out);
-        c->archiver = pc_reported_executable(p.out, c->compiler);
+    if (!pc_probe_ok(c, &p, "runtime archiver")) {
+        pc_probe_free(&p);
+        return 0;
     }
+    pc_trim(p.out);
+    c->archiver = pc_reported_executable(p.out, c->compiler);
     pc_probe_free(&p);
     if (!c->archiver) return pc_fail(c, 2154, "selected compiler must locate a usable runtime archiver with -print-prog-name=ar", c->compiler);
     if (!pc_image_kind(c->archiver)) pc_decline(c, "opaque archive-tool wrapper cannot authorize persistent reuse");
@@ -1666,6 +1883,9 @@ static int pc_resolve_native(PcContext *c) {
     }
     pj_add(selection, "options", pj_clone(c->options));
     pj_add(selection, "runtime_options", pj_clone(c->runtime_options));
+    pj_set_string(selection, "configuration_isolation", pc_runtime_isolation(c));
+    if (c->legacy_configuration)
+        pj_add(selection, "legacy_configuration", pj_clone(c->legacy_configuration));
     pj_add(selection, "environment", pc_selection_environment());
     cpu = pc_cpu_identity(c->options);
     pj_set_string(selection, "native_cpu", cpu); free(cpu);
@@ -1761,11 +1981,14 @@ static int pc_resolve_native(PcContext *c) {
     pj_add(c->native, "toolchain", toolchain);
     stdlib = pj_new(PJ_OBJECT);
     pj_add(stdlib, "options", pj_clone(c->options));
+    if (c->legacy_configuration)
+        pj_add(stdlib, "configuration_selection", pj_clone(pj_get(c->legacy_configuration, "selected")));
     pj_add(stdlib, "codegen", pj_get(c->config, "codegen") ? pj_clone(pj_get(c->config, "codegen")) : pj_new(PJ_OBJECT));
     pj_set_string(stdlib, "include", c->include);
     pj_add(c->native, "stdlib", stdlib);
     runtime = pj_new(PJ_OBJECT);
     pj_add(runtime, "options", pj_clone(c->runtime_options));
+    pj_set_string(runtime, "configuration_isolation", pc_runtime_isolation(c));
     pj_set_string(runtime, "variant", variant);
     pj_add(c->native, "runtime", runtime);
     c->native_key = pc_json_digest(c->native);
@@ -1773,6 +1996,7 @@ static int pc_resolve_native(PcContext *c) {
     if (discovery && !c->ineligible) pc_save_input_memo(c, memo_key, discovery);
     ok = 1;
 finish:
+    if (!ok) pc_clang_isolation_free(c);
     pj_free(memo); pj_free(discovery); pj_free(selection); free(memo_key); free(selection_cwd);
     pc_option_inputs_free(&options);
     return ok;
