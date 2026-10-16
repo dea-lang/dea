@@ -6,9 +6,8 @@
 - Status: Draft
 - Title: Add typed string and writer formatting over L1 variadics
 - Kind: Feature
-- Severity: Medium
-- Priority: 2
-- Stage: Canonical
+- Priority: Medium
+- Stdlib Tier: 2
 - Subsystem: Stdlib / text / I/O / diagnostics
 - Modules:
   - `l1/compiler/shared/l1/stdlib/std/format.l1`

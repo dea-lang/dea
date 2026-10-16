@@ -9,7 +9,7 @@
 
 ## Summary
 
-This Priority 4 initiative promotes the roadmap's concurrency direction into explicit design work without pretending
+This Stdlib Tier 4 initiative promotes the roadmap's concurrency direction into explicit design work without pretending
 that a thin wrapper over `pthread_create` or `CreateThread` would be a safe L1 concurrency model. Dea's UB-free goal
 requires a data-race policy, rules for values crossing worker boundaries, and a thread-safe runtime before safe threads,
 atomics, synchronization, or channels can ship.
@@ -26,9 +26,9 @@ semantics the language and runtime can enforce.
 4. Define join, cancellation, poisoning, and atomic ordering semantics.
 5. Decide whether safe channels and isolated workers can land before general shared-memory threads.
 
-## Phases and priority
+## Phases and stdlib tier
 
-### Phase 0 - Memory model and runtime readiness (Priority 4)
+### Phase 0 - Memory model and runtime readiness (Stdlib Tier 4)
 
 Produce the concurrency memory-model decision, runtime thread-safety audit, implementation prerequisites, and ordered
 follow-up plan set.

@@ -7,9 +7,8 @@
 - Status: Draft
 - Title: Widen L1 time seconds and add monotonic sleep, deadline, and timeout helpers
 - Kind: Feature
-- Severity: Medium
-- Priority: 3
-- Stage: Canonical
+- Priority: Medium
+- Stdlib Tier: 3
 - Parent Initiative: `l1/work/initiatives/0006-process-and-host-services.md`
 - Subsystem: Stdlib / runtime / time
 - Modules:

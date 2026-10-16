@@ -6,8 +6,7 @@
 - Status: In progress
 - Title: Improve L1 preparation reuse efficiency using attributed validation costs
 - Kind: Feature
-- Severity: Medium
-- Stage: Canonical
+- Priority: Medium
 - Subsystem: Managed providers / native preparation / validation memos / performance measurement
 - Modules:
   - `l1/compiler/src/cli_args.l0`

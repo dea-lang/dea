@@ -6,9 +6,8 @@
 - Status: Draft
 - Title: Add a secure operating-system entropy module distinct from pseudorandom generation
 - Kind: Feature
-- Severity: Medium
-- Priority: 2
-- Stage: Canonical
+- Priority: Medium
+- Stdlib Tier: 2
 - Parent Initiative: `l1/work/initiatives/0006-process-and-host-services.md`
 - Subsystem: Stdlib / runtime / host services
 - Modules:

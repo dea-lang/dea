@@ -9,7 +9,7 @@
 
 ## Summary
 
-This initiative promotes networking from deferred direction to a Priority 3 roadmap capability. The first portable
+This initiative promotes networking from deferred direction to a Stdlib Tier 3 roadmap capability. The first portable
 surface is deliberately blocking: address resolution, IPv4 and IPv6 addressing, TCP clients and listeners, and UDP
 sockets. It does not promise a portable asynchronous model before Dea has selected one.
 
@@ -27,9 +27,9 @@ runtime. The initiative executes under the [L1 roadmap].
 6. Socket handles are non-inherited by child processes unless explicitly selected.
 7. Socket streams can be adapted into `std.stream` after the endpoint ownership contract is satisfied.
 
-## Phase and priority
+## Phase and stdlib tier
 
-### Phase 1 - Blocking IP networking (Priority 3)
+### Phase 1 - Blocking IP networking (Stdlib Tier 3)
 
 Add address parsing and formatting, DNS resolution, TCP connect/listen/accept/send/receive/shutdown, UDP
 bind/send-to/receive-from, and common timeout and socket-option controls.

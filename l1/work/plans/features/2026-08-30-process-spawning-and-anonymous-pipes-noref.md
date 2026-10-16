@@ -6,9 +6,8 @@
 - Status: Draft
 - Title: Add shell-free process spawning, waiting, and anonymous pipe endpoints
 - Kind: Feature
-- Severity: Medium
-- Priority: 2
-- Stage: Canonical
+- Priority: Medium
+- Stdlib Tier: 2
 - Parent Initiative: `l1/work/initiatives/0006-process-and-host-services.md`
 - Subsystem: Stdlib / runtime / process control / I/O
 - Modules:

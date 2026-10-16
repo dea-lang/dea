@@ -6,9 +6,8 @@
 - Status: Draft
 - Title: Add blocking IPv4 and IPv6 TCP, UDP, and DNS APIs
 - Kind: Feature
-- Severity: Medium
-- Priority: 3
-- Stage: Canonical
+- Priority: Medium
+- Stdlib Tier: 3
 - Parent Initiative: `l1/work/initiatives/0007-blocking-networking.md`
 - Subsystem: Stdlib / runtime / networking
 - Modules:

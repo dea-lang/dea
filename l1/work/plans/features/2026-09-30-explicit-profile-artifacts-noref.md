@@ -6,8 +6,7 @@
 - Status: Draft
 - Title: Add caller-owned L1 profiles with `--create-profile` and `--profile PATH`
 - Kind: Feature
-- Severity: Medium
-- Stage: Canonical
+- Priority: Medium
 - Parent Initiative: `l1/work/initiatives/0010-explicit-profiles-and-composable-builds.md`
 - Targets:
   - Canonical L1: Pending

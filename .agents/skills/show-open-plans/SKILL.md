@@ -31,8 +31,8 @@ Do not use this skill for:
    rg --files work l[0-9]*/work | rg '/plans/.*\.md$' | rg -v '/(closed|attachments)/' | sort
    ```
 
-2. For each plan file, extract the `Status:`, `Title:`, `Kind:`, `Stage:`, and `Parent Initiative:` metadata lines from
-   its header block.
+2. For each plan file, extract the `Status:`, `Title:`, `Kind:`, and `Parent Initiative:` metadata lines from its header
+   block.
 
 3. For each roadmap that exists, read its `## Active initiatives` section and standalone-plan backlog entries to
    determine which initiative, if any, each plan belongs to. A missing roadmap file is not an error : skip it.

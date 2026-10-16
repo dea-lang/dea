@@ -36,6 +36,10 @@ grep for its filename across `l1/docs/`, `l1/work/`, and any shared root docs/wo
 
 ## Plan Template
 
+Use `Severity` for Bug Fix plans and `Priority` for Feature, Refactor, and Tooling plans; select exactly one field in
+the template below. Definitions and rating criteria are in
+[work/README.md](../../work/README.md#plan-priority-and-severity).
+
 ```markdown
 # [Bug Fix | Feature | Refactor | Tool] Plan
 
@@ -45,8 +49,7 @@ grep for its filename across `l1/docs/`, `l1/work/`, and any shared root docs/wo
 - Status: [Draft | In Progress | Closed (fixed/implemented)]
 - Title: [Full descriptive title]
 - Kind: [Bug Fix | Feature | Refactor | Tooling]
-- Severity: [Low | Medium | High | Critical]
-- Stage: Canonical
+- [Priority | Severity]: [Low | Medium | High | Critical]
 - Subsystem: [Subsystem name]
 - Modules:
   - `compiler/src/module.l0`
@@ -67,8 +70,8 @@ grep for its filename across `l1/docs/`, `l1/work/`, and any shared root docs/wo
   - Rationale: [Why this disposition and destination are appropriate]
 ```
 
-L1 has one canonical compiler. Use `Stage: Canonical` for new L1 plans; preserve stage metadata in historical records.
-The compiler implementation and its Dea tests use `.l0`; target programs and the L1 standard library use `.l1`.
+L1 has one canonical compiler. Omit `Stage` metadata from live L1 plans and initiatives; preserve it in historical
+records. The compiler implementation and its Dea tests use `.l0`; target programs and the L1 standard library use `.l1`.
 
 Every plan and initiative must contain exactly one `## ADR Impact` section using the complete schema and lifecycle rules
 in root `AGENTS.md`. Repeat the record for independent architectural questions. Use `ADR not warranted` as the sole
@@ -119,8 +122,8 @@ Initiative documents carry two membership fields in their metadata block, after 
 - `Open plans:`: bulleted list of repo-root paths to currently open spawned plans, or `(none)`.
 - `Closed plans:`: bulleted list of repo-root paths to closed spawned plans, or `(none)`.
 
-Plans spawned by an initiative carry a `Parent Initiative:` field in their metadata block, immediately after `Stage:`,
-pointing at the initiative file using the repo-root path. Standalone plans must not carry this field.
+Plans spawned by an initiative carry a `Parent Initiative:` field in their metadata block, after `Kind:`, pointing at
+the initiative file using the repo-root path. Standalone plans must not carry this field.
 
 Keep the two sides in sync throughout the plan lifecycle:
 

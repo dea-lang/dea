@@ -7,8 +7,7 @@
 - Status: Draft
 - Title: Add ARC-backed cheap string slices
 - Kind: Feature
-- Severity: High
-- Stage: Canonical
+- Priority: High
 - Subsystem: Intrinsics / backend / ARC runtime / string stdlib
 - Modules:
   - `l0/compiler/shared/runtime/l0_runtime.h`

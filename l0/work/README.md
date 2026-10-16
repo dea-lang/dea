@@ -28,6 +28,10 @@ When closing a plan, `git mv` it into the corresponding `closed/` subdirectory, 
 
 ## Plan Template
 
+Use `Severity` for Bug Fix plans and `Priority` for Feature, Refactor, and Tooling plans; select exactly one field in
+the template below. Definitions and rating criteria are in
+[work/README.md](../../work/README.md#plan-priority-and-severity).
+
 ```markdown
 # [Bug Fix | Feature | Refactor | Tool] Plan
 
@@ -37,7 +41,7 @@ When closing a plan, `git mv` it into the corresponding `closed/` subdirectory, 
 - Status: [Draft | In Progress | Closed (fixed/implemented)]
 - Title: [Full descriptive title]
 - Kind: [Bug Fix | Feature | Refactor | Tooling]
-- Severity: [Low | Medium | High | Critical]
+- [Priority | Severity]: [Low | Medium | High | Critical]
 - Stage: [1 | 2 | Shared]
 - Subsystem: [Subsystem name]
 - Modules:

@@ -10,14 +10,14 @@
 
 ## Summary
 
-This initiative owns the data-format modules already named by the L1 roadmap. JSON is a Priority 3 implementation target
-after dynamic byte buffers and streams exist. The roadmap's `IFF` entry remains Priority 4 because neither the intended
-interchange format nor a motivating consumer is documented; its first plan resolves that ambiguity instead of inventing
-an API around an unexplained acronym.
+This initiative owns the data-format modules already named by the L1 roadmap. JSON is a Stdlib Tier 3 implementation
+target after dynamic byte buffers and streams exist. The roadmap's `IFF` entry remains Stdlib Tier 4 because neither the
+intended interchange format nor a motivating consumer is documented; its first plan resolves that ambiguity instead of
+inventing an API around an unexplained acronym.
 
-## Phases and priorities
+## Phases and stdlib tiers
 
-### Phase 1 - JSON (Priority 3)
+### Phase 1 - JSON (Stdlib Tier 3)
 
 - Add parsing from strings and readers, a streaming tokenizer/parser path, serialization to strings and writers, and
   typed accessors.
@@ -25,7 +25,7 @@ an API around an unexplained acronym.
 
 Spawned plan: [JSON data format].
 
-### Phase 2 - IFF scope decision (Priority 4)
+### Phase 2 - IFF scope decision (Stdlib Tier 4)
 
 - Identify the intended format and consumer, decide whether it belongs in the core stdlib, and specify its module and
   stream contract before opening implementation work.

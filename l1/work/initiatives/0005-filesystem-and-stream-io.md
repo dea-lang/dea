@@ -18,8 +18,8 @@
 This initiative establishes the portable I/O foundation needed by compiler tooling and ordinary L1 programs. It adds a
 shared OS error model, corrects inherited 32-bit filesystem metadata, introduces mutable dynamic byte buffers, adds
 stateful file handles and path operations, provides streaming directory traversal, and builds explicit stream adapters
-over the concrete endpoint contracts. A later Priority 4 design tranche defines whether file watching can have a useful
-portable surface.
+over the concrete endpoint contracts. A later Stdlib Tier 4 design tranche defines whether file watching can have a
+useful portable surface.
 
 The target is portable systems capability with typed Dea APIs and platform-specific behavior contained behind the
 runtime boundary. It is not a literal mirror of C99 or of any one host API. This initiative executes under the
@@ -54,23 +54,23 @@ runtime boundary. It is not a literal mirror of C99 or of any one host API. This
     filesystem bytes on POSIX, and document symbolic-link following per operation.
 12. Stream adapters have explicit endpoint ownership; freely escaping borrowed views are not part of the v1 surface.
 
-## Phases and priorities
+## Phases and stdlib tiers
 
-### Phase 0 - Error and width foundation (Priority 1)
+### Phase 0 - Error and width foundation (Stdlib Tier 1)
 
 - Define `ErrorKind`, `OsError`, direct native-code preservation, and operation-specific result enums.
 - Widen file size and modification seconds to `long?` without changing whole-file helper bounds.
 
 Spawned plans: [OS errors and I/O results] and [wide filesystem metadata].
 
-### Phase 1 - Dynamic binary buffers (Priority 1)
+### Phase 1 - Dynamic binary buffers (Stdlib Tier 1)
 
 - Add a public growable byte buffer with reserve, resize, indexed access, append, slicing, and explicit string
   conversion.
 
 Spawned plan: [dynamic byte buffers].
 
-### Phase 2 - File handles and complete file I/O (Priority 1)
+### Phase 2 - File handles and complete file I/O (Stdlib Tier 1)
 
 - Add open/close, sequential reads and writes, seek and position, positional I/O, append, truncate, flush, and durable
   synchronization.
@@ -78,20 +78,20 @@ Spawned plan: [dynamic byte buffers].
 
 Spawned plan: [file handles and random access].
 
-### Phase 3 - Path mutations and directory traversal (Priority 1)
+### Phase 3 - Path mutations and directory traversal (Stdlib Tier 1)
 
 - Add metadata variants, directory creation/removal, rename/replace/copy, current-directory operations, and streaming
   directory iteration.
 
 Spawned plan: [filesystem mutations and directory traversal].
 
-### Phase 4 - Streams and buffering (Priority 2)
+### Phase 4 - Streams and buffering (Stdlib Tier 2)
 
 - Add reader, writer, seeker, and buffered adapters only after the concrete file contracts are stable.
 
 Spawned plan: [streams and buffering].
 
-### Phase 5 - File-watch contract discovery (Priority 4)
+### Phase 5 - File-watch contract discovery (Stdlib Tier 4)
 
 - Select a portable event, overflow, rename, lifetime, and path contract before any implementation plan is opened.
 
@@ -147,7 +147,7 @@ Spawned plan: [file-watch API design].
   - Disposition: Pending
   - ADR: None
   - Rationale: Host watcher APIs disagree on event coalescing, rename pairing, recursive watches, overflow, and path
-    identity; the Priority 4 design plan must determine whether a useful common contract exists.
+    identity; the Stdlib Tier 4 design plan must determine whether a useful common contract exists.
 
 ## References
 

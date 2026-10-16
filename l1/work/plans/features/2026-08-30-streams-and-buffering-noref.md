@@ -6,9 +6,8 @@
 - Status: Draft
 - Title: Add reader, writer, seeker, and buffered stream adapters
 - Kind: Feature
-- Severity: Medium
-- Priority: 2
-- Stage: Canonical
+- Priority: Medium
+- Stdlib Tier: 2
 - Parent Initiative: `l1/work/initiatives/0005-filesystem-and-stream-io.md`
 - Subsystem: Stdlib / I/O abstractions
 - Modules:

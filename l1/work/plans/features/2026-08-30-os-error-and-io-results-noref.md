@@ -6,9 +6,8 @@
 - Status: Draft
 - Title: Add a shared OS error and I/O result model
 - Kind: Feature
-- Severity: High
-- Priority: 1
-- Stage: Canonical
+- Priority: High
+- Stdlib Tier: 1
 - Parent Initiative: `l1/work/initiatives/0005-filesystem-and-stream-io.md`
 - Subsystem: Stdlib / runtime / filesystem / process / networking
 - Modules:

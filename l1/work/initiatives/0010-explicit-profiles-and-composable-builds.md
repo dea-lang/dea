@@ -7,7 +7,6 @@
   - `l1/work/plans/features/2026-09-30-explicit-profile-artifacts-noref.md`
 - Closed plans:
   - `l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md`
-- Stage: Canonical
 - Scope: L1 canonical L1 compiler
 - Subsystem: Profile construction, native preparation, compiler driver and external build integration
 

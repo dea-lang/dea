@@ -6,9 +6,8 @@
 - Status: Draft
 - Title: Document portable systems capability and C99 coverage for the L1 standard library
 - Kind: Feature
-- Severity: Medium
-- Priority: 2
-- Stage: L1
+- Priority: Medium
+- Stdlib Tier: 2
 - Subsystem: Stdlib / reference documentation / roadmap
 - Modules:
   - `l1/docs/reference/standard-library-coverage.md`

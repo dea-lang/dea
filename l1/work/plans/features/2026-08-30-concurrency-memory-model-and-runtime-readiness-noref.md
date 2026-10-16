@@ -6,9 +6,8 @@
 - Status: Draft
 - Title: Define safe concurrency semantics and audit runtime thread readiness
 - Kind: Feature
-- Severity: Low
-- Priority: 4
-- Stage: Canonical
+- Priority: Low
+- Stdlib Tier: 4
 - Parent Initiative: `l1/work/initiatives/0009-safe-concurrency.md`
 - Subsystem: Language semantics / runtime / ARC / concurrency stdlib
 - Modules:

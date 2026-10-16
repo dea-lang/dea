@@ -70,6 +70,6 @@ fixtures exercise `l2c`. Ownership failures in generated L2 programs need `.l2` 
 failures may need `.l1` reproducers. Follow root portable path-comparison rules.
 
 L2 has no distribution/release productization in this split. No compiler suite proves L1 artifact acceptance. Keep L1
-feature plans in L1 until individually reassigned. New L2 plans use `Stage: Canonical`, live under `l2/work/plans/`, and
+feature plans in L1 until individually reassigned. New L2 plans omit `Stage` metadata, live under `l2/work/plans/`, and
 link from [l2/docs/roadmap.md](docs/roadmap.md). Architectural records belong in `l2/docs/decisions/` with normal ADR
 Impact and index rules. Shared work uses one root plan. Generic skills remain in `.agents/skills/`.

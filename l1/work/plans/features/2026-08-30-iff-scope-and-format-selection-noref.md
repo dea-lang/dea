@@ -6,9 +6,8 @@
 - Status: Draft
 - Title: Identify the intended IFF format, consumer, and standard-library scope
 - Kind: Feature
-- Severity: Low
-- Priority: 4
-- Stage: Canonical
+- Priority: Low
+- Stdlib Tier: 4
 - Parent Initiative: `l1/work/initiatives/0008-data-format-modules.md`
 - Subsystem: Stdlib / data formats / roadmap design
 - Modules:
@@ -23,8 +22,8 @@
 
 ## Summary
 
-The roadmap names `IFF` without identifying the exact format, variant, consumer, or desired operations. This Priority 4
-plan resolves that ambiguity before any `std.iff` implementation is authorized.
+The roadmap names `IFF` without identifying the exact format, variant, consumer, or desired operations. This Stdlib Tier
+4 plan resolves that ambiguity before any `std.iff` implementation is authorized.
 
 ## Questions to Resolve
 

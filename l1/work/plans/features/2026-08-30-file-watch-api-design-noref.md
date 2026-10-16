@@ -6,9 +6,8 @@
 - Status: Draft
 - Title: Define a portable file-watch event and lifetime contract
 - Kind: Feature
-- Severity: Low
-- Priority: 4
-- Stage: Canonical
+- Priority: Low
+- Stdlib Tier: 4
 - Parent Initiative: `l1/work/initiatives/0005-filesystem-and-stream-io.md`
 - Subsystem: Stdlib / runtime / filesystem watching
 - Modules:
@@ -24,7 +23,7 @@
 
 ## Summary
 
-Resolve the Priority 4 file-watch item already present in the roadmap before opening implementation work. The plan
+Resolve the Stdlib Tier 4 file-watch item already present in the roadmap before opening implementation work. The plan
 compares supported host facilities and either defines a useful common event model or records why the capability should
 remain platform-specific or deferred.
 

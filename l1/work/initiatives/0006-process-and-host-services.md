@@ -41,28 +41,28 @@ This initiative executes under the [L1 roadmap] and consumes the shared error an
 7. General wall, monotonic, and duration second fields use `long`; normalized nanoseconds remain `int`.
 8. Deadline helpers use monotonic time, and timeout results remain distinguishable from operation failures.
 
-## Phases and priorities
+## Phases and stdlib tiers
 
-### Phase 0 - Secure entropy (Priority 2)
+### Phase 0 - Secure entropy (Stdlib Tier 2)
 
 Add `fill` and `random_bytes` backed by supported OS entropy facilities, with no deterministic fallback.
 
 Spawned plan: [secure OS entropy].
 
-### Phase 1 - Temporary objects (Priority 2)
+### Phase 1 - Temporary objects (Stdlib Tier 2)
 
 Add exclusive temporary files and directories plus cleanup helpers over the filesystem and entropy foundations.
 
 Spawned plan: [secure temporary objects].
 
-### Phase 2 - Process spawning and pipes (Priority 2)
+### Phase 2 - Process spawning and pipes (Stdlib Tier 2)
 
 Add anonymous pipe endpoints, child spawning, wait and try-wait, exit status, termination, and explicit standard-stream
 routing.
 
 Spawned plan: [process spawning and anonymous pipes].
 
-### Phase 3 - Sleep, deadlines, and timeouts (Priority 3)
+### Phase 3 - Sleep, deadlines, and timeouts (Stdlib Tier 3)
 
 Widen general time seconds and add `sleep`, `sleep_until`, `deadline_after`, and `remaining` with monotonic semantics.
 

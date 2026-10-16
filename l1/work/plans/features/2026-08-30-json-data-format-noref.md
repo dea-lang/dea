@@ -6,9 +6,8 @@
 - Status: Draft
 - Title: Add streaming-capable JSON parsing and serialization
 - Kind: Feature
-- Severity: Medium
-- Priority: 3
-- Stage: Canonical
+- Priority: Medium
+- Stdlib Tier: 3
 - Parent Initiative: `l1/work/initiatives/0008-data-format-modules.md`
 - Subsystem: Stdlib / data formats / streams
 - Modules:

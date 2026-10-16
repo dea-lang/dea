@@ -7,7 +7,6 @@
 - Title: Support legacy Clang preparation with verified configuration isolation and safe persistent reuse
 - Kind: Bug Fix
 - Severity: Medium
-- Stage: Canonical
 - Subsystem: Native preparation / Clang configuration discovery / identity and invalidation
 - Modules:
   - `l1/compiler/support/preparation/identity.h`

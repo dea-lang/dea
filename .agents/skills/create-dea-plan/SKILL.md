@@ -145,8 +145,7 @@ Start every new plan with the standard plan header and metadata block.
 - Status: Draft
 - Title: [Full descriptive title]
 - Kind: [Bug Fix | Feature | Refactor | Tooling]
-- Severity: [Low | Medium | High | Critical]
-- Stage: [Canonical for L1/L2; actual stage for L0]
+- [Priority | Severity]: [Low | Medium | High | Critical]
 - Subsystem: [subsystem summary]
 - Modules:
   - `path/to/module`
@@ -160,11 +159,13 @@ Start every new plan with the standard plan header and metadata block.
 Notes:
 
 - New plans should normally start with `Status: Draft`.
+- Select exactly one rating field: `Severity` for Bug Fix plans; `Priority` for Feature, Refactor, and Tooling plans.
+  Follow the definitions and rating criteria in [work/README.md](../../../work/README.md#plan-priority-and-severity).
 - `# Tool Plan` pairs with `Kind: Tooling`.
 - Include `Related:` when there are meaningful links; omit it only when there is nothing useful to reference.
 - Include `Repro:` when there is a concrete repro command, fixture, or focused entrypoint.
-- Use `Stage: Canonical` for single-compiler L1/L2 plans. L0 retains meaningful stage values; root shared work uses
-  `Stage: Shared`. Existing historical metadata is not rewritten. Current validators do not require fictitious stages.
+- Omit `Stage` metadata for single-compiler L1/L2 and root shared plans. For L0 plans, add the meaningful `Stage:` value
+  after the selected `Priority:` or `Severity:` field. Preserve stage metadata in historical records.
 
 ### Root shared-plan extra metadata
 
@@ -182,7 +183,6 @@ Root shared plans need the standard block plus these required fields:
 
 For shared plans:
 
-- use `Stage: Shared`
 - include one `Targets:` line per in-scope implementation
 - include one `Target status:` line per target using `Pending`, `In Progress`, `Implemented`, or `Deferred: <reason>`
 

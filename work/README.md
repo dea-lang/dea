@@ -56,6 +56,34 @@ Required shared-plan metadata, in addition to the standard plan block:
 Do not open a separate level-local follow-up plan just to port a mechanical parity fix already covered by a shared root
 plan.
 
+## Plan Priority and Severity
+
+Use exactly one of these fields in a plan's metadata, according to its kind:
+
+- `Priority` for Feature, Refactor, and Tooling plans: the relative importance of scheduling the proposed work against
+  other work, considering expected benefit and dependencies. It is not a measure of implementation effort or risk, a
+  deadline, or an automatic execution order.
+- `Severity` for Bug Fix plans: the impact of the existing defect on correctness, safety, or supported workflows,
+  considering affected scope and available workarounds. It does not by itself set scheduling urgency.
+
+Both fields use `Low`, `Medium`, `High`, or `Critical`:
+
+| Value    | Priority (non-defect plans)                                                                                      | Severity (bug-fix plans)                                                                                                              |
+| -------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Low      | Useful optional improvement that can be deferred without blocking current objectives.                            | Minor or narrowly scoped defect with little practical disruption and an easy workaround.                                              |
+| Medium   | Meaningful improvement that supports current objectives without blocking a key milestone.                        | Material impairment with a practical workaround or limited affected scope.                                                            |
+| High     | Important capability or prerequisite for a key milestone that should be scheduled ahead of routine improvements. | Major correctness or supported-workflow failure with no satisfactory workaround for affected cases.                                   |
+| Critical | Essential work whose deferral blocks an explicitly identified immediate project objective.                       | Severe safety or correctness failure, such as memory corruption, silent wrong results, or widespread loss of essential functionality. |
+
+Record the concrete rationale in the plan's summary, especially for High or Critical ratings. State actual deadlines,
+release blockers, and dependencies explicitly instead of encoding them only in a rating. `Stdlib Tier` independently
+classifies capability groups defined in [l1/docs/roadmap.md](../l1/docs/roadmap.md#standard-library-tiers); it does not
+mechanically determine Priority or Severity.
+
+When renaming existing active non-defect metadata from Severity to Priority, retain its rating unless separately
+reassessed. This preserves the recorded ranking without claiming that historical ratings followed these definitions.
+Leave historical closed plans and evidence unchanged.
+
 ## ADR Impact
 
 Every plan must contain exactly one `## ADR Impact` section using the schema, scopes, dispositions, and closure rules in

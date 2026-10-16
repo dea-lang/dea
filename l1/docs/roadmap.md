@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-10-13
+Version: 2026-10-16
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -277,22 +277,35 @@ split dependency or implementing that work now.
 
 </details>
 
+## Standard-library tiers
+
+Stdlib tiers group planned standard-library capabilities and guide broad sequencing, not urgency or severity. They do
+not impose strict dependencies between entire tiers; individual plans and initiatives record their prerequisites. These
+tiers are distinct from implementation phases within a plan or initiative.
+
+| Tier          | Capability scope                                                                                                                          |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Stdlib Tier 1 | OS error and I/O results, 64-bit filesystem metadata, dynamic byte buffers, file handles, filesystem mutations, and directory traversal.  |
+| Stdlib Tier 2 | Streams and buffering, secure entropy, temporary objects, process spawning and pipes, typed formatting, and portable capability coverage. |
+| Stdlib Tier 3 | Time widening, sleep, deadlines and timeouts, blocking TCP/UDP/DNS networking, and JSON.                                                  |
+| Stdlib Tier 4 | File-watch contract design, IFF scope selection, and safe-concurrency semantics and runtime readiness.                                    |
+
 ## Active initiatives
 
 - Initiative [0003-c-ffi][c-ffi] is on hold while real binding experience informs a choice among direct typed
   declarations, annotated C carriers, generated shims, or another first-class C interoperability design.
-- Initiative [0005-filesystem-and-stream-io][filesystem-io] owns the Priority 1 OS error, 64-bit filesystem metadata,
-  dynamic byte-buffer, file-handle, and directory foundations; Priority 2 streams and buffering; and the roadmap's
-  Priority 4 file-watch design. Persistent file extents, positions, offsets, and timestamp seconds use `long`, while
+- Initiative [0005-filesystem-and-stream-io][filesystem-io] owns the Stdlib Tier 1 OS error, 64-bit filesystem metadata,
+  dynamic byte-buffer, file-handle, and directory foundations; Stdlib Tier 2 streams and buffering; and the roadmap's
+  Stdlib Tier 4 file-watch design. Persistent file extents, positions, offsets, and timestamp seconds use `long`, while
   in-memory lengths, indexes, and individual transfer counts remain `int`.
-- Initiative [0006-process-and-host-services][host-services] owns Priority 2 secure entropy, temporary objects, process
-  spawning, and anonymous pipes plus Priority 3 sleep, deadlines, timeouts, and general time-second widening.
-- Initiative [0007-blocking-networking][blocking-networking] promotes networking into a Priority 3 blocking IPv4/IPv6
+- Initiative [0006-process-and-host-services][host-services] owns Stdlib Tier 2 secure entropy, temporary objects,
+  process spawning, and anonymous pipes plus Stdlib Tier 3 sleep, deadlines, timeouts, and general time-second widening.
+- Initiative [0007-blocking-networking][blocking-networking] promotes networking into a Stdlib Tier 3 blocking IPv4/IPv6
   TCP, UDP, and DNS surface without selecting a portable asynchronous model prematurely.
-- Initiative [0008-data-format-modules][data-formats] owns Priority 3 JSON and a Priority 4 scope decision for the
+- Initiative [0008-data-format-modules][data-formats] owns Stdlib Tier 3 JSON and a Stdlib Tier 4 scope decision for the
   roadmap's currently unspecified `IFF` item.
-- Initiative [0009-safe-concurrency][safe-concurrency] promotes the Priority 4 concurrency direction into memory-model
-  and runtime-readiness design before safe threads, synchronization, atomics, or channels are exposed.
+- Initiative [0009-safe-concurrency][safe-concurrency] promotes the Stdlib Tier 4 concurrency direction into
+  memory-model and runtime-readiness design before safe threads, synchronization, atomics, or channels are exposed.
 - Initiative [0010-explicit-profiles-and-composable-builds][explicit-profiles] drafts caller-owned profile artifacts and
   composable compilation while preserving managed build/run ergonomics and existing cache controls. Its internal
   construction boundary landed in Refactor [2026-09-30-profile-construction-boundary-noref][profile-boundary]; Feature
@@ -337,10 +350,10 @@ split dependency or implementing that work now.
   invalidation validation, and private fallback when reuse cannot be authorized.
 - Feature [2026-06-21-cheap-string-slices-noref][cheap-string-slices] extends `dea::slice` to ARC-backed string views
   while preserving internal terminated copies for native runtime calls that require them.
-- Feature [2026-08-30-typed-formatting-noref][typed-formatting] is the Priority 2 replacement for the combinatorial
+- Feature [2026-08-30-typed-formatting-noref][typed-formatting] is the Stdlib Tier 2 replacement for the combinatorial
   print-helper surface, using typed L1 variadics with shared string and writer formatting.
-- Feature [2026-08-30-standard-library-capability-coverage-noref][stdlib-coverage] is the Priority 2 audit that records
-  portable systems capability and C99-family coverage without promising literal C99 API parity.
+- Feature [2026-08-30-standard-library-capability-coverage-noref][stdlib-coverage] is the Stdlib Tier 2 audit that
+  records portable systems capability and C99-family coverage without promising literal C99 API parity.
 - Feature [l1/work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md][preparation-reuse-efficiency]
   implements Phase 1 of five phases: equivalent bundled roots now retain managed providers, with `--no-managed-stdlib`
   for intentional source imports. Digest/runtime evidence reuse, cheaper validation, and warm-build attribution remain
