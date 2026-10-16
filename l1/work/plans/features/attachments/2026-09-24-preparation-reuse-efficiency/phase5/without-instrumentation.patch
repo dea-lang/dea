@@ -1,0 +1,604 @@
+--- a/l1/compiler/src/analysis.l0
++++ b/l1/compiler/src/analysis.l0
+@@ -22,7 +22,6 @@
+ import signatures;
+ import source_paths;
+ import util.log;
+-import util.timing;
+ import interface_projection;
+
+ /**
+@@ -33,62 +32,58 @@
+  * @return The complete analysis result including semantic context.
+  */
+ func analysis_analyze_driver_state(driver_state: DriverState*, cfg: LogConfig*) -> AnalysisResult* {
+-    with (let timing = timing_begin(cfg, "application-analysis", "") => timing_free(timing)) {
+-        let result = new AnalysisResult(
+-            driver_state,
+-            diag_create(),
+-            null,
+-            null,
+-            null,
+-            spm_create(),
+-            sim_create(),
+-            spm_create()
+-        );
+-        for (let i = 0; i < driver_diag_count(driver_state); i = i + 1) {
+-            diag_copy(result.diags, driver_diag_get(driver_state, i));
+-        }
++    let result = new AnalysisResult(
++        driver_state,
++        diag_create(),
++        null,
++        null,
++        null,
++        spm_create(),
++        sim_create(),
++        spm_create()
++    );
++    for (let i = 0; i < driver_diag_count(driver_state); i = i + 1) {
++        diag_copy(result.diags, driver_diag_get(driver_state, i));
++    }
+
+-        if (driver_has_errors(driver_state)) {
+-            timing_end(timing, false);
+-            return result;
+-        }
+-
+-        log_stage(cfg, "Resolving module-level names", "");
+-        let nr_diag_start = diag_count(result.diags);
+-        let names = nr_resolve(driver_state, result.diags);
+-        result.names = names;
+-        log_debug(cfg, "Name resolution produced " + int_to_string(diag_count(result.diags) - nr_diag_start) + " diagnostic(s)");
+-
+-        log_stage(cfg, "Resolving type signatures", "");
+-        let sigs = sig_resolve(driver_state, names, result.diags);
+-        result.signatures = sigs;
+-        with (let sb = sb_create() => sb_free(sb)) {
+-            sb_append(sb, "Signature resolution found ");
+-            sb_append(sb, int_to_string(spm_size(sigs.func_types)));
+-            sb_append(sb, " function(s), ");
+-            sb_append(sb, int_to_string(spm_size(sigs.struct_infos)));
+-            sb_append(sb, " struct(s), ");
+-            sb_append(sb, int_to_string(spm_size(sigs.enum_infos)));
+-            sb_append(sb, " enum(s), ");
+-            sb_append(sb, int_to_string(spm_size(sigs.let_types)));
+-            sb_append(sb, " top-level binding(s)");
+-            log_debug(cfg, sb_to_string(sb));
+-        }
+-
+-        log_stage(cfg, "Resolving local scopes", "");
+-        let local_envs = locals_resolve(driver_state, result.diags);
+-        result.locals_result = local_envs;
+-        log_debug(cfg, "Local scope resolution processed " + int_to_string(locals_env_count(local_envs)) + " function(s)");
+-
+-        log_stage(cfg, "Type-checking expressions", "");
+-        let expr_diag_start = diag_count(result.diags);
+-        expr_types_check(result);
+-        log_debug(cfg, "Expression type checking produced " + int_to_string(diag_count(result.diags) - expr_diag_start) + " diagnostic(s)");
+-        log_info(cfg, "Analysis complete: " + int_to_string(analysis_diag_count(result)) + " total diagnostic(s), " + int_to_string(result.diags.error_count) + " error(s)");
+-
+-        timing_end(timing, !analysis_has_errors(result));
++    if (driver_has_errors(driver_state)) {
+         return result;
+     }
++
++    log_stage(cfg, "Resolving module-level names", "");
++    let nr_diag_start = diag_count(result.diags);
++    let names = nr_resolve(driver_state, result.diags);
++    result.names = names;
++    log_debug(cfg, "Name resolution produced " + int_to_string(diag_count(result.diags) - nr_diag_start) + " diagnostic(s)");
++
++    log_stage(cfg, "Resolving type signatures", "");
++    let sigs = sig_resolve(driver_state, names, result.diags);
++    result.signatures = sigs;
++    with (let sb = sb_create() => sb_free(sb)) {
++        sb_append(sb, "Signature resolution found ");
++        sb_append(sb, int_to_string(spm_size(sigs.func_types)));
++        sb_append(sb, " function(s), ");
++        sb_append(sb, int_to_string(spm_size(sigs.struct_infos)));
++        sb_append(sb, " struct(s), ");
++        sb_append(sb, int_to_string(spm_size(sigs.enum_infos)));
++        sb_append(sb, " enum(s), ");
++        sb_append(sb, int_to_string(spm_size(sigs.let_types)));
++        sb_append(sb, " top-level binding(s)");
++        log_debug(cfg, sb_to_string(sb));
++    }
++
++    log_stage(cfg, "Resolving local scopes", "");
++    let local_envs = locals_resolve(driver_state, result.diags);
++    result.locals_result = local_envs;
++    log_debug(cfg, "Local scope resolution processed " + int_to_string(locals_env_count(local_envs)) + " function(s)");
++
++    log_stage(cfg, "Type-checking expressions", "");
++    let expr_diag_start = diag_count(result.diags);
++    expr_types_check(result);
++    log_debug(cfg, "Expression type checking produced " + int_to_string(diag_count(result.diags) - expr_diag_start) + " diagnostic(s)");
++    log_info(cfg, "Analysis complete: " + int_to_string(analysis_diag_count(result)) + " total diagnostic(s), " + int_to_string(result.diags.error_count) + " error(s)");
++
++    return result;
+ }
+
+ /**
+--- a/l1/compiler/src/backend.l0
++++ b/l1/compiler/src/backend.l0
+@@ -8,7 +8,6 @@
+ import codegen_options;
+ import sem_context;
+ import util.log;
+-import util.timing;
+ import backend.output;
+ import backend.state;
+
+@@ -27,16 +26,11 @@
+     opts: CodegenOptions*,
+     cfg: LogConfig*
+ ) -> string {
+-    with (let timing = timing_begin(cfg, "c-generation", "") => timing_free(timing)) {
+-        if (analysis_has_errors(result)) {
+-            be_ice("[ICE-9303] backend_generate_module requires analysis without errors");
+-        }
++    if (analysis_has_errors(result)) {
++        be_ice("[ICE-9303] backend_generate_module requires analysis without errors");
++    }
+
+-        let output = "";
+-        with (let self = be_create_module(result, target_module, opts, cfg) => be_free(self)) {
+-            output = be_generate_output(self);
+-        }
+-        timing_end(timing, true);
+-        return output;
++    with (let self = be_create_module(result, target_module, opts, cfg) => be_free(self)) {
++        return be_generate_output(self);
+     }
+ }
+--- a/l1/compiler/src/compile_driver/compile.l0
++++ b/l1/compiler/src/compile_driver/compile.l0
+@@ -11,7 +11,6 @@
+ import std.vector;
+ import util.diag;
+ import util.log;
+-import util.timing;
+ import analysis;
+ import backend;
+ import build_driver;
+@@ -221,10 +220,7 @@
+         log_info(cfg, "Compiling module object:");
+         log_info(cfg, bd_join_display_words(command_words));
+         let compile_cmd = cd_compile_shell_command(txn, command_words);
+-        let compile_timing = timing_begin(cfg, "c-compilation", "");
+         let compile_rc = system(compile_cmd);
+-        timing_end(compile_timing, compile_rc == 0);
+-        timing_free(compile_timing);
+         let compile_failed = compile_rc != 0;
+         if (compile_failed) {
+             cd_error(diags, "L1C-0010", "C compilation failed:", "");
+@@ -410,11 +406,8 @@
+         log_info(cfg, "Compiling module object '" +
+             module_name + "':");
+         log_info(cfg, bd_join_display_words(command_words));
+-        let compile_cmd = cd_compile_shell_command(txn, command_words);
+-        let compile_timing = timing_begin(cfg, "c-compilation", "");
+-        let compile_rc = system(compile_cmd);
+-        timing_end(compile_timing, compile_rc == 0);
+-        timing_free(compile_timing);
++        let compile_rc = system(
++            cd_compile_shell_command(txn, command_words));
+         let compile_failed = compile_rc != 0;
+         if (compile_failed) {
+             cd_error(
+--- a/l1/compiler/src/driver/resolve.l0
++++ b/l1/compiler/src/driver/resolve.l0
+@@ -14,7 +14,6 @@
+ import util.diag;
+ import util.strings;
+ import util.log;
+-import util.timing;
+ import dea_prelude;
+ import module_graph;
+ import source_paths;
+@@ -294,74 +293,71 @@
+                 }
+             }
+             if (interface_path_opt != null) {
+-                with (let timing = timing_begin(ctx.cfg, "interface-loading", "load-resolve") => timing_free(timing)) {
+-                    let interface_path = interface_path_opt as string;
+-                    if (!std.fs::is_file(interface_path)) {
+-                        dr_emit_error(state.diags, "DRV-0075",
+-                            "selected module interface is not a readable regular file: " + interface_path, interface_path);
+-                        return dr_fail_interface(state, module_name, interface_path, managed_selected);
+-                    }
+-                    let interface_text_opt = read_file(interface_path);
+-                    if (interface_text_opt == null) {
+-                        dr_emit_error(state.diags, "DRV-0075",
+-                            "cannot read selected module interface: " + interface_path, interface_path);
+-                        return dr_fail_interface(state, module_name, interface_path, managed_selected);
+-                    }
+-                    let interface_raw = interface_text_opt as string;
+-                    if (!us_is_valid_utf8(interface_raw)) {
+-                        dr_emit_error(state.diags, "DRV-0076",
+-                            "selected module interface is not valid UTF-8", interface_path);
+-                        return dr_fail_interface(state, module_name, interface_path, managed_selected);
+-                    }
+-                    let interface_text = us_strip_utf8_bom(interface_raw);
+-                    sv_push(state.source_names, interface_path);
+-                    sv_push(state.source_texts, interface_text);
+-
+-                    let parsed = pi_parse_interface(interface_text, interface_path);
+-                    dr_copy_interface_diags(state.diags, parsed);
+-                    if (ipr_has_errors(parsed) || parsed.interface == null) {
+-                        ipr_free(parsed);
+-                        return dr_fail_interface(state, module_name, interface_path, managed_selected);
+-                    }
+-
+-                    let raw2 = parsed.interface as ModuleInterface*;
+-                    parsed.interface = null;
++                let interface_path = interface_path_opt as string;
++                if (!std.fs::is_file(interface_path)) {
++                    dr_emit_error(state.diags, "DRV-0075",
++                        "selected module interface is not a readable regular file: " + interface_path, interface_path);
++                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
++                }
++                let interface_text_opt = read_file(interface_path);
++                if (interface_text_opt == null) {
++                    dr_emit_error(state.diags, "DRV-0075",
++                        "cannot read selected module interface: " + interface_path, interface_path);
++                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
++                }
++                let interface_raw = interface_text_opt as string;
++                if (!us_is_valid_utf8(interface_raw)) {
++                    dr_emit_error(state.diags, "DRV-0076",
++                        "selected module interface is not valid UTF-8", interface_path);
++                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
++                }
++                let interface_text = us_strip_utf8_bom(interface_raw);
++                sv_push(state.source_names, interface_path);
++                sv_push(state.source_texts, interface_text);
++
++                let parsed = pi_parse_interface(interface_text, interface_path);
++                dr_copy_interface_diags(state.diags, parsed);
++                if (ipr_has_errors(parsed) || parsed.interface == null) {
+                     ipr_free(parsed);
+-                    if (raw2.module_name != module_name) {
+-                        let msg = "module name mismatch: file " + interface_path + " declares '" + raw2.module_name;
+-                        dr_emit_error(state.diags, "DRV-0020",
+-                            msg + "' but was loaded as '" + module_name + "'", interface_path);
+-                        mi_free(raw2);
+-                        return dr_fail_interface(state, module_name, interface_path, managed_selected);
+-                    }
+-
+-                    if (!ifp_verify(raw2, state.diags, interface_path)) {
+-                        mi_free(raw2);
+-                        return dr_fail_interface(state, module_name, interface_path, managed_selected);
+-                    }
+-
+-                    let artifacts = mg_artifacts_from_interface(module_name, interface_path, state.diags);
+-                    if (artifacts == null) {
+-                        mi_free(raw2);
+-                        return dr_fail_interface(state, module_name, interface_path, managed_selected);
+-                    }
+-                    let node2 = mg_node_from_interface(module_name, interface_path,
+-                        artifacts as ModuleArtifactPaths*);
+-                    node2.managed = managed_selected;
+-                    node2.state = MNS_RESOLVING;
+-                    if (!dr_add_graph_node(state, node2)) {
+-                        mi_free(raw2);
+-                        return false;
+-                    }
+-
+-                    dr_register_graph_interface(state, raw2);
+-                    timing_end(timing, true);
+-                    let resolved = dr_resolve_interface_dependencies(ctx, node2, raw2, next_stack);
+-                    if (!resolved && managed_selected) {
+-                        dr_emit_error(state.diags, "L1C-2158", "invalid bundled interface dependency graph; rerun make build or repair installation", interface_path);
+-                    }
+-                    return resolved;
+-                }
++                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
++                }
++
++                let raw2 = parsed.interface as ModuleInterface*;
++                parsed.interface = null;
++                ipr_free(parsed);
++                if (raw2.module_name != module_name) {
++                    let msg = "module name mismatch: file " + interface_path + " declares '" + raw2.module_name;
++                    dr_emit_error(state.diags, "DRV-0020",
++                        msg + "' but was loaded as '" + module_name + "'", interface_path);
++                    mi_free(raw2);
++                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
++                }
++
++                if (!ifp_verify(raw2, state.diags, interface_path)) {
++                    mi_free(raw2);
++                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
++                }
++
++                let artifacts = mg_artifacts_from_interface(module_name, interface_path, state.diags);
++                if (artifacts == null) {
++                    mi_free(raw2);
++                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
++                }
++                let node2 = mg_node_from_interface(module_name, interface_path,
++                    artifacts as ModuleArtifactPaths*);
++                node2.managed = managed_selected;
++                node2.state = MNS_RESOLVING;
++                if (!dr_add_graph_node(state, node2)) {
++                    mi_free(raw2);
++                    return false;
++                }
++
++                dr_register_graph_interface(state, raw2);
++                let resolved = dr_resolve_interface_dependencies(ctx, node2, raw2, next_stack);
++                if (!resolved && managed_selected) {
++                    dr_emit_error(state.diags, "L1C-2158", "invalid bundled interface dependency graph; rerun make build or repair installation", interface_path);
++                }
++                return resolved;
+             }
+
+             if (ord(ctx.policy) == ord(MRP_REQUIRE_INTERFACE)) {
+@@ -560,31 +556,28 @@
+ func dr_analyze_entry_core(search_paths: SourceSearchPaths*, entry_module: string,
+                            interface_roots: StringVector*, policy: ModuleResolutionPolicy,
+                            artifact_root: string?, interfaces: VectorBase*?, cfg: LogConfig*) -> DriverState* {
+-    with (let timing = timing_begin(cfg, "load-resolve", "") => timing_free(timing)) {
+-        log_info(cfg, "Starting analysis for entry module '" + entry_module + "'");
+-        log_stage(cfg, "Building compilation unit", entry_module);
+-        let state = dr_state_create(entry_module, interfaces);
+-        with (let candidates = dr_build_interface_candidates(state, interfaces) => spm_free(candidates)) {
+-            if (dr_validate_interface_roots(state, interface_roots) && !driver_has_errors(state)) {
+-                with (
+-                    let ctx = new DriverResolutionContext(
+-                        state, candidates, search_paths, interface_roots, policy, artifact_root, cfg
+-                    ) => drop ctx,
+-                    let stack = sv_create(8) => sv_free(stack)
+-                ) {
+-                    dr_resolve_module(ctx, stack, entry_module);
+-                }
+-            }
+-            if (!driver_has_errors(state)) {
+-                dr_normalize_graph_interfaces(state);
+-                dr_activate_graph_interfaces(state);
+-            }
+-            with (let names = mg_node_names_sorted(state.graph) => sv_free(names)) {
+-                log_debug(cfg, "Module graph contains " + int_to_string(sv_size(names)) +
+-                    " node(s): " + join_s(names, ", "));
+-            }
+-        }
+-        timing_end(timing, !driver_has_errors(state));
+-        return state;
+-    }
+-}
++    log_info(cfg, "Starting analysis for entry module '" + entry_module + "'");
++    log_stage(cfg, "Building compilation unit", entry_module);
++    let state = dr_state_create(entry_module, interfaces);
++    with (let candidates = dr_build_interface_candidates(state, interfaces) => spm_free(candidates)) {
++        if (dr_validate_interface_roots(state, interface_roots) && !driver_has_errors(state)) {
++            with (
++                let ctx = new DriverResolutionContext(
++                    state, candidates, search_paths, interface_roots, policy, artifact_root, cfg
++                ) => drop ctx,
++                let stack = sv_create(8) => sv_free(stack)
++            ) {
++                dr_resolve_module(ctx, stack, entry_module);
++            }
++        }
++        if (!driver_has_errors(state)) {
++            dr_normalize_graph_interfaces(state);
++            dr_activate_graph_interfaces(state);
++        }
++        with (let names = mg_node_names_sorted(state.graph) => sv_free(names)) {
++            log_debug(cfg, "Module graph contains " + int_to_string(sv_size(names)) +
++                " node(s): " + join_s(names, ", "));
++        }
++    }
++    return state;
++}
+--- a/l1/compiler/src/link_driver/toolchain.l0
++++ b/l1/compiler/src/link_driver/toolchain.l0
+@@ -14,7 +14,6 @@
+ import std.vector;
+ import util.diag;
+ import util.log;
+-import util.timing;
+ import build_driver;
+ import cli_args.model;
+ import compile_driver.toolchain;
+@@ -674,19 +673,15 @@
+             scratch.wrapper_object
+         );
+         log_info(cfg, "Compiling standalone-link wrapper:");
+-        let compile_words_timing = timing_begin(cfg, "wrapper-c-compilation", "");
+-        let compile_words_ok = ld_run_host_command(
+-            compile_words,
+-            scratch.compile_stdout,
+-            scratch.compile_stderr,
+-            null,
+-            "L1C-2108",
+-            "standalone-link wrapper compilation failed",
+-            cfg,
+-            diags);
+-        timing_end(compile_words_timing, compile_words_ok);
+-        timing_free(compile_words_timing);
+-        if (!compile_words_ok) {
++        if (!ld_run_host_command(
++                compile_words,
++                scratch.compile_stdout,
++                scratch.compile_stderr,
++                null,
++                "L1C-2108",
++                "standalone-link wrapper compilation failed",
++                cfg,
++                diags)) {
+             return false;
+         }
+         if (!ld_validate_wrapper_object(scratch.wrapper_object, diags)) {
+@@ -703,19 +698,15 @@
+             output_path
+         );
+         log_info(cfg, "Linking standalone executable:");
+-        let link_words_timing = timing_begin(cfg, "linking", "");
+-        let link_words_ok = ld_run_host_command(
+-            link_words,
+-            scratch.link_stdout,
+-            scratch.link_stderr,
+-            scratch.link_response,
+-            "L1C-2109",
+-            "standalone host link failed",
+-            cfg,
+-            diags);
+-        timing_end(link_words_timing, link_words_ok);
+-        timing_free(link_words_timing);
+-        if (!link_words_ok) {
++        if (!ld_run_host_command(
++                link_words,
++                scratch.link_stdout,
++                scratch.link_stderr,
++                scratch.link_response,
++                "L1C-2109",
++                "standalone host link failed",
++                cfg,
++                diags)) {
+             return false;
+         }
+     }
+--- a/l1/compiler/src/util/timing.l0
++++ /dev/null
+@@ -1,79 +0,0 @@
+-/*
+- * SPDX-License-Identifier: MIT OR Apache-2.0
+- * Copyright (c) 2026 gwz
+- */
+-
+-module util.timing;
+-
+-import std.integer;
+-import std.io;
+-import std.string;
+-import std.time;
+-import std.text;
+-import util.log;
+-
+-/** Compiler-private ABI writes one native int32 seconds/nanoseconds pair. */
+-extern func l1c_timing_monotonic(output: byte*, capacity: int) -> int;
+-
+-/** Read the private host clock without depending on bootstrap-runtime clock feature macros. */
+-func timing_now() -> MonotonicTime? {
+-    with (let parts = new MonotonicTime(0, 0) => drop parts) {
+-        let storage = parts as void*;
+-        if (l1c_timing_monotonic(storage as byte*, sizeof(MonotonicTime)) != 1 ||
+-            parts.sec < 0 || !is_valid_nsec(parts.nsec)) { return null; }
+-        return MonotonicTime(parts.sec, parts.nsec);
+-    }
+-}
+-
+-/** One debug-only monotonic span; the caller owns its optional allocation. */
+-struct CompilerTimingSpan {
+-    scope: string;
+-    parent: string;
+-    started: MonotonicTime?;
+-    closed: bool;
+-}
+-
+-/** Return microseconds between controlled snapshots, or null for unusable clocks/overflow. */
+-func timing_elapsed_us(started: MonotonicTime?, ended: MonotonicTime?) -> int? {
+-    if (started == null || ended == null) { return null; }
+-    let elapsed = monotonic_diff(started as MonotonicTime, ended as MonotonicTime);
+-    if (elapsed == null) { return null; }
+-    let duration = elapsed as Duration;
+-    let seconds = checked_mul_int(duration.sec, 1000000)?;
+-    return checked_add_int(seconds, duration.nsec / 1000);
+-}
+-
+-/** Format a record using compiler-owned constant scope names (never paths or source text). */
+-func timing_record(scope: string, parent: string, elapsed: int?, success: bool) -> string {
+-    let duration = "null";
+-    if (elapsed != null) { duration = int_to_string(elapsed as int); }
+-    let succeeded = "false";
+-    if (success) { succeeded = "true"; }
+-    return "Compiler observation: {\"schema\":1,\"event\":\"span\",\"scope\":\"" + scope +
+-        "\",\"parent\":\"" + parent + "\",\"elapsed_us\":" + duration + ",\"success\":" + succeeded + "}";
+-}
+-
+-/** Begin an optional debug span; ordinary invocations do not allocate or read the clock. */
+-func timing_begin(cfg: LogConfig*, scope: string, parent: string) -> CompilerTimingSpan*? {
+-    if (ord(cfg.level) < ord(LL_DEBUG)) { return null; }
+-    return new CompilerTimingSpan(scope, parent, timing_now(), false);
+-}
+-
+-/** Complete a span once, before its child recursion or later cleanup when necessary. */
+-func timing_end(self: CompilerTimingSpan*?, success: bool) {
+-    if (self == null) { return; }
+-    let span = self as CompilerTimingSpan*;
+-    if (span.closed) { return; }
+-    let ended = timing_now();
+-    span.closed = true;
+-    err_printl_s(timing_record(span.scope, span.parent, timing_elapsed_us(span.started, ended), success));
+-}
+-
+-/** Release a span, preserving a failed partial duration on an early return. */
+-func timing_free(self: CompilerTimingSpan*?) {
+-    if (self != null) {
+-        timing_end(self, false);
+-        let span = self as CompilerTimingSpan*;
+-        drop span;
+-    }
+-}
+--- a/l1/compiler/support/compiler_support.c
++++ b/l1/compiler/support/compiler_support.c
+@@ -25,7 +25,6 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+-#include <time.h>
+
+ #if defined(_WIN32)
+ #ifndef WIN32_LEAN_AND_MEAN
+@@ -42,48 +41,6 @@
+ #define S_ISVTX 01000
+ #endif
+ #endif
+-
+-/**
+- * Capture a compiler-private monotonic snapshot as two native int32 values.
+- *
+- * The caller supplies at least eight bytes for seconds and nanoseconds. Failed
+- * clocks, invalid buffers, and unrepresentable readings leave the buffer intact.
+- * This translation unit enables POSIX clock declarations independently of the
+- * bootstrap runtime's strict-C99 feature-test configuration.
+- */
+-int32_t l1c_timing_monotonic(uint8_t *output, int32_t capacity) {
+-    int32_t parts[2];
+-    if (output == NULL || capacity < (int32_t)sizeof(parts)) return 0;
+-#if defined(_WIN32)
+-    {
+-        LARGE_INTEGER counter, frequency;
+-        int64_t seconds, remainder;
+-        long double nanoseconds;
+-        if (!QueryPerformanceCounter(&counter) || !QueryPerformanceFrequency(&frequency) ||
+-            counter.QuadPart < 0 || frequency.QuadPart <= 0) return 0;
+-        seconds = counter.QuadPart / frequency.QuadPart;
+-        remainder = counter.QuadPart % frequency.QuadPart;
+-        if (seconds > INT32_MAX) return 0;
+-        nanoseconds = (long double)remainder * 1000000000.0L / (long double)frequency.QuadPart;
+-        if (nanoseconds < 0 || nanoseconds >= 1000000000.0L) return 0;
+-        parts[0] = (int32_t)seconds;
+-        parts[1] = (int32_t)nanoseconds;
+-    }
+-#elif defined(CLOCK_MONOTONIC)
+-    {
+-        struct timespec snapshot;
+-        if (clock_gettime(CLOCK_MONOTONIC, &snapshot) != 0 || snapshot.tv_sec < 0 ||
+-            (uintmax_t)snapshot.tv_sec > INT32_MAX || snapshot.tv_nsec < 0 ||
+-            snapshot.tv_nsec >= 1000000000L) return 0;
+-        parts[0] = (int32_t)snapshot.tv_sec;
+-        parts[1] = (int32_t)snapshot.tv_nsec;
+-    }
+-#else
+-    return 0;
+-#endif
+-    memcpy(output, parts, sizeof(parts));
+-    return 1;
+-}
+
+ /* Return actual-host Darwin identity without consulting CLI test overrides. */
+ int32_t l1c_fs_host_is_darwin(void) {

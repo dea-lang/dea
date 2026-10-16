@@ -14,6 +14,7 @@ import std.text;
 import std.vector;
 import util.diag;
 import util.log;
+import util.timing;
 import build_driver;
 import cli_args.model;
 import compile_driver.toolchain;
@@ -673,15 +674,19 @@ func ld_execute_plan(
             scratch.wrapper_object
         );
         log_info(cfg, "Compiling standalone-link wrapper:");
-        if (!ld_run_host_command(
-                compile_words,
-                scratch.compile_stdout,
-                scratch.compile_stderr,
-                null,
-                "L1C-2108",
-                "standalone-link wrapper compilation failed",
-                cfg,
-                diags)) {
+        let compile_words_timing = timing_begin(cfg, "wrapper-c-compilation", "");
+        let compile_words_ok = ld_run_host_command(
+            compile_words,
+            scratch.compile_stdout,
+            scratch.compile_stderr,
+            null,
+            "L1C-2108",
+            "standalone-link wrapper compilation failed",
+            cfg,
+            diags);
+        timing_end(compile_words_timing, compile_words_ok);
+        timing_free(compile_words_timing);
+        if (!compile_words_ok) {
             return false;
         }
         if (!ld_validate_wrapper_object(scratch.wrapper_object, diags)) {
@@ -698,15 +703,19 @@ func ld_execute_plan(
             output_path
         );
         log_info(cfg, "Linking standalone executable:");
-        if (!ld_run_host_command(
-                link_words,
-                scratch.link_stdout,
-                scratch.link_stderr,
-                scratch.link_response,
-                "L1C-2109",
-                "standalone host link failed",
-                cfg,
-                diags)) {
+        let link_words_timing = timing_begin(cfg, "linking", "");
+        let link_words_ok = ld_run_host_command(
+            link_words,
+            scratch.link_stdout,
+            scratch.link_stderr,
+            scratch.link_response,
+            "L1C-2109",
+            "standalone host link failed",
+            cfg,
+            diags);
+        timing_end(link_words_timing, link_words_ok);
+        timing_free(link_words_timing);
+        if (!link_words_ok) {
             return false;
         }
     }

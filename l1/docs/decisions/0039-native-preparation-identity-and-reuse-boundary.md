@@ -72,6 +72,20 @@ using ordinary best-effort writes; failed writes or lost updates only reduce reu
 protocol, history or pruning service. Existing cache accumulation, manual deletion and allocation-failure policy remain
 unchanged. No cwd-independence classifier or observation-sharing proof is required.
 
+Discovery keeps whole-observation invalidation. On macOS, Apple Clang batches the four generated-C dependency
+configurations and all ten runtime translation units in separate invocations under their respective options. Batch
+output must identify every expected source exactly once before any evidence is retained. Unavailable, ambiguous, failed,
+timed-out or oversized batches retry individual probes. Other compilers/platforms use individual probes directly: the
+Linux comparison did not establish a consumer improvement, and Clang multi-source commands can add frontend process
+startups. Batching preserves input and negative-search coverage. Finer-grained persisted observation reuse remains
+deferred.
+
+Preparation retains its dependency-free portable C SHA-256 backend. The direct-block and round-unrolled alternatives did
+not meet their predeclared consumer gates; platform acceleration shows large-file headroom with small-file setup costs.
+System crypto dependencies, platform-specific dispatch and digest-context failure cleanup require a separate integration
+and consumer-performance gate across supported platforms. These experiments do not adopt a system crypto dependency or
+change digest bytes, stable-read checks, content coverage or metadata policy.
+
 Managed artifact validation checks the complete manifest inventory, relative containment, sizes/digests and exact
 selected semantic bytes. Native contents remain semantically opaque; `.l1m` parsing, fingerprints, graph and lifecycle
 validation remain authoritative.
@@ -106,8 +120,8 @@ general toolchain or project build system.
 
 - [l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md][profile-boundary]
 
-- [l1/work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md][reuse-efficiency] (Phase 2 completed; parent
-  plan remains active).
+- [l1/work/plans/features/closed/2026-09-24-preparation-reuse-efficiency-noref.md][reuse-efficiency] (digest sharing,
+  scoped discovery and retained portable hashing).
 
 - [l1/work/plans/refactors/closed/2026-09-15-native-identity-environment-text-reassessment-noref.md][environment-identity]
 
@@ -130,5 +144,5 @@ general toolchain or project build system.
 [preparation-economy]: ../../work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md
 [preparation-plan]: ../../work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
 [profile-boundary]: ../../work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md
-[reuse-efficiency]: ../../work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md
+[reuse-efficiency]: ../../work/plans/features/closed/2026-09-24-preparation-reuse-efficiency-noref.md
 [separate-compilation]: ../reference/separate-compilation.md

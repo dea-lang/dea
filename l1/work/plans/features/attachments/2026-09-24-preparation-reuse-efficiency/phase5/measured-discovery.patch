@@ -1,0 +1,68 @@
+--- a/l1/compiler/support/preparation/identity.h
++++ b/l1/compiler/support/preparation/identity.h
+@@ -1218,26 +1218,14 @@
+     return words;
+ }
+
+-/** Enable batching only for the measured Apple Clang path; other adapters retain individual probes. */
+-static int pc_dependency_batch_supported(const PcContext *c) {
+-#if defined(__APPLE__)
+-    return c->family && !strcmp(c->family, "clang") && c->description &&
+-           strstr(c->description, "Apple clang") != NULL;
+-#else
+-    (void)c;
+-    return 0;
+-#endif
+-}
+-
+ /** Retry individually when batch output, resource bounds or compiler support are unavailable. */
+-static int pc_dependency_probes(PcContext *c, const PcJson *sources, int runtime, int attempt_batch,
+-                                 const char *include, const char *internal, const char *scratch,
+-                                 const char *depfile, PcJson *paths, PcJson *dependencies) {
++static int pc_dependency_probes(PcContext *c, const PcJson *sources, int runtime, const char *include,
++                                 const char *internal, const char *scratch, const char *depfile,
++                                 PcJson *paths, PcJson *dependencies) {
+     const PcJson *source;
+     PcJson *words;
+     PcProbe p;
+-    int index = 0;
+-    if (attempt_batch) {
++    if (strcmp(c->family, "tcc")) {
+         int ok;
+         words = pc_dependency_words(c, runtime, include, internal);
+         pj_add(words, NULL, pj_string("-MT"));
+@@ -1254,22 +1242,12 @@
+     }
+     for (source = sources->child; source; source = source->next) {
+         char *deps;
+-        char purpose[160] = "";
+         size_t n;
+         words = pc_dependency_words(c, runtime, include, internal);
+         pj_add(words, NULL, pj_string("-MF"));
+         pj_add(words, NULL, pj_string(depfile));
+         pj_add(words, NULL, pj_string(source->text));
+-        if (pc_verbosity(c) >= 3) {
+-            if (runtime)
+-                snprintf(purpose, sizeof(purpose), "runtime dependencies: %s",
+-                         index == 9 ? "dea_rt_trace" : pc_runtime_sources[index]);
+-            else
+-                snprintf(purpose, sizeof(purpose), "generated-C dependencies: real=%d,float=%d",
+-                         index & 1, (index >> 1) & 1);
+-        }
+-        ++index;
+-        p = pc_context_probe(c, words, purpose);
++        p = pc_context_probe(c, words, runtime ? "runtime dependencies: individual" : "generated-C dependencies: individual");
+         if (!pc_probe_ok(c, &p, "SDK and runtime header dependencies")) { pc_probe_free(&p); return 0; }
+         pc_probe_free(&p);
+         deps = pc_read_file(depfile, 4 * 1024 * 1024, &n);
+@@ -1520,8 +1498,8 @@
+             pj_add(sources, NULL, pj_string(path)); free(path);
+             if (!ok) break;
+         }
+-        if (ok) ok = pc_dependency_probes(c, sources, i, pc_dependency_batch_supported(c), public,
+-                                          internal, scratch, depfile, paths, dependencies);
++        if (ok) ok = pc_dependency_probes(c, sources, i, public, internal, scratch, depfile,
++                                          paths, dependencies);
+         pj_free(sources); free(public);
+         if (!ok) goto fail;
+     }

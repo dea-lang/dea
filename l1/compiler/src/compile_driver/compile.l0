@@ -11,6 +11,7 @@ import std.system;
 import std.vector;
 import util.diag;
 import util.log;
+import util.timing;
 import analysis;
 import backend;
 import build_driver;
@@ -220,7 +221,10 @@ func cd_compile_analyzed(
         log_info(cfg, "Compiling module object:");
         log_info(cfg, bd_join_display_words(command_words));
         let compile_cmd = cd_compile_shell_command(txn, command_words);
+        let compile_timing = timing_begin(cfg, "c-compilation", "");
         let compile_rc = system(compile_cmd);
+        timing_end(compile_timing, compile_rc == 0);
+        timing_free(compile_timing);
         let compile_failed = compile_rc != 0;
         if (compile_failed) {
             cd_error(diags, "L1C-0010", "C compilation failed:", "");
@@ -406,8 +410,11 @@ func cd_compile_analyzed_to_workspace(
         log_info(cfg, "Compiling module object '" +
             module_name + "':");
         log_info(cfg, bd_join_display_words(command_words));
-        let compile_rc = system(
-            cd_compile_shell_command(txn, command_words));
+        let compile_cmd = cd_compile_shell_command(txn, command_words);
+        let compile_timing = timing_begin(cfg, "c-compilation", "");
+        let compile_rc = system(compile_cmd);
+        timing_end(compile_timing, compile_rc == 0);
+        timing_free(compile_timing);
         let compile_failed = compile_rc != 0;
         if (compile_failed) {
             cd_error(

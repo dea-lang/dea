@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -41,6 +42,48 @@
 #define S_ISVTX 01000
 #endif
 #endif
+
+/**
+ * Capture a compiler-private monotonic snapshot as two native int32 values.
+ *
+ * The caller supplies at least eight bytes for seconds and nanoseconds. Failed
+ * clocks, invalid buffers, and unrepresentable readings leave the buffer intact.
+ * This translation unit enables POSIX clock declarations independently of the
+ * bootstrap runtime's strict-C99 feature-test configuration.
+ */
+int32_t l1c_timing_monotonic(uint8_t *output, int32_t capacity) {
+    int32_t parts[2];
+    if (output == NULL || capacity < (int32_t)sizeof(parts)) return 0;
+#if defined(_WIN32)
+    {
+        LARGE_INTEGER counter, frequency;
+        int64_t seconds, remainder;
+        long double nanoseconds;
+        if (!QueryPerformanceCounter(&counter) || !QueryPerformanceFrequency(&frequency) ||
+            counter.QuadPart < 0 || frequency.QuadPart <= 0) return 0;
+        seconds = counter.QuadPart / frequency.QuadPart;
+        remainder = counter.QuadPart % frequency.QuadPart;
+        if (seconds > INT32_MAX) return 0;
+        nanoseconds = (long double)remainder * 1000000000.0L / (long double)frequency.QuadPart;
+        if (nanoseconds < 0 || nanoseconds >= 1000000000.0L) return 0;
+        parts[0] = (int32_t)seconds;
+        parts[1] = (int32_t)nanoseconds;
+    }
+#elif defined(CLOCK_MONOTONIC)
+    {
+        struct timespec snapshot;
+        if (clock_gettime(CLOCK_MONOTONIC, &snapshot) != 0 || snapshot.tv_sec < 0 ||
+            (uintmax_t)snapshot.tv_sec > INT32_MAX || snapshot.tv_nsec < 0 ||
+            snapshot.tv_nsec >= 1000000000L) return 0;
+        parts[0] = (int32_t)snapshot.tv_sec;
+        parts[1] = (int32_t)snapshot.tv_nsec;
+    }
+#else
+    return 0;
+#endif
+    memcpy(output, parts, sizeof(parts));
+    return 1;
+}
 
 /* Return actual-host Darwin identity without consulting CLI test overrides. */
 int32_t l1c_fs_host_is_darwin(void) {

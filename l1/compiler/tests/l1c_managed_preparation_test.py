@@ -158,6 +158,33 @@ def main() -> int:
         bundled = str(Path(env["L1_HOME"]) / "shared/l1/stdlib")
         implicit = call("--run", *common, "--no-auto-prepare", "app", "-vvv")
         explicit = call("--run", *common, "--no-auto-prepare", "--sys-root", bundled, "app", "-vvv")
+        spans = [json.loads(line.partition(": ")[2]) for line in implicit.stderr.splitlines()
+                 if line.startswith("Compiler observation: ")]
+        required_scopes = {"load-resolve", "interface-loading", "application-analysis", "c-generation",
+                           "c-compilation", "wrapper-c-compilation", "linking"}
+        assert {span["scope"] for span in spans} == required_scopes, spans
+        assert all(span["success"] for span in spans), spans
+        assert all(span["parent"] == ("load-resolve" if span["scope"] == "interface-loading" else "")
+                   for span in spans), spans
+        assert "Compiler observation:" not in warm_preparation.stderr, warm_preparation.stderr
+        child_total = 0
+        for span in spans:
+            if span["scope"] == "interface-loading" and span["elapsed_us"] is not None:
+                child_total += span["elapsed_us"]
+            elif span["scope"] == "load-resolve":
+                if span["elapsed_us"] is not None:
+                    assert child_total <= span["elapsed_us"], spans
+                child_total = 0
+        assert child_total == 0, spans
+        (root / "compile_failure.l1").write_text("module compile_failure; func main() {}\n")
+        failed_compile = call("--compile", "--c-compiler", cc,
+                              "--c-options=-include missing_compiler_timing_fixture_header.h",
+                              "compile_failure", "-vvv", expected=1)
+        failed_spans = [json.loads(line.partition(": ")[2]) for line in failed_compile.stderr.splitlines()
+                        if line.startswith("Compiler observation: ")]
+        assert any(span["scope"] == "c-compilation" and not span["success"]
+                   for span in failed_spans), failed_compile.stderr
+        assert "L1C-0010" in failed_compile.stderr, failed_compile.stderr
         opted_out = call("--run", *common, "--no-auto-prepare", "--sys-root", bundled,
                          "--no-managed-stdlib", "app", "-vvv")
         for result in (implicit, explicit, opted_out):

@@ -2,12 +2,12 @@
 
 ## Improve preparation reuse efficiency
 
-- Date: 2026-09-24
-- Status: In progress
+- Date: 2026-10-16
+- Status: Completed
 - Title: Improve L1 preparation reuse efficiency using attributed validation costs
 - Kind: Feature
 - Priority: Medium
-- Subsystem: Managed providers / native preparation / validation memos / performance measurement
+- Subsystem: Managed providers / native preparation / validation memos / compiler timing
 - Modules:
   - `l1/compiler/src/cli_args.l0`
   - `l1/compiler/src/cli_args/model.l0`
@@ -18,10 +18,17 @@
   - `l1/compiler/src/source_paths.l0`
   - `l1/compiler/src/build_driver.l0`
   - `l1/compiler/support/preparation_support.c`
+  - `l1/compiler/support/compiler_support.c`
   - `l1/compiler/support/preparation/identity.h`
   - `l1/compiler/support/preparation/storage.h`
   - `l1/compiler/support/preparation/platform.h`
   - `l1/compiler/support/preparation/sha256.h`
+  - `l1/compiler/src/util/timing.l0`
+  - `l1/compiler/src/analysis.l0`
+  - `l1/compiler/src/driver/resolve.l0`
+  - `l1/compiler/src/backend.l0`
+  - `l1/compiler/src/compile_driver/compile.l0`
+  - `l1/compiler/src/link_driver/toolchain.l0`
   - `l1/scripts/check_preparation_reuse.py`
 - Test modules:
   - `l1/compiler/tests/cli_args_test.l0`
@@ -34,6 +41,9 @@
   - `l1/compiler/tests/preparation_identity_windows_environment_test.py`
   - `l1/compiler/tests/preparation_observability_test.c`
   - `l1/compiler/tests/preparation_digest_seed_test.c`
+  - `l1/compiler/tests/preparation_dependencies_test.c`
+  - `l1/compiler/tests/timing_test.l0`
+  - `l1/compiler/tests/compiler_timing_support_test.py`
   - `l1/compiler/tests/l1c_managed_preparation_test.py`
   - `l1/compiler/tests/l1c_preparation_test.py`
   - `l1/compiler/tests/l1c_installed_preparation_test.py`
@@ -52,16 +62,16 @@ observations distinguish a reusable native profile from reusable evidence about 
 investigation confirms that the native identity can remain unchanged while metadata rejection, a changed discovery
 selection, or explicit system-root selection incurs substantial work.
 
-This standalone plan organizes five phases within one work item. Phase 1 implements equivalent bundled root recognition
-with an explicit source opt-out. Phase 2 implements disposable digest-seed hints while retaining cwd-sensitive
-discovery. Phase 3 completed a successful experimental investigation of preparation reuse for containerized compiler
-services and comparable isolated deployments, with playgrounds as one use case. No decision was made to adopt or reject
-metadata-policy relaxation or select a deployment architecture. Phases 4 and 5 remain future work, so the overall plan
-stays active. The original investigation and all phase attachments remain immutable historical evidence; implementation
-and experiment measurements are recorded separately.
+This standalone plan completed five phases. Equivalent bundled-root recognition and disposable digest-seed hints
+preserve managed providers and validated content evidence while keeping discovery cwd-sensitive. The container-reuse
+research made no metadata-policy or deployment-architecture decision. Phase 4 adopts measured Apple Clang dependency
+batching on macOS and retains the existing portable SHA-256 backend after the compared candidates missed their
+consumer/integration gates. Phase 5 adds debug compiler spans and a portable private clock, attributing the substantial
+majority of measured warm time. Native Windows validation remains unavailable.
 
-The Phase 1 and Phase 2 ADR records retain their implementation-time rationale. The Phase 3 closure below supersedes
-their earlier description of Phase 3 as unresolved work.
+Historical experiment data remains unchanged; the original investigation's parent link is maintained for this archival
+move. New phase reports record the accepted and deferred outcomes separately. Reproduction recipes restore the measured
+support sources only inside owned copies; current Clang configuration-isolation policy remains enabled in production.
 
 ## ADR Impact
 
@@ -72,7 +82,7 @@ their earlier description of Phase 3 as unresolved work.
   - ADR: `l1/docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md`
   - Rationale: Phase 1 replaces unconditional explicit-root suppression with filesystem-identity recognition and the
     `--no-managed-stdlib` opt-out. ADR-0038 records that compatibility decision; ADR-0033 delegates its
-    provider-selection wording to that contract. Phases 3 through 5 remain independent and unresolved.
+    provider-selection wording to that contract.
 - Decision: Share validated file digest records across cwd selections through a disposable donor hint, retaining
   cwd-sensitive discovery.
   - Scope: L1
@@ -83,12 +93,19 @@ their earlier description of Phase 3 as unresolved work.
     bounded lookup and failure policy without a new authority or cwd-independence proof.
 - Decision: Choose a portable SHA-256 backend and any platform-acceleration/dependency policy.
   - Scope: L1
-  - Disposition: Pending
-  - ADR: None
-  - Rationale: Phase 4 must compare identical-output backends and their platform/maintenance costs. ADR-0039's content
-    coverage and stable validation boundary remain constraints; faster hashing cannot substitute weaker identity
-    evidence. The backend choice and final ADR disposition remain open; see
-    [l1/docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md][reuse-boundary].
+  - Disposition: Amend ADR
+  - ADR: `l1/docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md`
+  - Rationale: Phase 4 retains dependency-free portable C SHA-256 after the direct-block and round-unrolled candidates
+    missed the predeclared consumer gates. Platform acceleration remains deferred pending supported-platform
+    integration, failure cleanup and consumer measurements; digest bytes, stable-read validation and metadata policy
+    remain unchanged.
+- Decision: Reduce discovery process startup while preserving the existing observation invalidation boundary.
+  - Scope: L1
+  - Disposition: Amend ADR
+  - ADR: `l1/docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md`
+  - Rationale: Phase 4 batches complete generated-C and runtime dependency groups independently for measured Apple Clang
+    on macOS, accepts only complete source coverage and retains individual-probe fallback. Other adapters and
+    finer-grained persisted observations remain deferred.
 
 ## Original Evidence (Before Phase 1)
 
@@ -192,15 +209,15 @@ requested targets remain source-backed. The option does not disable native runti
 cache format, identity coverage, concurrency protocol, or dependency changes were needed.
 
 Implementation and correctness checks are recorded in
-[l1/work/plans/features/attachments/2026-09-24-preparation-reuse-efficiency/phase1/results.md][phase-one]. The parent
-plan remained active for Phases 2 through 5 at that point. Phase 2 is recorded below; Phases 3 through 5 remain pending.
+[l1/work/plans/features/attachments/2026-09-24-preparation-reuse-efficiency/phase1/results.md][phase-one]. The later
+phases are recorded below.
 
 ## Phase 2: Separate Digest Reuse from Discovery Selection
 
 **Status.** Completed on 2026-09-24 for the validated macOS/Linux configurations. Native Windows execution was
 unavailable. Validation and measurement results are recorded in the
-[l1/work/plans/features/attachments/2026-09-24-preparation-reuse-efficiency/phase2/results.md][phase-two]. The parent
-plan remains active for Phases 3 through 5.
+[l1/work/plans/features/attachments/2026-09-24-preparation-reuse-efficiency/phase2/results.md][phase-two]. The later
+phases are recorded below.
 
 **Selected approach.** Retain the complete cwd-sensitive discovery selection and existing toolchain memo format. Add one
 `v1/memo/digest-seeds/<seed-key>.json` hint per configuration, keyed by the same selection with only `cwd` omitted. Its
@@ -316,6 +333,10 @@ contract was introduced by closing the phase.
 
 ## Phase 4: Reduce Discovery and Unavoidable Hashing Costs
 
+**Status.** Completed on 2026-10-16. Discovery batching is enabled only for measured Apple Clang on macOS, with
+individual-probe fallback. Other adapters retain individual probes. The SHA-256 backend decision is resolved: production
+hashing remains unchanged after portable and platform comparisons.
+
 **Hypothesis.** Even after evidence reuse improves, fresh or invalidated configurations still spend material time in
 discovery and hashing. These mechanisms need independent experiments and decisions.
 
@@ -346,7 +367,36 @@ weaken evidence.
 accepted implementations produce identical identities/artifact digests and preserve invalidation and diagnostics. Update
 documentation for any selected backend policy and discovery architecture.
 
+### Phase 4 implementation and backend decision (2026-10-16)
+
+Keep whole-observation invalidation. Apple Clang on macOS batches four generated-C dependency configurations separately
+from all ten runtime translation units. Complete source-rule coverage is required before accepting any evidence;
+unavailable, malformed, failed, timed-out or oversized batches fall back to individual probes. Full identities and
+content coverage stay equal. Actual quiet consumers reduced cold medians from 5.318 to 4.402 seconds (17.2%) and partial
+invalidation from 3.486 to 2.647 seconds (24.1%). Outer probes fell from 28 to 16. No warm speedup is claimed. Linux
+results did not justify adoption; external process observation showed that Clang multi-source commands can add frontend
+processes. Finer-grained persisted invalidation remains deferred pending per-query search provenance.
+
+Retain dependency-free portable C SHA-256. The direct-block candidate remained mixed. Eight-round compression unrolling
+improved aggregate large-file Linux hashing by 15.9%, but actual Clang cold medians improved only 102.258 ms (3.66%),
+below the predeclared 150 ms gate; GCC improved 2.653 ms (0.19%). Both failed qualification within five fixed pairs, and
+no further pairs were added. Platform libraries showed large-file headroom but small-file setup costs and unresolved
+supported-platform, dependency and failure-cleanup policy. Standard/boundary/streaming digests and stable-reader failure
+checks passed across the compared implementations. No hashing change was selected for a combined experiment.
+
+The discovery and hash mechanisms were evaluated independently. Detailed methods, individual samples, distributions,
+coverage, limitations and reproduction are in
+[l1/work/plans/features/attachments/2026-09-24-preparation-reuse-efficiency/phase4/discovery-results.md][phase-four-discovery],
+[l1/work/plans/features/attachments/2026-09-24-preparation-reuse-efficiency/phase4/hash-results.md][phase-four-hash],
+and
+[l1/work/plans/features/attachments/2026-09-24-preparation-reuse-efficiency/phase4/hash-portable-results.md][phase-four-portable].
+
 ## Phase 5: Attribute Remaining Warm-Build Time
+
+**Status.** Completed on 2026-10-16. Compiler instrumentation, independent reporter parsing and the private host-clock
+ABI are implemented. Controlled/native clock tests and the timing ownership trace pass. The final Linux matrix includes
+112 successful warm builds and output checks with numeric timings; the initial unavailable-clock experiment is retained
+separately without an attribution claim.
 
 **Hypothesis.** Most warm compiler elapsed time is outside preparation and cannot be explained by preparation counters.
 Useful attribution will identify the next optimization target without guessing which compilation phase dominates.
@@ -371,38 +421,73 @@ must remain distinguishable from broader subprocess duration.
 recommendation. Document residual uncertainty and overhead. Implementing every optimization subsequently suggested by
 profiling is not a completion requirement.
 
-## Future Validation and Documentation
+### Phase 5 implementation and attribution decision (2026-10-16)
 
-Run focused preparation identity/support/ownership, managed-consumer/provider, observability, and reporter tests as each
-phase changes their behavior. Cover cache absence/malformation, force, failed probes/reads, corrupt completed artifacts,
-partial observations, reporter timeout preservation and scenario isolation. Test relevant filesystem aliases and
-metadata behavior on Linux, macOS, and Windows, with supported compiler/backend coverage; report unavailable cases
-explicitly.
+Coarse debug-only compiler spans use a separate schema-1 record stream, preserving preparation observations and ordinary
+output. Interface loading is nested within load/resolve; application analysis, C generation, module/wrapper C commands
+and linking have documented boundaries. Durations use a compiler-private host clock so strict-C99 Linux builds do not
+depend on bootstrap runtime feature-test macros. Unavailable, backward or overflowing clocks remain explicit null
+durations. Nondebug commands collect no clocks or span allocations.
 
-After focused checks, run L1 normal validation (`make -C l1 test`) and relevant ARC/memory trace coverage, starting with
-`make -C l1 test-compiler-trace-smoke` and broadening according to ownership changes and the subtree rules. Repeat the
-Docker matrix with the same resource constraints, multiple independent pairs, output verification outside compilation
-timing, and debug/nondebug controls. Compare distributions and operation counts rather than imposing real elapsed-time
-thresholds in correctness tests. Record image/runtime identity and distinguish fresh containers from cold filesystems.
+Seven interleaved pairs for two imported applications and GCC 14/Clang 19 explain median 76.1-82.5% of warm command
+time. Interface loading costs 168-291 ms and is the largest measured frontend component; native compilation/linking also
+contributes materially. C generation costs 2-7 ms. The residual 17.5-23.9% remains unlocalized. Median paired overhead
+across cases is +0.94% quiet and +0.65% debug, with wide individual variation; these shared-host samples establish no
+small overhead bound or absence of regressions. The next frontend investigation should profile interface
+reading/parsing/fingerprint validation before choosing reuse. No application cache or deployment architecture is
+adopted.
 
-Update the preparation reference, provider/CLI documentation where affected, and accepted ADRs only when the relevant
-implementation decisions are made. Keep reporter semantics and timing nesting documented. Before closure, resolve each
-ADR record, include required ADR amendments/new records and plan backlinks, and update the roadmap/lifecycle location.
+See [l1/work/plans/features/attachments/2026-09-24-preparation-reuse-efficiency/phase5/results.md][phase-five] for
+complete boundaries, individual measurements, distributions, failure evidence, reproduction and unavailable native
+Windows coverage. The timing trace passes with zero leaked object/string pointers. Linux GCC/Clang and Apple Clang pass
+direct strict-C99 clock checks; extracted POSIX/QPC error/range probes pass ASan/UBSan as explicitly simulated evidence.
+Retained control-source patches and the construction/measurement script reproduce the experimental source relation and
+commands; the report distinguishes recovered build defaults and unavailable historical argv from captured evidence.
 
-For this draft and its attachments, validate JSON parsing and recursive equality after the documented string-only
-sanitization, reconcile table/count values with JSON, scan for private names/local user paths/source revision
-identifiers, resolve all repository links, and run active-plan ADR, Markdown, and whitespace checks.
+## Validation and Documentation
 
-[investigation]: attachments/2026-09-24-preparation-reuse-efficiency/investigation.md
-[logging-control]: attachments/2026-09-24-preparation-reuse-efficiency/logging-control-report.json
-[measurements]: attachments/2026-09-24-preparation-reuse-efficiency/report.json
-[observability]: closed/2026-09-24-preparation-observability-noref.md
-[phase-one]: attachments/2026-09-24-preparation-reuse-efficiency/phase1/results.md
-[phase-three-image]: attachments/2026-09-24-preparation-reuse-efficiency/phase3/results.md
-[phase-three-metadata]: attachments/2026-09-24-preparation-reuse-efficiency/phase3/metadata-details/results.md
-[phase-three-relaxed]: attachments/2026-09-24-preparation-reuse-efficiency/phase3/relaxed-toolchain/results.md
-[phase-three-same-path]: attachments/2026-09-24-preparation-reuse-efficiency/phase3/same-path/results.md
-[phase-two]: attachments/2026-09-24-preparation-reuse-efficiency/phase2/results.md
-[preparation]: ../../../docs/reference/stdlib-preparation.md
-[reuse-boundary]: ../../../docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md
-[semantic-authority]: ../../../docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md
+Commands ran from `l1/` with an explicit existing L0 bootstrap and `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC` selecting
+`/usr/bin/clang`, Apple Clang 17.0.0. Linux reports separately verify GCC 14.2.0 and Clang 19.1.7 inside their actual
+containers. Native Windows and macOS ARM performance coverage were unavailable; synthetic Windows path/clock checks do
+not substitute for native validation.
+
+- `make test-extended` passed 80 normal compiler tests, 46 docgen tests, four examples, six Docker/Wine runner tests,
+  181 tooling tests (one platform skip) and 289 productization fixtures (14 platform skips). This broad gate preceded
+  the final adapter guard and private-clock compatibility refinement.
+- Final `make build` verified all 23 bundled interfaces. `make -o build test` reused that rebuilt compiler and passed
+  all eight representative compiler tests plus the aggregate's docs, examples, runner, tooling and product fixtures.
+- Final
+  `compiler/scripts/run_tests.py l1c_preparation_test.py l1c_installed_preparation_test.py compiler_timing_support_test.py timing_test`
+  passed all four checks, including force/recovery, immutable installed inputs and the live native clock ABI.
+- Complete preparation identity coverage passed, including changed headers for every runtime unit/generated-C branch,
+  negative candidates and partial invalidation. Final scoped Apple Clang and Linux GCC dependency fixtures passed; Apple
+  Clang ASan/UBSan and full-identity equality checks cover the narrowed batching policy.
+- The six trace-smoke cases plus `driver_test` and `backend_test` passed with zero leaked object/string pointers. Final
+  `timing_test` trace passed with 186 events and zero leaks. `preparation_ownership_test.py` passed automatic compiler
+  selection and runtime-override ownership paths.
+- Fifteen reporter tests passed. Phase reports retain cold/partial/warm output checks, failures, operation counts,
+  nonoverlapping accounting and the documented JSON projection/sanitization/equality evidence. No wall-time thresholds
+  were added to correctness tests.
+
+The preparation reference records scoped discovery batching, the retained hash policy, compiler observation schemas and
+nesting. ADR-0038 and ADR-0039 link to this closed plan and record the final provider, digest-sharing, discovery and
+hash choices. The roadmap records completion. Active/staged ADR, Markdown, copyright and whitespace checks cover the
+final archival change. No remote write, deployment or publication is part of this work.
+
+[investigation]: ../attachments/2026-09-24-preparation-reuse-efficiency/investigation.md
+[logging-control]: ../attachments/2026-09-24-preparation-reuse-efficiency/logging-control-report.json
+[measurements]: ../attachments/2026-09-24-preparation-reuse-efficiency/report.json
+[observability]: 2026-09-24-preparation-observability-noref.md
+[phase-five]: ../attachments/2026-09-24-preparation-reuse-efficiency/phase5/results.md
+[phase-four-discovery]: ../attachments/2026-09-24-preparation-reuse-efficiency/phase4/discovery-results.md
+[phase-four-hash]: ../attachments/2026-09-24-preparation-reuse-efficiency/phase4/hash-results.md
+[phase-four-portable]: ../attachments/2026-09-24-preparation-reuse-efficiency/phase4/hash-portable-results.md
+[phase-one]: ../attachments/2026-09-24-preparation-reuse-efficiency/phase1/results.md
+[phase-three-image]: ../attachments/2026-09-24-preparation-reuse-efficiency/phase3/results.md
+[phase-three-metadata]: ../attachments/2026-09-24-preparation-reuse-efficiency/phase3/metadata-details/results.md
+[phase-three-relaxed]: ../attachments/2026-09-24-preparation-reuse-efficiency/phase3/relaxed-toolchain/results.md
+[phase-three-same-path]: ../attachments/2026-09-24-preparation-reuse-efficiency/phase3/same-path/results.md
+[phase-two]: ../attachments/2026-09-24-preparation-reuse-efficiency/phase2/results.md
+[preparation]: ../../../../docs/reference/stdlib-preparation.md
+[reuse-boundary]: ../../../../docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md
+[semantic-authority]: ../../../../docs/decisions/0038-bundled-semantic-inputs-and-local-native-preparation.md

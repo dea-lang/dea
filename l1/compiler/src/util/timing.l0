@@ -1,0 +1,79 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module util.timing;
+
+import std.integer;
+import std.io;
+import std.string;
+import std.time;
+import std.text;
+import util.log;
+
+/** Compiler-private ABI writes one native int32 seconds/nanoseconds pair. */
+extern func l1c_timing_monotonic(output: byte*, capacity: int) -> int;
+
+/** Read the private host clock without depending on bootstrap-runtime clock feature macros. */
+func timing_now() -> MonotonicTime? {
+    with (let parts = new MonotonicTime(0, 0) => drop parts) {
+        let storage = parts as void*;
+        if (l1c_timing_monotonic(storage as byte*, sizeof(MonotonicTime)) != 1 ||
+            parts.sec < 0 || !is_valid_nsec(parts.nsec)) { return null; }
+        return MonotonicTime(parts.sec, parts.nsec);
+    }
+}
+
+/** One debug-only monotonic span; the caller owns its optional allocation. */
+struct CompilerTimingSpan {
+    scope: string;
+    parent: string;
+    started: MonotonicTime?;
+    closed: bool;
+}
+
+/** Return microseconds between controlled snapshots, or null for unusable clocks/overflow. */
+func timing_elapsed_us(started: MonotonicTime?, ended: MonotonicTime?) -> int? {
+    if (started == null || ended == null) { return null; }
+    let elapsed = monotonic_diff(started as MonotonicTime, ended as MonotonicTime);
+    if (elapsed == null) { return null; }
+    let duration = elapsed as Duration;
+    let seconds = checked_mul_int(duration.sec, 1000000)?;
+    return checked_add_int(seconds, duration.nsec / 1000);
+}
+
+/** Format a record using compiler-owned constant scope names (never paths or source text). */
+func timing_record(scope: string, parent: string, elapsed: int?, success: bool) -> string {
+    let duration = "null";
+    if (elapsed != null) { duration = int_to_string(elapsed as int); }
+    let succeeded = "false";
+    if (success) { succeeded = "true"; }
+    return "Compiler observation: {\"schema\":1,\"event\":\"span\",\"scope\":\"" + scope +
+        "\",\"parent\":\"" + parent + "\",\"elapsed_us\":" + duration + ",\"success\":" + succeeded + "}";
+}
+
+/** Begin an optional debug span; ordinary invocations do not allocate or read the clock. */
+func timing_begin(cfg: LogConfig*, scope: string, parent: string) -> CompilerTimingSpan*? {
+    if (ord(cfg.level) < ord(LL_DEBUG)) { return null; }
+    return new CompilerTimingSpan(scope, parent, timing_now(), false);
+}
+
+/** Complete a span once, before its child recursion or later cleanup when necessary. */
+func timing_end(self: CompilerTimingSpan*?, success: bool) {
+    if (self == null) { return; }
+    let span = self as CompilerTimingSpan*;
+    if (span.closed) { return; }
+    let ended = timing_now();
+    span.closed = true;
+    err_printl_s(timing_record(span.scope, span.parent, timing_elapsed_us(span.started, ended), success));
+}
+
+/** Release a span, preserving a failed partial duration on an early return. */
+func timing_free(self: CompilerTimingSpan*?) {
+    if (self != null) {
+        timing_end(self, false);
+        let span = self as CompilerTimingSpan*;
+        drop span;
+    }
+}

@@ -21,7 +21,7 @@
   - `l1/compiler/stage1_l0/tests/preparation_observability_test.c`
   - `l1/compiler/stage1_l0/tests/l1c_stage1_preparation_test.py`
 - Related:
-  - [l1/work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md][reuse-efficiency]
+  - [l1/work/plans/features/closed/2026-09-24-preparation-reuse-efficiency-noref.md][reuse-efficiency]
   - [l1/work/plans/features/attachments/2026-09-24-preparation-reuse-efficiency/investigation.md][earlier-investigation]
   - [l1/work/plans/features/attachments/2026-09-24-preparation-reuse-efficiency/phase3/results.md][image-study]
   - [l1/work/plans/features/attachments/2026-09-24-preparation-reuse-efficiency/phase3/relaxed-toolchain/results.md][policy-experiment]
@@ -152,4 +152,4 @@ metadata-policy decision, but this investigation neither assumes nor decides tha
 [policy-experiment]: ../../features/attachments/2026-09-24-preparation-reuse-efficiency/phase3/relaxed-toolchain/results.md
 [results]: ../attachments/2026-09-25-preparation-sha256-cost-investigation/results.md
 [reuse-boundary]: ../../../../docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md
-[reuse-efficiency]: ../../features/2026-09-24-preparation-reuse-efficiency-noref.md
+[reuse-efficiency]: ../../features/closed/2026-09-24-preparation-reuse-efficiency-noref.md

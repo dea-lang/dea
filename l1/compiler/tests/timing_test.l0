@@ -1,0 +1,74 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module timing_test;
+
+import std.assert;
+import std.io;
+import std.time;
+import util.log;
+import util.timing;
+
+/** Controlled clocks cover truncation, rollover, unavailable readings, and integer overflow. */
+func test_elapsed_us() {
+    assert((timing_elapsed_us(MonotonicTime(4, 999999000), MonotonicTime(5, 1000)) as int) == 2,
+        "second rollover preserves microseconds");
+    assert((timing_elapsed_us(MonotonicTime(4, 1), MonotonicTime(4, 999)) as int) == 0,
+        "sub-microsecond intervals truncate");
+    assert(timing_elapsed_us(MonotonicTime(4, 0), MonotonicTime(3, 0)) == null,
+        "backward clocks are unavailable, not negative timing");
+    assert(timing_elapsed_us(null, MonotonicTime(4, 0)) == null, "missing start");
+    assert(timing_elapsed_us(MonotonicTime(4, 0), null) == null, "missing end");
+    assert(timing_elapsed_us(MonotonicTime(0, 0), MonotonicTime(2148, 0)) == null,
+        "microsecond overflow is unavailable");
+    assert((timing_elapsed_us(MonotonicTime(0, 0), MonotonicTime(2147, 483647000)) as int) == 2147483647,
+        "maximum representable elapsed microseconds");
+    assert(timing_elapsed_us(MonotonicTime(0, 0), MonotonicTime(2147, 483648000)) == null,
+        "microsecond addition overflow is unavailable");
+}
+
+/** Parent durations contain children; only disjoint parent scopes contribute to the total. */
+func test_nested_accounting() {
+    let load = timing_elapsed_us(MonotonicTime(0, 0), MonotonicTime(0, 100000));
+    let interface = timing_elapsed_us(MonotonicTime(0, 10000), MonotonicTime(0, 30000));
+    let analysis = timing_elapsed_us(MonotonicTime(0, 100000), MonotonicTime(0, 180000));
+    assert((load as int) == 100 && (interface as int) == 20 && (analysis as int) == 80, "controlled disjoint boundaries");
+    assert((load as int) - (interface as int) == 80, "exclusive load time excludes interface child");
+    assert((load as int) + (analysis as int) == 180, "top-level accounting excludes nested duration");
+}
+
+/** Debug gating avoids clocks and allocations; records retain failure and unavailable-clock state. */
+func test_records_and_gating() {
+    with (let cfg = log_config_create(LL_INFO, false) => drop cfg) {
+        assert(timing_begin(cfg, "load-resolve", "") == null, "nondebug invocation has no timing allocation");
+    }
+    assert(timing_record("interface-loading", "load-resolve", 42, true) ==
+        "Compiler observation: {\"schema\":1,\"event\":\"span\",\"scope\":\"interface-loading\",\"parent\":\"load-resolve\",\"elapsed_us\":42,\"success\":true}",
+        "record distinguishes child timing");
+    assert(timing_record("linking", "", null, false) ==
+        "Compiler observation: {\"schema\":1,\"event\":\"span\",\"scope\":\"linking\",\"parent\":\"\",\"elapsed_us\":null,\"success\":false}",
+        "failed and unavailable observations remain explicit");
+    with (let cfg = log_config_create(LL_DEBUG, false) => drop cfg,
+          let timing = timing_begin(cfg, "application-analysis", "") => timing_free(timing)) {
+        assert(timing != null, "debug timing has an owner");
+        timing_end(timing, true);
+        assert((timing as CompilerTimingSpan*).closed, "completed spans are closed");
+        timing_end(timing, false);
+    }
+    with (let cfg = log_config_create(LL_DEBUG, false) => drop cfg,
+          let timing = timing_begin(cfg, "linking", "") => timing_free(timing)) {
+        /* Cleanup emits the failed partial span, including on early return. */
+        return;
+    }
+}
+
+/** Run deterministic timing semantics without real elapsed-time thresholds. */
+func main() {
+    assert(timing_now() != null, "compiler-private host monotonic clock is available");
+    test_elapsed_us();
+    test_nested_accounting();
+    test_records_and_gating();
+    printl_s("timing_test: all tests passed");
+}

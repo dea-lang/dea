@@ -90,6 +90,39 @@ def fields(stderr: str, label: str) -> list[str]:
     return re.findall(r"^" + re.escape(label) + r": (.*)$", stderr, re.MULTILINE)
 
 
+def compiler_measurements(stderr: str, partial: bool = False) -> dict:
+    """Retain compiler spans separately from inclusive preparation accounting.
+
+    Args:
+        stderr: Complete or interrupted compiler diagnostics.
+        partial: Preserve valid records and report malformed trailing records.
+
+    Returns:
+        Compiler observations and independent parsing errors.
+
+    Raises:
+        ProbeError: If a complete compiler observation violates its schema.
+        ValueError: If a complete record contains invalid JSON.
+    """
+    spans, errors = [], []
+    for raw in fields(stderr, "Compiler observation"):
+        try:
+            item = json.loads(raw)
+            require(isinstance(item, dict) and type(item.get("schema")) is int and item["schema"] == 1 and
+                    item.get("event") == "span" and isinstance(item.get("scope"), str) and
+                    isinstance(item.get("parent"), str) and type(item.get("success")) is bool,
+                    "invalid compiler observation")
+            duration = item.get("elapsed_us")
+            require("elapsed_us" in item and (duration is None or type(duration) is int and duration >= 0),
+                    "invalid compiler observation duration")
+            spans.append(item)
+        except (ValueError, ProbeError) as exc:
+            if not partial:
+                raise
+            errors.append(str(exc))
+    return {"compiler_spans": spans, "compiler_observation_errors": errors}
+
+
 def observation_measurements(stderr: str, partial: bool = False) -> dict:
     """Parse debug records independently of end-of-command identity statistics.
 
@@ -130,7 +163,8 @@ def observation_measurements(stderr: str, partial: bool = False) -> dict:
             totals["count"] += 1
             totals["bytes"] += observation["bytes"]
             totals["elapsed_us"] += observation["elapsed_us"]
-    return {"observations": observations, "observation_errors": errors, "hashing": hashes,
+    return {**compiler_measurements(stderr, partial),
+            "observations": observations, "observation_errors": errors, "hashing": hashes,
             "spans": [item for item in observations if item["event"] == "span"],
             "probes": [item for item in observations if item["event"] == "probe"],
             "providers": [item for item in observations if item["event"] == "provider"]}
@@ -578,9 +612,22 @@ def render_summary(report: dict) -> str:
             if scenario.get("reason"):
                 lines.extend(["", f"{name}: {cell(scenario['reason'])}", ""])
     lines.extend(["", "Preparation spans are inclusive. Probe and hash time is nested within spans; "
-                  "do not add them together. Command time includes work outside preparation."])
+                  "do not add them together. Command time includes work outside preparation.",
+                  "Compiler spans are separate: load-resolve includes interface-loading children. "
+                  "Application analysis, C generation, module/wrapper C compilation and linking are disjoint from "
+                  "that load span. Cold preparation may contain compiler spans; never add both streams. "
+                  "Null durations mean the monotonic clock or integer duration was unavailable."])
     for stage, record in report["invocations"].items():
-        if not record or not record.get("observations"):
+        if not record:
+            continue
+        if record.get("compiler_spans"):
+            lines.extend(["", f"### {stage} compiler spans", "",
+                          "| Scope | Parent | Elapsed us | Success |", "| --- | --- | --- | --- |"])
+            for item in record["compiler_spans"]:
+                values = (item["scope"], item["parent"],
+                          item["elapsed_us"] if item["elapsed_us"] is not None else "unavailable", item["success"])
+                lines.append("| " + " | ".join(cell(value) for value in values) + " |")
+        if not record.get("observations"):
             continue
         lines.extend(["", f"### {stage} observations", "",
                       "| Event | Scope / purpose | Decision / reason | Detail |",

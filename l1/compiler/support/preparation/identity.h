@@ -575,7 +575,8 @@ static char *pc_probe_directory(void) {
 #endif
 }
 static void pc_probe_directory_free(const char *directory) {
-    static const char *const children[] = {"probe.c", "dependencies.d", "empty.cfg", NULL};
+    static const char *const children[] = {"probe.c", "probe-0.c", "probe-1.c", "probe-2.c", "probe-3.c",
+                                          "dependencies.d", "empty.cfg", NULL};
     int i;
     for (i = 0; children[i]; ++i) {
         char *p = pc_join(directory, children[i]);
@@ -1187,6 +1188,135 @@ static int pc_stdlib_probe(PcContext *c, const char *path, int uses_real, int us
     return ok || pc_fail(c, 2154, "cannot write generated-C dependency probe", path);
 }
 
+/** Accept a complete batch only when every source starts exactly one bounded Make rule. */
+static int pc_parse_dependency_batch(PcContext *c, const char *text, const PcJson *sources,
+                                     PcJson *paths, PcJson *directories, const char *scratch) {
+    static const char target[] = "l1-preparation:";
+    const char *p = text;
+    PcJson *seen = pj_new(PJ_OBJECT), *batch_paths = pj_new(PJ_OBJECT),
+           *batch_directories = pj_new(PJ_OBJECT);
+    int ok = 1;
+    while (*p && ok) {
+        const char *end, *cursor;
+        const PcJson *source;
+        PcBuffer token = {0};
+        char *rule, *absolute = NULL;
+        while (*p && strchr(" \t\r\n", *p)) ++p;
+        if (!*p) break;
+        if (strncmp(p, target, sizeof(target) - 1)) { ok = 0; break; }
+        end = p;
+        while (*end) {
+            if (*end == '\n') {
+                const char *slash = end;
+                size_t count = 0;
+                if (slash > p && slash[-1] == '\r') --slash;
+                while (slash > p && slash[-1] == '\\') { --slash; ++count; }
+                if (!(count & 1)) break;
+            }
+            ++end;
+        }
+        rule = pc_slice(p, (size_t)(end - p));
+        cursor = rule + sizeof(target) - 1;
+        if (pc_dependency_token(&cursor, &token))
+            absolute = pc_path_call(token.s, l1c_fs_absolute_path);
+        for (source = sources->child; absolute && source; source = source->next)
+            if (pc_path_equal(absolute, source->text)) break;
+        if (!absolute || !source || pj_get(seen, source->text)) ok = 0;
+        else {
+            pj_set_number(seen, source->text, 1);
+            ok = pc_parse_dependencies(c, rule, batch_paths, batch_directories, scratch);
+        }
+        free(absolute); free(rule); free(token.s);
+        p = *end ? end + 1 : end;
+    }
+    if (pj_count(seen) != pj_count(sources)) ok = 0;
+    if (ok) {
+        const PcJson *entry;
+        for (entry = batch_paths->child; entry; entry = entry->next)
+            pc_add_component(paths, entry->key);
+        for (entry = batch_directories->child; entry; entry = entry->next)
+            if (!pj_get(directories, entry->key)) pj_add(directories, entry->key, pj_clone(entry));
+    }
+    pj_free(seen); pj_free(batch_paths); pj_free(batch_directories);
+    return ok;
+}
+
+/** Keep application and runtime policies separate while amortizing compiler-driver startup. */
+static PcJson *pc_dependency_words(PcContext *c, int runtime, const char *include, const char *internal) {
+    PcJson *words = runtime ? pc_runtime_words(c) : pc_words(c, 1);
+    pj_add(words, NULL, pj_string("-I"));
+    pj_add(words, NULL, pj_string(include));
+    pj_add(words, NULL, pj_string("-I"));
+    pj_add(words, NULL, pj_string(internal));
+    pj_add(words, NULL, pj_string("-M"));
+    return words;
+}
+
+/** Enable batching only for the measured Apple Clang path; other adapters retain individual probes. */
+static int pc_dependency_batch_supported(const PcContext *c) {
+#if defined(__APPLE__)
+    return c->family && !strcmp(c->family, "clang") && c->description &&
+           strstr(c->description, "Apple clang") != NULL;
+#else
+    (void)c;
+    return 0;
+#endif
+}
+
+/** Retry individually when batch output, resource bounds or compiler support are unavailable. */
+static int pc_dependency_probes(PcContext *c, const PcJson *sources, int runtime, int attempt_batch,
+                                 const char *include, const char *internal, const char *scratch,
+                                 const char *depfile, PcJson *paths, PcJson *dependencies) {
+    const PcJson *source;
+    PcJson *words;
+    PcProbe p;
+    int index = 0;
+    if (attempt_batch) {
+        int ok;
+        words = pc_dependency_words(c, runtime, include, internal);
+        pj_add(words, NULL, pj_string("-MT"));
+        pj_add(words, NULL, pj_string("l1-preparation"));
+        for (source = sources->child; source; source = source->next)
+            pj_add(words, NULL, pj_string(source->text));
+        p = pc_context_probe(c, words, runtime ? "runtime dependencies: batch" : "generated-C dependencies: batch");
+        ok = !p.timed_out && p.status == 0 &&
+             pc_parse_dependency_batch(c, p.out, sources, paths, dependencies, scratch);
+        pc_probe_free(&p);
+        if (ok) return 1;
+        pc_clear_error(c);
+        pc_observe_decision(c, "dependency-probe-batch", "miss", "sequential-fallback", NULL);
+    }
+    for (source = sources->child; source; source = source->next) {
+        char *deps;
+        char purpose[160] = "";
+        size_t n;
+        words = pc_dependency_words(c, runtime, include, internal);
+        pj_add(words, NULL, pj_string("-MF"));
+        pj_add(words, NULL, pj_string(depfile));
+        pj_add(words, NULL, pj_string(source->text));
+        if (pc_verbosity(c) >= 3) {
+            if (runtime)
+                snprintf(purpose, sizeof(purpose), "runtime dependencies: %s",
+                         index == 9 ? "dea_rt_trace" : pc_runtime_sources[index]);
+            else
+                snprintf(purpose, sizeof(purpose), "generated-C dependencies: real=%d,float=%d",
+                         index & 1, (index >> 1) & 1);
+        }
+        ++index;
+        p = pc_context_probe(c, words, purpose);
+        if (!pc_probe_ok(c, &p, "SDK and runtime header dependencies")) { pc_probe_free(&p); return 0; }
+        pc_probe_free(&p);
+        deps = pc_read_file(depfile, 4 * 1024 * 1024, &n);
+        if (!deps || !pc_parse_dependencies(c, deps, paths, dependencies, scratch)) {
+            free(deps);
+            if (!c->error) pc_fail(c, 2154, "missing compiler dependency output", depfile);
+            return 0;
+        }
+        free(deps);
+    }
+    return 1;
+}
+
 static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection, PcOptionInputs *options) {
     PcJson *discovery = pj_new(PJ_OBJECT), *paths = pj_new(PJ_OBJECT),
            *dependencies = pj_new(PJ_OBJECT), *toolchain = pj_new(PJ_OBJECT), *words,
@@ -1401,58 +1531,33 @@ static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection, PcOp
             }
         }
     }
-    /* Headers of every runtime translation unit participate, including platform conditionals. */
-    for (i = -4; i < 10; ++i) {
-        char *runtime_source = NULL;
-        size_t n;
-        char *deps;
-        if (i < 0 && !pc_stdlib_probe(c, source, (i + 4) & 1, ((i + 4) >> 1) & 1)) goto fail;
-        if (i >= 0) {
-            PcBuffer rel = {0};
-            pc_text(&rel, "shared/runtime/src/");
-            pc_text(&rel, i == 9 ? "dea_rt_trace" : pc_runtime_sources[i]);
-            pc_text(&rel, ".c");
-            runtime_source = pc_join(c->home, rel.s);
-            free(rel.s);
-        }
-        words = i >= 0 ? pc_runtime_words(c) : pc_words(c, 1);
-        pj_add(words, NULL, pj_string("-I"));
-        if (i >= 0) {
-            char *public = pc_join(c->home, "shared/runtime/include");
-            pj_add(words, NULL, pj_string(public)); free(public);
-        } else pj_add(words, NULL, pj_string(include));
-        pj_add(words, NULL, pj_string("-I"));
-        pj_add(words, NULL, pj_string(internal));
-        pj_add(words, NULL, pj_string("-M"));
-        pj_add(words, NULL, pj_string("-MF"));
-        pj_add(words, NULL, pj_string(depfile));
-        pj_add(words, NULL, pj_string(runtime_source ? runtime_source : source));
-        {
-            char purpose[160] = "";
-            if (pc_verbosity(c) >= 3) {
-                if (i < 0)
-                    snprintf(purpose, sizeof(purpose), "generated-C dependencies: real=%d,float=%d",
-                             (i + 4) & 1, ((i + 4) >> 1) & 1);
-                else
-                    snprintf(purpose, sizeof(purpose), "runtime dependencies: %s",
-                             i == 9 ? "dea_rt_trace" : pc_runtime_sources[i]);
+    /* Observe every generated-C branch and runtime translation unit under its own policy. */
+    for (i = 0; i < 2; ++i) {
+        PcJson *sources = pj_new(PJ_ARRAY);
+        char *public = i ? pc_join(c->home, "shared/runtime/include") : pc_string(include);
+        int j, ok = 1;
+        for (j = 0; j < (i ? 10 : 4); ++j) {
+            PcBuffer relative = {0};
+            char *path;
+            if (i) {
+                pc_text(&relative, "shared/runtime/src/");
+                pc_text(&relative, j == 9 ? "dea_rt_trace" : pc_runtime_sources[j]);
+                pc_text(&relative, ".c");
+                path = pc_join(c->home, relative.s);
+            } else {
+                char name[32];
+                snprintf(name, sizeof(name), "probe-%d.c", j);
+                path = pc_join(scratch, name);
+                ok = pc_stdlib_probe(c, path, j & 1, (j >> 1) & 1);
             }
-            p = pc_context_probe(c, words, purpose);
+            free(relative.s);
+            pj_add(sources, NULL, pj_string(path)); free(path);
+            if (!ok) break;
         }
-        free(runtime_source);
-        if (!pc_probe_ok(c, &p, "SDK and runtime header dependencies")) {
-            pc_probe_free(&p);
-            goto fail;
-        }
-        pc_probe_free(&p);
-        deps = pc_read_file(depfile, 4 * 1024 * 1024, &n);
-        if (!deps || !pc_parse_dependencies(c, deps, paths, dependencies, scratch)) {
-            free(deps);
-            if (!c->error)
-                pc_fail(c, 2154, "missing compiler dependency output", depfile);
-            goto fail;
-        }
-        free(deps);
+        if (ok) ok = pc_dependency_probes(c, sources, i, pc_dependency_batch_supported(c), public,
+                                          internal, scratch, depfile, paths, dependencies);
+        pj_free(sources); free(public);
+        if (!ok) goto fail;
     }
     pc_option_inputs_dependencies(options, paths, dependencies);
     for (input = paths->child; input; input = input->next) {

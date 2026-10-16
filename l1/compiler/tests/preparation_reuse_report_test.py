@@ -301,6 +301,38 @@ class ReporterTest(unittest.TestCase):
         self.assertEqual(report["invocations"]["observe-copy-1"]["probes"][0]["purpose"], "timed probe")
         self.assertIn("timed probe", files["summary.md"])
 
+    def test_compiler_spans_are_separate_and_preserve_partial_failures(self):
+        """Keep nested compiler clocks out of preparation totals, including interrupted output."""
+        spans = [
+            {"schema": 1, "event": "span", "scope": "interface-loading", "parent": "load-resolve",
+             "elapsed_us": 20, "success": True},
+            {"schema": 1, "event": "span", "scope": "load-resolve", "parent": "",
+             "elapsed_us": 100, "success": True},
+            {"schema": 1, "event": "span", "scope": "linking", "parent": "",
+             "elapsed_us": None, "success": False},
+        ]
+        output = "\n".join("Compiler observation: " + json.dumps(item) for item in spans) + "\n"
+        measured = reporter.observation_measurements(output)
+        self.assertEqual(measured["compiler_spans"], spans)
+        self.assertEqual(measured["spans"], [])
+        self.assertEqual(measured["hashing"], {})
+        malformed = output + 'Compiler observation: {"schema":'
+        partial = reporter.observation_measurements(malformed, partial=True)
+        self.assertEqual(partial["compiler_spans"], spans)
+        self.assertEqual(len(partial["compiler_observation_errors"]), 1)
+        with self.assertRaises(ValueError):
+            reporter.observation_measurements(malformed)
+        invalid = dict(spans[0], elapsed_us=-1)
+        with self.assertRaises(reporter.ProbeError):
+            reporter.observation_measurements("Compiler observation: " + json.dumps(invalid))
+        _, report, _ = self.exercise()
+        report["invocations"] = {"warm": measured}
+        summary = reporter.render_summary(report)
+        self.assertIn("### warm compiler spans", summary)
+        self.assertIn("interface-loading | load-resolve | 20 | True", summary)
+        self.assertIn("linking |  | unavailable | False", summary)
+        self.assertIn("never add both streams", summary)
+
     def test_measurements_aggregate_structured_observations(self):
         """Parse escaped records and aggregate hash accounting without thresholds."""
         counts = dict.fromkeys(reporter.COUNTERS, 0)

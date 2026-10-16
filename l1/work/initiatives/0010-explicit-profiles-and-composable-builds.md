@@ -1,6 +1,6 @@
 # L1 Initiative 0010 - Explicit Profiles and Composable Builds
 
-- Version: 2026-10-01
+- Version: 2026-10-16
 - Status: In progress
 - Kind: Initiative
 - Open plans:
@@ -176,9 +176,9 @@ compiler and stdlib adoption follow the relevant delivered foundations as separa
 requirement.
 
 Do not restart hashing or metadata-policy experiments as a dependency of the profile work. Coordinate touching changes
-with [l1/work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md][efficiency-plan], without adopting its
-unselected alternatives. Keep legacy compiler compatibility work independently owned; this initiative must not become
-their prerequisite or claim their results.
+with [l1/work/plans/features/closed/2026-09-24-preparation-reuse-efficiency-noref.md][efficiency-plan], without adopting
+its unselected alternatives. Keep legacy compiler compatibility work independently owned; this initiative must not
+become their prerequisite or claim their results.
 
 ## Completion Criteria
 
@@ -202,7 +202,7 @@ implementation do not authorize remote writes, releases or workflow dispatches.
 
 [architecture]: ../../docs/reference/architecture.md
 [boundary-plan]: ../plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md
-[efficiency-plan]: ../plans/features/2026-09-24-preparation-reuse-efficiency-noref.md
+[efficiency-plan]: ../plans/features/closed/2026-09-24-preparation-reuse-efficiency-noref.md
 [preparation]: ../../docs/reference/stdlib-preparation.md
 [profile-plan]: ../plans/features/2026-09-30-explicit-profile-artifacts-noref.md
 [reuse-adr]: ../../docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md

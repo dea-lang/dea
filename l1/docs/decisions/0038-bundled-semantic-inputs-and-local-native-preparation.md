@@ -1,7 +1,7 @@
 # ADR-0038: Bundled Semantic Inputs and Local Native Preparation
 
 - Decision date: 2026-09-11
-- Last edited: 2026-10-11
+- Last edited: 2026-10-16
 - Status: Accepted
 
 ## Context
@@ -74,8 +74,8 @@ explicit replacement avoids a new concurrent-reader protocol.
 
 - [l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md][profile-boundary]
 
-- [l1/work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md][reuse-efficiency] (Phase 1; later phases
-  active)
+- [l1/work/plans/features/closed/2026-09-24-preparation-reuse-efficiency-noref.md][reuse-efficiency] (Phase 1 provider
+  policy; all phases completed)
 
 - [l1/work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][preparation-plan]
 
@@ -94,5 +94,5 @@ explicit replacement avoids a new concurrent-reader protocol.
 [preparation-economy]: ../../work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md
 [preparation-plan]: ../../work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md
 [profile-boundary]: ../../work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md
-[reuse-efficiency]: ../../work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md
+[reuse-efficiency]: ../../work/plans/features/closed/2026-09-24-preparation-reuse-efficiency-noref.md
 [separate-compilation]: ../reference/separate-compilation.md

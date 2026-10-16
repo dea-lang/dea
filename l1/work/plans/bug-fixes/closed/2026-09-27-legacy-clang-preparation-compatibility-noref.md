@@ -14,7 +14,7 @@
 - Related:
   - [l1/docs/reference/stdlib-preparation.md][preparation-contract]
   - [l1/docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md][identity-adr]
-  - [l1/work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md][reuse-investigation]
+  - [l1/work/plans/features/closed/2026-09-24-preparation-reuse-efficiency-noref.md][reuse-investigation]
   - [l1/work/plans/features/attachments/2026-09-24-preparation-reuse-efficiency/phase3/relaxed-toolchain/results.md][phase-three]
   - [docs/specs/compiler/diagnostic-code-catalog.md][diagnostics]
 
@@ -109,4 +109,4 @@ broader concurrent external mutation guarantee is introduced. No remote write or
 [identity-adr]: ../../../../docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md
 [phase-three]: ../../features/attachments/2026-09-24-preparation-reuse-efficiency/phase3/relaxed-toolchain/results.md
 [preparation-contract]: ../../../../docs/reference/stdlib-preparation.md
-[reuse-investigation]: ../../features/2026-09-24-preparation-reuse-efficiency-noref.md
+[reuse-investigation]: ../../features/closed/2026-09-24-preparation-reuse-efficiency-noref.md

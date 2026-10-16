@@ -22,6 +22,7 @@ import sem_context;
 import signatures;
 import source_paths;
 import util.log;
+import util.timing;
 import interface_projection;
 
 /**
@@ -32,58 +33,62 @@ import interface_projection;
  * @return The complete analysis result including semantic context.
  */
 func analysis_analyze_driver_state(driver_state: DriverState*, cfg: LogConfig*) -> AnalysisResult* {
-    let result = new AnalysisResult(
-        driver_state,
-        diag_create(),
-        null,
-        null,
-        null,
-        spm_create(),
-        sim_create(),
-        spm_create()
-    );
-    for (let i = 0; i < driver_diag_count(driver_state); i = i + 1) {
-        diag_copy(result.diags, driver_diag_get(driver_state, i));
-    }
+    with (let timing = timing_begin(cfg, "application-analysis", "") => timing_free(timing)) {
+        let result = new AnalysisResult(
+            driver_state,
+            diag_create(),
+            null,
+            null,
+            null,
+            spm_create(),
+            sim_create(),
+            spm_create()
+        );
+        for (let i = 0; i < driver_diag_count(driver_state); i = i + 1) {
+            diag_copy(result.diags, driver_diag_get(driver_state, i));
+        }
 
-    if (driver_has_errors(driver_state)) {
+        if (driver_has_errors(driver_state)) {
+            timing_end(timing, false);
+            return result;
+        }
+
+        log_stage(cfg, "Resolving module-level names", "");
+        let nr_diag_start = diag_count(result.diags);
+        let names = nr_resolve(driver_state, result.diags);
+        result.names = names;
+        log_debug(cfg, "Name resolution produced " + int_to_string(diag_count(result.diags) - nr_diag_start) + " diagnostic(s)");
+
+        log_stage(cfg, "Resolving type signatures", "");
+        let sigs = sig_resolve(driver_state, names, result.diags);
+        result.signatures = sigs;
+        with (let sb = sb_create() => sb_free(sb)) {
+            sb_append(sb, "Signature resolution found ");
+            sb_append(sb, int_to_string(spm_size(sigs.func_types)));
+            sb_append(sb, " function(s), ");
+            sb_append(sb, int_to_string(spm_size(sigs.struct_infos)));
+            sb_append(sb, " struct(s), ");
+            sb_append(sb, int_to_string(spm_size(sigs.enum_infos)));
+            sb_append(sb, " enum(s), ");
+            sb_append(sb, int_to_string(spm_size(sigs.let_types)));
+            sb_append(sb, " top-level binding(s)");
+            log_debug(cfg, sb_to_string(sb));
+        }
+
+        log_stage(cfg, "Resolving local scopes", "");
+        let local_envs = locals_resolve(driver_state, result.diags);
+        result.locals_result = local_envs;
+        log_debug(cfg, "Local scope resolution processed " + int_to_string(locals_env_count(local_envs)) + " function(s)");
+
+        log_stage(cfg, "Type-checking expressions", "");
+        let expr_diag_start = diag_count(result.diags);
+        expr_types_check(result);
+        log_debug(cfg, "Expression type checking produced " + int_to_string(diag_count(result.diags) - expr_diag_start) + " diagnostic(s)");
+        log_info(cfg, "Analysis complete: " + int_to_string(analysis_diag_count(result)) + " total diagnostic(s), " + int_to_string(result.diags.error_count) + " error(s)");
+
+        timing_end(timing, !analysis_has_errors(result));
         return result;
     }
-
-    log_stage(cfg, "Resolving module-level names", "");
-    let nr_diag_start = diag_count(result.diags);
-    let names = nr_resolve(driver_state, result.diags);
-    result.names = names;
-    log_debug(cfg, "Name resolution produced " + int_to_string(diag_count(result.diags) - nr_diag_start) + " diagnostic(s)");
-
-    log_stage(cfg, "Resolving type signatures", "");
-    let sigs = sig_resolve(driver_state, names, result.diags);
-    result.signatures = sigs;
-    with (let sb = sb_create() => sb_free(sb)) {
-        sb_append(sb, "Signature resolution found ");
-        sb_append(sb, int_to_string(spm_size(sigs.func_types)));
-        sb_append(sb, " function(s), ");
-        sb_append(sb, int_to_string(spm_size(sigs.struct_infos)));
-        sb_append(sb, " struct(s), ");
-        sb_append(sb, int_to_string(spm_size(sigs.enum_infos)));
-        sb_append(sb, " enum(s), ");
-        sb_append(sb, int_to_string(spm_size(sigs.let_types)));
-        sb_append(sb, " top-level binding(s)");
-        log_debug(cfg, sb_to_string(sb));
-    }
-
-    log_stage(cfg, "Resolving local scopes", "");
-    let local_envs = locals_resolve(driver_state, result.diags);
-    result.locals_result = local_envs;
-    log_debug(cfg, "Local scope resolution processed " + int_to_string(locals_env_count(local_envs)) + " function(s)");
-
-    log_stage(cfg, "Type-checking expressions", "");
-    let expr_diag_start = diag_count(result.diags);
-    expr_types_check(result);
-    log_debug(cfg, "Expression type checking produced " + int_to_string(diag_count(result.diags) - expr_diag_start) + " diagnostic(s)");
-    log_info(cfg, "Analysis complete: " + int_to_string(analysis_diag_count(result)) + " total diagnostic(s), " + int_to_string(result.diags.error_count) + " error(s)");
-
-    return result;
 }
 
 /**

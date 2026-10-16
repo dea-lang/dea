@@ -14,6 +14,7 @@ import std.vector;
 import util.diag;
 import util.strings;
 import util.log;
+import util.timing;
 import dea_prelude;
 import module_graph;
 import source_paths;
@@ -293,71 +294,74 @@ func dr_resolve_module(ctx: DriverResolutionContext*, stack: StringVector*, modu
                 }
             }
             if (interface_path_opt != null) {
-                let interface_path = interface_path_opt as string;
-                if (!std.fs::is_file(interface_path)) {
-                    dr_emit_error(state.diags, "DRV-0075",
-                        "selected module interface is not a readable regular file: " + interface_path, interface_path);
-                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
-                }
-                let interface_text_opt = read_file(interface_path);
-                if (interface_text_opt == null) {
-                    dr_emit_error(state.diags, "DRV-0075",
-                        "cannot read selected module interface: " + interface_path, interface_path);
-                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
-                }
-                let interface_raw = interface_text_opt as string;
-                if (!us_is_valid_utf8(interface_raw)) {
-                    dr_emit_error(state.diags, "DRV-0076",
-                        "selected module interface is not valid UTF-8", interface_path);
-                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
-                }
-                let interface_text = us_strip_utf8_bom(interface_raw);
-                sv_push(state.source_names, interface_path);
-                sv_push(state.source_texts, interface_text);
+                with (let timing = timing_begin(ctx.cfg, "interface-loading", "load-resolve") => timing_free(timing)) {
+                    let interface_path = interface_path_opt as string;
+                    if (!std.fs::is_file(interface_path)) {
+                        dr_emit_error(state.diags, "DRV-0075",
+                            "selected module interface is not a readable regular file: " + interface_path, interface_path);
+                        return dr_fail_interface(state, module_name, interface_path, managed_selected);
+                    }
+                    let interface_text_opt = read_file(interface_path);
+                    if (interface_text_opt == null) {
+                        dr_emit_error(state.diags, "DRV-0075",
+                            "cannot read selected module interface: " + interface_path, interface_path);
+                        return dr_fail_interface(state, module_name, interface_path, managed_selected);
+                    }
+                    let interface_raw = interface_text_opt as string;
+                    if (!us_is_valid_utf8(interface_raw)) {
+                        dr_emit_error(state.diags, "DRV-0076",
+                            "selected module interface is not valid UTF-8", interface_path);
+                        return dr_fail_interface(state, module_name, interface_path, managed_selected);
+                    }
+                    let interface_text = us_strip_utf8_bom(interface_raw);
+                    sv_push(state.source_names, interface_path);
+                    sv_push(state.source_texts, interface_text);
 
-                let parsed = pi_parse_interface(interface_text, interface_path);
-                dr_copy_interface_diags(state.diags, parsed);
-                if (ipr_has_errors(parsed) || parsed.interface == null) {
+                    let parsed = pi_parse_interface(interface_text, interface_path);
+                    dr_copy_interface_diags(state.diags, parsed);
+                    if (ipr_has_errors(parsed) || parsed.interface == null) {
+                        ipr_free(parsed);
+                        return dr_fail_interface(state, module_name, interface_path, managed_selected);
+                    }
+
+                    let raw2 = parsed.interface as ModuleInterface*;
+                    parsed.interface = null;
                     ipr_free(parsed);
-                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
-                }
+                    if (raw2.module_name != module_name) {
+                        let msg = "module name mismatch: file " + interface_path + " declares '" + raw2.module_name;
+                        dr_emit_error(state.diags, "DRV-0020",
+                            msg + "' but was loaded as '" + module_name + "'", interface_path);
+                        mi_free(raw2);
+                        return dr_fail_interface(state, module_name, interface_path, managed_selected);
+                    }
 
-                let raw2 = parsed.interface as ModuleInterface*;
-                parsed.interface = null;
-                ipr_free(parsed);
-                if (raw2.module_name != module_name) {
-                    let msg = "module name mismatch: file " + interface_path + " declares '" + raw2.module_name;
-                    dr_emit_error(state.diags, "DRV-0020",
-                        msg + "' but was loaded as '" + module_name + "'", interface_path);
-                    mi_free(raw2);
-                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
-                }
+                    if (!ifp_verify(raw2, state.diags, interface_path)) {
+                        mi_free(raw2);
+                        return dr_fail_interface(state, module_name, interface_path, managed_selected);
+                    }
 
-                if (!ifp_verify(raw2, state.diags, interface_path)) {
-                    mi_free(raw2);
-                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
-                }
+                    let artifacts = mg_artifacts_from_interface(module_name, interface_path, state.diags);
+                    if (artifacts == null) {
+                        mi_free(raw2);
+                        return dr_fail_interface(state, module_name, interface_path, managed_selected);
+                    }
+                    let node2 = mg_node_from_interface(module_name, interface_path,
+                        artifacts as ModuleArtifactPaths*);
+                    node2.managed = managed_selected;
+                    node2.state = MNS_RESOLVING;
+                    if (!dr_add_graph_node(state, node2)) {
+                        mi_free(raw2);
+                        return false;
+                    }
 
-                let artifacts = mg_artifacts_from_interface(module_name, interface_path, state.diags);
-                if (artifacts == null) {
-                    mi_free(raw2);
-                    return dr_fail_interface(state, module_name, interface_path, managed_selected);
+                    dr_register_graph_interface(state, raw2);
+                    timing_end(timing, true);
+                    let resolved = dr_resolve_interface_dependencies(ctx, node2, raw2, next_stack);
+                    if (!resolved && managed_selected) {
+                        dr_emit_error(state.diags, "L1C-2158", "invalid bundled interface dependency graph; rerun make build or repair installation", interface_path);
+                    }
+                    return resolved;
                 }
-                let node2 = mg_node_from_interface(module_name, interface_path,
-                    artifacts as ModuleArtifactPaths*);
-                node2.managed = managed_selected;
-                node2.state = MNS_RESOLVING;
-                if (!dr_add_graph_node(state, node2)) {
-                    mi_free(raw2);
-                    return false;
-                }
-
-                dr_register_graph_interface(state, raw2);
-                let resolved = dr_resolve_interface_dependencies(ctx, node2, raw2, next_stack);
-                if (!resolved && managed_selected) {
-                    dr_emit_error(state.diags, "L1C-2158", "invalid bundled interface dependency graph; rerun make build or repair installation", interface_path);
-                }
-                return resolved;
             }
 
             if (ord(ctx.policy) == ord(MRP_REQUIRE_INTERFACE)) {
@@ -556,28 +560,31 @@ func dr_activate_graph_interfaces(state: DriverState*) {
 func dr_analyze_entry_core(search_paths: SourceSearchPaths*, entry_module: string,
                            interface_roots: StringVector*, policy: ModuleResolutionPolicy,
                            artifact_root: string?, interfaces: VectorBase*?, cfg: LogConfig*) -> DriverState* {
-    log_info(cfg, "Starting analysis for entry module '" + entry_module + "'");
-    log_stage(cfg, "Building compilation unit", entry_module);
-    let state = dr_state_create(entry_module, interfaces);
-    with (let candidates = dr_build_interface_candidates(state, interfaces) => spm_free(candidates)) {
-        if (dr_validate_interface_roots(state, interface_roots) && !driver_has_errors(state)) {
-            with (
-                let ctx = new DriverResolutionContext(
-                    state, candidates, search_paths, interface_roots, policy, artifact_root, cfg
-                ) => drop ctx,
-                let stack = sv_create(8) => sv_free(stack)
-            ) {
-                dr_resolve_module(ctx, stack, entry_module);
+    with (let timing = timing_begin(cfg, "load-resolve", "") => timing_free(timing)) {
+        log_info(cfg, "Starting analysis for entry module '" + entry_module + "'");
+        log_stage(cfg, "Building compilation unit", entry_module);
+        let state = dr_state_create(entry_module, interfaces);
+        with (let candidates = dr_build_interface_candidates(state, interfaces) => spm_free(candidates)) {
+            if (dr_validate_interface_roots(state, interface_roots) && !driver_has_errors(state)) {
+                with (
+                    let ctx = new DriverResolutionContext(
+                        state, candidates, search_paths, interface_roots, policy, artifact_root, cfg
+                    ) => drop ctx,
+                    let stack = sv_create(8) => sv_free(stack)
+                ) {
+                    dr_resolve_module(ctx, stack, entry_module);
+                }
+            }
+            if (!driver_has_errors(state)) {
+                dr_normalize_graph_interfaces(state);
+                dr_activate_graph_interfaces(state);
+            }
+            with (let names = mg_node_names_sorted(state.graph) => sv_free(names)) {
+                log_debug(cfg, "Module graph contains " + int_to_string(sv_size(names)) +
+                    " node(s): " + join_s(names, ", "));
             }
         }
-        if (!driver_has_errors(state)) {
-            dr_normalize_graph_interfaces(state);
-            dr_activate_graph_interfaces(state);
-        }
-        with (let names = mg_node_names_sorted(state.graph) => sv_free(names)) {
-            log_debug(cfg, "Module graph contains " + int_to_string(sv_size(names)) +
-                " node(s): " + join_s(names, ", "));
-        }
+        timing_end(timing, !driver_has_errors(state));
+        return state;
     }
-    return state;
 }

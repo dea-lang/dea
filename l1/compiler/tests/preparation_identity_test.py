@@ -297,6 +297,58 @@ def check_header_dependencies(library: Path, root: Path, config: dict) -> None:
     assert before[1] != after[1] and has_component(after[2], earlier / "float.h")
 
 
+def check_dependency_batch_coverage(library: Path, root: Path, config: dict) -> None:
+    """Retain each runtime translation unit and each generated-C configuration.
+
+    Args:
+        library: Compiled preparation service.
+        root: Owned directory for external headers and a copied compiler home.
+        config: Configuration selecting a supported real compiler.
+    """
+    home = root / "compiler"
+    shutil.copytree(config["home"], home)
+    external = root / "external headers"
+    external.mkdir()
+    runtime_sources = sorted((home / "shared/runtime/src").glob("*.c"))
+    assert len(runtime_sources) == 10, runtime_sources
+    runtime_headers = []
+    for index, source in enumerate(runtime_sources):
+        header = external / f"runtime_{index}.h"
+        header.write_text(f"#define BATCH_RUNTIME_{index} 1\n")
+        source.write_text(f'#include "{header.as_posix()}"\n' + source.read_text())
+        runtime_headers.append(header)
+    headers = root / "generated headers"
+    shutil.copytree(Path(config["build_dir"]) / "include", headers)
+    branch_headers, prelude = [], []
+    for real in (0, 1):
+        for floating in (0, 1):
+            header = headers / f"generated_{real}_{floating}.h"
+            header.write_text(f"#define BATCH_GENERATED_{real}_{floating} 1\n")
+            branch_headers.append(header)
+            condition = " && ".join((
+                ("" if real else "!") + "defined(DEA_USE_SYS_REAL)",
+                ("" if floating else "!") + "defined(FLT_RADIX)"))
+            prelude.append(f'#if {condition}\n#include "{header.name}"\n#endif\n')
+    runtime_header = headers / "dea_rt.h"
+    runtime_header.write_text("".join(prelude) + runtime_header.read_text())
+    selected = {**config, "home": str(home), "runtime_include": str(headers), "cache": str(root / "cache")}
+    before = identity(library, selected)
+    for header in [*runtime_headers, *branch_headers]:
+        assert has_component(before[2], header), header
+        original = header.read_text()
+        header.write_text(original + "#define BATCH_INPUT_CHANGED 1\n")
+        changed = identity(library, selected)
+        assert changed[0] == before[0] and changed[1] != before[1], header
+        header.write_text(original)
+    identity(library, selected)  # Refresh evidence after restoring the final changed header.
+    warm = identity(library, selected)
+    assert warm[:3] == before[:3]
+    # An unrelated search-directory mutation invalidates the complete observation.
+    (headers / "unrelated.txt").write_text("partial discovery invalidation")
+    partial = identity(library, selected)
+    assert partial[:3] == before[:3] and partial[3]["probes"] > warm[3]["probes"]
+
+
 def check_dependency_spellings(library: Path, root: Path, config: dict, *, literal_backslashes: bool) -> None:
     """Observe compiler-escaped header names and invalidate their changed contents.
 
@@ -1106,6 +1158,7 @@ def main() -> int:
                         assert sum(role == "runtime" for role in inventory.values()) == 10
                         assert not any(path.endswith(".a") for path in inventory)
             check_header_dependencies(library, root, config)
+            check_dependency_batch_coverage(library, root / "dependency-batch", config)
             check_executable_dependencies(library, root, config)
             check_implementation_library(library, root, config)
             check_structured_memos(library, config)

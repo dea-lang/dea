@@ -2,7 +2,7 @@
 
 - Date: 2026-09-24
 - Baseline: `observability-enabled-baseline-2026-09-24`
-- Parent plan: [l1/work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md][plan]
+- Parent plan: [l1/work/plans/features/closed/2026-09-24-preparation-reuse-efficiency-noref.md][plan]
 
 ## Findings
 
@@ -539,5 +539,5 @@ tables/counts are reconciled with the JSON rather than copied from unavailable l
 [hello]: ../../../../../examples/hello.l1
 [logging-control]: logging-control-report.json
 [measurements]: report.json
-[plan]: ../../2026-09-24-preparation-reuse-efficiency-noref.md
+[plan]: ../../closed/2026-09-24-preparation-reuse-efficiency-noref.md
 [reporter]: ../../../../../scripts/check_preparation_reuse.py

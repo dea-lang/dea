@@ -104,8 +104,9 @@ metadata, or `fallback` before ordinary hashing. Each file decision names its pa
 with `memo-saved`, or a nonfatal `miss` with `write-unavailable`. These observations leave counter meanings unchanged.
 
 `span` events report inclusive `elapsed_us` for Dea identity resolution, native identity/observation resolution, profile
-validation, lock waiting and native publication. `probe` events report each purpose, elapsed time, status and timeout;
-runtime dependency probes name the individual translation unit and generated-C dependency probes name their real/float
+validation, lock waiting and native publication. `probe` events report each purpose, elapsed time, status and timeout.
+Apple Clang dependency probes on macOS normally report one generated-C batch and one runtime batch. Other adapters and
+sequential fallback report individual probes, naming each runtime translation unit or generated-C real/float
 configuration. Nested probe and hash time is already included in its enclosing span and must not be added to that span.
 Payload-inventory hashing occurs before the managed native-publication span and retains its `publication` hash category;
 the span covers managed manifest serialization, validation and publication.
@@ -120,6 +121,21 @@ providers, including `--gen`, compile-only commands and selections available bef
 opt-out reports managed-provider suppression with reason `no-managed-stdlib`; explicit bundled roots alone do not
 suppress it. When the opt-out is combined with `--no-auto-prepare`, debug output also states that the latter option
 disables managed preparation only; ordinary source providers may still be compiled.
+
+Compiler phase timings use a separate `Compiler observation: ` prefix at `-vvv`. Their JSON records have `schema: 1`,
+`event: "span"`, `scope`, `parent`, `elapsed_us`, and `success`. A duration is a nonnegative integer in microseconds, or
+`null` when the monotonic clock is unavailable, moves backward, or exceeds the representable duration. Lower verbosity
+does not collect these clocks or construct timing records.
+
+`load-resolve` includes source/interface loading and dependency resolution. Its `interface-loading` children measure
+individual interface loads before recursive dependency resolution; these children do not overlap each other.
+`application-analysis` starts after resolution. `c-generation`, `c-compilation`, `wrapper-c-compilation`, and `linking`
+measure the corresponding generated-C and native-command boundaries. Wrapper/link spans include shell-command
+construction and captured-output replay; they do not isolate the host compiler frontend from its own linker or startup
+costs. An empty `parent` identifies a top-level compiler span. Cold preparation may generate and compile managed modules
+inside preparation spans. Compiler timings therefore must not be added indiscriminately to preparation timings or to
+inclusive parents. Wrapper startup, CLI dispatch, cleanup, and other uninstrumented work remain part of external elapsed
+time.
 
 ## CI capability reporting
 
@@ -333,6 +349,19 @@ GCC/Clang dependency output is decoded using the compiler's Make quoting before 
 that output remain filename bytes on POSIX and path separators on Windows; escaped whitespace, hash signs and dollars
 retain their filename meaning. A compiler that loses the original filename spelling cannot authorize reuse through that
 dependency. Compiler-image inspection errors decline persistent reuse without disabling invocable fresh preparation.
+
+Discovery retains whole-observation invalidation. Apple Clang on macOS amortizes driver startup with two dependency
+invocations: four generated-C real/float configurations under application options, and all ten runtime translation units
+under runtime options. Every source must appear exactly once in the returned Make rules before batch evidence is
+accepted. Unsupported, incomplete, malformed, failed, timed-out, or oversized batch output falls back to individual
+dependency probes. Other compilers/platforms retain individual probes; Linux measurements did not justify enabling
+batching there. Batching retains the complete header and search-candidate evidence; it does not share discovery between
+invocations or change the selected input identity.
+
+SHA-256 uses the dependency-free portable C implementation for identities, selected inputs and artifact validation.
+Platform crypto acceleration remains deferred: large-file throughput alone does not establish a portable consumer
+improvement or the required failure-cleanup and dependency policy. Hash backend experiments do not change digest bytes,
+stable-read validation or metadata reuse rules.
 
 Metadata-preserving external mutation and concurrent external input changes are outside the contract. These checks do
 not prove cache portability.

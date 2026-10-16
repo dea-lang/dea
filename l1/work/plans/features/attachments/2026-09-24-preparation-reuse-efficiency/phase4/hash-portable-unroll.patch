@@ -1,0 +1,40 @@
+--- a/l1/compiler/support/preparation/sha256.h
++++ b/l1/compiler/support/preparation/sha256.h
+@@ -44,19 +44,25 @@
+     f = s->h[5];
+     g = s->h[6];
+     h = s->h[7];
+-    for (i = 0; i < 64; ++i) {
+-        t1 = h + (pc_rotr(e, 6) ^ pc_rotr(e, 11) ^ pc_rotr(e, 25)) + ((e & f) ^ (~e & g)) + k[i] +
+-             w[i];
+-        t2 = (pc_rotr(a, 2) ^ pc_rotr(a, 13) ^ pc_rotr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c));
+-        h = g;
+-        g = f;
+-        f = e;
+-        e = d + t1;
+-        d = c;
+-        c = b;
+-        b = a;
+-        a = t1 + t2;
++#define PC_HASH_ROUND(a, b, c, d, e, f, g, h, index) do { \
++    t1 = (h) + (pc_rotr((e), 6) ^ pc_rotr((e), 11) ^ pc_rotr((e), 25)) + \
++         (((e) & (f)) ^ (~(e) & (g))) + k[(index)] + w[(index)]; \
++    t2 = (pc_rotr((a), 2) ^ pc_rotr((a), 13) ^ pc_rotr((a), 22)) + \
++         (((a) & (b)) ^ ((a) & (c)) ^ ((b) & (c))); \
++    (d) += t1; \
++    (h) = t1 + t2; \
++} while (0)
++    for (i = 0; i < 64; i += 8) {
++        PC_HASH_ROUND(a, b, c, d, e, f, g, h, i);
++        PC_HASH_ROUND(h, a, b, c, d, e, f, g, i + 1);
++        PC_HASH_ROUND(g, h, a, b, c, d, e, f, i + 2);
++        PC_HASH_ROUND(f, g, h, a, b, c, d, e, i + 3);
++        PC_HASH_ROUND(e, f, g, h, a, b, c, d, i + 4);
++        PC_HASH_ROUND(d, e, f, g, h, a, b, c, i + 5);
++        PC_HASH_ROUND(c, d, e, f, g, h, a, b, i + 6);
++        PC_HASH_ROUND(b, c, d, e, f, g, h, a, i + 7);
+     }
++#undef PC_HASH_ROUND
+     s->h[0] += a;
+     s->h[1] += b;
+     s->h[2] += c;

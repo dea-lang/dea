@@ -349,6 +349,11 @@ tiers are distinct from implementation phases within a plan or initiative.
   regressions, and performance evidence are recorded in its ledger. The consolidated `make test-ci` gate passed with
   Stage 1 behavioral/diagnostic parity and the strict self-hosting fixed point preserved.
 
+- Feature [l1/work/plans/features/closed/2026-09-24-preparation-reuse-efficiency-noref.md][preparation-reuse-efficiency]
+  completed equivalent bundled-root recognition, cwd-independent digest evidence with directory-sensitive discovery,
+  scoped Apple Clang discovery batching on macOS, and debug warm-build attribution. Container reuse remained research;
+  SHA-256 candidates did not meet the consumer/integration gates, so the portable backend remains unchanged.
+
 ## Active standalone plans
 
 - Feature [2026-06-21-cheap-string-slices-noref][cheap-string-slices] extends `dea::slice` to ARC-backed string views
@@ -357,10 +362,6 @@ tiers are distinct from implementation phases within a plan or initiative.
   print-helper surface, using typed L1 variadics with shared string and writer formatting.
 - Feature [2026-08-30-standard-library-capability-coverage-noref][stdlib-coverage] is the Stdlib Tier 2 audit that
   records portable systems capability and C99-family coverage without promising literal C99 API parity.
-- Feature [l1/work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md][preparation-reuse-efficiency]
-  implements Phase 1 of five phases: equivalent bundled roots now retain managed providers, with `--no-managed-stdlib`
-  for intentional source imports. Digest/runtime evidence reuse, cheaper validation, and warm-build attribution remain
-  gated future work.
 
 ## Backlog
 
@@ -492,7 +493,7 @@ update to be promoted to an initiative or plan:
 [preparation-economy]: ../work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md
 [preparation-observability]: ../work/plans/features/closed/2026-09-24-preparation-observability-noref.md
 [preparation-portability]: ../work/plans/bug-fixes/closed/2026-09-13-native-preparation-ci-portability-noref.md
-[preparation-reuse-efficiency]: ../work/plans/features/2026-09-24-preparation-reuse-efficiency-noref.md
+[preparation-reuse-efficiency]: ../work/plans/features/closed/2026-09-24-preparation-reuse-efficiency-noref.md
 [preparation-sha256-cost]: ../work/plans/refactors/closed/2026-09-25-preparation-sha256-cost-investigation-noref.md
 [preparation-test-cost]: ../work/plans/tools/closed/2026-09-13-preparation-test-cost-noref.md
 [profile-artifacts]: ../work/plans/features/2026-09-30-explicit-profile-artifacts-noref.md
