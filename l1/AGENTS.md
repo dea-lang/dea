@@ -80,8 +80,9 @@ support.
 
 Fresh native artifact acceptance is required on Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64. Report pending
 platform/hosted evidence explicitly. Hosted releases remain separate work and require normal authorization gates. L1 is
-not frozen and its feature plans are not automatically migrated to L2. Explicit profiles/composable builds remain
-planned for L1 first, then L2, with no implementation in the split.
+not frozen and its feature plans are not automatically migrated to L2. Explicit profile creation and
+compile/link/build/run selection are implemented in L1; managed-client integration and dependency discovery remain later
+initiative phases. L2 adoption requires a separately scoped change.
 
 ## Documentation Link Style
 

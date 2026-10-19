@@ -1,6 +1,6 @@
 # Dea Compiler CLI Contract
 
-Version: 2026-10-10
+Version: 2026-10-19
 
 This document defines the shared command-line contract for Dea compilers. It covers behavior common to the current L0
 Stage 1, L0 Stage 2, canonical L1, and canonical L2 implementations. A level may add a documented mode or option without
@@ -28,7 +28,8 @@ split.
 - Modes are selected with flags. At most one primary mode may be selected.
 - `--build` is the default when no primary mode is given.
 - Exactly one source target is required, except that `--help` and `--version` short-circuit target validation and L1
-  `--link` consumes one or more positional Dea object paths and L1 `--prepare-stdlib` accepts no target.
+  `--link` consumes one or more positional Dea object paths and L1 `--prepare-stdlib` and `--create-profile` accept no
+  target.
 - Runtime arguments for `--run` follow a `--` separator. The separator is invalid in other modes.
 - CLI argument errors exit with status 2; analysis, compilation, or standalone-link failures exit with status 1;
   successful operations exit with status 0. `--run` forwards the child program's exit status.
@@ -432,7 +433,29 @@ The detailed ownership, adapter and memo contract is
 [l1/docs/reference/stdlib-preparation.md](../../../l1/docs/reference/stdlib-preparation.md). No installed native
 profile, project cache, ABI compatibility inference, host-ID binding or cross-host reuse guarantee is introduced.
 
-## 10. Compatibility Rule
+## 10. L1 Explicit Profile Extension
+
+L1 adds target-free `--create-profile -o PATH` and the single selector `--profile PATH` for compile, link, build and
+run. Creation requires exactly one nonempty new output directory and accepts preparation compiler/options, public
+headers, generated-C and runtime controls. It rejects another mode, a profile selector, source/project/interface roots,
+runtime library replacement, link/program operands, cache controls, `--no-auto-prepare`, `--force` and `--keep-c`.
+
+Selection reads exactly the named artifact, restores its locked native/codegen configuration and uses its inventory for
+bundled providers, headers and runtime support. Omitted settings inherit the profile; redundant explicit settings must
+normalize to the recorded values; conflicts fail before native work. Explicit project and `-I` provider precedence and
+final-link operands retain their ordinary meanings. Explicit `--sys-root`, `--runtime-include`, `--runtime-lib`,
+`--no-managed-stdlib` and `--stdlib-cache` conflict with selection. Ambient native/system/runtime/cache defaults are
+ignored. `--no-auto-prepare` is redundant in build/run/link and remains invalid in compile-only mode.
+
+The caller owns external compiler/SDK/environment stability. No managed freshness discovery, cache lookup, lock,
+preparation, repair, fallback or memo write occurs during selection. CLI misuse exits 2; construction/validation or
+publication failures exit 1. Progress and native diagnostics go to stderr. Ordinary managed controls retain their
+existing meanings. L0 and L2 do not implement this L1 extension.
+
+The normative format, path-option policy and compatibility/ownership contract are in
+[l1/docs/reference/explicit-profiles.md](../../../l1/docs/reference/explicit-profiles.md).
+
+## 11. Compatibility Rule
 
 Equivalent behavior keeps the same flag names, aliases, option ordering, exit-code meanings, and diagnostic meanings
 across stages and levels. A level may recognize a shared spelling while reporting that its capability is unavailable,

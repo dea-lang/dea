@@ -1,7 +1,7 @@
 # ADR-0030: Authoritative Module Interfaces and Opaque Native Link Inputs
 
 - Decision date: 2026-08-21
-- Last edited: 2026-09-11
+- Last edited: 2026-10-19
 - Status: Accepted
 - Supersedes: [ADR-0021][object-metadata]
 - Supersedes: [ADR-0028][verified-link-set]
@@ -54,6 +54,10 @@ Compile-only continues to publish a canonical sibling `.o + .l1m` pair with endp
 interface and that the staged native output is a regular file, but it does not authenticate or structurally bind the
 pair. Concurrent readers and same-stem writers must serialize externally.
 
+Explicit profiles retain the same interface authority and opaque native-input boundary. Payload digests detect damage
+relative to trusted metadata; they do not authenticate native semantics or establish arbitrary cross-toolchain
+compatibility.
+
 ## Rationale
 
 - One portable interface authority removes duplicate semantic formats and host-object parsers from the bootstrap.
@@ -79,6 +83,8 @@ pair. Concurrent readers and same-stem writers must serialize externally.
 
 ## Related Plans
 
+- [l1/work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md][explicit-profile-plan]
+
 - [l1/work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][preparation-plan]
 
 - [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../work/initiatives/closed/0001-separate-compilation-and-linking.md):
@@ -87,6 +93,8 @@ pair. Concurrent readers and same-stem writers must serialize externally.
 - [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md][authority-plan]
 
 ## Current Docs
+
+- [l1/docs/reference/explicit-profiles.md][explicit-profiles]
 
 - [l1/docs/reference/stdlib-preparation.md](../reference/stdlib-preparation.md)
 
@@ -104,6 +112,8 @@ pair. Concurrent readers and same-stem writers must serialize externally.
 [authority-plan]: ../../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
 [backend]: ../reference/c-backend-design.md
 [cli]: ../../../docs/specs/compiler/cli-contract.md
+[explicit-profile-plan]: ../../work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md
+[explicit-profiles]: ../reference/explicit-profiles.md
 [interface-format]: ../specs/compiler/module-interface-format.md
 [object-metadata]: 0021-portable-object-metadata-and-inspection.md
 [preparation-plan]: ../../work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md

@@ -58,6 +58,11 @@ Use repository-root paths as the visible link text, for example `[l1/docs/projec
 Keep reference ids short and readable, usually one or two words joined with hyphens. Avoid dates, numeric prefixes,
 `noref`, and file extensions in the reference id unless a real uniqueness conflict leaves no cleaner option.
 
+## Explicit native profiles
+
+Caller-owned native support and manual compile/link composition are documented in
+[l1/docs/reference/explicit-profiles.md][explicit-profiles].
+
 ## Generated source references
 
 From `l1/`, run `make venv` to prepare the shared Python environment. Then `make docs` builds canonical HTML, Markdown,
@@ -87,6 +92,7 @@ Direct `make install PREFIX=... DOCS_ARTIFACT=/absolute/bundle.tar.gz` optionall
 checks the exact archive after extraction. Local generation and packaging do not publish or dispatch workflows.
 
 [developer-guide]: ../README.md
+[explicit-profiles]: reference/explicit-profiles.md
 [releases]: releases/README.md
 [roadmap]: roadmap.md
 [user-guide]: user/README.md

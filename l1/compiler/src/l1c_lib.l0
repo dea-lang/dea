@@ -112,7 +112,7 @@ func l1c_prepare_input(opts: CliOptions*, diags: DiagCollector*, cfg: LogConfig*
         let project_roots = us_sv_clone(opts.project_roots) => sv_free(project_roots),
         let sys_roots = us_sv_clone(opts.sys_roots) => sv_free(sys_roots)
     ) {
-        sp_apply_default_sys_roots(sys_roots);
+        if (opts.profile == null) { sp_apply_default_sys_roots(sys_roots); }
 
         let entry_target = opts.entry_target as string;
 
@@ -875,8 +875,21 @@ func run_with_argv(argv: StringVector*) -> int {
     with (let cfg = log_config_create(log_level_from_verbosity(opts.verbosity), opts.log) => drop cfg) {
         log_info(cfg, build_info_identity_with_version(cli_compiler_identity_text()));
 
+        with (let diags = diag_create() => diag_free(diags)) {
+            if (!pr_profile_select(opts, diags)) {
+                dp_print_collector(diags);
+                pr_profile_release(opts);
+                cli_options_free(opts);
+                cli_parse_result_free(parsed);
+                return 1;
+            }
+        }
+
         let rc = 1;
         match (opts.mode) {
+            CM_CREATE_PROFILE => {
+                rc = pr_cmd_create_profile(opts, cfg);
+            }
             CM_PREPARE_STDLIB => {
                 rc = pr_cmd_prepare(opts, cfg);
             }
@@ -915,6 +928,7 @@ func run_with_argv(argv: StringVector*) -> int {
             }
         }
 
+        pr_profile_release(opts);
         cli_options_free(opts);
         cli_parse_result_free(parsed);
         return rc;

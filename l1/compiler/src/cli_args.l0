@@ -72,6 +72,7 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
         let i = 0;
         let entry_option_count = 0;
         let output_option_count = 0;
+        let profile_option_count = 0;
         while (i < cli_end) {
             let token = sv_get(argv, i);
 
@@ -82,6 +83,32 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
             }
             if (token == "--no-auto-prepare") {
                 (opts as CliOptions*).no_auto_prepare = true;
+                i = i + 1;
+                continue;
+            }
+            if (token == "--create-profile") {
+                cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_CREATE_PROFILE);
+                i = i + 1;
+                continue;
+            }
+            if (token == "--profile" || starts_with_s(token, "--profile=")) {
+                profile_option_count = profile_option_count + 1;
+                let value: string? = null;
+                if (token == "--profile") {
+                    value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                    if (value != null) { i = i + 1; }
+                } else {
+                    value = slice_s(token, len_s("--profile="), len_s(token));
+                }
+                if (profile_option_count > 1) {
+                    cli_emit_error(diags as DiagCollector*, "L1C-2180", "option '--profile' may be provided at most once");
+                } else if (value != null) {
+                    if (is_empty_s(value as string)) {
+                        cli_emit_error(diags as DiagCollector*, "L1C-2180", "option '--profile' requires a nonempty path");
+                    } else {
+                        (opts as CliOptions*).profile = value;
+                    }
+                }
                 i = i + 1;
                 continue;
             }
@@ -184,30 +211,35 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
 
             if (token == "-NLD" || token == "--no-line-directives") {
                 (opts as CliOptions*).no_line_directives = true;
+                (opts as CliOptions*).no_line_directives_supplied = true;
                 i = i + 1;
                 continue;
             }
 
             if (token == "-Su" || token == "--unchecked") {
                 (opts as CliOptions*).unchecked = true;
+                (opts as CliOptions*).unchecked_supplied = true;
                 i = i + 1;
                 continue;
             }
 
             if (token == "-Sb" || token == "--check-basic") {
                 (opts as CliOptions*).check_basic = true;
+                (opts as CliOptions*).check_basic_supplied = true;
                 i = i + 1;
                 continue;
             }
 
             if (token == "-Va" || token == "--trace-arc") {
                 (opts as CliOptions*).trace_arc = true;
+                (opts as CliOptions*).trace_arc_supplied = true;
                 i = i + 1;
                 continue;
             }
 
             if (token == "-Vm" || token == "--trace-memory") {
                 (opts as CliOptions*).trace_memory = true;
+                (opts as CliOptions*).trace_memory_supplied = true;
                 i = i + 1;
                 continue;
             }
@@ -404,6 +436,7 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
             }
 
             if (token == "-Cc" || token == "--c-compiler") {
+                (opts as CliOptions*).c_compiler_supplied = true;
                 let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
                 if (value == null) {
                     i = i + 1;
@@ -415,18 +448,21 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
             }
 
             if (starts_with_s(token, "--c-compiler=")) {
+                (opts as CliOptions*).c_compiler_supplied = true;
                 (opts as CliOptions*).c_compiler = slice_s(token, len_s("--c-compiler="), len_s(token));
                 i = i + 1;
                 continue;
             }
 
             if (starts_with_s(token, "-Cc=")) {
+                (opts as CliOptions*).c_compiler_supplied = true;
                 (opts as CliOptions*).c_compiler = slice_s(token, len_s("-Cc="), len_s(token));
                 i = i + 1;
                 continue;
             }
 
             if (token == "-Co" || token == "--c-options") {
+                (opts as CliOptions*).c_options_supplied = true;
                 let value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
                 if (value == null) {
                     i = i + 1;
@@ -438,12 +474,14 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
             }
 
             if (starts_with_s(token, "--c-options=")) {
+                (opts as CliOptions*).c_options_supplied = true;
                 (opts as CliOptions*).c_options = slice_s(token, len_s("--c-options="), len_s(token));
                 i = i + 1;
                 continue;
             }
 
             if (starts_with_s(token, "-Co=")) {
+                (opts as CliOptions*).c_options_supplied = true;
                 (opts as CliOptions*).c_options = slice_s(token, len_s("-Co="), len_s(token));
                 i = i + 1;
                 continue;
@@ -729,6 +767,15 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                         "': expected a canonical dotted module name"
                     );
                 }
+            }
+        } else if (ord(parsed_opts.mode) == ord(CM_CREATE_PROFILE)) {
+            if (parsed_opts.entry_target != null) {
+                cli_emit_error(diags as DiagCollector*, "L1C-2180", "mode '--create-profile' accepts no target");
+            }
+            if (output_option_count != 1 || parsed_opts.output == null) {
+                cli_emit_error(diags as DiagCollector*, "L1C-2180", "mode '--create-profile' requires exactly one nonempty output path through '-o' or '--output'");
+            } else if (is_empty_s(parsed_opts.output as string)) {
+                cli_emit_error(diags as DiagCollector*, "L1C-2180", "mode '--create-profile' requires a nonempty output path");
             }
         } else if (ord(parsed_opts.mode) == ord(CM_PREPARE_STDLIB)) {
             if (parsed_opts.entry_target != null) {

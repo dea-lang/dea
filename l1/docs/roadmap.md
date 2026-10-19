@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-10-16
+Version: 2026-10-19
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -306,13 +306,14 @@ tiers are distinct from implementation phases within a plan or initiative.
   roadmap's currently unspecified `IFF` item.
 - Initiative [0009-safe-concurrency][safe-concurrency] promotes the Stdlib Tier 4 concurrency direction into
   memory-model and runtime-readiness design before safe threads, synchronization, atomics, or channels are exposed.
-- Initiative [0010-explicit-profiles-and-composable-builds][explicit-profiles] drafts caller-owned profile artifacts and
-  composable compilation while preserving managed build/run ergonomics and existing cache controls. Its internal
-  construction boundary landed in Refactor [2026-09-30-profile-construction-boundary-noref][profile-boundary]; Feature
-  [2026-09-30-explicit-profile-artifacts-noref][profile-artifacts] is next. Managed integration and dependency discovery
-  follow through separately scoped plans; all four phases are required for initiative completion. The proposed
-  `--create-profile` and `--profile` options are not implemented yet. Production compiler Make conversion and
-  ordinary-project stdlib construction remain separate adoption work.
+- Initiative [0010-explicit-profiles-and-composable-builds][explicit-profiles] delivers caller-owned profile artifacts
+  and composable compilation while preserving managed build/run ergonomics and existing cache controls. Its internal
+  construction boundary landed in
+  [l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md][profile-boundary].
+  [l1/work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md][profile-artifacts] implements
+  `--create-profile` and `--profile` for compile/link/build/run. Managed-client integration and dependency discovery
+  remain separately scoped phases; all four phases are required for initiative completion. Production compiler Make
+  conversion and ordinary-project stdlib construction remain separate adoption work.
 
 ## Completed initiatives
 
@@ -496,7 +497,7 @@ update to be promoted to an initiative or plan:
 [preparation-reuse-efficiency]: ../work/plans/features/closed/2026-09-24-preparation-reuse-efficiency-noref.md
 [preparation-sha256-cost]: ../work/plans/refactors/closed/2026-09-25-preparation-sha256-cost-investigation-noref.md
 [preparation-test-cost]: ../work/plans/tools/closed/2026-09-13-preparation-test-cost-noref.md
-[profile-artifacts]: ../work/plans/features/2026-09-30-explicit-profile-artifacts-noref.md
+[profile-artifacts]: ../work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md
 [profile-boundary]: ../work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md
 [release-policy]: ../../docs/decisions/0023-l1-release-workflow-policy.md

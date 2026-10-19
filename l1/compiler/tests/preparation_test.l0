@@ -13,6 +13,7 @@ import std.vector;
 import analysis;
 import build_driver;
 import cli_args.model;
+import compiler_filesystem;
 import driver.state;
 import module_graph;
 import module_interface;
@@ -146,11 +147,71 @@ func test_preparation_order_ownership() {
     }
 }
 
+/** Exact selection failures and borrowed descriptions retain one native owner. */
+func test_explicit_profile_failure_ownership() {
+    with (let opts = cli_options_create() => cli_options_free(opts),
+          let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+          let diags = diag_create() => diag_free(diags)) {
+        opts.profile = "compiler/tests/fixtures/profile_missing_for_ownership_test";
+        assert(cfs_path_kind(opts.profile as string) == CFS_PATH_ABSENT, "profile failure fixture must be absent");
+        for (let i = 0; i < 2; i = i + 1) {
+            assert(!pr_profile_select(opts, diags) && opts.profile_context != null,
+                "an absent exact profile must fail with an owned native description");
+            let context = opts.profile_context as void*;
+            assert(l1c_prep_error_code(context) == 2182 && pr_get(context, "error") != "",
+                "missing profile failure lost its specific diagnostic");
+            with (let borrowed = mp_create(opts, cfg, false) => mp_free(borrowed)) {
+                assert(same_pointer(borrowed.context, context), "profile consumer created another native context");
+            }
+            assert(l1c_prep_error_code(context) == 2182, "borrowed consumer released the profile owner");
+            pr_profile_release(opts);
+            assert(opts.profile_context == null, "profile release retained a dangling native handle");
+        }
+        opts.profile = null;
+        opts.c_compiler = "unused-compiler";
+        opts.c_options = "@unsupported-profile-options";
+        opts.output = "build/profile_failure_for_ownership_test";
+        assert(pr_cmd_create_profile(opts, cfg) == 1,
+            "unsupported profile indirection must fail without constructing native support");
+        assert(cfs_path_kind(opts.output as string) == CFS_PATH_ABSENT,
+            "failed profile option validation created an output");
+    }
+}
+
+/** Frozen argv and inventory selection stay independent of ambient defaults and source roots. */
+func test_explicit_profile_resolved_configuration() {
+    with (let opts = cli_options_create() => cli_options_free(opts),
+          let paths = sp_create() => sp_free(paths)) {
+        opts.profile = "exact-profile";
+        opts.c_compiler = "/selected/compiler";
+        opts.c_options = "-DIGNORED_CLI_DEFAULT";
+        opts.profile_c_options = sv_create(2);
+        sv_push(opts.profile_c_options as StringVector*, "-DLOCKED=1");
+        sv_push(opts.profile_c_options as StringVector*, "-O0");
+        with (let words = bd_collect_c_option_words(opts) => sv_free(words)) {
+            assert(sv_size(words) == 2 && sv_get(words, 0) == "-DLOCKED=1" && sv_get(words, 1) == "-O0",
+                "profile option collection recollected environment or CLI options");
+            sv_push(words, "-DLOCAL_COPY");
+        }
+        assert(sv_size(opts.profile_c_options as StringVector*) == 2,
+            "consumer option mutation changed the frozen profile configuration");
+        assert(bd_take_c_compiler(opts) as string == "/selected/compiler" &&
+            bd_take_c_compiler(opts) as string == "/selected/compiler" && opts.c_compiler != null,
+            "profile compiler was consumed and exposed later consumers to ambient reselection");
+        paths.profile_modules = "std.io\nstd.types\n";
+        assert(sp_managed_eligible(paths, "std.io") && sp_managed_eligible(paths, "std.types") &&
+            !sp_managed_eligible(paths, "std.i") && !sp_managed_eligible(paths, "std.not_bundled"),
+            "profile membership was not exact or depended on an installed source directory");
+    }
+}
+
 /** Windows repair guidance preserves literal characters that cmd.exe would expand. */
 func main() {
     test_optional_native_selection_ownership();
     test_native_artifact_rebinding();
     test_preparation_order_ownership();
+    test_explicit_profile_failure_ownership();
+    test_explicit_profile_resolved_configuration();
     with (let words = sv_create(4) => sv_free(words)) {
         sv_push(words, "l1c");
         sv_push(words, "--stdlib-cache");

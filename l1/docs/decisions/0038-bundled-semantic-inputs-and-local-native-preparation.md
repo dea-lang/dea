@@ -1,7 +1,7 @@
 # ADR-0038: Bundled Semantic Inputs and Local Native Preparation
 
 - Decision date: 2026-09-11
-- Last edited: 2026-10-16
+- Last edited: 2026-10-19
 - Status: Accepted
 
 ## Context
@@ -45,6 +45,9 @@ or automatically replaced. Automatic consumers use fresh support and show eligib
 replacement and manual disposal require external serialization. The service has no cache-wide lock, generations, reader
 pinning, cleaner/scrubber, migration, shared/system store, or application cache.
 
+Explicit `--profile` selection replaces bundled discovery with its validated inventory and copied public headers/runtime
+inputs. Ordinary bundled discovery retains its existing policy.
+
 ## Rationale
 
 Directory identity gives equivalent root selections the same provider behavior without promoting copied trees to
@@ -69,6 +72,8 @@ explicit replacement avoids a new concurrent-reader protocol.
 
 ## Related Plans
 
+- [l1/work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md][explicit-profile-plan]
+
 - [work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../../work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md):
   canonical build naming and construction boundary.
 
@@ -83,13 +88,20 @@ explicit replacement avoids a new concurrent-reader protocol.
 
 ## Current Docs
 
+- [l1/docs/reference/explicit-profiles.md][explicit-profiles]
+
 - [docs/specs/compiler/cli-contract.md][cli]
+
 - [l1/docs/reference/stdlib-preparation.md][preparation]
+
 - [l1/docs/reference/separate-compilation.md][separate-compilation]
+
 - [l1/docs/reference/c-backend-design.md][backend]
 
 [backend]: ../reference/c-backend-design.md
 [cli]: ../../../docs/specs/compiler/cli-contract.md
+[explicit-profile-plan]: ../../work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md
+[explicit-profiles]: ../reference/explicit-profiles.md
 [preparation]: ../reference/stdlib-preparation.md
 [preparation-economy]: ../../work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md
 [preparation-plan]: ../../work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md

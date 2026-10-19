@@ -1,11 +1,11 @@
 # L1 Initiative 0010 - Explicit Profiles and Composable Builds
 
-- Version: 2026-10-16
+- Version: 2026-10-19
 - Status: In progress
 - Kind: Initiative
-- Open plans:
-  - `l1/work/plans/features/2026-09-30-explicit-profile-artifacts-noref.md`
+- Open plans: None
 - Closed plans:
+  - `l1/work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md`
   - `l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md`
 - Scope: L1 canonical L1 compiler
 - Subsystem: Profile construction, native preparation, compiler driver and external build integration
@@ -21,8 +21,9 @@ explicit destination and consumes it through existing compile, link, build and r
 system, a new package manager, or a rewrite of the compiler bootstrap.
 
 This initiative records the direction agreed in the September 30 design discussion and reviewed against the repository
-on October 1. Phase A is complete: the internal constructor accepts frozen inputs and a caller-owned destination. The
-public artifact contract and later phases remain planned work. All new command examples below are proposed syntax.
+on October 1. Phase A is complete: the internal constructor accepts frozen inputs and a caller-owned destination. Phase
+B implements the public artifact contract and exact compile/link/build/run selection. Managed-client integration and
+semantic dependency discovery remain later work.
 
 ## Compiler-lineage placement
 
@@ -35,11 +36,10 @@ paired-stage compatibility scenarios now refer to canonical L1 producer/consumer
 - Decision: Treat a profile as an explicit compilation-support artifact and a cache as a separate lookup, storage and
   automatic-reuse policy.
   - Scope: L1
-  - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
-  - Rationale: The distinction determines ownership, CLI composition and the responsibilities of future build tools.
-    Create the eventual profile ADR in the L1 decision directory and share it with the feature plan. The shared CLI ADR
-    amendment is a separate decision owned by that plan.
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0044-explicit-profile-artifact-authority.md`
+  - Rationale: The distinction determines ownership, CLI composition and the responsibilities of future build tools. The
+    profile artifact ADR is shared with the feature plan. The shared CLI ADR amendment is separately owned by that plan.
 - Decision: Keep managed freshness validation while giving explicit profile selection a separately stated caller-owned
   stability contract.
   - Scope: L1
@@ -61,8 +61,9 @@ worktree on 2026-10-01. Recheck current sources before each implementation phase
 in [l1/docs/reference/architecture.md][architecture] and [l1/docs/reference/stdlib-preparation.md][preparation].
 
 The compiler already has per-module generation, `.o + .l1m` compile-only output, standalone verified linking and a
-source-graph build/run pipeline. Managed preparation already produces complete internal native profiles. What is missing
-is a public artifact boundary independent of the cache's identity, location and selection machinery.
+source-graph build/run pipeline. Managed preparation already produces complete internal native profiles. Explicit
+profiles now provide a public artifact boundary independent of the cache's identity, location and selection machinery.
+The remaining phases adapt managed policy and expose semantic dependency information.
 
 `--prepare-stdlib` explicitly prewarms a persistently reusable managed entry. It is not a caller-directed artifact
 constructor. Automatic build/run/link can instead construct fresh command-private support when persistent reuse is
@@ -111,12 +112,12 @@ results are recorded in the closed plan.
 
 ### Phase B: Introduce explicit profile artifacts
 
-Execute [l1/work/plans/features/2026-09-30-explicit-profile-artifacts-noref.md][profile-plan] only after Phase A's
-boundary is verified.
+Implemented by [l1/work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md][profile-plan] after Phase
+A's construction boundary.
 
-The first vertical slice is `--create-profile` plus `--link --profile`, using objects produced by existing compile-only
-mode. The next slice extends the selector to compile-only, build and run, followed by a small explicit composition
-fixture. Each slice must keep the ordinary managed path working.
+Creation and compile/link/build/run selection share the existing constructor, frontend and verified linker. The
+fixed-order composition fixture verifies application providers, bundled imports, foreign inputs, lifecycle order and
+applicable retained-C bytes. Ordinary managed behavior remains covered by its existing regression suites.
 
 Explicit consumers use one resolved configuration and the profile's provider inventory without rereading ambient native
 defaults or consulting the original bundled source directory. The feature's success criterion is an explicit build that
@@ -196,14 +197,14 @@ A valid completion must demonstrate the same program behavior, provider authorit
 module-C identity through explicit and managed composition. Do not require byte-identical native executables across
 arbitrary host toolchains or identical retention inventories when one workflow consumes prebuilt providers.
 
-Maintain [l1/docs/roadmap.md][roadmap] and the parent/open/closed links as each child plan advances. Phase A's completed
-implementation and validation are recorded in its closed plan; later phases remain unimplemented. Drafting and local
-implementation do not authorize remote writes, releases or workflow dispatches.
+Maintain [l1/docs/roadmap.md][roadmap] and the parent/open/closed links as each child plan advances. Phases A and B
+record their implementation and verification in their respective plans; Phases C and D remain unimplemented. Drafting
+and local implementation do not authorize remote writes, releases or workflow dispatches.
 
 [architecture]: ../../docs/reference/architecture.md
 [boundary-plan]: ../plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md
 [efficiency-plan]: ../plans/features/closed/2026-09-24-preparation-reuse-efficiency-noref.md
 [preparation]: ../../docs/reference/stdlib-preparation.md
-[profile-plan]: ../plans/features/2026-09-30-explicit-profile-artifacts-noref.md
+[profile-plan]: ../plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md
 [reuse-adr]: ../../docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md
 [roadmap]: ../../docs/roadmap.md

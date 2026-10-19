@@ -15,6 +15,7 @@ import std.vector;
 import util.diag;
 import util.log;
 import util.timing;
+import util.strings;
 import build_driver;
 import cli_args.model;
 import compile_driver.toolchain;
@@ -121,6 +122,9 @@ func ld_runtime_link_inputs(
     compiler: string,
     diags: DiagCollector*
 ) -> StringVector*? {
+    if (opts.profile_runtime_inputs != null) {
+        return us_sv_clone(opts.profile_runtime_inputs as StringVector*);
+    }
     let family = bd_compiler_flag_family(compiler);
     if (opts.managed_runtime_family != null) {
         family = opts.managed_runtime_family as string;
@@ -186,12 +190,11 @@ func ld_take_compiler(opts: CliOptions*, diags: DiagCollector*) -> string? {
  * rejected. Runtime search paths need a documented family-specific lowering
  * and are deliberately unavailable on Windows.
  */
-func ld_validate_external_link_operands(
+func ld_validate_external_link_operands_for_family(
     operands: VectorBase*,
-    compiler: string,
+    family: string,
     diags: DiagCollector*
 ) -> bool {
-    let family = bd_compiler_flag_family(compiler);
     let supported_rpath_family = family == "gcc" || family == "cc" ||
         family == "tcc";
     let ok = true;
@@ -250,6 +253,19 @@ func ld_validate_external_link_operands(
     return ok;
 }
 
+/** Preserve ordinary basename-family validation for direct callers and tests. */
+func ld_validate_external_link_operands(operands: VectorBase*, compiler: string,
+    diags: DiagCollector*) -> bool {
+    return ld_validate_external_link_operands_for_family(operands, bd_compiler_flag_family(compiler), diags);
+}
+
+/** Validate against the profile's authoritative family when one is selected. */
+func ld_validate_selected_external_link_operands(opts: CliOptions*, compiler: string,
+    diags: DiagCollector*) -> bool {
+    return ld_validate_external_link_operands_for_family(opts.link_operands,
+        bd_selected_compiler_flag_family(opts, compiler), diags);
+}
+
 /**
  * Return a host-driver argument that is unambiguously a filesystem path.
  *
@@ -274,7 +290,7 @@ func ld_host_input_path(path: string, family: string) -> string {
 func ld_validate_cli_before_preparation(opts: CliOptions*, output: string, standalone: bool,
     diags: DiagCollector*) -> bool {
     let compiler = pr_compiler(opts);
-    if (compiler != null && !ld_validate_external_link_operands(opts.link_operands, compiler as string, diags)) {
+    if (compiler != null && !ld_validate_selected_external_link_operands(opts, compiler as string, diags)) {
         return false;
     }
     if (!bd_is_windows()) { return true; }
@@ -283,8 +299,10 @@ func ld_validate_cli_before_preparation(opts: CliOptions*, output: string, stand
         sv_push(values, output);
         let include = opts.runtime_include;
         let library = opts.runtime_lib;
-        if (include == null) { include = env_get("L1_RUNTIME_INCLUDE"); }
-        if (library == null) { library = env_get("L1_RUNTIME_LIB"); }
+        if (opts.profile == null) {
+            if (include == null) { include = env_get("L1_RUNTIME_INCLUDE"); }
+            if (library == null) { library = env_get("L1_RUNTIME_LIB"); }
+        }
         if (include != null) { sv_push(values, include as string); }
         if (library != null) { sv_push(values, library as string); }
         for (let i = 0; i < cli_link_operands_count(opts.link_operands); i = i + 1) {
@@ -556,7 +574,8 @@ func ld_run_host_command(
     code: string,
     failure_message: string,
     cfg: LogConfig*,
-    diags: DiagCollector*
+    diags: DiagCollector*,
+    family: string
 ) -> bool {
     if (bd_is_windows()) {
         with (let shell_values = sv_create(sv_size(words) + 2) =>
@@ -585,7 +604,7 @@ func ld_run_host_command(
      * Apply the same threshold on POSIX so ordinary validation covers this path.
      * Only recognized GCC/Clang drivers promise GNU response-file syntax. */
     if (response_path != null && len_s(command) >= 7000 &&
-        bd_compiler_flag_family(sv_get(words, 0)) == "gcc") {
+        family == "gcc") {
         let path = response_path as string;
         if (write_file(path, ld_response_file_text(words)) == null) {
             ld_error(diags, code, failure_message +
@@ -642,7 +661,9 @@ func ld_execute_plan(
     output_path: string,
     scratch: LinkTransaction*,
     cfg: LogConfig*,
-    diags: DiagCollector*
+    diags: DiagCollector*,
+    effective_options: bool,
+    family: string
 ) -> bool {
     let wrapper_source = we_emit_wrapper(
         plan.lifecycle_order, plan.entry_module);
@@ -661,17 +682,19 @@ func ld_execute_plan(
         let link_words = sv_create(20 + vec_size(plan.inputs)) =>
             sv_free(link_words)
     ) {
-        let family = bd_compiler_flag_family(compiler);
         let optimize = bd_get_optimize_flag(family, extra_opts);
-        ld_push_wrapper_compile_words(
+        cd_push_object_compile_words_resolved(
             compile_words,
             compiler,
             family,
+            "unknown",
             extra_opts,
             optimize,
             runtime_include,
-            scratch.wrapper_c,
-            scratch.wrapper_object
+            "",
+            ld_host_input_path(scratch.wrapper_c, family),
+            ld_host_input_path(scratch.wrapper_object, family),
+            effective_options
         );
         log_info(cfg, "Compiling standalone-link wrapper:");
         let compile_words_timing = timing_begin(cfg, "wrapper-c-compilation", "");
@@ -683,7 +706,7 @@ func ld_execute_plan(
             "L1C-2108",
             "standalone-link wrapper compilation failed",
             cfg,
-            diags);
+            diags, family);
         timing_end(compile_words_timing, compile_words_ok);
         timing_free(compile_words_timing);
         if (!compile_words_ok) {
@@ -712,7 +735,7 @@ func ld_execute_plan(
             "L1C-2109",
             "standalone host link failed",
             cfg,
-            diags);
+            diags, family);
         timing_end(link_words_timing, link_words_ok);
         timing_free(link_words_timing);
         if (!link_words_ok) {

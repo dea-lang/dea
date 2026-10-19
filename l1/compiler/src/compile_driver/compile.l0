@@ -102,17 +102,11 @@ func cd_compile_analyzed(
         let cg_opts = cg_options_from_cli(opts) => cg_options_free(cg_opts),
         let env_opts = sv_create(4) => sv_free(env_opts),
         let cli_opts = sv_create(4) => sv_free(cli_opts),
-        let extra_opts = sv_create(4) => sv_free(extra_opts),
+        let extra_opts = bd_collect_c_option_words(opts) => sv_free(extra_opts),
         let command_words = sv_create(16) => sv_free(command_words)
     ) {
-        bd_append_c_option_words(env_opts, env_get("L1_CFLAGS"));
+        if (opts.profile == null) { bd_append_c_option_words(env_opts, env_get("L1_CFLAGS")); }
         bd_append_c_option_words(cli_opts, opts.c_options);
-        for (let i = 0; i < sv_size(env_opts); i = i + 1) {
-            sv_push(extra_opts, sv_get(env_opts, i));
-        }
-        for (let i2 = 0; i2 < sv_size(cli_opts); i2 = i2 + 1) {
-            sv_push(extra_opts, sv_get(cli_opts, i2));
-        }
         if (!bd_validate_float_c_options(result, extra_opts, diags)) {
             dp_print_collector(diags);
             return 1;
@@ -130,7 +124,7 @@ func cd_compile_analyzed(
         }
         let compiler = compiler_opt as string;
         compiler_opt = null;
-        let family = bd_compiler_flag_family(compiler);
+        let family = bd_selected_compiler_flag_family(opts, compiler);
         let compiler_command_opt = cd_compiler_for_transaction(compiler);
         if (compiler_command_opt == null) {
             cd_error(diags, "L1C-0010",
@@ -140,8 +134,9 @@ func cd_compile_analyzed(
             return 1;
         }
         let compiler_command = compiler_command_opt as string;
-        let debug_family = cd_debug_compiler_family(
-            compiler, compiler_command);
+        let debug_family = "unknown";
+        if (opts.profile != null) { debug_family = opts.managed_runtime_family as string; }
+        else { debug_family = cd_debug_compiler_family(compiler, compiler_command); }
         let optimize = bd_get_optimize_flag(family, extra_opts);
         let runtime_include = bd_runtime_include_dir(opts);
         let compiler_runtime_include: string? = null;
@@ -199,7 +194,7 @@ func cd_compile_analyzed(
         }
 
         let debug_working_directory = cd_path_for_transaction(txn.root);
-        cd_push_object_compile_words(
+        cd_push_object_compile_words_resolved(
             command_words,
             compiler_command,
             family,
@@ -209,7 +204,8 @@ func cd_compile_analyzed(
             compiler_runtime_include,
             debug_working_directory,
             txn.compiler_c_input,
-            txn.compiler_object_output
+            txn.compiler_object_output,
+            opts.profile != null
         );
         if (bd_is_windows() && !cd_validate_windows_compile_values(
                 txn, command_words, diags)) {
@@ -348,9 +344,10 @@ func cd_compile_analyzed_to_workspace(
             return false;
         }
         let compiler_command = compiler_command_opt as string;
-        let family = bd_compiler_flag_family(compiler);
-        let debug_family = cd_debug_compiler_family(
-            compiler, compiler_command);
+        let family = bd_selected_compiler_flag_family(opts, compiler);
+        let debug_family = "unknown";
+        if (opts.profile != null) { debug_family = opts.managed_runtime_family as string; }
+        else { debug_family = cd_debug_compiler_family(compiler, compiler_command); }
         let optimize = bd_get_optimize_flag(family, extra_opts);
         let compiler_runtime_include = cd_path_for_transaction(
             runtime_include);
@@ -390,7 +387,7 @@ func cd_compile_analyzed_to_workspace(
             return false;
         }
 
-        cd_push_object_compile_words(
+        cd_push_object_compile_words_resolved(
             command_words,
             compiler_command,
             family,
@@ -400,7 +397,8 @@ func cd_compile_analyzed_to_workspace(
             compiler_runtime_include,
             cd_path_for_transaction(txn.root),
             txn.compiler_c_input,
-            txn.compiler_object_output
+            txn.compiler_object_output,
+            opts.profile != null
         );
         if (bd_is_windows() && !cd_validate_windows_compile_values(
                 txn, command_words, diags)) {

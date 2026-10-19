@@ -34,14 +34,21 @@ struct ManagedPreparation {
 
 /** Establish lazy toolchain paths without native probes or persistent writes. */
 func mp_create(opts: CliOptions*, cfg: LogConfig*, native: bool) -> ManagedPreparation* {
+    if (opts.profile_context != null) {
+        let context = opts.profile_context as void*;
+        return new ManagedPreparation(context, opts, cfg, native,
+            join(pr_get(context, "selected"), "modules"), pr_get(context, "selected"));
+    }
     let context = pr_create(opts, native);
     return new ManagedPreparation(context, opts, cfg, native, pr_get(context, "semantic_root"), null);
 }
 
 /** Drop command-private native support only after the final consumer. */
 func mp_free(self: ManagedPreparation*) {
-    pr_log_context(self.context, self.options);
-    l1c_prep_free(self.context);
+    if (self.options.profile_context == null) {
+        pr_log_context(self.context, self.options);
+        l1c_prep_free(self.context);
+    }
     drop self;
 }
 
@@ -61,6 +68,7 @@ func mp_ensure(self: ManagedPreparation*, diags: DiagCollector*) -> bool {
 
 /** Preserve final-link runtime overrides; headers are independent bootstrap inputs. */
 func mp_runtime(self: ManagedPreparation*, diags: DiagCollector*) -> bool {
+    if (self.options.profile != null) { return true; }
     let runtime_override = env_get("L1_RUNTIME_LIB");
     if (self.options.runtime_lib == null && runtime_override == null) {
         return mp_ensure(self, diags);
@@ -70,6 +78,12 @@ func mp_runtime(self: ManagedPreparation*, diags: DiagCollector*) -> bool {
 
 /** Replace the bundled directory's ordered system position unless explicitly disabled. */
 func mp_source_paths(self: ManagedPreparation*, paths: SourceSearchPaths*) {
+    if (self.options.profile != null) {
+        paths.managed_source_root = null;
+        paths.managed_interfaces = self.semantic_root;
+        paths.profile_modules = self.options.profile_modules;
+        return;
+    }
     if (self.options.no_managed_stdlib) {
         paths.managed_source_root = null;
         paths.managed_interfaces = null;
@@ -138,6 +152,22 @@ func mp_analyze(self: ManagedPreparation*, paths: SourceSearchPaths*, entry: str
             }
         }
     }
+    if (self.options.profile != null) {
+        /* Explicit profile providers already own their native siblings. Treat them
+           like other prebuilt providers, including the retained-C contract. */
+        with (let nodes = mg_nodes_sorted(driver_graph(result.driver_state)) => vec_free(nodes)) {
+            for (let i = 0; i < vec_size(nodes); i = i + 1) {
+                let node = (*(vec_get(nodes, i) as void**)) as ModuleGraphNode*;
+                if (self.native && ord(node.origin.kind) == ord(MOK_INTERFACE) && node.artifacts != null &&
+                    cfs_path_kind_follow((node.artifacts as ModuleArtifactPaths*).object_path) != CFS_PATH_REGULAR) {
+                    cli_emit_error(result.diags, "L1C-2097", "explicit provider object is missing or is not a regular file: " +
+                        (node.artifacts as ModuleArtifactPaths*).object_path);
+                }
+                node.managed = false;
+            }
+        }
+        return result;
+    }
     if (!self.native || analysis_has_errors(result)) { return result; }
     let needs_native = false;
     with (let nodes = mg_nodes_sorted(driver_graph(result.driver_state)) => vec_free(nodes)) {
@@ -162,6 +192,9 @@ func mp_analyze(self: ManagedPreparation*, paths: SourceSearchPaths*, entry: str
 
 /** Standalone managed discovery is limited to compiler-owned std/sys modules, with no source fallback. */
 func mp_bundled_provider(self: ManagedPreparation*, module_name: string) -> bool {
+    if (self.options.profile_modules != null) {
+        return contains_s("\n" + (self.options.profile_modules as string) + "\n", "\n" + module_name + "\n");
+    }
     if (!starts_with_s(module_name, "std.") && !starts_with_s(module_name, "sys.")) { return false; }
     let relative = sp_module_source_relpath(module_name);
     if (relative == null) { return false; }

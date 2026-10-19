@@ -14,6 +14,7 @@ import util.log;
 import analysis;
 import interface_projection;
 import preparation.consumer;
+import preparation;
 import build_driver;
 import cli_args.model;
 import compiler_filesystem;
@@ -310,7 +311,9 @@ func ld_build_run_in_workspace(
 ) -> int {
     with (let diags = diag_create() => diag_free(diags),
           let managed = mp_create(opts, cfg, true) => mp_free(managed)) {
-        if (!ld_validate_cli_before_preparation(opts, executable, false, diags) ||
+        if (!pr_profile_output(opts, executable, diags) ||
+            (retained_c_root != null && !pr_profile_output(opts, retained_c_root as string, diags)) ||
+            !ld_validate_cli_before_preparation(opts, executable, false, diags) ||
             !ld_validate_output(executable, diags) ||
             !ld_validate_retained_c_root(retained_c_root, diags)) {
             dp_print_collector(diags);
@@ -379,8 +382,7 @@ func ld_build_run_in_workspace(
         let runtime_inputs: StringVector*? = null;
         let valid_external = true;
         if (compiler != null) {
-            valid_external = ld_validate_external_link_operands(
-                opts.link_operands, compiler as string, diags);
+            valid_external = ld_validate_selected_external_link_operands(opts, compiler as string, diags);
             runtime_inputs = ld_runtime_link_inputs(
                 opts, compiler as string, diags);
         }
@@ -507,7 +509,9 @@ func ld_build_run_in_workspace(
             executable,
             scratch,
             cfg,
-            diags
+            diags,
+            opts.profile != null,
+            bd_selected_compiler_flag_family(opts, compiler as string)
         );
         let primary_status = 1;
         if (linked && ld_retain_build_run_c(

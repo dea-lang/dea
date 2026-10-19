@@ -40,7 +40,7 @@
   - `l1/tests/test_stage2_tooling.py`
 - Related:
   - [l1/work/initiatives/0010-explicit-profiles-and-composable-builds.md][initiative]
-  - [l1/work/plans/features/2026-09-30-explicit-profile-artifacts-noref.md][profile-plan]
+  - [l1/work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md][profile-plan]
   - [l1/work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md][economy-plan]
 - Repro: From `l1/`, exercise explicit preparation plus cold, warm, forced and private-fallback native consumers.
 
@@ -306,4 +306,4 @@ its own fresh authorization under `AGENTS.md`; writing or implementing this plan
 [initiative]: ../../../initiatives/0010-explicit-profiles-and-composable-builds.md
 [l1-agents]: ../../../../AGENTS.md
 [preparation]: ../../../../docs/reference/stdlib-preparation.md
-[profile-plan]: ../../features/2026-09-30-explicit-profile-artifacts-noref.md
+[profile-plan]: ../../features/closed/2026-09-30-explicit-profile-artifacts-noref.md

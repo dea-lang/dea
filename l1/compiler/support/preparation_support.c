@@ -122,16 +122,20 @@ void *l1c_prep_create(const uint8_t *data, int32_t length) {
     pc_toolchain_paths(c);
     return c;
 }
+#include "preparation/profile.h"
 /** Release the command's allocations, OS lock and any fresh private native support. */
 void l1c_prep_free(void *context) {
     PcContext *c = context;
     if (!c) return;
     pc_unlock(c->lock);
+    pc_profile_cleanup(c);
     pc_construction_free(c->construction);
     if (c->private_root) pc_remove_owned_tree(c->private_root);
     pc_clang_isolation_free(c);
     pj_free(c->config); pj_free(c->options); pj_free(c->runtime_options); pj_free(c->dea); pj_free(c->native);
     pj_free(c->old_files); pj_free(c->new_files); pj_free(c->digest_donor); pj_free(c->legacy_configuration);
+    pj_free(c->profile); pj_free(c->profile_headers);
+    free(c->profile_stage); free(c->profile_destination);
     free(c->digest_seed_key);
     free(c->local); free(c->home); free(c->compiler); free(c->self); free(c->semantic_root); free(c->include);
     free(c->dea_key); free(c->native_key); free(c->selected); free(c->error); free(c->description);
@@ -256,7 +260,8 @@ int32_t l1c_prep_get(void *context, const uint8_t *field, int32_t field_length, 
         const PcJson *module;
         for (module = c->modules->child; module; module = module->next) { pc_text(&names, module->key); pc_char(&names, '\n'); }
         owned = pc_take(&names);
-    } else if (!strcmp(key, "dea_identity") && c->dea) owned = pj_encode(c->dea);
+    } else if (!strncmp(key, "profile_", 8)) value = pc_profile_get(c, key, &owned);
+    else if (!strcmp(key, "dea_identity") && c->dea) owned = pj_encode(c->dea);
     else if (!strcmp(key, "native_identity") && c->native) owned = pj_encode(c->native);
     else if (!strcmp(key, "native_inventory") && c->native) {
         PcJson *j = pc_expected_artifacts(c->native);

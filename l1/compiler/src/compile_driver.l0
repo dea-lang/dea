@@ -9,6 +9,7 @@ import util.diag;
 import util.log;
 import analysis;
 import preparation.consumer;
+import preparation;
 import build_driver;
 import cli_args.model;
 import diag_print;
@@ -36,6 +37,15 @@ func cd_cmd_compile(opts: CliOptions*, cfg: LogConfig*) -> int {
             return 1;
         }
         let artifacts = artifacts_opt as ModuleArtifactPaths*;
+        if (!pr_profile_output(opts, artifacts.object_path, diags) ||
+            !pr_profile_output(opts, artifacts.interface_path, diags) ||
+            (opts.keep_c && !pr_profile_output(opts, artifacts.c_path, diags))) {
+            bd_prepared_input_free(prep);
+            prepared = null;
+            dp_print_collector(diags);
+            mg_artifacts_free(artifacts);
+            return 1;
+        }
         let result = mp_analyze(
             managed,
             prep.search_paths,

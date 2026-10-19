@@ -26,6 +26,7 @@ struct SourceSearchPaths {
     project_roots: StringVector*;
     managed_source_root: string?;
     managed_interfaces: string?;
+    profile_modules: string?; /* Exact validated inventory; independent of installed sources. */
 }
 
 /**
@@ -34,7 +35,7 @@ struct SourceSearchPaths {
  * @return New search-path set with separate system and project root vectors.
  */
 func sp_create() -> SourceSearchPaths* {
-    return new SourceSearchPaths(sv_create(2), sv_create(2), null, null);
+    return new SourceSearchPaths(sv_create(2), sv_create(2), null, null, null);
 }
 
 /**
@@ -312,6 +313,9 @@ func sp_resolve_interface(interface_roots: StringVector*, module_name: string) -
 
 /** Select managed semantics only at the bundled system-root position, never a project position. */
 func sp_managed_eligible(self: SourceSearchPaths*, module_name: string) -> bool {
+    if (self.profile_modules != null) {
+        return contains_s("\n" + (self.profile_modules as string) + "\n", "\n" + module_name + "\n");
+    }
     if (self.managed_source_root == null ||
         (!starts_with_s(module_name, "std.") && !starts_with_s(module_name, "sys."))) { return false; }
     let relative = sp_module_source_relpath(module_name);

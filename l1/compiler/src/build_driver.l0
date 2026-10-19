@@ -74,7 +74,7 @@ func bd_prepare_input(opts: CliOptions*, diags: DiagCollector*, cfg: LogConfig*)
         let project_roots = us_sv_clone(opts.project_roots) => sv_free(project_roots),
         let sys_roots = us_sv_clone(opts.sys_roots) => sv_free(sys_roots)
     ) {
-        sp_apply_default_sys_roots(sys_roots);
+        if (opts.profile == null) { sp_apply_default_sys_roots(sys_roots); }
 
         let entry_target = opts.entry_target as string;
         let entry_module = sp_normalize_entry_target(entry_target, project_roots, diags)?;
@@ -150,6 +150,9 @@ func bd_format_word_list(words: StringVector*) -> string {
  * @return Parsed option words in final order.
  */
 func bd_collect_c_option_words(opts: CliOptions*) -> StringVector* {
+    if (opts.profile_c_options != null) {
+        return us_sv_clone(opts.profile_c_options as StringVector*);
+    }
     return bd_merge_c_option_words(env_get("L1_CFLAGS"), opts.c_options);
 }
 
@@ -537,6 +540,16 @@ func bd_compiler_flag_family(compiler: string) -> string {
     return "unknown";
 }
 
+/** Use the recorded family for an exact profile instead of reclassifying its invocation path. */
+func bd_selected_compiler_flag_family(opts: CliOptions*, compiler: string) -> string {
+    if (opts.profile != null && opts.managed_runtime_family != null) {
+        let family = opts.managed_runtime_family as string;
+        if (family == "clang") { return "gcc"; }
+        return family;
+    }
+    return bd_compiler_flag_family(compiler);
+}
+
 /**
  * Return the GNU-style compiler identity used for debug-path options.
  *
@@ -731,9 +744,10 @@ func bd_find_c_compiler() -> string? {
 func bd_take_c_compiler(opts: CliOptions*) -> string? {
     if (opts.c_compiler != null) {
         let compiler = opts.c_compiler as string;
-        opts.c_compiler = null;
+        if (opts.profile == null) { opts.c_compiler = null; }
         return compiler;
     }
+    if (opts.profile != null) { return null; }
     return bd_find_c_compiler();
 }
 
@@ -779,6 +793,9 @@ func bd_runtime_include_dir(opts: CliOptions*) -> string? {
  * @return Runtime library directory, or `null`.
  */
 func bd_runtime_lib_dir(opts: CliOptions*) -> string? {
+    if (opts.profile != null) {
+        return join(opts.managed_profile as string, "lib");
+    }
     if (opts.runtime_lib != null) {
         return opts.runtime_lib as string;
     }

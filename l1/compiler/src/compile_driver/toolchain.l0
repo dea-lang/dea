@@ -77,7 +77,7 @@ func cd_debug_compiler_family(
 }
 
 /** Add compile-only host-compiler words without any link inputs or flags. */
-func cd_push_object_compile_words(
+func cd_push_object_compile_words_resolved(
     words: StringVector*,
     compiler: string,
     family: string,
@@ -87,15 +87,18 @@ func cd_push_object_compile_words(
     runtime_include: string?,
     debug_working_directory: string,
     c_path: string,
-    object_path: string
+    object_path: string,
+    effective_options: bool
 ) {
     sv_push(words, compiler);
     for (let i = 0; i < sv_size(extra_opts); i = i + 1) {
         sv_push(words, sv_get(extra_opts, i));
     }
-    bd_push_standard_flags(words, family);
-    if (optimize != null) {
-        sv_push(words, optimize as string);
+    if (!effective_options) {
+        bd_push_standard_flags(words, family);
+        if (optimize != null) {
+            sv_push(words, optimize as string);
+        }
     }
     if (runtime_include != null) {
         sv_push(words, "-I");
@@ -129,6 +132,16 @@ func cd_push_object_compile_words(
     sv_push(words, c_path);
     sv_push(words, "-o");
     sv_push(words, object_path);
+}
+
+/** Preserve ordinary command construction for callers with unresolved extra options. */
+func cd_push_object_compile_words(
+    words: StringVector*, compiler: string, family: string, debug_family: string,
+    extra_opts: StringVector*, optimize: string?, runtime_include: string?,
+    debug_working_directory: string, c_path: string, object_path: string
+) {
+    cd_push_object_compile_words_resolved(words, compiler, family, debug_family, extra_opts,
+        optimize, runtime_include, debug_working_directory, c_path, object_path, false);
 }
 
 /** Return a compiler executable that remains addressable after changing cwd. */

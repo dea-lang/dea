@@ -24,6 +24,7 @@ enum CliMode {
     CM_SYM;
     CM_TYPE;
     CM_PREPARE_STDLIB;
+    CM_CREATE_PROFILE;
 }
 
 /**
@@ -88,6 +89,19 @@ struct CliOptions {
     no_managed_stdlib: bool;
     managed_profile: string?; /* Validated native provider/runtime root. */
     managed_runtime_family: string?; /* Native identity's probed compiler family. */
+
+    profile: string?; /* Explicit caller-owned profile root, never a cache hint. */
+    profile_c_options: StringVector*?; /* Owned resolved generated-C option words. */
+    profile_context: void*?; /* Borrowed validated native selection handle. */
+    profile_modules: string?; /* Validated newline-separated provider inventory. */
+    profile_runtime_inputs: StringVector*?; /* Owned ordered native runtime paths. */
+    c_compiler_supplied: bool;
+    c_options_supplied: bool;
+    no_line_directives_supplied: bool;
+    trace_arc_supplied: bool;
+    trace_memory_supplied: bool;
+    unchecked_supplied: bool;
+    check_basic_supplied: bool;
 }
 
 /**
@@ -193,7 +207,19 @@ func cli_options_create() -> CliOptions* {
         false,
         false,
         null,
-        null
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
     );
 }
 
@@ -208,6 +234,8 @@ func cli_options_free(self: CliOptions*) {
     sv_free(self.interface_paths);
     cli_link_operands_free(self.link_operands);
     sv_free(self.program_args);
+    if (self.profile_c_options != null) { sv_free(self.profile_c_options as StringVector*); }
+    if (self.profile_runtime_inputs != null) { sv_free(self.profile_runtime_inputs as StringVector*); }
     drop self;
 }
 
@@ -320,6 +348,7 @@ func cli_mode_flag(mode: CliMode) -> string {
         CM_SYM => { return "--sym"; }
         CM_TYPE => { return "--type"; }
         CM_PREPARE_STDLIB => { return "--prepare-stdlib"; }
+        CM_CREATE_PROFILE => { return "--create-profile"; }
     }
 }
 
@@ -343,5 +372,6 @@ func cli_mode_name(mode: CliMode) -> string {
         CM_SYM => { return "sym"; }
         CM_TYPE => { return "type"; }
         CM_PREPARE_STDLIB => { return "prepare-stdlib"; }
+        CM_CREATE_PROFILE => { return "create-profile"; }
     }
 }

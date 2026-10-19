@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-10-16
+Version: 2026-10-19
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -14,6 +14,13 @@ artifacts. Stage 2 acceptance remains historical. Hosted snapshot/versioned-rele
 development toolchain, without freezing its feature scope or promising stable language, module-interface, or binary
 compatibility. See [l1/docs/releases/0.1.0.md](releases/0.1.0.md) for the release baseline. See the shared split plan in
 [work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md).
+
+## Explicit native profiles
+
+`--create-profile -o PATH` constructs a complete caller-owned profile. Compile, link, build and run accept
+`--profile PATH`, using its exact providers, copied public headers/runtime inputs and locked native configuration
+without managed selection or automatic preparation. The caller maintains external compiler/SDK/environment stability.
+The artifact and compatibility contract is [l1/docs/reference/explicit-profiles.md][explicit-profiles].
 
 ## Scope and Canonical References
 
@@ -360,3 +367,5 @@ These remain true today:
 3. Fixed-size arrays `T[N]` and escape-restricted non-owning slices `T[]` are implemented; owning dynamic buffers,
    shared buffers, and general escape-capable slices are not language features.
 4. Address-of (`&`) and generics are not part of the current active language surface.
+
+[explicit-profiles]: reference/explicit-profiles.md

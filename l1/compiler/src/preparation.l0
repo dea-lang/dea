@@ -36,6 +36,13 @@ extern func l1c_prep_construction_create(data: byte*, length: int, destination: 
 extern func l1c_prep_construction_complete(context: void*) -> int;
 extern func l1c_prep_error_code(context: void*) -> int;
 extern func l1c_prep_get(context: void*, field: byte*, length: int, output: byte*?, capacity: int) -> int;
+extern func l1c_profile_create(data: byte*, length: int, destination: byte*, destination_length: int) -> void*;
+extern func l1c_profile_publish(context: void*) -> int;
+extern func l1c_profile_load(path: byte*, length: int) -> void*;
+extern func l1c_profile_verify(context: void*, native_payloads: int) -> int;
+extern func l1c_profile_match(context: void*, data: byte*, length: int) -> int;
+extern func l1c_profile_output(context: void*, path: byte*, length: int) -> int;
+extern func l1c_profile_temp_parent(context: void*, path: byte*, length: int) -> int;
 
 /** Copy an internal UTF-8 context value into an owned Dea string. */
 func pr_get(context: void*, field: string) -> string {
@@ -91,7 +98,7 @@ func pr_compiler(opts: CliOptions*) -> string? {
 }
 
 /** Create a context; semantic-only callers never select or invoke a C compiler. */
-func pr_create(opts: CliOptions*, native: bool) -> void* {
+func pr_configuration(opts: CliOptions*, native: bool) -> string {
     with (
         let sb = sb_create() => sb_free(sb),
         let words = bd_collect_c_option_words(opts) => sv_free(words)
@@ -128,8 +135,157 @@ func pr_create(opts: CliOptions*, native: bool) -> void* {
             sb_append(sb, pr_json_string(sv_get(words, i)));
         }
         sb_append(sb, "]}");
+        return sb_to_string(sb);
+    }
+}
+
+/** Encode managed construction inputs without making selection observations. */
+func pr_create(opts: CliOptions*, native: bool) -> void* {
+    let config = pr_configuration(opts, native);
+    return l1c_prep_create(rt_string_bytes_ptr(config), len_s(config));
+}
+
+/** Append only explicitly supplied frontend settings to a selector comparison. */
+func pr_profile_codegen_match(sb: StringBuffer*, opts: CliOptions*) {
+    sb_append(sb, ",\"codegen\":{");
+    let separator = "";
+    if (opts.no_line_directives_supplied) {
+        sb_append(sb, separator + "\"no_line_directives\":" + pr_bool(opts.no_line_directives));
+        separator = ",";
+    }
+    if (opts.trace_arc_supplied) {
+        sb_append(sb, separator + "\"trace_arc\":" + pr_bool(opts.trace_arc));
+        separator = ",";
+    }
+    if (opts.trace_memory_supplied) {
+        sb_append(sb, separator + "\"trace_memory\":" + pr_bool(opts.trace_memory));
+        separator = ",";
+    }
+    if (opts.unchecked_supplied) {
+        sb_append(sb, separator + "\"unchecked\":" + pr_bool(opts.unchecked));
+        separator = ",";
+    }
+    if (opts.check_basic_supplied) {
+        sb_append(sb, separator + "\"check_basic\":" + pr_bool(opts.check_basic));
+        separator = ",";
+    }
+    sb_append(sb, "}");
+}
+
+/** Compare explicit settings before restoring the profile's complete configuration. */
+func pr_profile_matches(context: void*, opts: CliOptions*) -> bool {
+    with (let sb = sb_create() => sb_free(sb),
+          let words = bd_merge_c_option_words(null, opts.c_options) => sv_free(words)) {
+        sb_append(sb, "{\"selection\":1");
+        if (opts.c_compiler_supplied) { pr_json_option(sb, "compiler", opts.c_compiler); }
+        if (opts.c_options_supplied) {
+            let family = bd_compiler_flag_family(pr_get(context, "compiler"));
+            let optimize = bd_get_optimize_flag(family, words);
+            bd_push_standard_flags(words, family);
+            if (optimize != null) { sv_push(words, optimize as string); }
+            sb_append(sb, ",\"options\":[");
+            for (let i = 0; i < sv_size(words); i = i + 1) {
+                if (i > 0) { sb_append(sb, ","); }
+                sb_append(sb, pr_json_string(sv_get(words, i)));
+            }
+            sb_append(sb, "]");
+        }
+        pr_profile_codegen_match(sb, opts);
+        sb_append(sb, "}");
         let config = sb_to_string(sb);
-        return l1c_prep_create(rt_string_bytes_ptr(config), len_s(config));
+        return l1c_profile_match(context, rt_string_bytes_ptr(config), len_s(config)) == 1;
+    }
+}
+
+/** Resolve and validate an exact caller-owned profile once before any consumer preflight. */
+func pr_profile_select(opts: CliOptions*, diags: DiagCollector*) -> bool {
+    if (opts.profile == null) { return true; }
+    let path = opts.profile as string;
+    let context = l1c_profile_load(rt_string_bytes_ptr(path), len_s(path));
+    opts.profile_context = context;
+    let native_payloads = 1;
+    if (ord(opts.mode) == ord(CM_COMPILE)) { native_payloads = 0; }
+    if (l1c_prep_error_code(context) != 0 || !pr_profile_matches(context, opts) ||
+        l1c_profile_verify(context, native_payloads) != 1) {
+        pr_report_error(context, diags);
+        return false;
+    }
+    let temp_parent = cfs_select_temp_parent(diags);
+    if (temp_parent == null) { return false; }
+    let resolved_temp_parent = temp_parent as string;
+    if (l1c_profile_temp_parent(context, rt_string_bytes_ptr(resolved_temp_parent), len_s(resolved_temp_parent)) != 1) {
+        pr_report_error(context, diags);
+        return false;
+    }
+    opts.c_compiler = pr_get(context, "compiler");
+    opts.runtime_include = pr_get(context, "include");
+    opts.managed_profile = pr_get(context, "selected");
+    opts.managed_runtime_family = pr_get(context, "family");
+    opts.profile_modules = pr_get(context, "modules");
+    opts.no_line_directives = pr_get(context, "profile_codegen_no_line_directives") == "1";
+    opts.trace_arc = pr_get(context, "profile_codegen_trace_arc") == "1";
+    opts.trace_memory = pr_get(context, "profile_codegen_trace_memory") == "1";
+    opts.unchecked = pr_get(context, "profile_codegen_unchecked") == "1";
+    opts.check_basic = pr_get(context, "profile_codegen_check_basic") == "1";
+    let words = sv_create(8);
+    opts.profile_c_options = words;
+    let count = string_to_int(pr_get(context, "profile_option_count"));
+    if (count != null) {
+        for (let i = 0; i < (count as int); i = i + 1) {
+            sv_push(words, pr_get(context, "profile_option_" + int_to_string(i)));
+        }
+    }
+    let runtime = sv_create(4);
+    opts.profile_runtime_inputs = runtime;
+    let runtime_count = string_to_int(pr_get(context, "profile_runtime_count"));
+    if (runtime_count != null) {
+        for (let i = 0; i < (runtime_count as int); i = i + 1) {
+            sv_push(runtime, pr_get(context, "profile_runtime_" + int_to_string(i)));
+        }
+    }
+    return true;
+}
+
+/** Release the selected profile description after its final consumer. */
+func pr_profile_release(opts: CliOptions*) {
+    if (opts.profile_context != null) {
+        l1c_prep_free(opts.profile_context as void*);
+        opts.profile_context = null;
+    }
+}
+
+/** Reject every consumer output that could mutate the selected read-only artifact. */
+func pr_profile_output(opts: CliOptions*, path: string, diags: DiagCollector*) -> bool {
+    if (opts.profile_context == null) { return true; }
+    let context = opts.profile_context as void*;
+    if (l1c_profile_output(context, rt_string_bytes_ptr(path), len_s(path)) == 1) { return true; }
+    pr_report_error(context, diags);
+    return false;
+}
+
+/** Construct and publish one new explicit profile without managed cache selection. */
+func pr_cmd_create_profile(opts: CliOptions*, cfg: LogConfig*) -> int {
+    let config = pr_configuration(opts, true);
+    let destination = opts.output as string;
+    with (let context = l1c_profile_create(rt_string_bytes_ptr(config), len_s(config),
+              rt_string_bytes_ptr(destination), len_s(destination)) => l1c_prep_free(context),
+          let diags = diag_create() => diag_free(diags)) {
+        let ok = l1c_prep_error_code(context) == 0;
+        if (ok) {
+            let ordered = pr_frontend_order(pr_get(context, "construction_semantic_root"),
+                pr_get(context, "construction_home"), pr_get(context, "modules"), cfg, diags);
+            ok = ordered != null;
+            if (ordered != null) {
+                with (let modules = ordered as StringVector* => sv_free(modules)) {
+                    ok = pr_construct(context, modules, opts.verbosity, cfg, diags);
+                }
+            }
+        }
+        if (ok) { ok = l1c_profile_publish(context) == 1; }
+        if (!ok) { pr_report_error(context, diags); }
+        dp_print_collector(diags);
+        if (ok) { return 0; }
+        return 1;
     }
 }
 

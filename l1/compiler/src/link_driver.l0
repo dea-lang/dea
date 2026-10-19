@@ -11,6 +11,7 @@ import util.diag;
 import util.log;
 import build_driver;
 import preparation.consumer;
+import preparation;
 import cli_args.model;
 import compiler_filesystem;
 import diag_print;
@@ -24,7 +25,8 @@ import link_driver.workspace;
 func ld_cmd_link(opts: CliOptions*, cfg: LogConfig*) -> int {
     with (let diags = diag_create() => diag_free(diags),
           let managed = mp_create(opts, cfg, true) => mp_free(managed)) {
-        if (!ld_validate_cli_before_preparation(opts, opts.output as string, true, diags)) {
+        if (!pr_profile_output(opts, opts.output as string, diags) ||
+            !ld_validate_cli_before_preparation(opts, opts.output as string, true, diags)) {
             dp_print_collector(diags);
             return 1;
         }
@@ -49,8 +51,7 @@ func ld_cmd_link(opts: CliOptions*, cfg: LogConfig*) -> int {
         let runtime_inputs: StringVector*? = null;
         let valid_external = true;
         if (compiler != null) {
-            valid_external = ld_validate_external_link_operands(
-                opts.link_operands, compiler as string, diags);
+            valid_external = ld_validate_selected_external_link_operands(opts, compiler as string, diags);
             runtime_inputs = ld_runtime_link_inputs(
                 opts, compiler as string, diags);
         }
@@ -117,7 +118,9 @@ func ld_cmd_link(opts: CliOptions*, cfg: LogConfig*) -> int {
             output_path,
             scratch,
             cfg,
-            diags
+            diags,
+            opts.profile != null,
+            bd_selected_compiler_flag_family(opts, compiler as string)
         );
         let cleaned = ld_cleanup_transaction(scratch);
         if (!cleaned) {

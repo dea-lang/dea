@@ -1626,11 +1626,180 @@ func test_no_managed_stdlib_scope() {
     }
 }
 
+/** Verify creation accepts only its bounded preparation configuration surface. */
+func test_create_profile_mode() {
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--create-profile");
+        sv_push(argv, "--output=profile dir");
+        sv_push(argv, "--c-compiler=clang");
+        sv_push(argv, "--c-options=-O2 -Iheaders");
+        sv_push(argv, "--runtime-include=headers");
+        sv_push(argv, "--no-line-directives");
+        sv_push(argv, "--check-basic");
+        let parsed = cli_parse(argv);
+        assert(!diag_has_errors(parsed.diags), "creation must accept preparation settings");
+        let opts = parsed.options as CliOptions*;
+        assert(ord(opts.mode) == ord(CM_CREATE_PROFILE), "expected explicit creation mode");
+        assert(opts.entry_target == null, "creation must have no target");
+        assert(opts.output as string == "profile dir", "creation output must preserve its path");
+        assert(cli_mode_flag(opts.mode) == "--create-profile", "creation mode flag must be stable");
+        assert(cli_mode_name(opts.mode) == "create-profile", "creation mode name must be stable");
+        assert(opts.c_compiler_supplied && opts.c_options_supplied, "native option provenance must be recorded");
+        assert(opts.no_line_directives_supplied && opts.check_basic_supplied, "codegen option provenance must be recorded");
+        assert(!opts.unchecked_supplied && !opts.trace_arc_supplied && !opts.trace_memory_supplied,
+            "omitted runtime choices must remain distinguishable");
+        cli_parse_result_free(parsed);
+    }
+    with (let flags = sv_create(16) => sv_free(flags)) {
+        sv_push(flags, "--profile=existing"); sv_push(flags, "--project-root=src");
+        sv_push(flags, "--sys-root=system"); sv_push(flags, "--interface-path=modules");
+        sv_push(flags, "--runtime-lib=runtime"); sv_push(flags, "--foreign-object=shim.o");
+        sv_push(flags, "-lmath"); sv_push(flags, "-Llib"); sv_push(flags, "--entry=app");
+        sv_push(flags, "--stdlib-cache=cache"); sv_push(flags, "--no-auto-prepare");
+        sv_push(flags, "--force"); sv_push(flags, "--keep-c"); sv_push(flags, "--no-managed-stdlib");
+        for (let i = 0; i < sv_size(flags); i = i + 1) {
+            with (let argv2 = sv_create(4) => sv_free(argv2)) {
+                sv_push(argv2, "--create-profile"); sv_push(argv2, "--output=profile");
+                sv_push(argv2, sv_get(flags, i));
+                let parsed2 = cli_parse(argv2);
+                assert(cli_result_has_code(parsed2, "L1C-2180"), "creation must reject " + sv_get(flags, i));
+                cli_parse_result_free(parsed2);
+            }
+        }
+    }
+}
+
+/** Verify profile creation requires one nonempty output and no target. */
+func test_create_profile_output_and_target_validation() {
+    with (let forms = sv_create(4) => sv_free(forms)) {
+        sv_push(forms, "missing"); sv_push(forms, "repeated");
+        sv_push(forms, "empty"); sv_push(forms, "target");
+        for (let i = 0; i < sv_size(forms); i = i + 1) {
+            with (let argv = sv_create(8) => sv_free(argv)) {
+                sv_push(argv, "--create-profile");
+                if (i == 1 || i == 3) { sv_push(argv, "--output=profile"); }
+                if (i == 1) { sv_push(argv, "-o"); sv_push(argv, "another"); }
+                if (i == 2) { sv_push(argv, "-o"); sv_push(argv, ""); }
+                if (i == 3) { sv_push(argv, "app"); }
+                let parsed = cli_parse(argv);
+                assert(cli_result_has_code(parsed, "L1C-2180"), "creation must reject " + sv_get(forms, i));
+                cli_parse_result_free(parsed);
+            }
+        }
+    }
+    with (let argv2 = sv_create(4) => sv_free(argv2)) {
+        sv_push(argv2, "--create-profile"); sv_push(argv2, "--output=profile");
+        sv_push(argv2, "--build");
+        let parsed2 = cli_parse(argv2);
+        assert(cli_result_has_code(parsed2, "L1C-2002"), "creation must reject another primary mode");
+        cli_parse_result_free(parsed2);
+    }
+    with (let argv3 = sv_create(5) => sv_free(argv3)) {
+        sv_push(argv3, "--create-profile"); sv_push(argv3, "--output=profile");
+        sv_push(argv3, "--"); sv_push(argv3, "arg");
+        let parsed3 = cli_parse(argv3);
+        assert(cli_result_has_code(parsed3, "L1C-2023"), "creation must reject program arguments");
+        cli_parse_result_free(parsed3);
+    }
+}
+
+/** Verify the selector mode matrix and redundant preparation control. */
+func test_profile_selector_mode_scope() {
+    with (let modes = sv_create(12) => sv_free(modes)) {
+        sv_push(modes, "--build"); sv_push(modes, "--run");
+        sv_push(modes, "--compile"); sv_push(modes, "--link");
+        sv_push(modes, "--emit-interface"); sv_push(modes, "--gen");
+        sv_push(modes, "--check"); sv_push(modes, "--tok");
+        sv_push(modes, "--ast"); sv_push(modes, "--sym");
+        sv_push(modes, "--type"); sv_push(modes, "--prepare-stdlib");
+        for (let i = 0; i < sv_size(modes); i = i + 1) {
+            with (let argv = sv_create(8) => sv_free(argv)) {
+                sv_push(argv, sv_get(modes, i)); sv_push(argv, "--profile");
+                sv_push(argv, "profile dir");
+                if (i != 11) { sv_push(argv, "app"); }
+                if (i == 3) { sv_push(argv, "--output=app"); }
+                if (i == 0 || i == 1 || i == 3) { sv_push(argv, "--no-auto-prepare"); }
+                let parsed = cli_parse(argv);
+                if (i < 4) {
+                    assert(!diag_has_errors(parsed.diags), "profile selector must accept native mode " + sv_get(modes, i));
+                    let opts = parsed.options as CliOptions*;
+                    assert(opts.profile as string == "profile dir", "selector must preserve its path");
+                    assert(!opts.c_compiler_supplied && !opts.c_options_supplied &&
+                        !opts.no_line_directives_supplied && !opts.trace_arc_supplied &&
+                        !opts.trace_memory_supplied && !opts.unchecked_supplied && !opts.check_basic_supplied,
+                        "omitted settings must not become explicit conflicts");
+                } else {
+                    assert(cli_result_has_code(parsed, "L1C-2180"), "profile selector must reject " + sv_get(modes, i));
+                }
+                cli_parse_result_free(parsed);
+            }
+        }
+    }
+    with (let argv2 = sv_create(4) => sv_free(argv2)) {
+        sv_push(argv2, "--compile"); sv_push(argv2, "app");
+        sv_push(argv2, "--profile=profile"); sv_push(argv2, "--no-auto-prepare");
+        let parsed2 = cli_parse(argv2);
+        assert(cli_result_has_code(parsed2, "L1C-2157"), "compile-only must retain no-auto-prepare scope");
+        cli_parse_result_free(parsed2);
+    }
+}
+
+/** Verify missing, empty and repeated selectors and incompatible environment controls. */
+func test_profile_selector_value_and_control_validation() {
+    with (let flags = sv_create(8) => sv_free(flags)) {
+        sv_push(flags, "--sys-root=system"); sv_push(flags, "--runtime-include=headers");
+        sv_push(flags, "--runtime-lib=runtime"); sv_push(flags, "--no-managed-stdlib");
+        sv_push(flags, "--stdlib-cache=cache"); sv_push(flags, "--profile=another");
+        for (let i = 0; i < sv_size(flags); i = i + 1) {
+            with (let argv = sv_create(4) => sv_free(argv)) {
+                sv_push(argv, "app"); sv_push(argv, "--profile=profile");
+                sv_push(argv, sv_get(flags, i));
+                let parsed = cli_parse(argv);
+                assert(cli_result_has_code(parsed, "L1C-2180"), "selector must reject " + sv_get(flags, i));
+                cli_parse_result_free(parsed);
+            }
+        }
+    }
+    with (let argv2 = sv_create(2) => sv_free(argv2)) {
+        sv_push(argv2, "app"); sv_push(argv2, "--profile");
+        let parsed2 = cli_parse(argv2);
+        assert(cli_result_has_code(parsed2, "L1C-2003"), "selector must require a value");
+        cli_parse_result_free(parsed2);
+    }
+    with (let argv3 = sv_create(3) => sv_free(argv3)) {
+        sv_push(argv3, "app"); sv_push(argv3, "--profile=");
+        let parsed3 = cli_parse(argv3);
+        assert(cli_result_has_code(parsed3, "L1C-2180"), "selector must reject an empty equals value");
+        cli_parse_result_free(parsed3);
+    }
+    with (let argv4 = sv_create(3) => sv_free(argv4)) {
+        sv_push(argv4, "app"); sv_push(argv4, "--profile"); sv_push(argv4, "");
+        let parsed4 = cli_parse(argv4);
+        assert(cli_result_has_code(parsed4, "L1C-2180"), "selector must reject an empty separated value");
+        cli_parse_result_free(parsed4);
+    }
+    with (let argv5 = sv_create(8) => sv_free(argv5)) {
+        sv_push(argv5, "app"); sv_push(argv5, "--profile=profile");
+        sv_push(argv5, "-Cc"); sv_push(argv5, "clang"); sv_push(argv5, "-Co=");
+        sv_push(argv5, "-NLD"); sv_push(argv5, "-Va"); sv_push(argv5, "-Vm");
+        let parsed5 = cli_parse(argv5);
+        assert(!diag_has_errors(parsed5.diags), "redundant explicit native settings are validated after selection");
+        let opts5 = parsed5.options as CliOptions*;
+        assert(opts5.c_compiler_supplied && opts5.c_options_supplied && opts5.no_line_directives_supplied &&
+            opts5.trace_arc_supplied && opts5.trace_memory_supplied, "short options must retain explicit provenance");
+        cli_parse_result_free(parsed5);
+    }
+}
+
 /**
  * Main entry point for the module.
  */
 func main() {
     test_default_mode_build();
+    test_create_profile_mode();
+    test_create_profile_output_and_target_validation();
+    test_profile_selector_mode_scope();
+    test_profile_selector_value_and_control_validation();
     test_no_managed_stdlib_scope();
     test_run_accepts_program_args_after_separator();
     test_non_run_rejects_separator();

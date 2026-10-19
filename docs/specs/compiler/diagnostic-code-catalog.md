@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-10-10
+Version: 2026-10-19
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -385,6 +385,26 @@ diagnostic.
 |            | `L1C-2167` | `L2C-2167` | L1/L2   | Reserved for compiler-owned bundled support preparation                                                                       |
 |            | `L1C-2168` | `L2C-2168` | L1/L2   | Reserved for compiler-owned bundled support preparation                                                                       |
 |            | `L1C-2169` | `L2C-2169` | L1/L2   | Reserved for compiler-owned bundled support preparation                                                                       |
+|            | `L1C-2180` |            | L1 only | Invalid explicit-profile CLI combination, selector, or configuration control                                                  |
+|            | `L1C-2181` |            | L1 only | Explicit-profile creation destination is invalid, already exists, or overlaps protected inputs                                |
+|            | `L1C-2182` |            | L1 only | Explicit-profile manifest is unreadable, incomplete, malformed, or uses an unsupported schema                                 |
+|            | `L1C-2183` |            | L1 only | Explicit-profile payload inventory, path containment, size, or digest validation failed                                       |
+|            | `L1C-2184` |            | L1 only | Explicit-profile compilation contract/configuration mismatch or consumer output/temp overlap                                  |
+|            | `L1C-2185` |            | L1 only | Explicit-profile publication or owned staging cleanup failed                                                                  |
+|            | `L1C-2186` |            | L1 only | Reserved for explicit profile artifacts                                                                                       |
+|            | `L1C-2187` |            | L1 only | Reserved for explicit profile artifacts                                                                                       |
+|            | `L1C-2188` |            | L1 only | Reserved for explicit profile artifacts                                                                                       |
+|            | `L1C-2189` |            | L1 only | Reserved for explicit profile artifacts                                                                                       |
+|            | `L1C-2190` |            | L1 only | Reserved for explicit profile artifacts                                                                                       |
+|            | `L1C-2191` |            | L1 only | Reserved for explicit profile artifacts                                                                                       |
+|            | `L1C-2192` |            | L1 only | Reserved for explicit profile artifacts                                                                                       |
+|            | `L1C-2193` |            | L1 only | Reserved for explicit profile artifacts                                                                                       |
+|            | `L1C-2194` |            | L1 only | Reserved for explicit profile artifacts                                                                                       |
+|            | `L1C-2195` |            | L1 only | Reserved for explicit profile artifacts                                                                                       |
+|            | `L1C-2196` |            | L1 only | Reserved for explicit profile artifacts                                                                                       |
+|            | `L1C-2197` |            | L1 only | Reserved for explicit profile artifacts                                                                                       |
+|            | `L1C-2198` |            | L1 only | Reserved for explicit profile artifacts                                                                                       |
+|            | `L1C-2199` |            | L1 only | Reserved for explicit profile artifacts                                                                                       |
 | `L0C-9510` | `L1C-9510` | `L2C-9510` | All     | Requested CLI mode is not implemented in the current compiler stage                                                           |
 | `L0C-9511` | `L1C-9511` | `L2C-9511` | All     | Cannot write an output file                                                                                                   |
 | `L0C-9512` |            |            | L0 only | Compiler temporary source cleanup failed and the retained path was reported                                                   |

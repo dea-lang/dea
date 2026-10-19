@@ -1,7 +1,7 @@
 # ADR-0003: Shared CLI Contract
 
 - Decision date: 2026-03-12
-- Last edited: 2026-08-30
+- Last edited: 2026-10-19
 - Status: Accepted
 
 ## Context
@@ -53,6 +53,9 @@ options. L0 build and run modes use repeatable `-Cs` / `--c-source` values for i
 arguments, while levels without an external-link capability may retain the shared spellings as unavailable. Only
 `-vv...` is a valid short-option cluster.
 
+L1 additionally defines target-free `--create-profile -o PATH` and `--profile PATH` for compile/link/build/run. They
+preserve shared mode and exit-code meanings and do not add these operations to L0 or L2.
+
 ## Rationale
 
 - Users should not need to know which stage is active to use the compiler.
@@ -70,32 +73,51 @@ arguments, while levels without an external-link capability may retain the share
 
 ## Related Plans
 
+- [l1/work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md][explicit-profile-plan]
+
 - [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../l1/work/initiatives/closed/0001-separate-compilation-and-linking.md):
   completed L1 separate-compilation and external-linking initiative
+
 - [l0/work/plans/features/closed/2026-03-12-shared-cli-contract-spec.md](../../l0/work/plans/features/closed/2026-03-12-shared-cli-contract-spec.md):
   introduced the contract spec
+
 - [l0/work/plans/features/closed/2026-03-12-cli-version-flag-and-identity-text-noref.md](../../l0/work/plans/features/closed/2026-03-12-cli-version-flag-and-identity-text-noref.md):
   version flag
+
 - [l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md](../../l1/work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md):
   L1 compile-only mode and semantic option reservations
+
 - [l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md](../../l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md):
   L1 standalone link operands and option scope
+
 - [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md](../../l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md):
   retained typed foreign-object operand under the opaque native-input boundary
+
 - [l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md](../../l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md):
   preserved exact generated-C output semantics while making L1 generation per-module
+
 - [l1/work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md](../../l1/work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md):
   implemented ordered external-library, search-path, rpath, and raw host-driver controls for L1 link-involving modes
+
 - [work/plans/features/closed/2026-07-28-shared-compiler-short-option-aliases-noref.md](../../work/plans/features/closed/2026-07-28-shared-compiler-short-option-aliases-noref.md):
   coordinated current aliases and deferred semantic reservations
+
 - [work/plans/bug-fixes/closed/2026-07-21-shared-structured-c-source-input-noref.md](../../work/plans/bug-fixes/closed/2026-07-21-shared-structured-c-source-input-noref.md):
   structured additional C-source arguments and cross-stage parity
 
 ## Current Docs
 
+- [l1/docs/reference/explicit-profiles.md][explicit-profiles]
+
 - [docs/specs/compiler/cli-contract.md](../specs/compiler/cli-contract.md): normative CLI surface
+
 - [l0/docs/specs/compiler/cli-contract.md](../../l0/docs/specs/compiler/cli-contract.md): complete L0 Stage 1/Stage 2
   realization
+
 - [l1/docs/reference/separate-compilation.md](../../l1/docs/reference/separate-compilation.md): L1 ordered link-input
   realization
+
 - [l1/docs/user/linking.md](../../l1/docs/user/linking.md): L1 external-library option workflows
+
+[explicit-profile-plan]: ../../l1/work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md
+[explicit-profiles]: ../../l1/docs/reference/explicit-profiles.md

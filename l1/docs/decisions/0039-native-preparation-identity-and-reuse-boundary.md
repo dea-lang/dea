@@ -1,7 +1,7 @@
 # ADR-0039: Native Preparation Identity and Reuse Boundary
 
 - Decision date: 2026-09-11
-- Last edited: 2026-10-16
+- Last edited: 2026-10-19
 - Status: Accepted
 
 ## Context
@@ -90,6 +90,11 @@ Managed artifact validation checks the complete manifest inventory, relative con
 selected semantic bytes. Native contents remain semantically opaque; `.l1m` parsing, fingerprints, graph and lifecycle
 validation remain authoritative.
 
+Explicit profiles use a separate caller-stability contract: selection restores recorded inputs and validates payload
+bytes without managed identity, toolchain/DLL freshness observations or cache policy. The caller keeps external
+compiler/SDK/environment inputs suitable and recreates the profile when those change. An explicit success does not
+authorize managed reuse.
+
 ## Rationale
 
 Separate identities distinguish compiler-owned content from native configuration without making semantic-only commands
@@ -116,6 +121,8 @@ general toolchain or project build system.
 
 ## Related Plans
 
+- [l1/work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md][explicit-profile-plan]
+
 - [l1/work/plans/bug-fixes/closed/2026-09-27-legacy-clang-preparation-compatibility-noref.md][legacy-clang]
 
 - [l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md][profile-boundary]
@@ -131,14 +138,21 @@ general toolchain or project build system.
 
 ## Current Docs
 
+- [l1/docs/reference/explicit-profiles.md][explicit-profiles]
+
 - [docs/specs/compiler/cli-contract.md][cli]
+
 - [l1/docs/reference/stdlib-preparation.md][preparation]
+
 - [l1/docs/reference/c-backend-design.md][backend]
+
 - [l1/docs/reference/separate-compilation.md][separate-compilation]
 
 [backend]: ../reference/c-backend-design.md
 [cli]: ../../../docs/specs/compiler/cli-contract.md
 [environment-identity]: ../../work/plans/refactors/closed/2026-09-15-native-identity-environment-text-reassessment-noref.md
+[explicit-profile-plan]: ../../work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md
+[explicit-profiles]: ../reference/explicit-profiles.md
 [legacy-clang]: ../../work/plans/bug-fixes/closed/2026-09-27-legacy-clang-preparation-compatibility-noref.md
 [preparation]: ../reference/stdlib-preparation.md
 [preparation-economy]: ../../work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md

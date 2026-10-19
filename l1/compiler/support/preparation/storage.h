@@ -30,6 +30,9 @@ typedef struct {
     int64_t option_file_parses, option_root_expansions;
     PcLock *lock;
     PcConstruction *construction;
+    PcJson *profile, *profile_headers;
+    char *profile_destination, *profile_stage;
+    int profile_manifest_written;
 } PcContext;
 
 static int pc_verbosity(PcContext *c);
