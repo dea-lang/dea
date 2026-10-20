@@ -3,8 +3,9 @@
 - Version: 2026-10-19
 - Status: In progress
 - Kind: Initiative
-- Open plans: None
+- Open plans: (none)
 - Closed plans:
+  - `l1/work/plans/bug-fixes/closed/2026-10-19-explicit-profile-review-gaps-noref.md`
   - `l1/work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md`
   - `l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md`
 - Scope: L1 canonical L1 compiler

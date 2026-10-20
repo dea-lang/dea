@@ -31,7 +31,9 @@ def main() -> int:
     env = dict(os.environ)
     for name in ("L1_CC", "L1_CFLAGS", "L1_SYSTEM", "L1_RUNTIME_INCLUDE", "L1_RUNTIME_LIB", "L1_STDLIB_CACHE"):
         env.pop(name, None)
-    with tempfile.TemporaryDirectory(prefix="l1-profile-variants-") as directory:
+    # Relative option words remain whitespace-delimited, while freezing their
+    # absolute paths must preserve spaces through every native invocation.
+    with tempfile.TemporaryDirectory(prefix="l1 profile variants ") as directory:
         root = Path(directory).resolve()
         compiler = toolchain_fixture(root, env)
         create = partial(invoke, root, env, compiler=compiler)
@@ -45,12 +47,18 @@ def main() -> int:
         consumer_root = root / "different-cwd"
         consumer_root.mkdir()
         original_env = dict(env)
-        for value in ("@unsupported-response", "--config=unsupported-config"):
+        response = root / "macro.rsp"
+        response.write_text("PROFILE_RESPONSE_DEFINE=1\n", encoding="utf-8")
+        rejected_cache = root / "rejected-cache"
+        env["L1_STDLIB_CACHE"] = str(rejected_cache)
+        for value in ("@unsupported-response", "--config=unsupported-config", "-D @macro.rsp"):
             destination = root / "rejected"
             rejected = create("--create-profile", "--c-compiler", cc,
                               "--c-options=" + value, "-o", str(destination), expected=1)
             assert "L1C-2180" in rejected.stderr, rejected.stderr
-            assert not destination.exists() and not list(root.glob(".rejected.profile-*"))
+            assert not destination.exists() and not list(root.glob(".l1-profile-*"))
+            assert not rejected_cache.exists()
+            assert response.read_text(encoding="utf-8") == "PROFILE_RESPONSE_DEFINE=1\n"
         variants = (("default", ()), ("check_basic", ("--check-basic",)),
                     ("unchecked", ("--unchecked",)), ("traced", ("--trace-arc", "--trace-memory")))
         for variant, settings in variants:
@@ -60,7 +68,7 @@ def main() -> int:
             created = create("--create-profile", "--c-compiler", cc, "--c-options=" + flags,
                              *settings, "-o", str(profile))
             assert not created.stdout, created.stdout
-            manifest = json.loads((profile / "profile.json").read_text())
+            manifest = json.loads((profile / "profile.json").read_text(encoding="utf-8"))
             configuration = manifest["configuration"]
             assert configuration["variant"] == variant, configuration
             assert "-DAPP_PROFILE_ONLY=1" in configuration["options"]
@@ -89,7 +97,7 @@ def main() -> int:
             env.update(original_env)
             profile = root / "tinycc-profile"
             create("--create-profile", "--c-compiler", tcc, "-o", str(profile))
-            manifest = json.loads((profile / "profile.json").read_text())
+            manifest = json.loads((profile / "profile.json").read_text(encoding="utf-8"))
             assert manifest["configuration"]["family"] == "tcc"
             assert len(manifest["runtime"]) == 9 and all(path.endswith(".o") for path in manifest["runtime"])
             ran = create("--run", "app", "--profile", str(profile), "-vvv")

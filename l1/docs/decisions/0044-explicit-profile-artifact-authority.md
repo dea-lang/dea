@@ -43,6 +43,7 @@ of the active initiative.
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md][profile-plan]
+- [l1/work/plans/bug-fixes/closed/2026-10-19-explicit-profile-review-gaps-noref.md][profile-review]
 - [l1/work/initiatives/0010-explicit-profiles-and-composable-builds.md][initiative]
 
 ## Current Docs
@@ -55,4 +56,5 @@ of the active initiative.
 [initiative]: ../../work/initiatives/0010-explicit-profiles-and-composable-builds.md
 [preparation]: ../reference/stdlib-preparation.md
 [profile-plan]: ../../work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md
+[profile-review]: ../../work/plans/bug-fixes/closed/2026-10-19-explicit-profile-review-gaps-noref.md
 [profiles]: ../reference/explicit-profiles.md

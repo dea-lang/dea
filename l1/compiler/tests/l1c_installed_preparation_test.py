@@ -4,11 +4,10 @@
 # Copyright (c) 2026 gwz
 #
 
-"""Use a read-only installed-input fixture with a cold per-user native cache."""
+"""Use read-only installed inputs with managed preparation and explicit profiles."""
 
 from __future__ import annotations
 
-import hashlib
 import os
 from pathlib import Path
 from support.compiler_subject import selected_native
@@ -19,10 +18,11 @@ import tempfile
 
 from l1c_compile_only_test import L1_ROOT, stage1_compiler
 from l1c_managed_preparation_test import analysis_count, preparation_c_compiler
+from l1c_profile_test import snapshot
 
 
 def main() -> int:
-    """Build and link through installed interfaces without installed native artifacts."""
+    """Build through installed inputs and consume a profile after removing them."""
     native = selected_native(stage1_compiler().parent / "l1c.native")
     cc = preparation_c_compiler()
     assert cc
@@ -42,23 +42,27 @@ def main() -> int:
                    XDG_CACHE_HOME=str(user / "xdg"))
         cache = (user / "Local/Dea/L1/Cache" if os.name == "nt" else
                  user / "Library/Caches/dea/l1" if sys.platform == "darwin" else user / "xdg/dea/l1")
-        (root / "app.l1").write_text('module app; import std.io; func main() { printl_s("installed-ok"); }\n')
-        originals = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in home.rglob("*") if path.is_file()}
+        (root / "app.l1").write_text(
+            'module app; import std.io; func main() { printl_s("installed-ok"); }\n', encoding="utf-8")
+        originals = snapshot(home)
         modes = {path: path.stat().st_mode for path in [home, *home.rglob("*")]}
-        if os.name != "nt":
-            for path in modes:
+        for path in modes:
+            if os.name != "nt" or path.is_file():
                 path.chmod(0o555 if path.is_dir() else 0o444)
 
         def run(*args: str, expected: int = 0) -> subprocess.CompletedProcess[str]:
             """Invoke the native executable using only the fixture's installed context."""
             result = subprocess.run([str(native), *args], cwd=root, env=env, text=True,
-                                    capture_output=True, timeout=600)
+                                    encoding="utf-8", errors="replace", capture_output=True, timeout=600)
             assert result.returncode == expected, (args, result.stdout, result.stderr)
             return result
 
         try:
             run("--compile", "app", "-o", str(root / "app.o"))
             assert not cache.exists()
+            profile = root / "explicit profile"
+            run("--create-profile", "--check-basic", "-o", str(profile))
+            assert not cache.exists() and not (root / "ignored-build").exists()
             missing = run("--run", "--no-auto-prepare", "app", expected=1)
             assert "L1C-2159" in missing.stderr
             cold = run("--run", "app")
@@ -71,7 +75,8 @@ def main() -> int:
             executable = root / ("linked.exe" if os.name == "nt" else "linked")
             warm = run("--link", "--no-auto-prepare", str(root / "app.o"), "-o", str(executable))
             assert "Preparing " not in warm.stderr
-            result = subprocess.run([str(executable)], capture_output=True, text=True, timeout=30)
+            result = subprocess.run([str(executable)], capture_output=True, text=True,
+                                    encoding="utf-8", errors="replace", timeout=30)
             assert result.returncode == 0 and result.stdout == "installed-ok\n"
             markers = list(cache.glob("v1/native/*/manifest.json"))
             assert len(markers) == 1
@@ -84,13 +89,13 @@ def main() -> int:
             blocked.unlink()
             blocked.mkdir()
             sentinel = blocked / "owned-obstruction"
-            sentinel.write_text("retain this obstruction")
+            sentinel.write_text("retain this obstruction", encoding="utf-8")
             try:
                 fallback = run("--run", "app", "-v")
                 assert fallback.stdout == "installed-ok\n" and "fresh command-private support" in fallback.stderr
                 assert "Default cache storage is unavailable; preparing fresh command-private support." in fallback.stderr
                 assert analysis_count(fallback, "_dea_preparation") == 1 and analysis_count(fallback, "app") == 2
-                assert not marker.exists() and sentinel.read_text() == "retain this obstruction"
+                assert not marker.exists() and sentinel.read_text(encoding="utf-8") == "retain this obstruction"
                 run("--prepare-stdlib", expected=1)
                 run("--run", "--no-auto-prepare", "app", expected=1)
             finally:
@@ -98,18 +103,30 @@ def main() -> int:
                     shutil.rmtree(blocked)
                 blocked.write_bytes(original_interface)
             unrelated = cache / "caller-owned.txt"
-            unrelated.write_text("retain this sibling")
+            unrelated.write_text("retain this sibling", encoding="utf-8")
             shutil.rmtree(cache / "v1")
             rebuilt = run("--run", "app")
-            assert rebuilt.stdout == "installed-ok\n" and unrelated.read_text() == "retain this sibling"
+            assert rebuilt.stdout == "installed-ok\n" and unrelated.read_text(encoding="utf-8") == "retain this sibling"
             run("--prepare-stdlib", "--stdlib-cache", str(home), expected=1)
             assert not (home / "v1").exists() and not (root / "ignored-build").exists()
-            assert {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in home.rglob("*") if path.is_file()} == originals
+            assert snapshot(home) == originals, "preparation modified installed inputs"
         finally:
-            if os.name != "nt":
-                for path, mode in modes.items():
+            for path, mode in modes.items():
+                if os.name != "nt" or path.is_file():
                     path.chmod(mode)
-    print("installed semantic inputs, cold per-user cache and read-only ownership: PASS")
+        shutil.rmtree(home)
+        moved = root / "moved explicit profile"
+        profile.rename(moved)
+        before = snapshot(moved)
+        ignored_cache = root / "must-not-create-cache"
+        env.update(L1_CC="missing-profile-compiler", L1_CFLAGS="-ffast-math", L1_SYSTEM="missing-system",
+                   L1_RUNTIME_INCLUDE="missing-include", L1_RUNTIME_LIB="missing-runtime",
+                   L1_STDLIB_CACHE=str(ignored_cache))
+        selected = run("--run", "app", "--profile", str(moved))
+        assert selected.stdout == "installed-ok\n" and "Preparing " not in selected.stderr
+        assert before == snapshot(moved), "installed explicit consumer modified the moved profile"
+        assert not ignored_cache.exists() and not (root / "ignored-build").exists()
+    print("installed semantic inputs, moved explicit profiles, cold cache and read-only ownership: PASS")
     return 0
 
 

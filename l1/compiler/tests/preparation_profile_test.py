@@ -23,10 +23,26 @@ from unittest.mock import patch
 
 from compiler_filesystem_support_test import resolve_c_compiler
 from preparation_construction_test import native_write
-from preparation_support_test import SUPPORT, Service, build_library, compile_native
+from preparation_support_test import SUPPORT, Service, compile_native
 
 
 CODEGEN = dict(no_line_directives=0, trace_arc=0, trace_memory=0, unchecked=0, check_basic=0)
+
+
+def build_windows_macro_library(root: Path) -> Path:
+    """Compile complete native support with the Windows COM macro visible on every host.
+
+    Args:
+        root: Owned directory for the native service library.
+
+    Returns:
+        Library used by the profile schema, selection and creation checks.
+    """
+    library = root / ("preparation.dll" if os.name == "nt" else "preparation.so")
+    flags = ("-shared",) if os.name == "nt" else ("-shared", "-fPIC")
+    compile_native(library, [SUPPORT / "preparation_support.c", SUPPORT / "compiler_support.c"],
+                   (*flags, "-Dinterface=struct"))
+    return library
 
 
 class ProfileService(Service):
@@ -179,6 +195,8 @@ def check_manifest(library: Path, root: Path) -> None:
         "oversized-option": (lambda m: m["configuration"].update(options=["-D" + "x" * 32768]), 2182),
         "relative-option": (lambda m: m["configuration"].update(options=["-I", "relative headers"]), 2182),
         "response-option": (lambda m: m["configuration"].update(options=["@caller.rsp"]), 2182),
+        "response-definition": (lambda m: m["configuration"].update(options=["-D", "@caller.rsp"]), 2182),
+        "response-runtime-option": (lambda m: m["configuration"].update(runtime_options=["-D", "@caller.rsp"]), 2182),
         "config-option": (lambda m: m["configuration"].update(runtime_options=["--config=caller.cfg"]), 2182),
         "noncanonical-option": (lambda m: m["configuration"].update(options=["-I" + str(root)]), 2182),
         "invalid-isolation": (lambda m: m["configuration"].update(runtime_configuration_isolation="future"), 2182),
@@ -375,13 +393,37 @@ def check_creation(library: Path, root: Path) -> None:
         assert service.call("error_code") == 2180, service.get("error")
         assert service.get("profile_stage") == ""
     with chdir(root), ProfileService(library, root / "relative-options", {
-            **config, "options": ["-Iexternal headers", "-include", "external header.h"]}) as service:
+            **config, "options": ["-Iexternal headers", "-include", "external header.h",
+                                  "-D", "PROFILE_VALUE=@literal"]}) as service:
         assert service.call("error_code") == 0, service.get("error")
         stage = Path(service.get("profile_stage"))
         inputs = json.loads(service.get("construction_inputs"))
-        expected = ["-I", str(root / "external headers"), "-include", str(root / "external header.h")]
+        expected = ["-I", str(root / "external headers"), "-include", str(root / "external header.h"),
+                    "-D", "PROFILE_VALUE=@literal"]
         assert inputs["options"] == expected, inputs["options"]
     assert not stage.exists(), "unpublished normalized-option construction must clean its owned stage"
+    response = root / "caller.rsp"
+    response.write_text("PROFILE_RESPONSE=1\n")
+    for index, flag in enumerate(("-D", "-U", "-target", "--target", "-arch", "-I", "-include")):
+        output = root / ("response-operand-" + str(index))
+        with ProfileService(library, output, {**config, "options": [flag, "@" + str(response)]}) as service:
+            assert service.call("error_code") == 2180, (flag, service.get("error"))
+            assert service.get("profile_stage") == ""
+            assert service.stats()["probes"] == 0, "response operands must fail before any native work"
+        assert not output.exists()
+    assert response.read_text() == "PROFILE_RESPONSE=1\n"
+    relative = "x/" * 16380 + "x"
+    suffix_size = 32760 - len(str(root).encode("utf-8")) - 1
+    absolute = str(root) + os.sep + "x/" * (suffix_size // 2) + "x" * (suffix_size % 2)
+    assert len(absolute.encode("utf-8")) <= 32768
+    assert len(("--gcc-toolchain=" + absolute).encode("utf-8")) > 32768
+    for index, options in enumerate((["-I", relative], ["--gcc-toolchain", absolute])):
+        output = root / ("oversized-normalized-option-" + str(index))
+        with chdir(root), ProfileService(library, output, {**config, "options": options}) as service:
+            assert service.call("error_code") == 2180, service.get("error")
+            assert service.get("profile_stage") == ""
+            assert service.stats()["probes"] == 0, "normalized argv bounds must fail before native work"
+        assert not output.exists()
     for index, options in enumerate((["@options.rsp"], ["--config=compiler.cfg"], ["-specs=compiler.specs"],
                                      ["-Xclang", "-load"], ["-Wl,@linker.rsp"], ["-I"], ["--sysroot="],
                                      ["-iprefixrelative"], ["-iframeworkwithsysrootrelative"],
@@ -555,7 +597,7 @@ def main() -> int:
         windows = root / "windows-paths"
         windows.mkdir()
         check_windows_path_spellings(windows)
-        library = build_library(root)
+        library = build_windows_macro_library(root)
         for name, check in (("manifest", check_manifest), ("inventory", check_inventory),
                             ("selection", check_selection), ("creation", check_creation),
                             ("implicit-config", check_implicit_configuration)):

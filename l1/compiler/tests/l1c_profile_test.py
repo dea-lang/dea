@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 from functools import partial
 import hashlib
 import json
@@ -65,10 +66,11 @@ def main() -> int:
     """
     cc = preparation_c_compiler()
     assert cc
+    executable_suffix = ".exe" if os.name == "nt" else ""
     env = dict(os.environ)
     for name in ("L1_CC", "L1_CFLAGS", "L1_SYSTEM", "L1_RUNTIME_INCLUDE", "L1_RUNTIME_LIB", "L1_STDLIB_CACHE"):
         env.pop(name, None)
-    with tempfile.TemporaryDirectory(prefix="l1 explicit profile ") as directory:
+    with tempfile.TemporaryDirectory(prefix="l1 explicit profile ") as directory, ExitStack() as readonly_cleanup:
         root = Path(directory).resolve()
         compiler = toolchain_fixture(root, env)
         call = partial(invoke, root, env, compiler=compiler)
@@ -80,9 +82,9 @@ def main() -> int:
         fixtures = L1_ROOT / "compiler/tests/fixtures/separate_compilation"
         shutil.copytree(fixtures / "lifecycle", root / "lifecycle")
         main_source = root / "lifecycle/main.l1"
-        main_source.write_text(main_source.read_text().replace("module lifecycle.main;",
+        main_source.write_text(main_source.read_text(encoding="utf-8").replace("module lifecycle.main;",
                               "module lifecycle.main;\nimport std.io;").replace(
-                                  "    return 0;", '    printl_s("profile-ok");\n    return 0;'))
+                                  "    return 0;", '    printl_s("profile-ok");\n    return 0;'), encoding="utf-8")
         shim = root / "observer.o"
         subprocess.run([cc, "-c", str(fixtures / "lifecycle_observer.c"), "-o", str(shim)], check=True)
         created = call("--create-profile", *common, "-o", str(profile), "-vvv")
@@ -98,7 +100,7 @@ def main() -> int:
         assert all(not Path(item["path"]).is_absolute() for item in manifest["payloads"])
         before = snapshot(profile)
         # Ordinary managed composition remains available for equivalent configuration.
-        managed = root / "managed-app"
+        managed = root / ("managed-app" + executable_suffix)
         call("--build", "lifecycle.main", *common, "--stdlib-cache", str(cache),
              "--foreign-object", str(shim), "--keep-c", "-o", str(managed))
         execute(managed, "profile-ok\n")
@@ -112,10 +114,11 @@ def main() -> int:
         shutil.rmtree(Path(env["L1_BUILD_DIR"]) / "include")
         moved = root / "moved profile"
         profile.rename(moved)
-        permissions = {}
-        if os.name != "nt":
-            for path in [moved, *moved.rglob("*")]:
-                permissions[path] = path.stat().st_mode & 0o777
+        for path in [moved, *moved.rglob("*")]:
+            # Windows chmod protects payload files through their read-only attribute;
+            # directory write permissions are available on POSIX hosts only.
+            if os.name != "nt" or path.is_file():
+                readonly_cleanup.callback(path.chmod, path.stat().st_mode & 0o777)
                 path.chmod(0o555 if path.is_dir() else 0o444)
         selected = ("--profile", str(moved))
         modules = root / "objects"
@@ -128,38 +131,38 @@ def main() -> int:
             no_preparation(compiled)
             assert output.is_file() and output.with_suffix(".l1m").is_file()
             retained[name] = output.with_suffix(".c").read_bytes()
-        manual = root / "manual-app"
+        manual = root / ("manual-app" + executable_suffix)
         linked = call("--link", str(modules / "lifecycle/main.o"), "-I", str(modules), *selected,
                       "--foreign-object", str(shim), "--no-auto-prepare", "-o", str(manual), "-vvv")
         no_preparation(linked)
         execute(manual, "profile-ok\n")
-        direct = root / "direct-app"
+        direct = root / ("direct-app" + executable_suffix)
         built = call("--build", "lifecycle.main", *selected, "--foreign-object", str(shim),
                      "--keep-c", "-o", str(direct), "-vvv")
         no_preparation(built)
         execute(direct, "profile-ok\n")
-        retained_root = root / "direct-app.dea-c"
+        retained_root = direct.with_name(direct.name + ".dea-c")
+        managed_retained_root = managed.with_name(managed.name + ".dea-c")
         for name, data in retained.items():
             assert (retained_root / "lifecycle" / (name + ".c")).read_bytes() == data
-            assert (root / "managed-app.dea-c/lifecycle" / (name + ".c")).read_bytes() == data
+            assert (managed_retained_root / "lifecycle" / (name + ".c")).read_bytes() == data
         assert not (retained_root / "std").exists(), "prebuilt bundled providers regenerated retained C"
         ran = call("--run", "lifecycle.main", *selected, "--foreign-object", str(shim), "-vvv")
         no_preparation(ran)
         assert ran.stdout == "profile-ok\n"
         assert before == snapshot(moved), "explicit consumers modified the profile"
         assert not (root / "must-not-create-cache").exists()
-        for path, mode in permissions.items():
-            path.chmod(mode)
+        readonly_cleanup.close()
         override = root / "invalid-provider/std"
         override.mkdir(parents=True)
-        (override / "io.l1m").write_text("invalid explicit interface\n")
+        (override / "io.l1m").write_text("invalid explicit interface\n", encoding="utf-8")
         failed = call("--compile", "lifecycle.main", *selected, "-I", str(override.parent),
                       "-I", str(modules), "-o", str(root / "invalid-provider.o"), expected=1)
         assert "io.l1m" in failed.stderr and not (root / "invalid-provider.o").exists(), failed.stderr
         no_preparation(failed)
         for mode, target in (("--compile", "lifecycle.leaf"), ("--build", "lifecycle.main"),
                              ("--link", str(modules / "lifecycle/main.o"))):
-            name = "unconsumed-output.o" if mode == "--compile" else "unconsumed-output"
+            name = "unconsumed-output.o" if mode == "--compile" else "unconsumed-output" + executable_suffix
             refused = call(mode, target, *selected, "-I", str(modules),
                            "-o", str(moved / name), expected=1)
             assert "L1C-218" in refused.stderr, refused.stderr
@@ -189,7 +192,7 @@ def main() -> int:
         marker = moved / "profile.json"
         for field in ("schema", "contract"):
             changed = {**manifest, field: 999}
-            marker.write_text(json.dumps(changed))
+            marker.write_text(json.dumps(changed), encoding="utf-8")
             failed = call("--build", "lifecycle.main", *selected, expected=1)
             assert "L1C-218" in failed.stderr
         marker.write_bytes(manifest_bytes)
@@ -199,7 +202,7 @@ def main() -> int:
         # Compile-only does not consume imported native objects.
         call("--compile", "lifecycle.main", *selected, "-I", str(modules), "-o", str(root / "unused-native.o"))
         failed = call("--link", str(modules / "lifecycle/main.o"), *selected, "-I", str(modules),
-                      "-o", str(root / "damaged-app"), expected=1)
+                      "-o", str(root / ("damaged-app" + executable_suffix)), expected=1)
         assert "L1C-2183" in failed.stderr
         damaged.write_bytes(object_bytes)
         header = moved / "include/dea_rt.h"

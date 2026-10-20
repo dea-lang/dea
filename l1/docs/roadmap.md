@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-10-19
+Version: 2026-10-20
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -314,6 +314,8 @@ tiers are distinct from implementation phases within a plan or initiative.
   `--create-profile` and `--profile` for compile/link/build/run. Managed-client integration and dependency discovery
   remain separately scoped phases; all four phases are required for initiative completion. Production compiler Make
   conversion and ordinary-project stdlib construction remain separate adoption work.
+  [l1/work/plans/bug-fixes/closed/2026-10-19-explicit-profile-review-gaps-noref.md][profile-review] addresses
+  independent review findings in the shipped artifact implementation.
 
 ## Completed initiatives
 
@@ -499,6 +501,7 @@ update to be promoted to an initiative or plan:
 [preparation-test-cost]: ../work/plans/tools/closed/2026-09-13-preparation-test-cost-noref.md
 [profile-artifacts]: ../work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md
 [profile-boundary]: ../work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md
+[profile-review]: ../work/plans/bug-fixes/closed/2026-10-19-explicit-profile-review-gaps-noref.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md
 [release-policy]: ../../docs/decisions/0023-l1-release-workflow-policy.md
 [release-workflows]: ../../work/plans/tools/closed/2026-05-12-l1-gha-release-snapshot-workflows-noref.md

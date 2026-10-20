@@ -36,7 +36,7 @@ def invoke(root: Path, env: dict[str, str], *args: str, expected: int = 0,
            compiler: Path | None = None) -> subprocess.CompletedProcess[str]:
     """Run a Stage 1 case, retaining compiler output in failed assertions."""
     result = subprocess.run([str(compiler or stage1_compiler()), *args], cwd=root, env=env,
-                            capture_output=True, text=True, timeout=600)
+                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
     diagnostics = "\n".join(line for line in result.stderr.splitlines()
                             if not line.startswith(("Preparation Dea inputs:", "Preparation native inputs:")))
     assert result.returncode == expected, (args, result.returncode, result.stdout, diagnostics)

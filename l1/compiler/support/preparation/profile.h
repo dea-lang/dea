@@ -48,12 +48,17 @@ static PcJson *pc_profile_options(PcContext *c, const PcJson *options, int froze
     const PcJson *word;
     PcJson *result = pj_new(PJ_ARRAY);
     if (!options || options->type != PJ_ARRAY || pj_count(options) > PC_PROFILE_MAX_WORDS) goto invalid;
+    /* Drivers expand response words before interpreting option operands. Check
+       every original argv word, including values later consumed by paired flags. */
+    for (word = options->child; word; word = word->next) {
+        const char *s = pj_str(word);
+        if (!s || !*s || *s == '@' || strlen(s) > 32768) goto invalid;
+    }
     for (word = options->child; word; word = word->next) {
         const char *s = pj_str(word), *operand = NULL, *flag = NULL;
         char *absolute;
         int i;
-        if (!s || !*s || strlen(s) > 32768) goto invalid;
-        if (*s == '@' || !strncmp(s, "--config", 8) || !strncmp(s, "-specs", 6) ||
+        if (!strncmp(s, "--config", 8) || !strncmp(s, "-specs", 6) ||
             !strncmp(s, "--specs", 7) || !strncmp(s, "-fplugin", 8) ||
             !strncmp(s, "-fpass-plugin", 13) || !strncmp(s, "-fprofile", 9) ||
             !strncmp(s, "-fauto-profile", 14) || !strcmp(s, "-wrapper") ||
@@ -119,6 +124,8 @@ static PcJson *pc_profile_options(PcContext *c, const PcJson *options, int froze
         pj_add(result, NULL, pj_string(s));
     }
     if (pj_count(result) > PC_PROFILE_MAX_WORDS) goto invalid;
+    for (word = result->child; word; word = word->next)
+        if (strlen(word->text) > 32768) goto invalid;
     return result;
 invalid:
     pj_free(result);
@@ -199,20 +206,20 @@ static int pc_profile_modules(PcContext *c, const char *root, const char *relati
         int kind = pc_kind(path, 0);
         if (kind == 2) ok = pc_profile_modules(c, root, rel, depth + 1);
         else if (kind == 1 && pc_ends(rel, ".l1")) {
-            char *module = pc_slice(rel, strlen(rel) - 3), *p, *interface, *source;
+            char *module = pc_slice(rel, strlen(rel) - 3), *p, *interface_path, *source;
             char digest[65];
             for (p = module; *p; ++p) if (*p == '/' || *p == '\\') *p = '.';
-            interface = pc_module_artifact(module, ".l1m", "modules");
-            source = pc_join(c->semantic_root, interface + strlen("modules/"));
+            interface_path = pc_module_artifact(module, ".l1m", "modules");
+            source = pc_join(c->semantic_root, interface_path + strlen("modules/"));
             if (!pc_module_name(module) || (strncmp(module, "std.", 4) && strncmp(module, "sys.", 4)) ||
                 pj_get(c->modules, module) || pj_count(c->modules) >= PC_PROFILE_MAX_MODULES)
                 ok = pc_fail(c, 2151, "invalid bundled profile module", rel);
             else if (!pc_hash_observed(c, source, digest, NULL, "profile", "semantic-interface"))
                 ok = pc_fail(c, 2158, "required bundled semantic interface is unavailable; rebuild or repair installation", source);
             else if (pc_profile_track(c, path) && pc_profile_track(c, source)) {
-                pj_set_string(c->modules, module, interface); pj_set_string(c->interfaces, interface, digest);
+                pj_set_string(c->modules, module, interface_path); pj_set_string(c->interfaces, interface_path, digest);
             } else ok = 0;
-            free(module); free(interface); free(source);
+            free(module); free(interface_path); free(source);
         } else if (kind != 1) ok = pc_fail(c, 2151, "profile inputs require ordinary files and directories", path);
         free(rel); free(path);
     }
