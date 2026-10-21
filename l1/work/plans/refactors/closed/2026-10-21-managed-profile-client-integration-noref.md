@@ -108,7 +108,7 @@ hash scheduling without memos.
 
 ## Verification Evidence
 
-Validation ran on macOS Intel (`x86_64` Darwin) with `/usr/bin/clang`, Apple Clang 17.0.0 (`clang-1700.6.4.2`),
+Local validation ran on macOS Intel (`x86_64` Darwin) with `/usr/bin/clang`, Apple Clang 17.0.0 (`clang-1700.6.4.2`),
 explicitly selected as `L0_CC`, `L1_CC` and `L1_RUNTIME_CC`. Bootstrap selection was the primary checkout's
 `/Users/guglielmo/devel/googlielmo/DEA/l0/build/dea/bin/l0c-stage2`. The compiler was freshly built in this worktree
 after offline synchronization of the shared virtual environment. Subsequent `make -o` commands reused that unchanged
@@ -116,14 +116,15 @@ build. Hash snapshots of the changed production/tests, Git status/diff review an
 established that production, test, build and dependency inputs remained unchanged through the successful checks. TinyCC
 0.9.28rc was also exercised by identity and native runtime coverage.
 
-| Check                                 | Result                                                                                                                                                  |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `make -o venv -o build test-extended` | Passed: docgen 46; compiler normal 85; examples 4; Docker-Wine runner tests 6; tooling 181 with 1 skipped; productization fixtures 289 with 14 skipped. |
-| Focused CI-only preparation cases     | Passed: `preparation_identity_test`, `preparation_ownership_test`, `l1c_installed_preparation_test` and `l1c_preparation_test`.                         |
-| Focused preparation trace             | Passed: `preparation_test`, zero leaked object/string pointers across 1,181,370 events.                                                                 |
-| Constructor trace                     | Passed with `L1_CONSTRUCTION_TRACE=1`, including success/failure cleanup.                                                                               |
-| Direct native checks                  | Constructor, support, public profile and Clang compatibility checks passed; corresponding normal-suite replay also passed.                              |
-| Independent reviews                   | Production correctness and path-portability reviews found no correctness issues.                                                                        |
+| Check                                 | Result                                                                                                                                                                                 |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make -o venv -o build test-extended` | Passed: docgen 46; compiler normal 85; examples 4; Docker-Wine runner tests 6; tooling 181 with 1 skipped; productization fixtures 289 with 14 skipped.                                |
+| Focused CI-only preparation cases     | Passed: `preparation_identity_test`, `preparation_ownership_test`, `l1c_installed_preparation_test` and `l1c_preparation_test`.                                                        |
+| Focused preparation trace             | Passed: `preparation_test`, zero leaked object/string pointers across 1,181,370 events.                                                                                                |
+| Constructor trace                     | Passed with `L1_CONSTRUCTION_TRACE=1`, including success/failure cleanup.                                                                                                              |
+| Direct native checks                  | Constructor, support, public profile and Clang compatibility checks passed; corresponding normal-suite replay also passed.                                                             |
+| Independent reviews                   | Production correctness and path-portability reviews found no correctness issues.                                                                                                       |
+| Hosted Unified CI                     | Passed for the Phase C implementation, confirmed by the project maintainer on 2026-10-21; native L1 `test-ci` covers Linux x86_64 GCC, macOS Intel/ARM64 Clang and Windows UCRT64 GCC. |
 
 The normal and focused suites cover cold/force/private preparation, manifest-certified warm reuse, identity and
 ineligibility, locking/recovery, provider/lifecycle and retained-C behavior, exact profile selection, variants and
@@ -132,12 +133,13 @@ are unchanged. No speedup is claimed or inferred from this refactor.
 
 Portable Windows drive/UNC, mixed separators, spaces, case and distinct-path negatives passed through
 `preparation_profile_test.check_windows_path_spellings`. These are simulated Windows path checks on the native macOS
-host. POSIX symlink checks remain host-gated. There was no Phase C native Windows, macOS ARM or Linux/GCC execution; the
-Docker daemon was unavailable. The Docker-Wine runner tests above validate tooling behavior and do not establish Linux
-native execution. Native Windows filesystem/alias behavior remains unverified for this refactor. Prior Phase B
-Windows/macOS ARM evidence belongs to
-[l1/work/plans/bug-fixes/closed/2026-10-19-explicit-profile-review-gaps-noref.md][profile-review] and is not Phase C
-validation.
+host. POSIX symlink checks remain host-gated; native Windows symlink/alias behavior is not established by those cases.
+The local environment supplied no native Windows, macOS ARM or Linux/GCC execution. Hosted Unified CI supplies native
+regression coverage on those platforms, including the L1 preparation reuse check. This Phase C evidence is separate from
+the earlier Phase B validation recorded in
+[l1/work/plans/bug-fixes/closed/2026-10-19-explicit-profile-review-gaps-noref.md][profile-review]. The local Docker
+daemon remained unavailable; the Docker-Wine runner tests validate tooling behavior rather than container execution.
+Unified CI does not establish the separate actual-artifact acceptance gate.
 
 The focused identity run required the execution environment to permit the native `kern.osversion` observation. The same
 supported compiler and policy passed once that observation was available; no production behavior was relaxed.

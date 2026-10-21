@@ -135,7 +135,8 @@ Completed in
 command-private and explicit creation use one resolved configuration projection; managed and public inventory readers
 share payload checks beyond the constructor already shared by Phases A and B. Cache-specific manifests, memos, locks,
 identity and freshness policy remain separate. Native macOS Intel validation and simulated Windows path checks passed;
-new Linux/GCC, Windows and macOS ARM execution were unavailable, as recorded in the closed plan.
+the project maintainer also confirmed passing Unified CI on 2026-10-21, providing native L1 `test-ci` coverage on Linux
+x86_64 GCC, macOS Intel/ARM64 Clang and Windows UCRT64 GCC, as recorded in the closed plan.
 
 The managed adapter retains the existing internal layout; the private cache directory convention is not the public
 profile format. Any later storage change must state cold-start behavior and legacy-entry handling explicitly; no silent
