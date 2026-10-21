@@ -105,8 +105,10 @@ fixture effects. Broader feature-implementation validation is not claimed as a r
 
 Simulated Windows checks cover drive/UNC paths, spaces, mixed separators, distinct-path negatives, readonly file
 selection and restoration after exceptions, COM macro visibility, and Unicode diagnostics under a legacy Windows
-encoding. Directory write protection remains POSIX-specific. These probes do not establish native Windows execution;
-validation of the complete correction on Windows and macOS ARM remains pending.
+encoding. Directory write protection remains POSIX-specific. These probes do not establish native Windows execution.
+
+On 2026-10-21, the project maintainer confirmed that CI passed for the complete correction, including native Windows
+UCRT64 and macOS ARM validation. This resolves the remaining native-platform coverage gap.
 
 [feature-plan]: ../../features/closed/2026-09-30-explicit-profile-artifacts-noref.md
 [profiles]: ../../../../docs/reference/explicit-profiles.md

@@ -1,9 +1,10 @@
 # L1 Initiative 0010 - Explicit Profiles and Composable Builds
 
-- Version: 2026-10-19
+- Version: 2026-10-21
 - Status: In progress
 - Kind: Initiative
-- Open plans: (none)
+- Open plans:
+  - `l1/work/plans/refactors/2026-10-21-managed-profile-client-integration-noref.md`
 - Closed plans:
   - `l1/work/plans/bug-fixes/closed/2026-10-19-explicit-profile-review-gaps-noref.md`
   - `l1/work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md`
@@ -127,8 +128,9 @@ and ordinary host compilation remain legitimate work.
 
 ### Phase C: Make managed reuse a client of the public artifact construction model
 
-Spawn a bounded refactor plan after Phase B establishes the artifact contract. Reuse the same normalized configuration,
-constructor and payload validation logic; keep cache-specific manifests, memos, locks and identity policy separate.
+Execute [l1/work/plans/refactors/2026-10-21-managed-profile-client-integration-noref.md][managed-client-plan]. The draft
+shares normalized configuration projection and payload validation beyond the constructor already shared by Phases A and
+B; cache-specific manifests, memos, locks and identity policy remain separate.
 
 An adapter around the existing internal layout is acceptable before any cache-format change. Do not expose the private
 cache directory convention as the public profile format. Any later storage change must state cold-start behavior and
@@ -186,8 +188,8 @@ become their prerequisite or claim their results.
 
 The first two plans may close without waiting for Phases C and D. The initiative closes only after all four phases are
 implemented: the construction boundary, explicit artifacts, managed integration and semantic dependency discovery.
-Deferring a required phase leaves the initiative active. Open the bounded Phase C and Phase D plans when their
-prerequisites are established; their detailed interfaces do not block Phase A.
+Deferring a required phase leaves the initiative active. Phase C has a draft implementation plan; open the bounded Phase
+D plan when its prerequisites are established.
 
 Completion also requires both the manual composition fixture and the dependency-discovery integration fixture to pass,
 every ADR Impact record to be resolved, and roadmap, initiative membership and current CLI/reference documentation to
@@ -205,6 +207,7 @@ and local implementation do not authorize remote writes, releases or workflow di
 [architecture]: ../../docs/reference/architecture.md
 [boundary-plan]: ../plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md
 [efficiency-plan]: ../plans/features/closed/2026-09-24-preparation-reuse-efficiency-noref.md
+[managed-client-plan]: ../plans/refactors/2026-10-21-managed-profile-client-integration-noref.md
 [preparation]: ../../docs/reference/stdlib-preparation.md
 [profile-plan]: ../plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md
 [reuse-adr]: ../../docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md

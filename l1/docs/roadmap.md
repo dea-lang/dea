@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-10-20
+Version: 2026-10-21
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -311,9 +311,10 @@ tiers are distinct from implementation phases within a plan or initiative.
   construction boundary landed in
   [l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md][profile-boundary].
   [l1/work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md][profile-artifacts] implements
-  `--create-profile` and `--profile` for compile/link/build/run. Managed-client integration and dependency discovery
-  remain separately scoped phases; all four phases are required for initiative completion. Production compiler Make
-  conversion and ordinary-project stdlib construction remain separate adoption work.
+  `--create-profile` and `--profile` for compile/link/build/run. Refactor
+  [2026-10-21-managed-profile-client-integration-noref][managed-client] drafts Phase C managed-client integration;
+  dependency discovery remains a separately scoped phase. All four phases are required for initiative completion.
+  Production compiler Make conversion and ordinary-project stdlib construction remain separate adoption work.
   [l1/work/plans/bug-fixes/closed/2026-10-19-explicit-profile-review-gaps-noref.md][profile-review] addresses
   independent review findings in the shipped artifact implementation.
 
@@ -481,6 +482,7 @@ update to be promoted to an initiative or plan:
 [library-linking]: ../work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md
 [lifecycle-entrypoints]: ../work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: ../work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
+[managed-client]: ../work/plans/refactors/2026-10-21-managed-profile-client-integration-noref.md
 [module-graph-invariant-hardening]: ../work/plans/bug-fixes/closed/2026-07-20-stage1-module-graph-invariant-hardening-noref.md
 [module-interface-hardening]: ../work/plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md
 [named-arguments]: ../work/plans/features/closed/2026-04-22-named-arguments-noref.md
