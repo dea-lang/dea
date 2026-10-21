@@ -3,7 +3,8 @@
 - Version: 2026-10-21
 - Status: In progress
 - Kind: Initiative
-- Open plans: None
+- Open plans:
+  - `l1/work/plans/features/2026-10-21-semantic-dependency-discovery-noref.md`
 - Closed plans:
   - `l1/work/plans/refactors/closed/2026-10-21-managed-profile-client-integration-noref.md`
   - `l1/work/plans/bug-fixes/closed/2026-10-19-explicit-profile-review-gaps-noref.md`
@@ -26,7 +27,8 @@ This initiative records the direction agreed in the September 30 design discussi
 on October 1. Phase A is complete: the internal constructor accepts frozen inputs and a caller-owned destination. Phase
 B implements the public artifact contract and exact compile/link/build/run selection. Phase C is complete: managed,
 command-private and explicit creation share configuration projection, and managed/public readers share payload checks
-under separate authority. Semantic dependency discovery remains Phase D work.
+under separate authority. Phase D is drafted as a P1689R5 dependency report followed by an external Make adapter, with
+separate discovery and compilation inputs.
 
 ## Compiler-lineage placement
 
@@ -52,10 +54,11 @@ paired-stage compatibility scenarios now refer to canonical L1 producer/consumer
     mutation can be detected without observation. Existing managed guarantees remain in force.
 - Decision: Choose the minimum dependency-discovery interface needed for external orchestration.
   - Scope: L1
-  - Disposition: Pending
-  - ADR: None
-  - Rationale: A later, separately scoped plan must choose between a semantic graph export and any associated depfile
-    support after the profile path supplies concrete integration evidence. No spelling is selected here.
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: The Phase D feature plan selects P1689R5 scheduling facts and an external Make consumer, retaining
+    existing provider authority through separate discovery and compilation inputs. The new ADR is shared with that plan
+    and will record the delivered contract at closure.
 
 ## Current State
 
@@ -147,8 +150,18 @@ not a machine-readable API, and no public print/export mode is required by the f
 
 ### Phase D: Expose only the missing semantic dependency information
 
-Spawn a feature plan for compiler-produced dependency discovery. Reuse the existing resolver and graph order, not a
-second source parser. Distinguish first-build discovery from compilation-time reporting of actual consumed interfaces.
+Drafted in [l1/work/plans/features/2026-10-21-semantic-dependency-discovery-noref.md][dependency-plan]. Produce a
+neutral P1689R5 scheduling report through the existing resolver and graph order, then add an external Make adapter.
+Essential scheduling information belongs in core fields; Dea annotations must remain optional. Distinguish first-build
+discovery from compilation-time reporting of actual consumed interfaces, which is deferred from the initial conservative
+adapter.
+
+Discovery receives project source roots and intentionally prebuilt interface roots. Compilation adds the local
+generated-interface root after updating providers and checking that residual interfaces cannot shadow selected prebuilt
+providers. V1 rejects such conflicts with clean/fresh-root guidance instead of pruning outputs. Standalone linking
+explicitly selects the scanned canonical target as its entry. An output destination never implicitly becomes an input
+root. Keep the existing interface-first policy; accidentally supplying old local outputs during discovery is an
+integration error, not a reason to introduce source-over-interface precedence.
 
 A graph export must preserve explicit provider precedence, source versus interface origins, import edges and ordered
 roots. Incremental integration must account for semantic dependency closure, configuration changes, provider shadowing,
@@ -156,8 +169,9 @@ source additions/removals and the two-output publication rule. A public fingerpr
 rebuild dependency signature. Timestamp-only Make rules will still rebuild consumers when unchanged interface bytes are
 republished with a new timestamp; solving that is separate from merely emitting a depfile.
 
-Use a small external build fixture to demonstrate discovery, dependency-ordered compile calls and standalone linking. Do
-not serialize every native command into a new build-plan execution language. Exact names and formats remain unchosen.
+Use a small external Make fixture to demonstrate discovery, dependency-ordered compile calls and standalone linking. Do
+not serialize every native command into a new build-plan execution language. P1689R5 is selected for the report; CLI
+spellings and the adapter contract are proposed defaults in the draft plan, not shipped behavior.
 
 ## CLI Migration Policy
 
@@ -194,8 +208,8 @@ become their prerequisite or claim their results.
 
 The first two plans may close without waiting for Phases C and D. The initiative closes only after all four phases are
 implemented: the construction boundary, explicit artifacts, managed integration and semantic dependency discovery.
-Deferring a required phase leaves the initiative active. Phases A through C are complete; open the bounded Phase D plan
-for semantic dependency discovery.
+Deferring a required phase leaves the initiative active. Phases A through C are complete; implement and verify the
+bounded Phase D draft for semantic dependency discovery and external Make composition.
 
 Completion also requires both the manual composition fixture and the dependency-discovery integration fixture to pass,
 every ADR Impact record to be resolved, and roadmap, initiative membership and current CLI/reference documentation to
@@ -212,6 +226,7 @@ local implementation do not authorize remote writes, releases or workflow dispat
 
 [architecture]: ../../docs/reference/architecture.md
 [boundary-plan]: ../plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md
+[dependency-plan]: ../plans/features/2026-10-21-semantic-dependency-discovery-noref.md
 [efficiency-plan]: ../plans/features/closed/2026-09-24-preparation-reuse-efficiency-noref.md
 [managed-client-plan]: ../plans/refactors/closed/2026-10-21-managed-profile-client-integration-noref.md
 [preparation]: ../../docs/reference/stdlib-preparation.md

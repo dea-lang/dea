@@ -313,9 +313,11 @@ tiers are distinct from implementation phases within a plan or initiative.
   [l1/work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md][profile-artifacts] implements
   `--create-profile` and `--profile` for compile/link/build/run. Refactor
   [l1/work/plans/refactors/closed/2026-10-21-managed-profile-client-integration-noref.md][managed-client] implements
-  Phase C's shared configuration and payload checks. Dependency discovery remains a separately scoped Phase D. All four
-  phases are required for initiative completion. Production compiler Make conversion and ordinary-project stdlib
-  construction remain separate adoption work.
+  Phase C's shared configuration and payload checks. Feature
+  [l1/work/plans/features/2026-10-21-semantic-dependency-discovery-noref.md][dependency-discovery] drafts Phase D's
+  neutral P1689R5 dependency report followed by an external Make adapter, with separate discovery and compilation
+  inputs. All four phases are required for initiative completion. Production compiler Make conversion and
+  ordinary-project stdlib construction remain separate adoption work.
   [l1/work/plans/bug-fixes/closed/2026-10-19-explicit-profile-review-gaps-noref.md][profile-review] addresses
   independent review findings in the shipped artifact implementation.
 
@@ -460,6 +462,7 @@ update to be promoted to an initiative or plan:
 [cross-platform-ci]: ../work/plans/bug-fixes/closed/2026-07-26-stage1-cross-platform-ci-regressions-noref.md
 [cstr-proposal]: ../work/proposals/cstr-and-c-string-guards.md
 [data-formats]: ../work/initiatives/0008-data-format-modules.md
+[dependency-discovery]: ../work/plans/features/2026-10-21-semantic-dependency-discovery-noref.md
 [design-decisions]: reference/design-decisions.md
 [embedded-members]: ../work/proposals/anonymous-embedded-struct-members.md
 [env-text-reassessment]: ../work/plans/refactors/closed/2026-09-15-native-identity-environment-text-reassessment-noref.md
