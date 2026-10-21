@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import copy
 import ctypes
 import hashlib
 import json
@@ -29,6 +30,7 @@ from l1c_compile_only_test import stage1_compiler
 
 L1_ROOT = Path(__file__).resolve().parents[2]
 SUPPORT = L1_ROOT / "compiler/support"
+INVENTORY_FIXTURE = Path(__file__).with_name("fixtures") / "preparation/inventory_mutation.c"
 
 
 def compile_native(output: Path, sources: list[Path], flags: tuple[str, ...] = ()) -> None:
@@ -57,6 +59,81 @@ def build_library(root: Path) -> Path:
     flags = ("-shared",) if os.name == "nt" else ("-shared", "-fPIC")
     compile_native(library, [SUPPORT / "preparation_support.c", SUPPORT / "compiler_support.c"], flags)
     return library
+
+
+def build_inventory_library(root: Path, flags: tuple[str, ...] = ()) -> Path:
+    """Compile private result injection alongside the unchanged production service.
+
+    Args:
+        root: Owned output directory.
+        flags: Additional platform or macro compatibility options.
+
+    Returns:
+        Service library with the fixture-only inventory replacement function.
+    """
+    library = root / ("preparation-inventory.dll" if os.name == "nt" else "preparation-inventory.so")
+    shared = ("-shared",) if os.name == "nt" else ("-shared", "-fPIC")
+    compile_native(library, [INVENTORY_FIXTURE, SUPPORT / "compiler_support.c"], (*shared, *flags))
+    return library
+
+
+def replace_construction_inventory(service: Service, inventory: object) -> None:
+    """Inject an impossible constructor result through the private fixture boundary.
+
+    Args:
+        service: Completed constructor whose policy adapter has not published yet.
+        inventory: Replacement JSON value, including deliberately malformed records.
+    """
+    data = json.dumps(inventory).encode()
+    service.lib.l1c_test_construction_inventory.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+    assert service.lib.l1c_test_construction_inventory(service.context, data, len(data)) == 1
+
+
+def invalid_construction_inventories(inventory: list[dict]) -> dict[str, object]:
+    """Return independent falsifications that both publication policies must reject.
+
+    Args:
+        inventory: Valid completed constructor result.
+
+    Returns:
+        Named invalid results without modifying the original records.
+    """
+    mutations = {"not-array": {}, "empty": [], "missing": copy.deepcopy(inventory[:-1])}
+    for name in ("duplicate", "wrong-role", "missing-role", "missing-runtime-path", "invalid-runtime-path",
+                 "escaping-path", "wrong-size", "wrong-digest"):
+        records = copy.deepcopy(inventory)
+        if name == "duplicate":
+            records[-1] = copy.deepcopy(records[0])
+        elif name == "wrong-role":
+            records[0]["role"] = "object" if records[0]["role"] != "object" else "interface"
+        elif name == "missing-role":
+            records[0].pop("role")
+        elif name in ("missing-runtime-path", "invalid-runtime-path"):
+            runtime = next(item for item in records if item["role"] == "runtime")
+            if name == "missing-runtime-path":
+                runtime.pop("path")
+            else:
+                runtime["path"] = False
+        elif name == "escaping-path":
+            records[0]["path"] = "../escaped-payload"
+        elif name == "wrong-size":
+            records[0]["size"] += 1
+        elif name == "wrong-digest":
+            records[0]["sha256"] = "0" * 64
+        mutations[name] = records
+    return mutations
+
+
+def artifact_memos(cache: Path) -> dict[str, bytes]:
+    """Snapshot disposable artifact validations independently of identity memos.
+
+    Args:
+        cache: Selected managed cache root.
+
+    Returns:
+        Exact bytes of each artifact memo, keyed by its filename.
+    """
+    return {path.name: path.read_bytes() for path in (cache / "v1/memo/artifacts").glob("*.json")}
 
 
 def run_native_reader(executable: Path, fixtures: Path, name: str) -> None:
@@ -309,6 +386,43 @@ def populate(service: Service) -> Path:
     return root
 
 
+def check_constructed_inventory(library: Path, root: Path, config: dict) -> None:
+    """Refuse falsified results before publishing a managed completion or validation memo.
+
+    Args:
+        library: Service compiled with the private inventory replacement fixture.
+        root: Owned fixture directory.
+        config: Managed input configuration.
+    """
+    isolated = {**config, "cache": str(root / "constructed-inventory-cache")}
+    with Service(library, isolated) as service:
+        entry = populate(service)
+        inventory = json.loads(service.get("construction_inventory"))
+    cache = Path(isolated["cache"])
+    for name, malformed in invalid_construction_inventories(inventory).items():
+        with Service(library, isolated) as service:
+            service.require("resolve")
+            service.require("lock")
+            service.require("begin")
+            service.require("copy_interfaces")
+            for relative, role in json.loads(service.get("native_inventory")).items():
+                if role != "interface":
+                    (entry / relative).write_bytes(("opaque fixture:" + relative).encode())
+            service.require("construction_complete")
+            evidence = entry / "generated/failure-evidence.c"
+            evidence.parent.mkdir(parents=True, exist_ok=True)
+            evidence.write_text("retain failed managed construction")
+            before = artifact_memos(cache)
+            replace_construction_inventory(service, malformed)
+            assert service.call("complete") == 0, name
+            assert service.call("error_code") == 2153, (name, service.get("error"))
+            assert not (entry / "manifest.json").exists(), name
+            assert not (entry / ".manifest.pending").exists(), name
+            assert before == artifact_memos(cache), name
+        assert evidence.read_text() == "retain failed managed construction", name
+        assert all((entry / item["path"]).is_file() for item in inventory), name
+
+
 def check_roots(library: Path, root: Path, config: dict) -> None:
     """Check lazy semantics, root precedence, defaults, ownership and unavailable defaults."""
     isolated = {**config, "cache": str(root / "lazy"), "compiler": "missing"}
@@ -400,6 +514,26 @@ def check_integrity(library: Path, root: Path, config: dict) -> None:
         warm.require("find")
         assert warm.stats()["artifact_content_reads"] == 0
         assert warm.stats()["metadata_checks"] == count
+    memo_root = Path(config["cache"]) / "v1/memo/artifacts"
+    current_digest = hashlib.sha256(original).hexdigest()
+    memo = next(path for path in memo_root.glob("*.json")
+                if json.loads(path.read_bytes())["manifest"] == current_digest)
+    old_memo = memo.read_bytes()
+    invalid_memo = json.loads(old_memo)
+    first_file = next(iter(invalid_memo["files"].values()))
+    first_file.pop("sha256")
+    memo.write_text(json.dumps(invalid_memo))
+    with Service(library, config) as missing_digest:
+        missing_digest.require("resolve")
+        missing_digest.require("find")
+        assert missing_digest.stats()["artifact_content_reads"] == 1
+    extended = json.loads(original)
+    extended["artifacts"][0]["future_metadata"] = "managed records permit extensions"
+    marker.write_text(json.dumps(extended))
+    with Service(library, config) as extensible:
+        extensible.require("resolve")
+        extensible.require("find")
+    marker.write_bytes(original)
     obj = entry / "modules/std/io.o"
     obj_bytes = obj.read_bytes()
     os.utime(obj, None)
@@ -448,9 +582,11 @@ def check_integrity(library: Path, root: Path, config: dict) -> None:
     marker.write_bytes(original)
     for change in (b"", b"X" * len(obj_bytes)):
         obj.write_bytes(change)
+        before_failure = artifact_memos(Path(config["cache"]))
         with Service(library, config) as invalid:
             invalid.require("resolve")
             assert invalid.call("find") == 2
+        assert before_failure == artifact_memos(Path(config["cache"]))
     obj.write_bytes(obj_bytes)
     semantic = entry / "modules/std/io.l1m"
     semantic_bytes = semantic.read_bytes()
@@ -465,6 +601,16 @@ def check_integrity(library: Path, root: Path, config: dict) -> None:
     semantic.write_bytes(semantic_bytes)
     marker.write_bytes(original)
     if os.name != "nt":
+        contained = entry / "contained-object"
+        contained.write_bytes(obj_bytes)
+        obj.unlink()
+        obj.symlink_to(contained)
+        with Service(library, config) as alias:
+            alias.require("resolve")
+            alias.require("find")
+        obj.unlink()
+        obj.write_bytes(obj_bytes)
+        contained.unlink()
         external = root / "external-object"
         external.write_bytes(obj_bytes)
         obj.unlink()
@@ -491,6 +637,7 @@ def check_integrity(library: Path, root: Path, config: dict) -> None:
     with Service(library, {**config, "force": 1}) as forced:
         assert populate(forced) == entry
         assert forced.stats()["identity_content_reads"] > 0
+        assert forced.stats()["artifact_content_reads"] == count
     assert not (Path(config["cache"]) / "v1/interfaces").exists()
 
 
@@ -609,7 +756,7 @@ def main() -> int:
         check_native_reader(root, "libraries")
         check_observability(root)
         check_digest_seeds(root)
-        library = build_library(root)
+        library = build_inventory_library(root)
         check_service_lifetime(library, root)
         home = root / "compiler"
         shutil.copytree(L1_ROOT / "compiler/shared", home / "shared")
@@ -629,6 +776,7 @@ def main() -> int:
                 with Service(library, invalid) as service:
                     assert service.call("error_code") == 2150
             check_roots(library, root, config)
+            check_constructed_inventory(library, root, config)
             check_integrity(library, root, config)
             check_read_only_default(library, root, config)
             test_lock_exit(library, root, config)

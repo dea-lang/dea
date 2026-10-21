@@ -481,6 +481,33 @@ static PcJson *pc_expected_artifacts(const PcJson *identity) {
         pj_field(pj_get(identity, "toolchain"), "family"),
         pj_field(pj_get(identity, "runtime"), "variant"));
 }
+
+/** Validate common record fields against the role authorized by the policy adapter. */
+static int pc_payload_record(const PcJson *item, const char *expected_role, const PcJson *seen) {
+    const char *path = pj_field(item, "path"), *role = pj_field(item, "role"),
+               *digest = pj_field(item, "sha256");
+    const PcJson *size = pj_get(item, "size");
+    return pc_relative(path) && role && expected_role && !strcmp(role, expected_role) &&
+        pc_hex_digest(digest) && size && size->type == PJ_NUMBER && size->number >= 0 && !pj_get(seen, path);
+}
+
+/** Check containment and file kind without reading bytes or imposing public alias policy on managed entries. */
+static int pc_payload_regular(const char *path, const char *root, int no_alias) {
+    char *canonical = pc_path_call(path, l1c_fs_canonical_existing_path);
+    int ok = canonical && pc_within(canonical, root) &&
+        (!no_alias || pc_path_equal(canonical, path)) && pc_kind(path, !no_alias) == 1;
+    free(canonical);
+    return ok;
+}
+
+/** Verify selected content; callers own hash scheduling, counters, memo authority and diagnostics. */
+static int pc_payload_digest(PcContext *c, const char *path, const char *digest, const PcJson *size,
+                             PcJson **metadata, const char *phase, const char *reason) {
+    char actual[65];
+    return pc_hash_observed(c, path, actual, metadata, phase, reason) &&
+        (!size || pj_is_number(pj_get(*metadata, "size"), size->number)) && !strcmp(actual, digest);
+}
+
 static char *pc_entry_path(const char *root, const char *key) {
     char *directory = pc_join(root, "v1/native"), *entry = pc_join(directory, key);
     free(directory); return entry;
@@ -577,16 +604,12 @@ static int pc_validate_entry_manifest(PcContext *c, const char *entry,
     for (item = inventory->child; item; item = item->next) {
         const char *relative = pj_field(item, "path"), *digest = pj_field(item, "sha256");
         const PcJson *size = pj_get(item, "size");
-        char *path, *canonical;
+        char *path;
         PcJson *metadata, *old;
         int hit;
         const char *role;
-        char actual[65];
-        if (!pc_relative(relative) || !pc_hex_digest(digest) || !size || size->type != PJ_NUMBER ||
-            size->number < 0 || pj_get(seen, relative) || !pj_get(expected, relative))
-            goto malformed;
-        role = pj_field(expected, relative);
-        if (!pj_field(item, "role") || strcmp(pj_field(item, "role"), role))
+        role = relative ? pj_field(expected, relative) : NULL;
+        if (!pc_payload_record(item, role, seen))
             goto malformed;
         if (!strcmp(role, "interface")) {
             const char *semantic_digest = pj_field(c->interfaces, relative);
@@ -595,14 +618,11 @@ static int pc_validate_entry_manifest(PcContext *c, const char *entry,
         }
         pj_set_number(seen, relative, 1);
         path = pc_join(entry, relative);
-        canonical = pc_path_call(path, l1c_fs_canonical_existing_path);
-        if (!canonical || !pc_within(canonical, resolved) || pc_kind(path, 1) != 1) {
+        if (!pc_payload_regular(path, resolved, 0)) {
             pc_fail(c, 2153, "missing, escaped, or nonregular managed artifact", path);
             free(path);
-            free(canonical);
             goto finish;
         }
-        free(canonical);
         metadata = pc_meta(path);
         ++c->metadata_checks;
         if (!metadata || !pj_is_number(pj_get(metadata, "size"), size->number)) {
@@ -625,9 +645,8 @@ static int pc_validate_entry_manifest(PcContext *c, const char *entry,
             pj_free(metadata);
             metadata = NULL;
             ++c->artifact_reads;
-            if (!pc_hash_observed(c, path, actual, &metadata,
-                                  full ? "publication" : "artifact-validation", reason) ||
-                strcmp(actual, digest)) {
+            if (!pc_payload_digest(c, path, digest, NULL, &metadata,
+                                   full ? "publication" : "artifact-validation", reason)) {
                 pc_fail(c, 2153, "managed artifact digest mismatch or unstable read", path);
                 pj_free(metadata);
                 free(path);

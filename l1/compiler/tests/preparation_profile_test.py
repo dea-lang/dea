@@ -23,7 +23,10 @@ from unittest.mock import patch
 
 from compiler_filesystem_support_test import resolve_c_compiler
 from preparation_construction_test import native_write
-from preparation_support_test import SUPPORT, Service, compile_native
+from preparation_support_test import (
+    SUPPORT, Service, build_inventory_library, compile_native, invalid_construction_inventories,
+    replace_construction_inventory,
+)
 
 
 CODEGEN = dict(no_line_directives=0, trace_arc=0, trace_memory=0, unchecked=0, check_basic=0)
@@ -38,11 +41,7 @@ def build_windows_macro_library(root: Path) -> Path:
     Returns:
         Library used by the profile schema, selection and creation checks.
     """
-    library = root / ("preparation.dll" if os.name == "nt" else "preparation.so")
-    flags = ("-shared",) if os.name == "nt" else ("-shared", "-fPIC")
-    compile_native(library, [SUPPORT / "preparation_support.c", SUPPORT / "compiler_support.c"],
-                   (*flags, "-Dinterface=struct"))
-    return library
+    return build_inventory_library(root, ("-Dinterface=struct",))
 
 
 class ProfileService(Service):
@@ -261,14 +260,30 @@ def check_inventory(library: Path, root: Path) -> None:
         (selected / relative).unlink()
         reject(library, selected, 2183)
     for relative in ("modules/std/types.o", "lib/libdea_rt.a"):
+        selected = root / ("uninventoried-" + Path(relative).name)
+        manifest = fixture(selected)
+        manifest["payloads"] = [item for item in manifest["payloads"] if item["path"] != relative]
+        write_manifest(selected, manifest)
+        reject(library, selected, 2183)
         selected = root / ("deferred-" + Path(relative).name)
         fixture(selected)
-        (selected / relative).write_bytes(b"damaged native bytes")
+        native_payload = selected / relative
+        native_payload.write_bytes(b"X" * native_payload.stat().st_size)
         with ProfileService(library, selected) as service:
             assert service.call("error_code") == 0, service.get("error")
             assert service.verify(False) == 1, "compile-only need not hash unused native bytes"
             assert service.verify(True) == 0 and service.call("error_code") == 2183
     if os.name != "nt":
+        selected = root / "contained-file-alias"
+        manifest = fixture(selected)
+        source = selected / "include/l1_real.h"
+        alias = selected / "include/dea_rt.h"
+        alias.unlink()
+        alias.symlink_to(source.name)
+        record = next(item for item in manifest["payloads"] if item["path"] == "include/dea_rt.h")
+        record.update(size=source.stat().st_size, sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+        write_manifest(selected, manifest)
+        reject(library, selected, 2183)
         for name, relative in (("file-alias", "include/dea_rt.h"), ("directory-escape", "include")):
             selected = root / name
             fixture(selected)
@@ -304,6 +319,13 @@ def check_selection(library: Path, root: Path) -> None:
         with ProfileService(library, Path("moved profile")) as service:
             assert service.call("error_code") == 0, service.get("error")
             assert service.verify(True) == 1
+            before_recheck = service.stats()["artifact_content_reads"]
+            assert service.verify(True) == 1
+            assert service.stats()["artifact_content_reads"] - before_recheck == len(manifest["payloads"])
+            before_compile = service.stats()["artifact_content_reads"]
+            assert service.verify(False) == 1
+            assert service.stats()["artifact_content_reads"] - before_compile == sum(
+                item["role"] in ("interface", "header") for item in manifest["payloads"])
             assert Path(service.get("selected")) == moved
             assert service.get("compiler") == manifest["configuration"]["compiler"]
             assert all(service.get(field) == "" for field in ("native_key", "dea_key", "local"))
@@ -327,6 +349,16 @@ def check_selection(library: Path, root: Path) -> None:
         assert service.match(dict(options=["-Iexternal headers"])) == 1, service.get("error")
     with ProfileService(library, moved) as service:
         assert service.match(dict(options=["-I", str(root / "different headers")])) == 0
+    independent = root / "self-contained-semantic"
+    manifest = fixture(independent)
+    semantic = independent / "modules/std/types.l1m"
+    semantic.write_bytes(b"different artifact-owned semantic authority")
+    record = next(item for item in manifest["payloads"] if item["role"] == "interface")
+    record.update(size=semantic.stat().st_size, sha256=hashlib.sha256(semantic.read_bytes()).hexdigest())
+    write_manifest(independent, manifest)
+    with ProfileService(library, independent) as service:
+        assert service.call("error_code") == 0, service.get("error")
+        assert service.verify(True) == 1, "public inventory certifies its own semantic copies"
 
 
 def creation_config(root: Path) -> dict:
@@ -352,6 +384,66 @@ def creation_config(root: Path) -> dict:
     implementation.write_text("protected compiler fixture")
     return dict(home=str(home), self=str(implementation), compiler=compiler,
                 options=["-std=c99"], variant="default", codegen=dict(CODEGEN))
+
+
+def complete_opaque_profile(service: ProfileService) -> list[dict]:
+    """Finish genuine constructor validation without invoking a native build.
+
+    Args:
+        service: New profile creation context.
+
+    Returns:
+        Validated inventory of copied semantic and opaque native bytes.
+    """
+    service.require("copy_interfaces")
+    inputs = json.loads(service.get("construction_inputs"))
+    native_payloads = ["modules/std/types.o"]
+    if inputs["family"] == "tcc":
+        native_payloads.extend("lib/tcc/default/" + name + ".o" for name in (
+            "dea_rt_panic", "dea_rt_sys", "dea_rt_math", "dea_rt_rand", "dea_rt_string",
+            "dea_rt_alloc", "dea_rt_io", "dea_rt_hash", "dea_rt_time"))
+    else:
+        native_payloads.append("lib/libdea_rt.a")
+    for relative in native_payloads:
+        assert native_write(service, relative, b"trusted opaque native fixture") == 1
+    service.require("construction_complete")
+    return json.loads(service.get("construction_inventory"))
+
+
+def check_constructed_inventory(library: Path, root: Path) -> None:
+    """Refuse falsified constructor results with public diagnostics and owned-stage cleanup.
+
+    Args:
+        library: Service compiled with the private inventory replacement fixture.
+        root: Owned fixture directory.
+    """
+    config = creation_config(root)
+    output = root / "reference-profile"
+    with ProfileService(library, output, config) as service:
+        assert service.call("error_code") == 0, service.get("error")
+        inventory = complete_opaque_profile(service)
+        assert service.publish() == 1, service.get("error")
+    for name, malformed in invalid_construction_inventories(inventory).items():
+        output = root / name
+        with ProfileService(library, output, config) as service:
+            assert service.call("error_code") == 0, (name, service.get("error"))
+            stage = Path(service.get("profile_stage"))
+            complete_opaque_profile(service)
+            replace_construction_inventory(service, malformed)
+            assert service.publish() == 0, name
+            assert service.call("error_code") == 2183, (name, service.get("error"))
+            assert not output.exists() and not (stage / "profile.json").exists(), name
+        assert not stage.exists(), (name, stage)
+    output = root / "failure-evidence"
+    with ProfileService(library, output, config) as service:
+        stage = Path(service.get("profile_stage"))
+        complete_opaque_profile(service)
+        evidence = stage / "unexpected-evidence"
+        evidence.write_text("retain caller evidence")
+        replace_construction_inventory(service, [])
+        assert service.publish() == 0 and service.call("error_code") == 2183
+    assert evidence.read_text() == "retain caller evidence"
+    assert not (stage / "profile.json").exists() and not output.exists()
 
 
 def check_creation(library: Path, root: Path) -> None:
@@ -600,6 +692,7 @@ def main() -> int:
         library = build_windows_macro_library(root)
         for name, check in (("manifest", check_manifest), ("inventory", check_inventory),
                             ("selection", check_selection), ("creation", check_creation),
+                            ("constructed-inventory", check_constructed_inventory),
                             ("implicit-config", check_implicit_configuration)):
             fixtures = root / name
             fixtures.mkdir()

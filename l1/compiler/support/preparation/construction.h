@@ -7,6 +7,26 @@
 #ifndef L1_PREPARATION_CONSTRUCTION_H
 #define L1_PREPARATION_CONSTRUCTION_H
 
+/** Freeze resolved construction inputs without importing the caller's admission or storage policy. */
+static PcJson *pc_construction_inputs(PcContext *c, const char *variant) {
+    PcJson *inputs = pj_new(PJ_OBJECT);
+    pj_set_string(inputs, "compiler", c->compiler);
+    pj_set_string(inputs, "family", c->family);
+    if (c->archiver) pj_set_string(inputs, "archiver", c->archiver);
+    pj_set_string(inputs, "home", c->home);
+    pj_set_string(inputs, "semantic_root", c->semantic_root);
+    pj_set_string(inputs, "include", c->include);
+    pj_set_string(inputs, "variant", variant);
+    pj_add(inputs, "options", pj_clone(c->options));
+    pj_add(inputs, "runtime_options", pj_clone(c->runtime_options));
+    pj_set_string(inputs, "runtime_configuration_isolation", pc_runtime_isolation(c));
+    pj_add(inputs, "modules", pj_clone(c->modules));
+    pj_add(inputs, "interfaces", pj_clone(c->interfaces));
+    pj_add(inputs, "codegen", pj_get(c->config, "codegen") ?
+           pj_clone(pj_get(c->config, "codegen")) : pj_new(PJ_OBJECT));
+    return inputs;
+}
+
 /** Remove registered scratch without following aliases or ignoring failures. */
 static int pc_remove_owned_tree(const char *root) {
     int kind = pc_kind(root, 0), ok = 1;
@@ -139,10 +159,9 @@ static int pc_finish_construction(PcContext *c) {
     inventory = pj_new(PJ_ARRAY);
     for (item = p->expected->child; item && ok; item = item->next) {
         char *path = pc_join(p->root, item->key);
-        char *canonical = pc_path_call(path, l1c_fs_canonical_existing_path);
         char digest[65];
         PcJson *metadata = NULL, *record;
-        if (!canonical || !pc_within(canonical, p->root) || pc_kind(path, 1) != 1 ||
+        if (!pc_payload_regular(path, p->root, 0) ||
             !pc_hash_observed(c, path, digest, &metadata, "publication", "completion-inventory"))
             ok = pc_fail(c, 2153, "cannot validate prepared artifact", path);
         else if (!strcmp(item->text, "interface") &&
@@ -156,7 +175,7 @@ static int pc_finish_construction(PcContext *c) {
             pj_set_string(record, "sha256", digest);
             pj_add(inventory, NULL, record);
         }
-        pj_free(metadata); free(canonical); free(path);
+        pj_free(metadata); free(path);
     }
     p->active = 0;
     if (ok) p->inventory = inventory;

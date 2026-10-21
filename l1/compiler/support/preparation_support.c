@@ -24,25 +24,6 @@
 #include "preparation/build.h"
 #include "installation.h"
 
-/** Project resolved managed inputs without copying cache identities or storage policy. */
-static PcJson *pc_managed_construction_inputs(PcContext *c) {
-    PcJson *inputs = pj_new(PJ_OBJECT);
-    pj_set_string(inputs, "compiler", c->compiler);
-    pj_set_string(inputs, "family", c->family);
-    if (c->archiver) pj_set_string(inputs, "archiver", c->archiver);
-    pj_set_string(inputs, "home", c->home);
-    pj_set_string(inputs, "semantic_root", c->semantic_root);
-    pj_set_string(inputs, "include", c->include);
-    pj_set_string(inputs, "variant", pj_field(pj_get(c->native, "runtime"), "variant"));
-    pj_add(inputs, "options", pj_clone(c->options));
-    pj_add(inputs, "runtime_options", pj_clone(c->runtime_options));
-    pj_set_string(inputs, "runtime_configuration_isolation", pc_runtime_isolation(c));
-    pj_add(inputs, "modules", pj_clone(c->modules));
-    pj_add(inputs, "interfaces", pj_clone(c->interfaces));
-    pj_add(inputs, "codegen", pj_get(c->config, "codegen") ?
-           pj_clone(pj_get(c->config, "codegen")) : pj_new(PJ_OBJECT));
-    return inputs;
-}
 /** Establish a profile only under per-key coordination or a command-owned private directory. */
 static int pc_begin_profile(PcContext *c) {
     char *entry, *marker;
@@ -56,7 +37,7 @@ static int pc_begin_profile(PcContext *c) {
     if (pc_kind(marker, 0) != 0 && remove(marker) != 0)
         ok = pc_fail(c, 2150, "cannot invalidate selected profile", marker);
     free(marker);
-    inputs = pc_managed_construction_inputs(c);
+    inputs = pc_construction_inputs(c, pj_field(pj_get(c->native, "runtime"), "variant"));
     if (ok) ok = pc_begin_construction(c, inputs, entry);
     pj_free(inputs);
     if (ok) { free(c->selected); c->selected = entry; c->begun = 1; }

@@ -1,6 +1,6 @@
 # L1 Bundled Interfaces and Native Preparation
 
-Version: 2026-10-19
+Version: 2026-10-21
 
 L1 supplies bundled semantic interfaces with the toolchain and derives native stdlib/runtime support when a command
 needs it. Preparation covers only compiler-owned `std.*` and `sys.*` modules and runtime implementation sources.
@@ -246,8 +246,9 @@ immutable installed-payload boundary are documented in
 
 ### Internal construction boundary
 
-Managed and command-private preparation share one in-process constructor. Its immutable input snapshot contains the
-selected compiler and archiver, ordered effective generated-C options, separate runtime options and variant, frontend
+Managed, command-private and explicit profile creation share one frozen configuration projection and in-process
+constructor. Each policy adapter first resolves and admits its inputs; `pc_construction_inputs` then copies the selected
+compiler and archiver, ordered effective generated-C options, separate runtime options and variant, frontend
 code-generation settings, source and semantic roots, verified interface digests, module set, and public-header root. A
 stable runtime-isolation descriptor lets a direct legacy constructor recreate its own empty config after the original
 context is gone, without retaining scratch paths or repeating discovery. The caller supplies the validated dependency
@@ -259,6 +260,13 @@ It validates payload paths, hashes and exact semantic copies and returns an owne
 is not a public profile format. It requires no cache identity, lookup, lock, or managed completion record. Required
 compilation capability checks and conservative reuse observations remain scheduled by the managed caller before
 construction, as before.
+
+Managed and public inventory readers share record/role/duplicate checks, contained regular-file checks and stable
+size/digest verification in `storage.h`. The constructor uses the same containment/file-kind check when producing its
+inventory. Adapters retain authority over schemas and expected inventories: managed validation binds selected semantic
+digests and schedules metadata-assisted hashing; public validation enforces the copied-header tree and alias refusal,
+hashes selected payload roles and never creates a validation memo. Managed headers remain toolchain inputs. Neither
+internal sharing nor successful explicit selection authorizes a managed warm hit.
 
 The managed adapter retains identity, eligibility, lock/recheck, destination allocation, manifest serialization and
 publication. The constructor borrows its destination: freeing the description removes no payload. Runtime temporary

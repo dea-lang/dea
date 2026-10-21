@@ -416,25 +416,22 @@ static int pc_profile_payloads(PcContext *c, const char *root, const PcJson *man
         const char *path = pj_field(item, "path"), *role = pj_field(item, "role"), *digest = pj_field(item, "sha256");
         const PcJson *size = pj_get(item, "size");
         const char *wanted = path ? pj_field(expected, path) : NULL;
-        char *absolute = NULL, *canonical = NULL;
-        if (!pc_profile_fields(item, record_fields) || pj_count(item) != 4 || !pc_relative(path) ||
-            !role || !pc_hex_digest(digest) || !size || size->type != PJ_NUMBER || size->number < 0 ||
-            pj_get(seen, path) || ((!wanted || strcmp(wanted, role)) &&
-                (strcmp(role, "header") || strncmp(path, "include/", 8)))) { ok = 0; break; }
+        char *absolute = NULL;
+        if (!wanted && role && !strcmp(role, "header") && path && !strncmp(path, "include/", 8))
+            wanted = "header";
+        if (!pc_profile_fields(item, record_fields) || pj_count(item) != 4 ||
+            !pc_payload_record(item, wanted, seen)) { ok = 0; break; }
         pj_set_string(seen, path, role);
         if (!strcmp(role, "runtime")) pj_add(runtime, NULL, pj_string(path));
         absolute = pc_join(root, path);
-        canonical = pc_path_call(absolute, l1c_fs_canonical_existing_path);
-        if (!canonical || !pc_within(canonical, root) || !pc_path_equal(canonical, absolute) ||
-            pc_kind(absolute, 0) != 1) ok = 0;
+        if (!pc_payload_regular(absolute, root, 1)) ok = 0;
         if (ok && (native || !strcmp(role, "header") || !strcmp(role, "interface"))) {
-            char actual[65]; PcJson *metadata = NULL;
+            PcJson *metadata = NULL;
             ++c->artifact_reads;
-            ok = pc_hash_observed(c, absolute, actual, &metadata, "profile-payload", "selected-profile") &&
-                 pj_is_number(pj_get(metadata, "size"), size->number) && !strcmp(digest, actual);
+            ok = pc_payload_digest(c, absolute, digest, size, &metadata, "profile-payload", "selected-profile");
             pj_free(metadata);
         }
-        free(absolute); free(canonical);
+        free(absolute);
     }
     for (item = expected ? expected->child : NULL; item && ok; item = item->next)
         if (!pj_get(seen, item->key)) ok = 0;
@@ -567,15 +564,7 @@ void *l1c_profile_create(const uint8_t *data, int32_t length,
     c->profile_headers = pj_new(PJ_ARRAY);
     if (!pc_profile_headers(c, c->include, "", c->profile_headers, 0)) goto finish;
     free(c->include); c->include = pc_join(c->profile_stage, "include");
-    inputs = pj_new(PJ_OBJECT);
-    pj_set_string(inputs, "compiler", c->compiler); pj_set_string(inputs, "family", c->family);
-    if (c->archiver) pj_set_string(inputs, "archiver", c->archiver);
-    pj_set_string(inputs, "home", c->home); pj_set_string(inputs, "semantic_root", c->semantic_root);
-    pj_set_string(inputs, "include", c->include); pj_set_string(inputs, "variant", variant);
-    pj_set_string(inputs, "runtime_configuration_isolation", pc_runtime_isolation(c));
-    pj_add(inputs, "options", pj_clone(c->options)); pj_add(inputs, "runtime_options", pj_clone(c->runtime_options));
-    pj_add(inputs, "modules", pj_clone(c->modules)); pj_add(inputs, "interfaces", pj_clone(c->interfaces));
-    pj_add(inputs, "codegen", pj_clone(pj_get(c->config, "codegen")));
+    inputs = pc_construction_inputs(c, variant);
     pc_begin_construction(c, inputs, c->profile_stage);
 finish:
     pj_free(options); pj_free(inputs); pc_option_inputs_free(&option_inputs);
@@ -609,8 +598,10 @@ int32_t l1c_profile_publish(void *context) {
     pj_set_string(manifest, "include", "include"); pj_add(manifest, "modules", pj_clone(c->modules));
     pj_add(manifest, "runtime", runtime);
     pj_add(manifest, "payloads", pj_clone(c->construction->inventory));
-    for (item = c->construction->inventory->child; item; item = item->next)
-        if (!strcmp(pj_field(item, "role"), "runtime")) pj_add(runtime, NULL, pj_string(pj_field(item, "path")));
+    for (item = c->construction->inventory->child; item; item = item->next) {
+        const char *role = pj_field(item, "role"), *relative = pj_field(item, "path");
+        if (role && relative && !strcmp(role, "runtime")) pj_add(runtime, NULL, pj_string(relative));
+    }
     for (item = c->profile_headers ? c->profile_headers->child : NULL; item; item = item->next)
         pj_add(pj_get(manifest, "payloads"), NULL, pj_clone(item));
     ok = pc_preparation_inputs_current(c) && pc_profile_payloads(c, c->profile_stage, manifest, 1);

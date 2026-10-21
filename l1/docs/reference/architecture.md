@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-10-19
+Version: 2026-10-21
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -384,11 +384,15 @@ those implementation files.
   compiler-option reads during module generation.
 - `preparation_support.c` and `support/preparation/` implement one local cache, installed-payload protection,
   compiler-input identity, conservative native adapters, process locks, complete inventories and digest memoization.
-  `construction.h` owns a copied construction configuration and payload inventory while borrowing an already owned
-  staging root. `build.h` writes only declared payloads and registered scratch beneath that root. Construction needs no
-  cache key, lock or private-root flag; the managed adapter allocates the destination, invalidates completion metadata,
-  and publishes the existing manifest after payload validation. Releasing the construction description preserves the
-  destination; the command owner removes private support after its last consumer.
+  `construction.h` projects resolved inputs through `pc_construction_inputs` for managed, command-private and explicit
+  creation, then owns a copied construction configuration and payload inventory while borrowing an already owned staging
+  root. `storage.h` shares record/role/duplicate, containment/regular-file and selected size/digest checks between
+  managed and public validation. Their adapters retain schema authority, expected inventory, hash scheduling and
+  diagnostics: managed validation keeps freshness and disposable memos; public validation keeps strict tree/header/alias
+  checks and uses no managed state. `build.h` writes only declared payloads and registered scratch beneath that root.
+  Construction needs no cache key, lock or private-root flag; the managed adapter allocates the destination, invalidates
+  completion metadata, and publishes the existing manifest after payload validation. Releasing the construction
+  description preserves the destination; the command owner removes private support after its last consumer.
 - Completed corruption never triggers automatic persistent replacement. Eligible ordinary consumers prepare privately;
   explicit `--prepare-stdlib --force` requires external serialization and recomputes validation.
 - Semantic-only commands use bundled interfaces without native cache access, toolchain probing or source-tree hashing.

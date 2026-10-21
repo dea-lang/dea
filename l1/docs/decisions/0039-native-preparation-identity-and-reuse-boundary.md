@@ -1,7 +1,7 @@
 # ADR-0039: Native Preparation Identity and Reuse Boundary
 
 - Decision date: 2026-09-11
-- Last edited: 2026-10-19
+- Last edited: 2026-10-21
 - Status: Accepted
 
 ## Context
@@ -121,6 +121,8 @@ general toolchain or project build system.
 
 ## Related Plans
 
+- [l1/work/plans/refactors/closed/2026-10-21-managed-profile-client-integration-noref.md][managed-client]
+
 - [l1/work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md][explicit-profile-plan]
 
 - [l1/work/plans/bug-fixes/closed/2026-09-27-legacy-clang-preparation-compatibility-noref.md][legacy-clang]
@@ -154,6 +156,7 @@ general toolchain or project build system.
 [explicit-profile-plan]: ../../work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md
 [explicit-profiles]: ../reference/explicit-profiles.md
 [legacy-clang]: ../../work/plans/bug-fixes/closed/2026-09-27-legacy-clang-preparation-compatibility-noref.md
+[managed-client]: ../../work/plans/refactors/closed/2026-10-21-managed-profile-client-integration-noref.md
 [preparation]: ../reference/stdlib-preparation.md
 [preparation-economy]: ../../work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md
 [preparation-plan]: ../../work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md

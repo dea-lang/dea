@@ -3,9 +3,9 @@
 - Version: 2026-10-21
 - Status: In progress
 - Kind: Initiative
-- Open plans:
-  - `l1/work/plans/refactors/2026-10-21-managed-profile-client-integration-noref.md`
+- Open plans: None
 - Closed plans:
+  - `l1/work/plans/refactors/closed/2026-10-21-managed-profile-client-integration-noref.md`
   - `l1/work/plans/bug-fixes/closed/2026-10-19-explicit-profile-review-gaps-noref.md`
   - `l1/work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md`
   - `l1/work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md`
@@ -24,8 +24,9 @@ system, a new package manager, or a rewrite of the compiler bootstrap.
 
 This initiative records the direction agreed in the September 30 design discussion and reviewed against the repository
 on October 1. Phase A is complete: the internal constructor accepts frozen inputs and a caller-owned destination. Phase
-B implements the public artifact contract and exact compile/link/build/run selection. Managed-client integration and
-semantic dependency discovery remain later work.
+B implements the public artifact contract and exact compile/link/build/run selection. Phase C is complete: managed,
+command-private and explicit creation share configuration projection, and managed/public readers share payload checks
+under separate authority. Semantic dependency discovery remains Phase D work.
 
 ## Compiler-lineage placement
 
@@ -65,7 +66,8 @@ in [l1/docs/reference/architecture.md][architecture] and [l1/docs/reference/stdl
 The compiler already has per-module generation, `.o + .l1m` compile-only output, standalone verified linking and a
 source-graph build/run pipeline. Managed preparation already produces complete internal native profiles. Explicit
 profiles now provide a public artifact boundary independent of the cache's identity, location and selection machinery.
-The remaining phases adapt managed policy and expose semantic dependency information.
+Phase C shares construction inputs and payload mechanics while retaining managed policy. Phase D will expose semantic
+dependency information.
 
 `--prepare-stdlib` explicitly prewarms a persistently reusable managed entry. It is not a caller-directed artifact
 constructor. Automatic build/run/link can instead construct fresh command-private support when persistent reuse is
@@ -128,13 +130,16 @@ and ordinary host compilation remain legitimate work.
 
 ### Phase C: Make managed reuse a client of the public artifact construction model
 
-Execute [l1/work/plans/refactors/2026-10-21-managed-profile-client-integration-noref.md][managed-client-plan]. The draft
-shares normalized configuration projection and payload validation beyond the constructor already shared by Phases A and
-B; cache-specific manifests, memos, locks and identity policy remain separate.
+Completed in
+[l1/work/plans/refactors/closed/2026-10-21-managed-profile-client-integration-noref.md][managed-client-plan]. Managed,
+command-private and explicit creation use one resolved configuration projection; managed and public inventory readers
+share payload checks beyond the constructor already shared by Phases A and B. Cache-specific manifests, memos, locks,
+identity and freshness policy remain separate. Native macOS Intel validation and simulated Windows path checks passed;
+new Linux/GCC, Windows and macOS ARM execution were unavailable, as recorded in the closed plan.
 
-An adapter around the existing internal layout is acceptable before any cache-format change. Do not expose the private
-cache directory convention as the public profile format. Any later storage change must state cold-start behavior and
-legacy-entry handling explicitly; no silent migration or pruning is authorized here.
+The managed adapter retains the existing internal layout; the private cache directory convention is not the public
+profile format. Any later storage change must state cold-start behavior and legacy-entry handling explicitly; no silent
+migration or pruning is authorized here.
 
 Review whether a cache-output locator is useful only after there is a stable artifact consumers can use. Debug logs are
 not a machine-readable API, and no public print/export mode is required by the first two plans.
@@ -188,8 +193,8 @@ become their prerequisite or claim their results.
 
 The first two plans may close without waiting for Phases C and D. The initiative closes only after all four phases are
 implemented: the construction boundary, explicit artifacts, managed integration and semantic dependency discovery.
-Deferring a required phase leaves the initiative active. Phase C has a draft implementation plan; open the bounded Phase
-D plan when its prerequisites are established.
+Deferring a required phase leaves the initiative active. Phases A through C are complete; open the bounded Phase D plan
+for semantic dependency discovery.
 
 Completion also requires both the manual composition fixture and the dependency-discovery integration fixture to pass,
 every ADR Impact record to be resolved, and roadmap, initiative membership and current CLI/reference documentation to
@@ -200,14 +205,14 @@ A valid completion must demonstrate the same program behavior, provider authorit
 module-C identity through explicit and managed composition. Do not require byte-identical native executables across
 arbitrary host toolchains or identical retention inventories when one workflow consumes prebuilt providers.
 
-Maintain [l1/docs/roadmap.md][roadmap] and the parent/open/closed links as each child plan advances. Phases A and B
-record their implementation and verification in their respective plans; Phases C and D remain unimplemented. Drafting
-and local implementation do not authorize remote writes, releases or workflow dispatches.
+Maintain [l1/docs/roadmap.md][roadmap] and the parent/open/closed links as each child plan advances. Phases A through C
+record their implementation and verification in their respective closed plans; Phase D is unimplemented. Drafting and
+local implementation do not authorize remote writes, releases or workflow dispatches.
 
 [architecture]: ../../docs/reference/architecture.md
 [boundary-plan]: ../plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md
 [efficiency-plan]: ../plans/features/closed/2026-09-24-preparation-reuse-efficiency-noref.md
-[managed-client-plan]: ../plans/refactors/2026-10-21-managed-profile-client-integration-noref.md
+[managed-client-plan]: ../plans/refactors/closed/2026-10-21-managed-profile-client-integration-noref.md
 [preparation]: ../../docs/reference/stdlib-preparation.md
 [profile-plan]: ../plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md
 [reuse-adr]: ../../docs/decisions/0039-native-preparation-identity-and-reuse-boundary.md
