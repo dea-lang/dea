@@ -1,0 +1,52 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/**
+ * Direct runtime transport for OS errors and standard-stream results.
+ *
+ * Integer tags are runtime protocol values, independent of public enum layout.
+ */
+module sys.os;
+
+/** Normalized error kind, native namespace, and unmodified native code. */
+struct RtOsError {
+    kind: int;
+    domain: int;
+    native_code: long;
+}
+
+/** Direct operation outcome: success, EOF, failure, or native timeout. */
+struct RtIoResult {
+    state: int;
+    count: int;
+    error: RtOsError;
+}
+
+/** Normalize a saved C runtime error code without querying ambient errno. */
+extern func rt_os_error_from_errno(native_code: int) -> RtOsError;
+
+/** Normalize a saved Win32 error code without querying ambient last-error state. */
+extern func rt_os_error_from_win32(native_code: long) -> RtOsError;
+
+/** Return an owned diagnostic message for the supplied error record. */
+extern func rt_os_error_message(error: RtOsError) -> string;
+
+/**
+ * Read bytes from stdin; positive capacity requires valid writable storage.
+ * Zero capacity does not inspect the buffer or stream.
+ */
+unsafe extern func rt_stdin_read_result(buf: byte*?, capacity: int) -> RtIoResult;
+
+/** Write bytes to stdout; positive length requires valid readable storage. */
+unsafe extern func rt_stdout_write_result(buf: byte*?, count: int) -> RtIoResult;
+
+/** Write bytes to stderr; positive length requires valid readable storage. */
+unsafe extern func rt_stderr_write_result(buf: byte*?, count: int) -> RtIoResult;
+
+/** Flush buffered stdout bytes and return any captured failure directly. */
+extern func rt_flush_stdout_result() -> RtIoResult;
+
+/** Flush buffered stderr bytes and return any captured failure directly. */
+extern func rt_flush_stderr_result() -> RtIoResult;

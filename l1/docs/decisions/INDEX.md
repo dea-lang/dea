@@ -46,3 +46,4 @@
 | [l1/docs/decisions/0042-self-hosted-toolchain-delivery.md](0042-self-hosted-toolchain-delivery.md)           | Self-Hosted Toolchain Delivery                                 | Superseded by ADR-0043 |
 | [0043](0043-canonical-compiler-toolchain-delivery.md)                                                        | Canonical Compiler Toolchain Delivery                          | Accepted               |
 | [l1/docs/decisions/0044-explicit-profile-artifact-authority.md](0044-explicit-profile-artifact-authority.md) | Explicit Profile Artifact Authority                            | Accepted               |
+| [l1/docs/decisions/0045-direct-os-errors-and-io-results.md](0045-direct-os-errors-and-io-results.md)         | Direct OS Errors and I/O Results                               | Accepted               |

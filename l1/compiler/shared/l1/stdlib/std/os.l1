@@ -1,0 +1,233 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/**
+ * Portable OS errors and concrete I/O outcomes.
+ *
+ * Native codes belong to their recorded namespace and are diagnostic data.
+ * Timeout outcomes retain their native cause without introducing deadlines.
+ */
+module std.os;
+
+export ErrorKind, ErrorDomain, OsError, ReadResult, WriteResult, FlushResult, error_message,
+    _os_error_from_rt, _os_error_to_rt, _os_read_from_rt, _os_write_from_rt, _os_flush_from_rt;
+
+import sys.os;
+
+/** Portable categories for branching independently of host error numbers. */
+enum ErrorKind {
+    Other;
+    NotFound;
+    PermissionDenied;
+    AlreadyExists;
+    InvalidInput;
+    InvalidHandle;
+    Interrupted;
+    WouldBlock;
+    BrokenPipe;
+    TimedOut;
+    Unsupported;
+    NotSeekable;
+    OutOfMemory;
+    ResourceExhausted;
+    IoError;
+    IsDirectory;
+    NotDirectory;
+    DirectoryNotEmpty;
+    NoSpace;
+    FileTooLarge;
+}
+
+/** Namespace of a native code; runtime validation has no host error code. */
+enum ErrorDomain {
+    Runtime;
+    Errno;
+    Win32;
+}
+
+/** Captured error data, independent of subsequent host operations. */
+struct OsError {
+    kind: ErrorKind;
+    domain: ErrorDomain;
+    native_code: long;
+}
+
+/** One read attempt: transferred bytes, EOF, timeout, or failure. */
+enum ReadResult {
+    Read(count: int);
+    Eof;
+    ReadTimedOut(error: OsError);
+    ReadFailed(error: OsError);
+}
+
+/** One write attempt; successful bytes may still be buffered by stdio. */
+enum WriteResult {
+    Written(count: int);
+    WriteTimedOut(error: OsError);
+    WriteFailed(error: OsError);
+}
+
+/** Stdio flush outcome; success does not establish durable storage. */
+enum FlushResult {
+    Flushed;
+    FlushTimedOut(error: OsError);
+    FlushFailed(error: OsError);
+}
+
+/**
+ * Convert a runtime kind tag to the public category.
+ *
+ * @param code Runtime kind tag.
+ * @return Normalized category, or Other for an unknown tag.
+ */
+func _os_kind_from_code(code: int) -> ErrorKind {
+    if (code == 0) { return Other; }
+    if (code == 1) { return NotFound; }
+    if (code == 2) { return PermissionDenied; }
+    if (code == 3) { return AlreadyExists; }
+    if (code == 4) { return InvalidInput; }
+    if (code == 5) { return InvalidHandle; }
+    if (code == 6) { return Interrupted; }
+    if (code == 7) { return WouldBlock; }
+    if (code == 8) { return BrokenPipe; }
+    if (code == 9) { return TimedOut; }
+    if (code == 10) { return Unsupported; }
+    if (code == 11) { return NotSeekable; }
+    if (code == 12) { return OutOfMemory; }
+    if (code == 13) { return ResourceExhausted; }
+    if (code == 14) { return IoError; }
+    if (code == 15) { return IsDirectory; }
+    if (code == 16) { return NotDirectory; }
+    if (code == 17) { return DirectoryNotEmpty; }
+    if (code == 18) { return NoSpace; }
+    if (code == 19) { return FileTooLarge; }
+    return Other;
+}
+
+/**
+ * Convert a public category to its stable runtime tag.
+ *
+ * @param kind Public category.
+ * @return Runtime kind tag.
+ */
+func _os_kind_code(kind: ErrorKind) -> int {
+    match (kind) {
+        Other => { return 0; }
+        NotFound => { return 1; }
+        PermissionDenied => { return 2; }
+        AlreadyExists => { return 3; }
+        InvalidInput => { return 4; }
+        InvalidHandle => { return 5; }
+        Interrupted => { return 6; }
+        WouldBlock => { return 7; }
+        BrokenPipe => { return 8; }
+        TimedOut => { return 9; }
+        Unsupported => { return 10; }
+        NotSeekable => { return 11; }
+        OutOfMemory => { return 12; }
+        ResourceExhausted => { return 13; }
+        IoError => { return 14; }
+        IsDirectory => { return 15; }
+        NotDirectory => { return 16; }
+        DirectoryNotEmpty => { return 17; }
+        NoSpace => { return 18; }
+        FileTooLarge => { return 19; }
+    }
+}
+
+/**
+ * Convert a runtime namespace tag to the public domain.
+ *
+ * @param code Runtime namespace tag.
+ * @return Public error namespace.
+ */
+func _os_domain_from_code(code: int) -> ErrorDomain {
+    if (code == 1) { return Errno; }
+    if (code == 2) { return Win32; }
+    return Runtime;
+}
+
+/**
+ * Convert a public namespace to its runtime tag.
+ *
+ * @param domain Public error namespace.
+ * @return Runtime namespace tag.
+ */
+func _os_domain_code(domain: ErrorDomain) -> int {
+    match (domain) {
+        Runtime => { return 0; }
+        Errno => { return 1; }
+        Win32 => { return 2; }
+    }
+}
+
+/**
+ * Convert a captured runtime error without reading ambient host state.
+ *
+ * @param error Captured runtime record.
+ * @return Public error with its original native code.
+ */
+func _os_error_from_rt(error: RtOsError) -> OsError {
+    return OsError(_os_kind_from_code(error.kind), _os_domain_from_code(error.domain), error.native_code);
+}
+
+/**
+ * Convert public error data to the runtime's scalar transport.
+ *
+ * @param error Public captured error.
+ * @return Runtime error record.
+ */
+func _os_error_to_rt(error: OsError) -> RtOsError {
+    return RtOsError(_os_kind_code(error.kind), _os_domain_code(error.domain), error.native_code);
+}
+
+/**
+ * Render a captured error as an owned diagnostic string.
+ *
+ * Text may vary by platform and locale; branch on kind instead of message text.
+ *
+ * @param error Error to describe.
+ * @return Host diagnostic text or a category/domain/code fallback.
+ */
+func error_message(error: OsError) -> string {
+    return rt_os_error_message(_os_error_to_rt(error));
+}
+
+/**
+ * Convert a runtime read outcome to the public concrete result.
+ *
+ * @param result Runtime read outcome.
+ * @return Bytes read, EOF, native timeout, or captured error.
+ */
+func _os_read_from_rt(result: RtIoResult) -> ReadResult {
+    if (result.state == 0) { return Read(result.count); }
+    if (result.state == 1) { return Eof; }
+    if (result.state == 3) { return ReadTimedOut(_os_error_from_rt(result.error)); }
+    return ReadFailed(_os_error_from_rt(result.error));
+}
+
+/**
+ * Convert a runtime write outcome to the public concrete result.
+ *
+ * @param result Runtime write outcome.
+ * @return Bytes accepted, native timeout, or captured error.
+ */
+func _os_write_from_rt(result: RtIoResult) -> WriteResult {
+    if (result.state == 0) { return Written(result.count); }
+    if (result.state == 3) { return WriteTimedOut(_os_error_from_rt(result.error)); }
+    return WriteFailed(_os_error_from_rt(result.error));
+}
+
+/**
+ * Convert a runtime flush outcome to the public concrete result.
+ *
+ * @param result Runtime flush outcome.
+ * @return Stdio flush success, native timeout, or captured error.
+ */
+func _os_flush_from_rt(result: RtIoResult) -> FlushResult {
+    if (result.state == 0) { return Flushed; }
+    if (result.state == 3) { return FlushTimedOut(_os_error_from_rt(result.error)); }
+    return FlushFailed(_os_error_from_rt(result.error));
+}

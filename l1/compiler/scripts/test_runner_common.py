@@ -120,6 +120,10 @@ CHILD_TRACE_FIXTURES = (
         1, "wide_math_main", MATH_RUNTIME_FIXTURE_DIR / "wide_math_main.l1",
         "math_runtime_compile_test", frozenset({"arc"}),
     ),
+    ChildTraceFixture(
+        2, "os_error_main", TESTS_DIR / "fixtures/os_runtime/os_error_main.l1",
+        "os_runtime_test.py", frozenset({"mem", "arc"}),
+    ),
 )
 
 

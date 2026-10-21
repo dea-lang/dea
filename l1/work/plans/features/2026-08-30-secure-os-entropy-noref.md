@@ -23,7 +23,7 @@
   - `l1/compiler/tests/analysis_trace_test.l0`
 - Related:
   - `l1/work/initiatives/0006-process-and-host-services.md`
-  - `l1/work/plans/features/2026-08-30-os-error-and-io-results-noref.md`
+  - `l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md`
 - Repro: `make -C l1 test-compiler TESTS="entropy_runtime_test analysis_trace_test"`
 
 ## Summary

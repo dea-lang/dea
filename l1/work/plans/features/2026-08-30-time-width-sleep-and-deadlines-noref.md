@@ -34,7 +34,7 @@
   - `l1/work/initiatives/0006-process-and-host-services.md`
   - `l1/work/initiatives/0007-blocking-networking.md`
   - `l1/work/plans/features/closed/2026-08-30-wide-filesystem-metadata-noref.md`
-  - [l1/work/plans/features/2026-08-30-os-error-and-io-results-noref.md][os-errors]
+  - [l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md][os-errors]
 - Repro:
   `rg -n 'sec: int|unix_sec: int' l1/compiler/shared/l1/stdlib/std/time.l1 l1/compiler/shared/l1/stdlib/sys/rt.l1`
 
@@ -55,8 +55,8 @@ coverage but cannot validate L1-only `long` fields or new L1 APIs. Add the named
 `time_runtime_test.l0` and `l0c_lib_test.l0` are not current test entrypoints.
 
 The width/arithmetic phase can start independently. The new structured host-error results depend on
-[l1/work/plans/features/2026-08-30-os-error-and-io-results-noref.md][os-errors] supplying `OsError` and runtime error
-transport. Do not duplicate that error model inside `std.time`. Process and networking plans consume this contract
+[l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md][os-errors] supplying `OsError` and runtime
+error transport. Do not duplicate that error model inside `std.time`. Process and networking plans consume this contract
 later; neither is a prerequisite for completing this plan. Use deterministic consumer simulations to verify timeout
 behavior before those modules exist.
 
@@ -233,6 +233,6 @@ Ensure new `.l1` fixtures explicitly run under ARC/memory tracing. This plan ref
 
 [apple-sleep]: https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/nanosleep.2.html
 [glibc-sleep]: https://sourceware.org/glibc/manual/2.42/html_node/Sleeping.html
-[os-errors]: 2026-08-30-os-error-and-io-results-noref.md
+[os-errors]: closed/2026-08-30-os-error-and-io-results-noref.md
 [windows-clock]: https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps
 [windows-timer]: https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-setwaitabletimer

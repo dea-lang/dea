@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-10-19
+Version: 2026-10-21
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -178,7 +178,7 @@ The current L1 tree includes:
 
 - L1 stdlib modules under `compiler/shared/l1/stdlib/`
 - runtime sources under `compiler/shared/runtime/`
-- bootstrap-owned public headers under `$L1_BUILD_DIR/include/` and 23 verified bundled `std.*` / `sys.*` semantic
+- bootstrap-owned public headers under `$L1_BUILD_DIR/include/` and 25 verified bundled `std.*` / `sys.*` semantic
   interfaces under `$L1_BUILD_DIR/interfaces/`, generated independently of native preparation
 - one managed native cache, selected by `--stdlib-cache`, `L1_STDLIB_CACHE`, or the context default, with complete
   per-configuration stdlib/runtime profiles and exact copies of the selected bundled interfaces
@@ -256,6 +256,12 @@ checks, including:
 Filesystem metadata now exposes `long?` sizes and modification seconds through `std.fs` and `sys.rt`, including
 host-supported sparse extents beyond 2 GiB and timestamps outside the 32-bit seconds range. Nanoseconds remain `int?`;
 whole-file string reads remain `int`-bounded and return `null` for oversized files.
+
+`std.os` and `sys.os` supply normalized OS errors with captured native domain/code data and concrete read, write, and
+flush results. Additive `std.io` standard-stream result helpers distinguish clean EOF, timeout, interrupted or other
+failure, and successful partial transfers. Existing helpers retain their signatures. File handles, process/network
+consumers, and additional native error domains remain planned. The contract is recorded in
+[l1/docs/decisions/0045-direct-os-errors-and-io-results.md][os-results].
 
 The stdlib currently includes the core bootstrap modules for I/O, strings, text, paths, filesystem access, time,
 randomness, assertions, optionals, the current container set, the shared `int` helper surface in `std.integer`, L1-only
@@ -369,3 +375,4 @@ These remain true today:
 4. Address-of (`&`) and generics are not part of the current active language surface.
 
 [explicit-profiles]: reference/explicit-profiles.md
+[os-results]: decisions/0045-direct-os-errors-and-io-results.md

@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-10-10
+Version: 2026-10-21
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -705,4 +705,24 @@ retain their existing `int` bounds.
 
 See [l1/docs/decisions/0037-wide-filesystem-metadata.md][filesystem-width].
 
+## Direct OS Errors and I/O Results
+
+`std.os::OsError` carries a portable `ErrorKind`, an `ErrorDomain`, and the original signed `long` native code.
+`Runtime`, `Errno`, and `Win32` distinguish library validation, C runtime/POSIX failures, and native Windows failures.
+Runtime operations capture errors before cleanup, and message rendering uses the captured record. Existing
+`std.system::errno()` remains an ambient compatibility helper.
+
+The common `ReadResult`, `WriteResult`, and `FlushResult` enums distinguish success, clean EOF where applicable,
+timeout, and failure. Timeout/failure variants retain `OsError`; zero-length reads return `Read(0)` without probing EOF;
+positive partial transfers succeed. Interrupted operations return without an implicit retry. Constructor names such as
+`ReadFailed` and `WriteFailed` are distinct because enum variants share their module's symbol namespace.
+
+Additive `std.io` standard-stream result helpers establish the first consumer while preserving the existing nullable,
+sentinel, and void APIs. They retain asserted byte-array range checks. Writes count acceptance by C stdio, flush reports
+delayed output errors, and neither operation requests filesystem durability or changes `SIGPIPE` policy. File-handle
+ownership, exact/all transfer result APIs, process spawning, and networking remain separate work.
+
+See [l1/docs/decisions/0045-direct-os-errors-and-io-results.md][os-results].
+
 [filesystem-width]: ../decisions/0037-wide-filesystem-metadata.md
+[os-results]: ../decisions/0045-direct-os-errors-and-io-results.md

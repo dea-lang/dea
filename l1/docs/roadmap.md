@@ -22,6 +22,10 @@ and its feature backlog remains assigned here pending individual decisions.
 
 - The current L1 runtime and stdlib inputs live under `compiler/shared/runtime/` and `compiler/shared/l1/stdlib/`.
 
+- The I/O error foundation adds `std.os` / `sys.os` and standard-stream result helpers. Captured domain/code data,
+  normalized categories, explicit EOF/timeouts, and successful partial transfers are independent of later file-handle
+  ownership and stream adapters. See [l1/docs/decisions/0045-direct-os-errors-and-io-results.md][os-results].
+
 - Compiler and child-fixture trace validation remain part of exhaustive compiler CI. Intra-L1 stage parity and triple
   bootstrap no longer apply. Artifact acceptance remains a separate gate.
 
@@ -91,189 +95,258 @@ split dependency or implementing that work now.
 
 - Feature [2026-04-03-dea-virtual-module-noref][virtual-module] introduced the compiler-synthesized `dea` prelude module
   that contains `sizeof` and `ord` intrinsics.
+
 - Feature [2026-04-04-l1-dea-c-abi-prefix-migration-noref][abi-prefix] moved L1 public generated/runtime C ABI names to
   `dea_*` / `DEA_*`.
+
 - Feature [2026-04-04-l1-prefixed-int-literals-noref][prefixed-literals] added hexadecimal, binary, and octal integer
   literals for L1.
+
 - Feature [2026-04-04-l1-small-int-builtins-on-dea-abi-noref][small-int] added `tiny`, `short`, and `ushort` builtin
   integer types.
+
 - Feature [2026-04-10-l1-numeric-literal-lexer-groundwork-noref][numeric-lexer] established the broader numeric-literal
   lexer/token groundwork.
+
 - Feature [2026-04-04-l1-float-double-literals-noref][float-literals] added builtin `float` and `double` types plus real
   literals.
+
 - Feature [2026-04-13-l1-float-backend-contract-followup-noref][float-backend] defined the L1 floating-point semantic
   and C backend contract.
+
 - Feature [2026-04-14-l1-std-real-module-noref][real-module] added the `std.real` / `sys.real` floating-point library
   surface, scoped runtime helper inclusion, and math-library linkage gating.
+
 - Feature [2026-04-13-l1-uint-long-ulong-bigint-builtins-noref][wide-int] added `uint`, `long`, and `ulong` through
   contextual bigint literals.
+
 - Feature [2026-04-14-l1-std-math-wide-integer-followup-noref][wide-math] added L1-only `std.integer` helper families
   for `uint`, `long`, and `ulong`.
+
 - Feature [2026-04-18-l1-bitwise-operators-noref][bitwise-operators] added `&`, `|`, `^`, `~`, `<<`, and `>>` with
   parser precedence, integer typing, and direct C lowering.
+
 - Feature [2026-04-18-string-equality-operators-noref][string-equality] wired `==` and `!=` over `string` operands
   through typing and the C backend via `rt_string_equals`.
+
 - Feature [2026-04-18-string-relational-operators-noref][string-relational] wired `<`, `<=`, `>`, and `>=` over `string`
   operands through typing and the C backend via `rt_string_compare`.
+
 - Feature [2026-04-22-string-concatenation-operator-noref][string-concat] wired `string + string` through
   `rt_string_concat`, yielding a fresh owned result with ordinary ARC behavior.
+
 - Feature [2026-04-23-single-statement-loop-and-match-bodies-noref][single-statements] relaxed `while`, `for`, and
   `match` arm bodies from `Block` to `Stmt` while preserving body-local scope and cleanup.
+
 - Feature [2026-04-18-l1-const-declarations-noref][const-declarations] added top-level `const` declarations with
   explicit types, compile-time-constant initializers, and `static const` C emission.
+
 - Feature [2026-04-17-l1-let-non-constant-initializers-noref][let-initializers] added deferred module-init lowering for
   non-constant top-level `let` initializers and restored `std.real` NaN/infinity constants.
+
 - Feature [2026-04-19-nullable-identity-equality-noref][nullable-equality] added strict `T? == T?` equality with
   same-inner-type payload comparison and explicit-cast requirement for cross-form `T? vs T` compares.
+
 - Feature [2026-04-19-pointer-identity-equality-noref][pointer-equality] added `==` and `!=` over same-type non-nullable
   `T*` operands using reference identity.
+
 - Feature [2026-04-20-is-intrinsic-noref][is-intrinsic] introduced the `is(x, Variant)` intrinsic for payload-ignoring
   enum tag comparison, including qualified variant references and enum-returning call expressions in first position.
+
 - Feature [2026-04-18-l1-function-pointer-types-noref][function-pointers] added first-class `func(...) -> T` function
   pointer types, indirect calls, nullable function pointers, and same-signature identity comparisons.
+
 - Feature [2026-05-19-stage1-slices-len-slice-intrinsics-noref][stage1-slices] added Stage 1 slice types `T[]`,
   `dea::len`, and `dea::slice` as non-owning local/parameter/call descriptors over fixed arrays and slices.
+
 - Feature [2026-04-22-variadic-functions-noref][variadic-functions] added L1-defined trailing `T...` parameters and
   function pointer types, slice-backed callee packs, zero-or-more positional trailing arguments, and explicit final
   `pack...` forwarding. C variadic FFI remains separate under Initiative [0003-c-ffi][c-ffi].
+
 - Refactor [2026-04-24-runtime-static-library-split-noref][runtime-split] moved the copied L1 runtime from header-only
   inclusion to public headers plus normal/traced runtime archives and completed Initiative
   [0002-runtime-static-library][runtime-library].
+
 - Refactor [2026-04-27-runtime-cu-resplit-noref][runtime-resplit] moved OS/process helpers and RNG into dedicated
   `dea_rt_sys.c` and `dea_rt_rand.c` runtime translation units.
+
 - Feature [2026-06-30-runtime-pointer-access-validation-noref][runtime-pointer-validation] added checked raw-pointer
   access, allocation provenance, foreign-storage registration, full/basic/unchecked runtime modes, bounded quarantine,
   and content-sensitive runtime-variant builds.
+
 - Feature [2026-04-24-export-manifests-and-aliased-imports-noref][export-imports] added module-level export manifests
   plus alias and selective import resolution for the separate-compilation initiative.
+
 - Feature [2026-04-24-lbi-symbol-mangling-and-linkage-noref][symbol-linkage] adopted tagged-section LBI names for source
   symbols and module lifecycle helpers plus export-driven backend linkage.
+
 - Feature [2026-04-24-module-interface-emission-noref][interface-emission] added deterministic textual `.l1m` interface
   emission, constrained parser round-trip support, and the internal `--emit-interface` mode.
+
 - Refactor [2026-05-11-unified-lbi-mangling-noref][unified-lbi-mangling] collapsed the two-layer LBI scheme into a
   single recursive grammar, replacing the broad-`S` link-name layer with `N` / `S` / `E` / `I` terminals plus trailing
   type components for function signatures.
+
 - Feature [2026-06-13-opaque-type-exports-and-layout-hiding-noref][opaque-exports] added `export opaque { T }`,
   exported-surface visibility checks, and opaque `.l1m` nominal declarations.
+
 - Feature [2026-06-18-stage1-const-scalar-casts-noref][const-scalar-casts] added statically checked integer-family,
   `float`/`double`, and scalar identity casts to Stage 1 `const` initializers.
+
 - Feature [2026-06-24-stage1-scalar-const-expression-flow-noref][scalar-const-flow] extended Stage 1 `const` evaluation
   with checked 32-bit `int` operators, short-circuit booleans, folded interfaces/static initializers, const-valued
   array/case contexts, and const-guided boolean liveness flow.
+
 - Closed Feature [2026-04-24-separate-compilation-driver-surface-noref][compile-foundation] added dependency-free
   supplied-provider replay through semantic analysis and C generation, canonical metadata round-tripping,
   source/interface enum export parity, indexed active-provider state, and signed and aggregate literals. Its CLI tranche
   reserved shared `-c` / `--compile` and ordered `-I` / `--interface-path` syntax while keeping compile dispatch
   explicitly NYI.
+
 - Feature [2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref][artifact-graph] added canonical
   module-to-artifact association, interface-first discovery with caller-selected source fallback, recursive `.l1m`
   closure, deterministic graph enumeration, ordered direct-import edges, and populated `require` / `link` manifests. It
   left compile-only, standalone linking, and multi-CU build/run non-operational.
+
 - Feature [2026-07-17-interface-fingerprint-canonicalization-and-verification-noref][interface-fingerprints] replaced
   per-declaration placeholders with canonical SipHash-1-3 whole-module fingerprints, populated provider expectations,
   and verified filesystem and registry interfaces before graph registration or replay.
+
 - Feature [2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref][lifecycle-entrypoints] added target-aware
   per-module C generation with external `I4init` / `I4fini`, conditional `I5entry`, imported declarations, and no
   process-wrapper or dependency-lifecycle emission.
+
 - Feature [2026-07-17-object-metadata-emission-and-readers-noref][object-metadata] added portable module identity and
   ordered-import records plus bounded ELF, Mach-O, and PE/COFF relocatable readers with valid, absent, and malformed Dea
   metadata classification, exact Darwin TinyCC ELF and ARM64EC aliases, aligned Mach-O command and symbol validation,
   byte-bounded iterative LBI parsing, and standard ARMNT/ARM64EC COFF support. That historical subsystem is now retired
   from the current implementation in favor of authoritative sibling interfaces.
+
 - Feature [2026-08-20-l1m-authoritative-standalone-linking-noref][l1m-authoritative-linking] made verified sibling
   `.l1m` files authoritative for standalone semantics and lifecycle planning, removed native-object readers and input
   snapshots, and made paired Dea objects plus explicit foreign objects opaque caller-asserted host inputs.
+
 - Feature [2026-07-17-compile-only-artifact-production-noref][compile-only] made `-c` resolve one source module against
   verified interfaces and publish sibling `.o + .l1m` with endpoint rollback; `--keep-c` adds the exact generated `.c`.
   Successful return leaves the complete new selected set, recoverable failure restores the prior set, failed rollback
   retains recovery files, and concurrent readers or same-stem writers require external serialization. Current
   publication validates a regular opaque object plus the interface without proving a byte binding.
+
 - Feature [2026-08-21-per-module-generated-c-foundation-noref][generated-c-foundation] moved `--gen` to the shared
   one-module backend with interface-first/source-fallback resolution, established `--gen` versus compile-retention
   C-byte identity, and gave compile-only stable module-relative host-compiler paths plus recognized GCC/Clang debug-path
   neutralization without promising byte-identical native objects.
+
 - Feature [2026-07-17-link-set-driver-and-wrapper-noref][link-set] added verified Dea-object linking, explicit foreign
   objects, complete graph and entry validation, deterministic lifecycle wrapper generation, compiler-family runtime
   inputs, and bounded output-local scratch. The wrapper/lifecycle and scratch foundations remain, while the current
   authority and foreign-input boundaries come from verified interfaces and caller assertions.
+
 - Feature [2026-07-17-build-run-multi-cu-orchestration-noref][build-run] moved build/run to graph-expanded per-module
   compilation, authoritative interface/object providers, the common verified linker, mirrored retained-C trees, and
   exact direct run-process execution.
+
 - Feature [2026-07-24-per-module-generated-c-mode-noref][per-module-generated-c] proved byte identity across all four
   generated-C producer modes for source-only and mixed graphs, verified exact compiler-input retention, and removed the
   legacy whole-closure backend and process wrapper.
+
 - Feature [2026-04-24-external-library-linking-cli-noref][library-linking] added ordered `-l`, `-L`, `-Rr` / `--rpath`,
   and `-Cl` / `--link-arg` inputs to build, standalone link, and run while retaining typed object roles and exact
   runtime selection.
+
 - Feature [l1/work/plans/features/closed/2026-09-07-stdlib-runtime-preparation-and-cache-noref.md][stdlib-preparation]
   added bootstrap-owned semantic interfaces, standalone-link provider discovery, and locally cached native
   stdlib/runtime preparation with conservative reuse and command-private recovery.
+
 - Refactor [l1/work/plans/refactors/closed/2026-09-12-native-preparation-economy-noref.md][preparation-economy] removed
   obsolete preparation state, restored identity regressions, and reused application analysis, bundled validation and
   option parsing within each command while preserving semantic authority and persistent reuse.
+
 - Refactor
   [l1/work/plans/refactors/closed/2026-09-15-native-identity-environment-text-reassessment-noref.md][env-text-reassessment]
   moved raw environment text from native identity to observation-memo selection while preserving effective toolchain,
   runtime-target and macOS platform evidence. Local, Docker and Windows GCC/Clang validation passed.
+
 - Tool [l1/work/plans/tools/closed/2026-09-13-preparation-test-cost-noref.md][preparation-test-cost] isolated unrelated
   tests from automatic preparation, retained dedicated integration coverage and avoided unnecessary preparation support
   compilation. Trace measurements did not justify retaining a driver-harness split.
+
 - Feature
   [l1/work/plans/features/closed/2026-09-13-warm-preparation-validation-reuse-noref.md][warm-preparation-validation]
   adopted completion-manifest interpretation as the settled evidence representation, so valid warm native profile hits
   skip the repeated complete bundled validation while any input change re-enables the full pass; probes, thresholds and
   implementation are recorded in ADR-0040.
+
 - Feature [2026-09-24-preparation-observability-noref][preparation-observability] added schema-versioned `-vvv`
   decisions, timings, probe labels, hash accounting and provider selection, plus paired local reuse scenarios for cwd
   changes, copied caches, removed memos and explicit system roots.
+
 - Refactor
   [l1/work/plans/refactors/closed/2026-09-25-preparation-sha256-cost-investigation-noref.md][preparation-sha256-cost]
   measured two portable SHA-256 candidates. Neither met the prepared-request adoption thresholds; the completed
   investigation retained its evidence and concluded "separately investigate", with production unchanged.
+
 - Tool [l1/work/plans/tools/closed/2026-09-13-native-reuse-capability-report-noref.md][reuse-report] added explicit CI
   capability reports with exact compiler attribution, cold/warm counters, guarded reuse, header invalidation and
   retained failure evidence.
+
 - Bug Fix
   [l1/work/plans/bug-fixes/closed/2026-09-13-native-preparation-ci-portability-noref.md][preparation-portability]
   repaired dependency decoding, compiler probes, Windows import observation and fixture ownership; the repaired
   implementation passed hosted validation on Linux, Windows and both macOS architectures.
+
 - Bug Fix [2026-07-20-stage1-module-interface-resolution-hardening-noref][module-interface-hardening] hardened qualified
   type lookup, cross-provider transparent aliases, and semantic `require`-closure enforcement for module interfaces.
+
 - Bug Fix [2026-07-20-stage1-module-graph-invariant-hardening-noref][module-graph-invariant-hardening] centralized
   pre-node failure caching, kept header-mismatched units out of name lookup, and added isolated link-only provider
   coverage.
+
 - Bug Fix [2026-07-26-stage1-cross-platform-ci-regressions-noref][cross-platform-ci] made the public runtime header
   strict-GCC clean, repaired Windows native compiler commands and dangling compile-only parent aliases, and aligned
   auditable CI/Docker compiler selection.
+
 - Bug Fix [2026-06-08-stage1-case-builtin-literal-support-noref][case-builtin-literals] made Stage 1 `case` arm literals
   follow equality comparability rules with warning-only always-false integer arms.
+
 - Bug Fix [2026-06-17-stage1-contextual-array-literals-noref][contextual-array-literals] made Stage 1 check array
   literals against expected fixed-size array contexts before standalone inference.
+
 - Bug Fix [2026-06-18-stage1-toplet-initializer-typing-noref][toplet-initializer-typing] made Stage 1 type-check
   top-level `let` initializer expressions before backend lowering records runtime initializer metadata.
+
 - Bug Fix [2026-06-19-stage1-toplet-diagnostic-recovery-noref][toplet-diagnostic-recovery] preserved resolved top-level
   initializer diagnostics when signature resolution had already reported an error.
+
 - Bug Fix [2026-08-21-shared-parenthesized-casted-place-arc-classification-noref][parenthesized-casted-place-arc]
   preserved borrowed identity and unwrap casts through repeated parentheses across all three backends while retaining
   non-niche ARC `T -> T?` place payloads exactly once at their owner-producing cast boundary.
+
 - Bug Fix [2026-08-25-stage1-case-stray-else-recovery-boundary-noref][case-else-recovery] preserved each rejected
   case-arm `else` as a synchronization boundary so L1 Stage 1 retains its dedicated `PAR-0123` diagnostic after an
   earlier invalid arm.
+
 - Refactor [2026-07-08-stage1-source-decomposition-noref][stage1-source-decomposition] organized Stage 1 into 116
   modules with explicit state ownership and an acyclic import graph. Full normal and trace validation passed. The
   filename-only `.l1` semantic checks pass.
+
 - Bug Fix
   [l1/work/plans/bug-fixes/closed/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md][fingerprint-blocker]
   repairs the compiler-private fingerprint declaration and splits Stage 1 fingerprint support from common filesystem and
   process support. The filename-only port now builds and runs with Clang. This work preceded Stage 2 delivery and the
   strict self-hosting fixed point completed by the subsequent self-hosting plan.
+
 - Bug Fix [2026-09-07-fingerprint-adapter-gcc-array-parameter-noref][fingerprint-gcc] aligns the fingerprint adapter
   output declaration with generated C to repair strict GCC compilation on Linux and Windows.
+
 - Bug Fix
   [l1/work/plans/bug-fixes/closed/2026-09-14-stage1-interface-fingerprint-stack-overflow-noref.md][fingerprint-stack]
   replaced recursive interface fingerprint measurement, planned emission, and owned `Type` cleanup with explicit
   heap-backed traversal so the documented unbounded-depth contract is portable. The 768-wrapper regression and pinned
   digests are unchanged, and hosted Windows UCRT64/Clang verification passed.
+
+- Feature [l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md][os-error-plan] adds shared
+  normalized/native OS errors and concrete read, write, and flush results, consumed by additive standard-stream helpers.
 
 </details>
 
@@ -297,7 +370,8 @@ tiers are distinct from implementation phases within a plan or initiative.
 - Initiative [0005-filesystem-and-stream-io][filesystem-io] owns the Stdlib Tier 1 OS error, 64-bit filesystem metadata,
   dynamic byte-buffer, file-handle, and directory foundations; Stdlib Tier 2 streams and buffering; and the roadmap's
   Stdlib Tier 4 file-watch design. Persistent file extents, positions, offsets, and timestamp seconds use `long`, while
-  in-memory lengths, indexes, and individual transfer counts remain `int`.
+  in-memory lengths, indexes, and individual transfer counts remain `int`. The shared OS-error foundation and additive
+  standard-stream result helpers are complete; file handles, dynamic buffers, and stream adapters remain planned.
 - Initiative [0006-process-and-host-services][host-services] owns Stdlib Tier 2 secure entropy, temporary objects,
   process spawning, and anonymous pipes plus Stdlib Tier 3 sleep, deadlines, timeouts, and general time-second widening.
 - Initiative [0007-blocking-networking][blocking-networking] promotes networking into a Stdlib Tier 3 blocking IPv4/IPv6
@@ -410,7 +484,8 @@ backlog does not imply missing work where L1 already has a narrower surface.
 
 - Filesystem, directory, byte-buffer, file-handle, stream, and file-watch work is tracked by Initiative
   [0005-filesystem-and-stream-io][filesystem-io]. Whole-file `std.fs::read_file` / `std.fs::write_file` and stdin/stdout
-  byte helpers remain the implemented baseline.
+  byte helpers plus additive structured standard-stream results form the implemented baseline. Stateful file handles and
+  stream adapters remain planned.
 - Secure entropy, temporary objects, process spawning, anonymous pipes, and scheduling-time helpers are tracked by
   Initiative [0006-process-and-host-services][host-services].
 - Blocking TCP, UDP, and DNS are tracked by Initiative [0007-blocking-networking][blocking-networking].
@@ -494,6 +569,8 @@ update to be promoted to an initiative or plan:
 [numeric-lexer]: ../work/plans/features/closed/2026-04-10-l1-numeric-literal-lexer-groundwork-noref.md
 [object-metadata]: ../work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
 [opaque-exports]: ../work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
+[os-error-plan]: ../work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md
+[os-results]: decisions/0045-direct-os-errors-and-io-results.md
 [parenthesized-casted-place-arc]: ../../work/plans/bug-fixes/closed/2026-08-21-shared-parenthesized-casted-place-arc-classification-noref.md
 [per-module-generated-c]: ../work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md
 [pointer-equality]: ../work/plans/features/closed/2026-04-19-pointer-identity-equality-noref.md

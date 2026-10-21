@@ -1,0 +1,194 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module os_error_main;
+
+import sys.os;
+import std.array;
+import std.assert;
+import std.io;
+import std.os;
+import std.string;
+import std.system;
+
+/** Require one public error to preserve the runtime's scalar transport. */
+func require_error(error: OsError, kind: int, domain: int, native: long) {
+    let raw = _os_error_to_rt(error);
+    assert(raw.kind == kind && raw.domain == domain && raw.native_code == native,
+           "captured public error transport");
+}
+
+/** Require a successful read without conflating EOF or failures with zero. */
+func require_read(result: ReadResult, expected: int) {
+    match (result) {
+        Read(count) => { assert(count == expected, "read count"); }
+        _ => { assert(false, "expected Read"); }
+    }
+}
+
+/** Require a successful write with its original transfer count. */
+func require_written(result: WriteResult, expected: int) {
+    match (result) {
+        Written(count) => { assert(count == expected, "write count"); }
+        _ => { assert(false, "expected Written"); }
+    }
+}
+
+/** Require an explicit successful flush. */
+func require_flushed(result: FlushResult) {
+    match (result) {
+        Flushed => {}
+        _ => { assert(false, "expected Flushed"); }
+    }
+}
+
+/** Exercise captured error namespaces and owned diagnostic message lifetimes. */
+func test_errors() {
+    let high_code: long = 4294967295;
+    let raw = rt_os_error_from_win32(high_code);
+    require_error(_os_error_from_rt(raw), 0, 2, high_code);
+    let captured = _os_error_from_rt(rt_os_error_from_win32(2 as long));
+    match (captured.kind) {
+        NotFound => {}
+        _ => { assert(false, "portable Win32 not-found kind"); }
+    }
+    match (captured.domain) {
+        Win32 => {}
+        _ => { assert(false, "native namespace preserved"); }
+    }
+    let unrelated = rt_os_error_from_errno(123456789);
+    assert(unrelated.native_code == (123456789 as long), "unknown errno code");
+    require_error(captured, 1, 2, 2 as long);
+
+    let rendered = error_message(captured);
+    let fallback = error_message(_os_error_from_rt(raw));
+    let runtime = error_message(OsError(InvalidInput, Runtime, 0 as long));
+    assert(len_s(rendered) > 0 && len_s(fallback) > 0 && len_s(runtime) > 0,
+           "owned diagnostic messages");
+    let retained = rendered + ":" + fallback + ":" + runtime;
+    assert(len_s(retained) > len_s(rendered), "message ownership survives concatenation");
+    assert(error_message(captured) == rendered, "captured error ignores subsequent operations");
+
+    for (let kind = 0; kind < 20; kind = kind + 1) {
+        let value = RtOsError(kind, 1, -7 as long);
+        require_error(_os_error_from_rt(value), kind, 1, -7 as long);
+    }
+    require_error(_os_error_from_rt(RtOsError(99, 99, high_code)), 0, 0, high_code);
+    require_error(OsError(TimedOut, Errno, 42 as long), 9, 1, 42 as long);
+}
+
+/** Exercise every operation-specific result variant over the runtime ABI. */
+func test_result_transport() {
+    let error = RtOsError(6, 1, 123 as long);
+    let timeout = RtOsError(9, 2, 121 as long);
+    require_read(_os_read_from_rt(RtIoResult(0, 3, error)), 3);
+    match (_os_read_from_rt(RtIoResult(1, 0, error))) {
+        Eof => {}
+        _ => { assert(false, "EOF result"); }
+    }
+    match (_os_read_from_rt(RtIoResult(2, 0, error))) {
+        ReadFailed(value) => { require_error(value, 6, 1, 123 as long); }
+        _ => { assert(false, "read failure result"); }
+    }
+    match (_os_read_from_rt(RtIoResult(3, 0, timeout))) {
+        ReadTimedOut(value) => { require_error(value, 9, 2, 121 as long); }
+        _ => { assert(false, "read timeout result"); }
+    }
+    require_written(_os_write_from_rt(RtIoResult(0, 2, error)), 2);
+    match (_os_write_from_rt(RtIoResult(2, 0, error))) {
+        WriteFailed(value) => { require_error(value, 6, 1, 123 as long); }
+        _ => { assert(false, "write failure result"); }
+    }
+    match (_os_write_from_rt(RtIoResult(3, 0, timeout))) {
+        WriteTimedOut(value) => { require_error(value, 9, 2, 121 as long); }
+        _ => { assert(false, "write timeout result"); }
+    }
+    require_flushed(_os_flush_from_rt(RtIoResult(0, 0, error)));
+    match (_os_flush_from_rt(RtIoResult(2, 0, error))) {
+        FlushFailed(value) => { require_error(value, 6, 1, 123 as long); }
+        _ => { assert(false, "flush failure result"); }
+    }
+    match (_os_flush_from_rt(RtIoResult(3, 0, timeout))) {
+        FlushTimedOut(value) => { require_error(value, 9, 2, 121 as long); }
+        _ => { assert(false, "flush timeout result"); }
+    }
+}
+
+/** Check empty arrays and exact-end zero-length subranges without I/O. */
+func test_zero_lengths() {
+    let empty = ba_create(0);
+    require_read(read_stdin_some_result(empty, 0, 0), 0);
+    require_written(write_stdout_some_result(empty, 0, 0), 0);
+    require_written(write_stderr_some_result(empty, 0, 0), 0);
+    ba_free(empty);
+    let bytes = ba_create(4);
+    require_read(read_stdin_some_result(bytes, 4, 0), 0);
+    require_written(write_stdout_some_result(bytes, 4, 0), 0);
+    ba_free(bytes);
+}
+
+/** Verify a partial read, then EOF, then a successful zero-length read. */
+func test_stdin() {
+    let bytes = ba_create(5);
+    ba_set(bytes, 0, 'a');
+    ba_set(bytes, 4, 'b');
+    require_read(read_stdin_some_result(bytes, 1, 3), 2);
+    assert(ba_get(bytes, 0) == 'a' && ba_get(bytes, 4) == 'b', "read subrange boundaries");
+    assert(ba_get(bytes, 1) == 'x' && ba_get(bytes, 2) == 'y', "read bytes");
+    match (read_stdin_some_result(bytes, 1, 3)) {
+        Eof => {}
+        _ => { assert(false, "stdin EOF"); }
+    }
+    require_read(read_stdin_some_result(bytes, 5, 0), 0);
+    ba_free(bytes);
+}
+
+/** Verify stdout and stderr select the requested source subrange and flush. */
+func test_stdout_stderr() {
+    let bytes = ba_create(6);
+    ba_set(bytes, 0, 'x');
+    ba_set(bytes, 1, 'a');
+    ba_set(bytes, 2, 'b');
+    ba_set(bytes, 3, 'c');
+    ba_set(bytes, 4, 'd');
+    ba_set(bytes, 5, 'y');
+    require_written(write_stdout_some_result(bytes, 1, 2), 2);
+    require_written(write_stderr_some_result(bytes, 3, 2), 2);
+    require_flushed(flush_stdout_result());
+    require_flushed(flush_stderr_result());
+    ba_free(bytes);
+}
+
+/** Run public state checks, or one subprocess-driven stream scenario. */
+func main() -> int {
+    if (argc() > 1) {
+        let mode = argv(1);
+        if (mode == "read") {
+            test_stdin();
+            return 0;
+        }
+        if (mode == "write") {
+            test_stdout_stderr();
+            return 0;
+        }
+        let bytes = ba_create(2);
+        if (mode == "invalid-read-range") {
+            read_stdin_some_result(bytes, -1, 0);
+        }
+        if (mode == "invalid-write-range") {
+            write_stdout_some_result(bytes, 1, 2);
+        }
+        if (mode == "invalid-stderr-range") {
+            write_stderr_some_result(bytes, 2, -1);
+        }
+        ba_free(bytes);
+        return 99;
+    }
+    test_errors();
+    test_result_transport();
+    test_zero_lengths();
+    printl_s("os_error_main: PASS");
+    return 0;
+}

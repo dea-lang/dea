@@ -101,7 +101,9 @@ rt_errno
 rt_exit
 rt_file_info
 rt_flush_stderr
+rt_flush_stderr_result
 rt_flush_stdout
+rt_flush_stdout_result
 rt_free
 rt_get_argc
 rt_get_argv
@@ -121,6 +123,9 @@ rt_hash_string
 rt_memcmp
 rt_memcpy
 rt_memset
+rt_os_error_from_errno
+rt_os_error_from_win32
+rt_os_error_message
 rt_print
 rt_print_bool
 rt_print_bool_stderr
@@ -147,8 +152,11 @@ rt_realloc
 rt_register_foreign
 rt_srand
 rt_stderr_write
+rt_stderr_write_result
 rt_stdin_read
+rt_stdin_read_result
 rt_stdout_write
+rt_stdout_write_result
 rt_string_bytes_ptr
 rt_string_compare
 rt_string_concat

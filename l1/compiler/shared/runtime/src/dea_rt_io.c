@@ -29,6 +29,43 @@ extern int DEA_RUNTIME_REMOVE(const char *path);
 #define DEA_RUNTIME_REMOVE remove
 #endif
 
+/* New direct-result operations have independent primitive hooks for boundary probes. */
+#ifdef DEA_RUNTIME_OS_FREAD
+extern size_t DEA_RUNTIME_OS_FREAD(void *buffer, size_t size, size_t count, FILE *stream);
+#else
+#define DEA_RUNTIME_OS_FREAD fread
+#endif
+
+#ifdef DEA_RUNTIME_OS_FWRITE
+extern size_t DEA_RUNTIME_OS_FWRITE(const void *buffer, size_t size, size_t count, FILE *stream);
+#else
+#define DEA_RUNTIME_OS_FWRITE fwrite
+#endif
+
+#ifdef DEA_RUNTIME_OS_FFLUSH
+extern int DEA_RUNTIME_OS_FFLUSH(FILE *stream);
+#else
+#define DEA_RUNTIME_OS_FFLUSH fflush
+#endif
+
+#ifdef DEA_RUNTIME_OS_FERROR
+extern int DEA_RUNTIME_OS_FERROR(FILE *stream);
+#else
+#define DEA_RUNTIME_OS_FERROR ferror
+#endif
+
+#ifdef DEA_RUNTIME_OS_FEOF
+extern int DEA_RUNTIME_OS_FEOF(FILE *stream);
+#else
+#define DEA_RUNTIME_OS_FEOF feof
+#endif
+
+#ifdef DEA_RUNTIME_OS_CLEARERR
+extern void DEA_RUNTIME_OS_CLEARERR(FILE *stream);
+#else
+#define DEA_RUNTIME_OS_CLEARERR clearerr
+#endif
+
 /* =========================================================================
  * Runtime support for file I/O and metadata, stdin/stdout/stderr stream I/O,
  * formatted printing of dea values (strings, integers, floats, booleans),
@@ -288,6 +325,165 @@ dea_int rt_stdout_write(dea_byte *buf, dea_int len) {
  */
 dea_int rt_stderr_write(dea_byte *buf, dea_int len) {
     return _rt_stream_write_some(stderr, buf, len);
+}
+
+/**
+ * Construct a successful direct I/O result without allocating storage.
+ *
+ * @param count Successfully transferred bytes.
+ * @return Successful result; its unused error record is initialized.
+ */
+static struct __deaM3sys2osS10RtIoResult _rt_os_io_success(dea_int count) {
+    return (struct __deaM3sys2osS10RtIoResult){
+        .state = DEA_IO_OK,
+        .count = count,
+        .error = { .kind = DEA_OS_ERROR_OTHER, .domain = DEA_OS_DOMAIN_RUNTIME, .native_code = 0 },
+    };
+}
+
+/**
+ * Construct a runtime-generated I/O failure without inventing a native code.
+ *
+ * @param kind Normalized failure category.
+ * @return Failed result in the Runtime error domain.
+ */
+static struct __deaM3sys2osS10RtIoResult _rt_os_io_runtime_failure(dea_int kind) {
+    return (struct __deaM3sys2osS10RtIoResult){
+        .state = DEA_IO_FAILED,
+        .count = 0,
+        .error = { .kind = kind, .domain = DEA_OS_DOMAIN_RUNTIME, .native_code = 0 },
+    };
+}
+
+/**
+ * Convert an error captured immediately after a C stdio primitive.
+ *
+ * @param native_code Captured errno value; zero means no code was supplied.
+ * @return Failure or distinct timeout, retaining all supplied native data.
+ */
+static struct __deaM3sys2osS10RtIoResult _rt_os_io_errno_failure(dea_int native_code) {
+    if (native_code == 0) return _rt_os_io_runtime_failure(DEA_OS_ERROR_IO_ERROR);
+    struct __deaM3sys2osS9RtOsError error = rt_os_error_from_errno(native_code);
+    return (struct __deaM3sys2osS10RtIoResult){
+        .state = error.kind == DEA_OS_ERROR_TIMED_OUT ? DEA_IO_TIMED_OUT : DEA_IO_FAILED,
+        .count = 0,
+        .error = error,
+    };
+}
+
+/**
+ * Read one partial transfer from standard input with direct error transport.
+ *
+ * A zero count succeeds without inspecting stdin or dereferencing the buffer.
+ * A positive partial transfer succeeds even if stdio also records a terminal
+ * condition; the next operation makes its own attempt. Interruption is not
+ * restarted. CRT stdio errors use the Errno domain on Windows as well as POSIX.
+ *
+ * @param buf Destination bytes; nullable only for zero capacity.
+ * @param capacity Maximum number of bytes to read.
+ * @return Successful count, EOF, timeout, or captured failure.
+ */
+struct __deaM3sys2osS10RtIoResult rt_stdin_read_result(dea_byte *buf, dea_int capacity) {
+    if (capacity < 0 || (capacity > 0 && buf == NULL)) {
+        return _rt_os_io_runtime_failure(DEA_OS_ERROR_INVALID_INPUT);
+    }
+    if (capacity == 0) return _rt_os_io_success(0);
+
+    DEA_RUNTIME_OS_CLEARERR(stdin);
+    errno = 0;
+    size_t count = DEA_RUNTIME_OS_FREAD(buf, 1, (size_t)capacity, stdin);
+    dea_int native_code = (dea_int)errno;
+    if (count > 0) return _rt_os_io_success((dea_int)count);
+    if (DEA_RUNTIME_OS_FERROR(stdin)) return _rt_os_io_errno_failure(native_code);
+    if (DEA_RUNTIME_OS_FEOF(stdin)) {
+        struct __deaM3sys2osS10RtIoResult result = _rt_os_io_success(0);
+        result.state = DEA_IO_EOF;
+        return result;
+    }
+    return _rt_os_io_runtime_failure(DEA_OS_ERROR_IO_ERROR);
+}
+
+/**
+ * Write a partial transfer to one standard stream, preserving stdio buffering.
+ *
+ * Accepted bytes are successful even when an error indicator is also present.
+ * This helper does not change process-wide SIGPIPE handling: the host may
+ * deliver that signal before a write can return its captured EPIPE result.
+ *
+ * @param stream Standard output or standard error.
+ * @param buf Source bytes; nullable only for zero length.
+ * @param len Maximum number of bytes to write.
+ * @return Successful count, timeout, or captured failure.
+ */
+static struct __deaM3sys2osS10RtIoResult _rt_os_stream_write_result(FILE *stream,
+                                                                 const dea_byte *buf, dea_int len) {
+    if (len < 0 || (len > 0 && buf == NULL)) {
+        return _rt_os_io_runtime_failure(DEA_OS_ERROR_INVALID_INPUT);
+    }
+    if (len == 0) return _rt_os_io_success(0);
+
+    DEA_RUNTIME_OS_CLEARERR(stream);
+    errno = 0;
+    size_t count = DEA_RUNTIME_OS_FWRITE(buf, 1, (size_t)len, stream);
+    dea_int native_code = (dea_int)errno;
+    if (count > 0) return _rt_os_io_success((dea_int)count);
+    if (DEA_RUNTIME_OS_FERROR(stream)) return _rt_os_io_errno_failure(native_code);
+    return _rt_os_io_success(0);
+}
+
+/**
+ * Write a partial transfer to standard output with direct error transport.
+ *
+ * @param buf Source bytes; nullable only for zero length.
+ * @param len Maximum number of bytes to write.
+ * @return Successful accepted count, timeout, or captured failure.
+ */
+struct __deaM3sys2osS10RtIoResult rt_stdout_write_result(dea_byte *buf, dea_int len) {
+    return _rt_os_stream_write_result(stdout, buf, len);
+}
+
+/**
+ * Write a partial transfer to standard error with direct error transport.
+ *
+ * @param buf Source bytes; nullable only for zero length.
+ * @param len Maximum number of bytes to write.
+ * @return Successful accepted count, timeout, or captured failure.
+ */
+struct __deaM3sys2osS10RtIoResult rt_stderr_write_result(dea_byte *buf, dea_int len) {
+    return _rt_os_stream_write_result(stderr, buf, len);
+}
+
+/**
+ * Flush one standard stream and retain a failure before any later operation.
+ *
+ * @param stream Stream whose runtime buffers should be flushed.
+ * @return Successful zero count, timeout, or captured failure.
+ */
+static struct __deaM3sys2osS10RtIoResult _rt_os_stream_flush_result(FILE *stream) {
+    DEA_RUNTIME_OS_CLEARERR(stream);
+    errno = 0;
+    int result = DEA_RUNTIME_OS_FFLUSH(stream);
+    dea_int native_code = (dea_int)errno;
+    if (result == 0) return _rt_os_io_success(0);
+    return _rt_os_io_errno_failure(native_code);
+}
+
+/**
+ * Flush standard output with direct error transport.
+ *
+ * @return Successful zero count, timeout, or captured failure.
+ */
+struct __deaM3sys2osS10RtIoResult rt_flush_stdout_result(void) {
+    return _rt_os_stream_flush_result(stdout);
+}
+
+/**
+ * Flush standard error with direct error transport.
+ *
+ * @return Successful zero count, timeout, or captured failure.
+ */
+struct __deaM3sys2osS10RtIoResult rt_flush_stderr_result(void) {
+    return _rt_os_stream_flush_result(stderr);
 }
 
 /* =========================================================================

@@ -312,6 +312,63 @@ struct __deaM3sys2rtS10RtFileInfo {
 };
 #endif
 
+/* Stable integer transport tags for `sys.os`; public enums wrap these records. */
+#define DEA_OS_DOMAIN_RUNTIME 0
+#define DEA_OS_DOMAIN_ERRNO 1
+#define DEA_OS_DOMAIN_WIN32 2
+
+#define DEA_OS_ERROR_OTHER 0
+#define DEA_OS_ERROR_NOT_FOUND 1
+#define DEA_OS_ERROR_PERMISSION_DENIED 2
+#define DEA_OS_ERROR_ALREADY_EXISTS 3
+#define DEA_OS_ERROR_INVALID_INPUT 4
+#define DEA_OS_ERROR_INVALID_HANDLE 5
+#define DEA_OS_ERROR_INTERRUPTED 6
+#define DEA_OS_ERROR_WOULD_BLOCK 7
+#define DEA_OS_ERROR_BROKEN_PIPE 8
+#define DEA_OS_ERROR_TIMED_OUT 9
+#define DEA_OS_ERROR_UNSUPPORTED 10
+#define DEA_OS_ERROR_NOT_SEEKABLE 11
+#define DEA_OS_ERROR_OUT_OF_MEMORY 12
+#define DEA_OS_ERROR_RESOURCE_EXHAUSTED 13
+#define DEA_OS_ERROR_IO_ERROR 14
+#define DEA_OS_ERROR_IS_DIRECTORY 15
+#define DEA_OS_ERROR_NOT_DIRECTORY 16
+#define DEA_OS_ERROR_DIRECTORY_NOT_EMPTY 17
+#define DEA_OS_ERROR_NO_SPACE 18
+#define DEA_OS_ERROR_FILE_TOO_LARGE 19
+
+#define DEA_IO_OK 0
+#define DEA_IO_EOF 1
+#define DEA_IO_FAILED 2
+#define DEA_IO_TIMED_OUT 3
+
+/**
+ * @struct __deaM3sys2osS9RtOsError
+ * Definition for `sys.os::RtOsError`, preserving the native code's domain.
+ */
+#ifndef DEA_DEFINED___deaM3sys2osS9RtOsError
+#define DEA_DEFINED___deaM3sys2osS9RtOsError
+struct __deaM3sys2osS9RtOsError {
+    dea_int kind;
+    dea_int domain;
+    dea_long native_code;
+};
+#endif
+
+/**
+ * @struct __deaM3sys2osS10RtIoResult
+ * Definition for `sys.os::RtIoResult`; errors are meaningful on failed states.
+ */
+#ifndef DEA_DEFINED___deaM3sys2osS10RtIoResult
+#define DEA_DEFINED___deaM3sys2osS10RtIoResult
+struct __deaM3sys2osS10RtIoResult {
+    dea_int state;
+    dea_int count;
+    struct __deaM3sys2osS9RtOsError error;
+};
+#endif
+
 
 /* =========================================================================
  * Runtime function declarations
@@ -410,6 +467,14 @@ dea_int _rt_stream_write_some(FILE *stream, const dea_byte *buf, dea_int len);
 dea_int rt_stdin_read(dea_byte *buf, dea_int capacity);
 dea_int rt_stdout_write(dea_byte *buf, dea_int len);
 dea_int rt_stderr_write(dea_byte *buf, dea_int len);
+struct __deaM3sys2osS9RtOsError rt_os_error_from_errno(dea_int native_code);
+struct __deaM3sys2osS9RtOsError rt_os_error_from_win32(dea_long native_code);
+dea_string rt_os_error_message(struct __deaM3sys2osS9RtOsError error);
+struct __deaM3sys2osS10RtIoResult rt_stdin_read_result(dea_byte *buf, dea_int capacity);
+struct __deaM3sys2osS10RtIoResult rt_stdout_write_result(dea_byte *buf, dea_int len);
+struct __deaM3sys2osS10RtIoResult rt_stderr_write_result(dea_byte *buf, dea_int len);
+struct __deaM3sys2osS10RtIoResult rt_flush_stdout_result(void);
+struct __deaM3sys2osS10RtIoResult rt_flush_stderr_result(void);
 void rt_flush_stdout(void);
 void rt_flush_stderr(void);
 void rt_print(dea_string s);

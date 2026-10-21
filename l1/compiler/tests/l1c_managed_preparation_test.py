@@ -221,9 +221,9 @@ def main() -> int:
         assert analysis_count(kept, "app") == 2 and analysis_count(kept, "_dea_preparation") == 0, kept.stderr
         retained = Path(str(program) + ".dea-c") / "std/io.c"
         assert retained.read_bytes() == canonical_c
-        # This fixture imports exactly std.io's ten-module bundled closure.
-        expected_managed = {"std.array", "std.assert", "std.integer", "std.io", "std.string", "std.text",
-                            "std.unit", "std.vector", "sys.memory", "sys.rt"}
+        # This fixture imports exactly std.io's bundled source closure.
+        expected_managed = {"std.array", "std.assert", "std.integer", "std.io", "std.os", "std.string", "std.text",
+                            "std.unit", "std.vector", "sys.memory", "sys.os", "sys.rt"}
         generated_managed = re.findall(r"Starting analysis for entry module '((?:std|sys)\.[^']+)'", kept.stderr)
         assert sorted(generated_managed) == sorted(expected_managed), generated_managed
         retained_root = Path(str(program) + ".dea-c")
@@ -263,7 +263,12 @@ def main() -> int:
                     re.findall(r"^Preparation command \(([^)]+)\): (.*)$", configured.stderr, re.MULTILINE)]
         module_commands = [words for purpose, words in commands if purpose.startswith(("std.", "sys."))]
         runtime_commands = [words for purpose, words in commands if purpose.startswith("dea_rt_")]
-        assert len(module_commands) == 23 and len(runtime_commands) == 9
+        interfaces = Path(env["L1_BUILD_DIR"]) / "interfaces"
+        expected_bundled = {".".join(path.relative_to(interfaces).with_suffix("").parts)
+                            for path in interfaces.rglob("*.l1m")}
+        prepared_modules = [purpose for purpose, _ in commands if purpose.startswith(("std.", "sys."))]
+        assert set(prepared_modules) == expected_bundled and len(prepared_modules) == len(expected_bundled)
+        assert len(runtime_commands) == 9
         for words in module_commands:
             assert Path(words[0]).resolve() == Path(cc).resolve()
             assert words.index("-O0") < words.index("-O1") < words.index("-std=c99")

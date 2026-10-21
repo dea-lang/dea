@@ -13,12 +13,14 @@ module std.io;
 
 import sys.rt;
 import sys.memory;
+import sys.os;
 
 import std.array;
 import std.assert;
 import std.string;
 import std.text;
 import std.unit;
+import std.os;
 
 /* ---------------------------------
    Input
@@ -242,6 +244,64 @@ func read_stdin_some(buf: ByteArray*, start: int, count: int) -> int? {
 }
 
 /**
+ * Read bytes from stdin with explicit EOF and captured error information.
+ *
+ * A valid zero-length request succeeds without inspecting stdin. Positive
+ * partial transfers succeed. Interrupted operations are not retried.
+ *
+ * @param buf Destination byte array.
+ * @param start Start offset within the buffer.
+ * @param count Maximum number of bytes to read.
+ * @return Read count, EOF, native timeout, or captured error.
+ */
+func read_stdin_some_result(buf: ByteArray*, start: int, count: int) -> ReadResult {
+    _io_check_byte_range(buf, start, count);
+    if (count == 0) {
+        return Read(0);
+    }
+    return _os_read_from_rt(rt_stdin_read_result(arr_get(buf.storage, start) as byte*, count));
+}
+
+/**
+ * Write bytes to stdout with captured error information.
+ *
+ * Success reports bytes accepted by stdio, including partial transfers. Use
+ * flush_stdout_result to observe deferred flush failures. POSIX SIGPIPE policy
+ * is unchanged; BrokenPipe can be returned when SIGPIPE is ignored or blocked.
+ *
+ * @param buf Source byte array.
+ * @param start Start offset within the buffer.
+ * @param count Maximum number of bytes to write.
+ * @return Accepted count, native timeout, or captured error.
+ */
+func write_stdout_some_result(buf: ByteArray*, start: int, count: int) -> WriteResult {
+    _io_check_byte_range(buf, start, count);
+    if (count == 0) {
+        return Written(0);
+    }
+    return _os_write_from_rt(rt_stdout_write_result(arr_get(buf.storage, start) as byte*, count));
+}
+
+/**
+ * Write bytes to stderr with captured error information.
+ *
+ * Success reports bytes accepted by stdio, including partial transfers. Use
+ * flush_stderr_result to observe deferred failures. POSIX SIGPIPE is unchanged.
+ *
+ * @param buf Source byte array.
+ * @param start Start offset within the buffer.
+ * @param count Maximum number of bytes to write.
+ * @return Accepted count, native timeout, or captured error.
+ */
+func write_stderr_some_result(buf: ByteArray*, start: int, count: int) -> WriteResult {
+    _io_check_byte_range(buf, start, count);
+    if (count == 0) {
+        return Written(0);
+    }
+    return _os_write_from_rt(rt_stderr_write_result(arr_get(buf.storage, start) as byte*, count));
+}
+
+/**
  * Write up to `count` raw bytes from one byte-array subrange to standard output.
  *
  * @param buf Source buffer.
@@ -351,6 +411,28 @@ func flush_stdout() -> void {
  */
 func flush_stderr() -> void {
     rt_flush_stderr();
+}
+
+/**
+ * Flush stdout's stdio buffer, reporting a captured failure directly.
+ *
+ * This does not request durable storage or change POSIX SIGPIPE handling.
+ *
+ * @return Flush success, native timeout, or captured error.
+ */
+func flush_stdout_result() -> FlushResult {
+    return _os_flush_from_rt(rt_flush_stdout_result());
+}
+
+/**
+ * Flush stderr's stdio buffer, reporting a captured failure directly.
+ *
+ * This does not request durable storage or change POSIX SIGPIPE handling.
+ *
+ * @return Flush success, native timeout, or captured error.
+ */
+func flush_stderr_result() -> FlushResult {
+    return _os_flush_from_rt(rt_flush_stderr_result());
 }
 
 /* ---------------------------------

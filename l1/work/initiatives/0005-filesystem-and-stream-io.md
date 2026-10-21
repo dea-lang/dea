@@ -1,16 +1,16 @@
 # L1 Initiative 0005 - Filesystem and Stream I/O
 
-- Version: 2026-09-07
+- Version: 2026-10-21
 - Status: Active
 - Kind: Initiative
 - Open plans:
-  - `l1/work/plans/features/2026-08-30-os-error-and-io-results-noref.md`
   - `l1/work/plans/features/2026-08-30-dynamic-byte-buffers-noref.md`
   - `l1/work/plans/features/2026-08-30-file-handles-and-random-access-noref.md`
   - `l1/work/plans/features/2026-08-30-filesystem-mutations-and-directory-traversal-noref.md`
   - `l1/work/plans/features/2026-08-30-streams-and-buffering-noref.md`
   - `l1/work/plans/features/2026-08-30-file-watch-api-design-noref.md`
 - Closed plans:
+  - `l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md`
   - `l1/work/plans/features/closed/2026-08-30-wide-filesystem-metadata-noref.md`
 
 ## Summary
@@ -28,7 +28,8 @@ runtime boundary. It is not a literal mirror of C99 or of any one host API. This
 ## Current baseline
 
 - `std.fs` exposes metadata, whole-file string reads and writes, and file deletion.
-- `std.io` exposes standard-stream byte transfers whose buffer indexes and counts are `int`.
+- `std.io` exposes standard-stream byte transfers whose buffer indexes and counts are `int`. Additive result helpers use
+  shared `std.os` errors and distinguish EOF, timeout, failure, and successful partial transfer.
 - L1 has no general file-handle API, so there is no legacy 32-bit offset contract to preserve.
 - `std.fs::FileInfo` and `sys.rt::RtFileInfo` use `long?` for file size and modification seconds; normalized nanoseconds
   remain `int?`.
@@ -60,6 +61,8 @@ runtime boundary. It is not a literal mirror of C99 or of any one host API. This
 
 - Define `ErrorKind`, `OsError`, direct native-code preservation, and operation-specific result enums.
 - Widen file size and modification seconds to `long?` without changing whole-file helper bounds.
+- Wide metadata and the direct-error foundation are complete, with standard streams as the first error consumer. Opening
+  results and file-handle ownership remain in Phase 2.
 
 Spawned plans: [OS errors and I/O results] and [wide filesystem metadata].
 
@@ -126,8 +129,8 @@ Spawned plan: [file-watch API design].
 - Decision: Use direct operation-specific results with normalized OS errors, explicit EOF, and successful partial
   transfers as the common I/O contract.
   - Scope: L1
-  - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0045-direct-os-errors-and-io-results.md`
   - Rationale: Files, processes, and sockets need portable branching without discarding native diagnostic codes or
     consulting ambient `errno` after the operation.
 - Decision: Finalize file-handle ownership, close behavior, append atomicity, buffering, and synchronization semantics.
@@ -156,6 +159,6 @@ Spawned plan: [file-watch API design].
 [file-watch api design]: ../plans/features/2026-08-30-file-watch-api-design-noref.md
 [filesystem mutations and directory traversal]: ../plans/features/2026-08-30-filesystem-mutations-and-directory-traversal-noref.md
 [l1 roadmap]: ../../docs/roadmap.md
-[os errors and i/o results]: ../plans/features/2026-08-30-os-error-and-io-results-noref.md
+[os errors and i/o results]: ../plans/features/closed/2026-08-30-os-error-and-io-results-noref.md
 [streams and buffering]: ../plans/features/2026-08-30-streams-and-buffering-noref.md
 [wide filesystem metadata]: ../plans/features/closed/2026-08-30-wide-filesystem-metadata-noref.md

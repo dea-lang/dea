@@ -1,6 +1,6 @@
 # The L1 Standard Library
 
-Version: 2026-10-10
+Version: 2026-10-21
 
 The standard library provides ergonomic L1 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -18,14 +18,14 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
 +---------------------------------------------------------+
 |                      std.* Modules                      |
 | array, assert, fs, hashmap, hashset, io, linear_map,    |
-| integer, optional, path, rand, real, string, system,    |
+| integer, optional, os, path, rand, real, string, system,|
 | text, time, types, unit, vector                         |
 +---------------------------------------------------------+
                              |
                              v
 +---------------------------------------------------------+
 |                      sys.* Modules                      |
-|      hash, memory, real, rt (runtime API)               |
+|      hash, memory, os, real, rt (runtime API)           |
 +---------------------------------------------------------+
                              |
                              v
@@ -175,10 +175,25 @@ backing storage is also rejected defensively. Non-positive counts remain no-ops.
 
 ### `std.io`
 
-**Imports:** `sys.rt`, `sys.memory`, `std.array`, `std.assert`, `std.string`, `std.text`, `std.unit`
+**Imports:** `sys.rt`, `sys.memory`, `sys.os`, `std.array`, `std.assert`, `std.os`, `std.string`, `std.text`, `std.unit`
 
-`std.io` classifies I/O success/failure from direct runtime return values (optional/boolean/sentinel results). Wide
-numeric helpers use `_ui`, `_l`, `_ul`, `_f`, and `_d` suffixes for `uint`, `long`, `ulong`, `float`, and `double`.
+The additive result helpers use the structured errors and concrete result enums from `std.os`. Existing
+optional/boolean/sentinel signatures retain their behavior. Wide numeric helpers use `_ui`, `_l`, `_ul`, `_f`, and `_d`
+suffixes for `uint`, `long`, `ulong`, `float`, and `double`.
+
+| Result helper              | Signature                                                      | Description                                                         |
+| -------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `read_stdin_some_result`   | `func(buf: ByteArray*, start: int, count: int) -> ReadResult`  | Returns transferred bytes, clean EOF, timeout, or captured failure. |
+| `write_stdout_some_result` | `func(buf: ByteArray*, start: int, count: int) -> WriteResult` | Returns bytes accepted by stdout, timeout, or captured failure.     |
+| `write_stderr_some_result` | `func(buf: ByteArray*, start: int, count: int) -> WriteResult` | Returns bytes accepted by stderr, timeout, or captured failure.     |
+| `flush_stdout_result`      | `func() -> FlushResult`                                        | Flushes stdout's C stdio buffer and reports its result.             |
+| `flush_stderr_result`      | `func() -> FlushResult`                                        | Flushes stderr's C stdio buffer and reports its result.             |
+
+The byte helpers assert the same valid `ByteArray` range as the legacy helpers, including for zero counts. A valid zero
+count succeeds with zero transferred bytes without touching the host stream or observing EOF. Positive partial reads and
+writes are successful; interruptions are returned without an implicit retry. Writes count bytes accepted by C stdio, so
+a later explicit flush may report a delayed failure. Flush does not request durable storage. These helpers do not change
+the host or application's `SIGPIPE` disposition, configure timeouts, or introduce an exact/all result API.
 
 | Function            | Signature                                                | Description                                                                         |
 | ------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------- |
@@ -432,6 +447,34 @@ The `modf_*` and `frexp_*` helpers return small named result structs:
 | `expect_i`    | `func(opt: int?, msg: string) -> int`           | Returns value or aborts with message. |
 | `expect_b`    | `func(opt: bool?, msg: string) -> bool`         | Returns value or aborts with message. |
 
+### `std.os`
+
+**Imports:** `sys.os`
+
+| Type/Function   | Definition or signature                                                                                                                                                                                                                                                                                      | Description                                           |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| `ErrorKind`     | `Other`, `NotFound`, `PermissionDenied`, `AlreadyExists`, `InvalidInput`, `InvalidHandle`, `Interrupted`, `WouldBlock`, `BrokenPipe`, `TimedOut`, `Unsupported`, `NotSeekable`, `OutOfMemory`, `ResourceExhausted`, `IoError`, `IsDirectory`, `NotDirectory`, `DirectoryNotEmpty`, `NoSpace`, `FileTooLarge` | Portable normalized error categories.                 |
+| `ErrorDomain`   | `Runtime`, `Errno`, `Win32`                                                                                                                                                                                                                                                                                  | Identifies the native error namespace.                |
+| `OsError`       | `struct OsError { kind: ErrorKind; domain: ErrorDomain; native_code: long; }`                                                                                                                                                                                                                                | Captured failure with its original native code.       |
+| `ReadResult`    | `Read(count: int)`, `Eof`, `ReadTimedOut(error: OsError)`, `ReadFailed(error: OsError)`                                                                                                                                                                                                                      | One read outcome; positive partial transfers succeed. |
+| `WriteResult`   | `Written(count: int)`, `WriteTimedOut(error: OsError)`, `WriteFailed(error: OsError)`                                                                                                                                                                                                                        | One write outcome, including successful short writes. |
+| `FlushResult`   | `Flushed`, `FlushTimedOut(error: OsError)`, `FlushFailed(error: OsError)`                                                                                                                                                                                                                                    | One output-flush outcome.                             |
+| `error_message` | `func(error: OsError) -> string`                                                                                                                                                                                                                                                                             | Renders a diagnostic message from captured data.      |
+
+Portable code branches on `ErrorKind`; `ErrorDomain` and signed `long` `native_code` retain host diagnostics without
+narrowing a Windows native code through `int`. Windows CRT stdio failures use `Errno`, while native Windows APIs use
+`Win32`. Unknown native codes normalize to `Other` and retain their domain and value. Runtime argument validation uses
+`Runtime` / `InvalidInput` with code zero; an I/O failure without a host code uses `Runtime` / `IoError` with code zero.
+No error is inferred from ambient `std.system::errno()` after the operation.
+
+Timeout variants retain the captured `TimedOut` error but remain distinct operation states. The result helpers do not
+configure a deadline or timeout. Error messages may depend on the host and locale and are unsuitable for portable
+branching or exact string assertions; fallback diagnostics include the category, domain, and code. Future file, process,
+pipe, socket, and resolver APIs can reuse this contract; file-opening results and additional native domains belong to
+their consumers.
+
+See [l1/docs/decisions/0045-direct-os-errors-and-io-results.md][os-results].
+
 ### `std.path`
 
 **Imports:** `std.string`, `std.text`
@@ -631,6 +674,14 @@ runtime hash values are not stable identifiers and must not be persisted or used
 values and accidental collisions are not API guarantees across runtime versions, implementations, keys, or process
 executions.
 
+### `sys.os`
+
+Low-level error and standard-stream result transport used by `std.os` and `std.io`. `RtOsError` contains integer `kind`
+and `domain` fields plus `native_code: long`; `RtIoResult` contains `state: int`, `count: int`, and `error: RtOsError`.
+Calls return these records directly with captured data, so callers do not consult ambient `errno` afterward. Result
+states distinguish success, EOF, failure, and timeout. Negative raw counts and null raw buffers with positive counts
+return `Runtime` / `InvalidInput` with code zero; the public byte-array helpers retain their asserted range contract.
+
 ### `sys.rt`
 
 Low-level runtime FFI for strings, I/O, process/system, time, and errors. Also defines `RtTimeParts`
@@ -673,6 +724,21 @@ for checked access through `rt_register_foreign(ptr, bytes, read_only)` and unre
 ## FFI Inventory (`extern func` / `unsafe extern func`)
 
 All `extern func` and `unsafe extern func` symbols exposed to L1 from `sys.*` modules are listed here.
+
+### Declared in `sys.os` (8)
+
+The normal and traced runtime symbol manifests contain the same direct-error surface.
+
+| Function                 | Signature                                               | Description                                                  |
+| ------------------------ | ------------------------------------------------------- | ------------------------------------------------------------ |
+| `rt_os_error_from_errno` | `func(native_code: int) -> RtOsError`                   | Normalizes a saved C runtime/POSIX code.                     |
+| `rt_os_error_from_win32` | `func(native_code: long) -> RtOsError`                  | Normalizes a saved Windows native code.                      |
+| `rt_os_error_message`    | `func(error: RtOsError) -> string`                      | Renders captured error data into an owned diagnostic string. |
+| `rt_stdin_read_result`   | `unsafe func(buf: byte*?, capacity: int) -> RtIoResult` | Returns one direct stdin read result.                        |
+| `rt_stdout_write_result` | `unsafe func(buf: byte*?, count: int) -> RtIoResult`    | Returns one direct stdout write result.                      |
+| `rt_stderr_write_result` | `unsafe func(buf: byte*?, count: int) -> RtIoResult`    | Returns one direct stderr write result.                      |
+| `rt_flush_stdout_result` | `func() -> RtIoResult`                                  | Returns one direct stdout stdio flush result.                |
+| `rt_flush_stderr_result` | `func() -> RtIoResult`                                  | Returns one direct stderr stdio flush result.                |
 
 ### Declared in `sys.rt` (52)
 
@@ -810,3 +876,5 @@ These are runtime-backed hash externs declared directly in `sys.hash`.
 | `rt_hash_opt_string` | `func(opt: string?) -> int`           | Hashes contents with optional-presence domain separation. |
 | `rt_hash_ptr`        | `func(ptr: void*) -> int`             | Hashes a non-null raw pointer value.                      |
 | `rt_hash_opt_ptr`    | `func(opt: void*?) -> int`            | Hashes a present optional raw pointer.                    |
+
+[os-results]: ../decisions/0045-direct-os-errors-and-io-results.md

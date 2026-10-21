@@ -36,7 +36,10 @@ def test_selection_and_commands(root: Path) -> None:
     """Require explicit child selection and platform-aware build commands."""
 
     fixtures = runner.select_child_fixtures([])
-    require([case.name for case in fixtures] == ["math_int_trace_main", "wide_math_main"], "wrong default children")
+    require(
+        [case.name for case in fixtures] == ["math_int_trace_main", "wide_math_main", "os_error_main"],
+        "wrong default children",
+    )
     require(
         [case.name for case in runner.select_child_fixtures(["wide_math_main.l1", "wide_math_main"])]
         == ["wide_math_main"], "child selector did not deduplicate",
