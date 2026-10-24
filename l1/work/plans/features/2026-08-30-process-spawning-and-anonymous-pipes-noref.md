@@ -3,6 +3,7 @@
 ## Add process spawning and anonymous pipes
 
 - Date: 2026-08-30
+- Last reviewed: 2026-10-24
 - Status: Draft
 - Title: Add shell-free process spawning, waiting, and anonymous pipe endpoints
 - Kind: Feature
@@ -30,6 +31,7 @@
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
   - `l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md`
   - `l1/work/plans/features/2026-08-30-streams-and-buffering-noref.md`
+  - `l1/work/plans/features/2026-08-30-time-width-sleep-and-deadlines-noref.md`
 - Repro: `make -C l1 test-compiler TESTS="process_runtime_test pipe_runtime_test analysis_trace_test"`
 
 ## Summary
@@ -37,15 +39,33 @@
 Replace `std.system::system` as the only child-execution option with a typed, shell-free process API and first-class
 anonymous pipe endpoints. The existing shell helper remains available as an explicitly shell-oriented convenience.
 
+## Stdlib-First Direction and Reference Material
+
+Use direct argv execution, executable lookup, and quoting in [l1/compiler/support/compiler_support.c][compiler-support],
+plus capture and current-executable discovery in [l1/compiler/support/preparation/platform.h][platform-support], as
+implementation references and sources of regression cases. Public process/pipe ownership, errors, inheritance, and
+timeout behavior define the new implementation. Private JSON argument carriers, compiler diagnostics, process-group
+policy, and fixed capture limits are not public defaults.
+
+L2 adoption of L1 stdlib and removal of superseded private helpers are separate follow-up work. This plan does not
+require compiler migration, bootstrap changes, or extraction of a common private C implementation.
+
 ## Public Surface
 
 - Process types: `Process`, `ProcessId`, `ExitStatus`, `SpawnOptions`, and `Stdio`.
 - Process operations: `spawn`, `wait`, `try_wait`, `terminate`, `kill`, `pid`, `stdin`, `stdout`, and `stderr`.
+- Executable discovery: `find_executable` and `current_executable`.
 - Pipe types: `PipeReader`, `PipeWriter`.
 - Pipe operations: `create`, `read_some`, `read_exact`, `write_some`, `write_all`, and `close`.
 
 `SpawnOptions` carries an argument vector, environment replacement or overrides, working directory, and standard-stream
 routing as inherit, null, file, or pipe.
+
+Assess a bounded `run_capture` convenience over the process/pipe APIs. Before including it, settle separate
+stdout/stderr limits, binary results, concurrent draining, input completion, timeout and partial-output results, and
+child/resource cleanup. Use the time/deadline plan's monotonic contract. If these guarantees exceed the initial tranche,
+record a bounded follow-up scope and defer the helper explicitly; capture is not a prerequisite for closing the core API
+plan.
 
 ## Required Semantics
 
@@ -56,14 +76,20 @@ routing as inherit, null, file, or pipe.
 5. `wait` is idempotence-defined, and `try_wait` distinguishes running, exited, and failure.
 6. `ExitStatus` distinguishes normal exit from signal or host termination where available.
 7. `terminate` and `kill` state their platform-strength guarantees without pretending they are equivalent.
+8. `find_executable` defines ordered `PATH` search, empty/relative components, Windows executable-suffix policy, and
+   missing versus failed lookup. Anchor a selected relative candidate before a later working-directory change while
+   preserving executable aliases whose spelling affects invocation behavior.
+9. `current_executable` uses actual-host discovery rather than assuming `argv[0]` is a usable path. Document host alias
+   spelling and unavailable-path behavior; neither discovery API guarantees the file cannot change before launch.
 
 ## Implementation Phases
 
 1. Implement owned anonymous pipe endpoints and broken-pipe behavior.
-2. Define process handles, argument/environment transport, and standard-stream routing.
+2. Define process handles, argument/environment transport, standard-stream routing, and executable discovery.
 3. Add spawn and wait/try-wait on POSIX and Windows without a shell.
 4. Add termination, kill, and exit-status normalization.
-5. Add stream adapters, failure injection, handle-leak checks, and hostile-argument fixtures.
+5. Decide the bounded-capture tranche; implement and test it only if its result and cleanup contracts are settled.
+6. Add stream adapters, failure injection, handle-leak checks, and hostile-argument fixtures.
 
 ## Non-Goals
 
@@ -72,6 +98,7 @@ routing as inherit, null, file, or pipe.
 - named pipes, Unix-domain sockets, or shared-memory IPC
 - process groups, daemonization, privilege changes, or sandbox policy in v1
 - asynchronous wait or event-loop integration
+- L2 compiler migration or removal of compiler-private support
 
 ## ADR Impact
 
@@ -82,6 +109,19 @@ routing as inherit, null, file, or pipe.
   - ADR: `l1/docs/decisions/`
   - Rationale: These choices form the portable security, lifetime, and behavior contract for compiler drivers and build
     tools that launch child processes.
+- Decision: Define executable search and current-executable discovery independently of shell interpretation and
+  invocation-time working-directory changes.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: Search order, Windows suffix selection, alias preservation, and host-discovered identity are durable
+    process API behavior.
+- Decision: Include bounded process capture in the initial tranche or defer it with explicit follow-up scope.
+  - Scope: L1
+  - Disposition: Pending
+  - ADR: None
+  - Rationale: Concurrent draining, limits, timeout, partial output, and cleanup must be resolved before a convenience
+    helper can promise bounded execution; an explicit deferral also resolves this question.
 
 ## Verification Criteria
 
@@ -91,3 +131,12 @@ routing as inherit, null, file, or pipe.
 4. Pipe EOF and broken-pipe behavior is consistent and cannot terminate the parent process.
 5. Wait, try-wait, terminate, and kill produce the documented state transitions.
 6. Trace and host-level leak checks cover success and every spawn-failure stage.
+7. Executable lookup covers root order, empty/relative components, aliases, spaces, Unicode, and native Windows suffix
+   behavior. A later cwd change does not reinterpret a returned path; current-executable lookup works independently of
+   the original command spelling.
+8. If capture is selected, exercise simultaneous stdout/stderr beyond pipe capacity, binary bytes, independent limits,
+   partial output, timeout, and cleanup without deadlock. Otherwise record its deferral and resolve its ADR Impact
+   entry.
+
+[compiler-support]: ../../../compiler/support/compiler_support.c
+[platform-support]: ../../../compiler/support/preparation/platform.h

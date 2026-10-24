@@ -3,6 +3,7 @@
 ## Add a JSON data-format module
 
 - Date: 2026-08-30
+- Last reviewed: 2026-10-24
 - Status: Draft
 - Title: Add streaming-capable JSON parsing and serialization
 - Kind: Feature
@@ -32,6 +33,17 @@
 Add `std.json` with a streaming tokenizer/parser as the foundation, convenient whole-string parsing, and matching
 serialization to strings or writers. The implementation must not require every document to fit in one whole-file string
 before parsing begins.
+
+## Stdlib-First Direction and Reference Material
+
+Use [l1/compiler/support/preparation/json.h][json-support] as reference material for escaping, number preservation,
+duplicate-key handling, limits, and regression inputs. Inventory useful cases before implementation while choosing the
+public data model independently. The private parser reads a complete buffer, rejects escaped NUL, and has
+compiler-specific allocation/error behavior; it is not the streaming stdlib contract. Test valid embedded-NUL strings
+with explicit lengths, Unicode validation, and chunk boundaries under the public contract.
+
+L2 adoption of L1 stdlib and replacement/removal of its private JSON implementation belong to separate follow-up work.
+Neither compiler migration nor extraction of shared private C code is required to complete this plan.
 
 ## Proposed Surface
 
@@ -64,6 +76,7 @@ before parsing begins.
 - requiring one whole-file read before tokenization
 - network transport or filesystem policy inside `std.json`
 - a generic serialization framework for arbitrary L1 structs in v1
+- L2 compiler migration, bootstrap changes, or removal of compiler-private support
 
 ## ADR Impact
 
@@ -83,3 +96,5 @@ before parsing begins.
 4. Limits fail explicitly before stack, arithmetic, or allocation overflow.
 5. Parse/serialize round trips follow the selected number and object-order policies.
 6. Trace tests cover success and every partially constructed aggregate failure path.
+
+[json-support]: ../../../compiler/support/preparation/json.h

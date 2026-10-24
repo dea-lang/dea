@@ -3,6 +3,7 @@
 ## Audit standard-library capability coverage
 
 - Date: 2026-08-30
+- Last reviewed: 2026-10-24
 - Status: Draft
 - Title: Document portable systems capability and C99 coverage for the L1 standard library
 - Kind: Feature
@@ -42,6 +43,20 @@ Classify each capability as:
 The matrix covers C99 header families plus non-C99 capabilities required by real systems programs, including
 directories, processes, pipes, temporary objects, entropy, networking, and concurrency.
 
+## Stdlib-First Direction and Reference Material
+
+Record public stdlib availability separately from compiler-private capability. Inventory
+[l1/compiler/support/compiler_support.c][compiler-support] and
+[l1/compiler/support/preparation/platform.h][platform-support], with related preparation helpers, as reference material
+for implementation and regression cases. A private helper does not make a capability implemented in `std.*` or `sys.*`.
+Link candidate public additions to their existing plans: filesystem identity and resolution, opened-file metadata,
+executable discovery, bounded-capture assessment, and owned private temporary directories.
+
+The direction is complete L1 stdlib contracts first, then separately scoped L2 adoption and removal of superseded
+compiler-private helpers. This audit neither creates that migration plan nor makes migration or shared-private-code
+extraction a completion requirement. Private hashing and file-locking code does not imply new public digest or locking
+scope in the current stdlib plans.
+
 ## Required Conclusions
 
 1. C99 assertions, fixed-width scalars, raw memory/string work, numeric parsing, mathematics, environment, and process
@@ -53,10 +68,13 @@ directories, processes, pipes, temporary objects, entropy, networking, and concu
    future workload justifies them.
 6. Complex arithmetic and floating-environment control remain low-priority gaps rather than implied requirements.
 7. Every planned row links to an active roadmap item, initiative, or plan.
+8. Compiler-private reference implementations are distinguished from public API coverage, with public additions owned by
+   their stdlib plans and L2 migration/removal left as separate follow-up work.
 
 ## Implementation Phases
 
-1. Inventory exported `std.*` and `sys.*` modules and current runtime support.
+1. Inventory exported `std.*` and `sys.*` modules and current runtime support, recording private reference code and
+   applicable regression cases separately.
 2. Build the C99-family matrix with evidence links into current reference docs.
 3. Add the non-C99 portable systems capability matrix.
 4. Reconcile every planned row against active lifecycle documents and remove unsupported parity language.
@@ -69,6 +87,7 @@ directories, processes, pipes, temporary objects, entropy, networking, and concu
 - documenting draft APIs as implemented
 - replacing the canonical implemented API inventory in `standard-library.md`
 - expanding this documentation plan into implementation work
+- extracting compiler-private C code or implementing L2 migration/removal
 
 ## ADR Impact
 
@@ -86,3 +105,8 @@ directories, processes, pipes, temporary objects, entropy, networking, and concu
 3. C99 omissions and intentional replacements are explicit.
 4. Non-C99 systems capabilities are visible so C99 does not become the accidental completeness boundary.
 5. All links resolve and the roadmap and coverage matrix agree on ownership and status.
+6. Private-only services remain unimplemented in the public-coverage columns, even when they provide reference code for
+   a planned API. L2 migration and removal of superseded helpers are not claimed as stdlib delivery.
+
+[compiler-support]: ../../../compiler/support/compiler_support.c
+[platform-support]: ../../../compiler/support/preparation/platform.h

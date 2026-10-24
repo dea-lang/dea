@@ -1,6 +1,6 @@
 # L1 Initiative 0006 - Process and Host Services
 
-- Version: 2026-08-30
+- Version: 2026-10-24
 - Status: Active
 - Kind: Initiative
 - Open plans:
@@ -19,6 +19,16 @@ POSIX and Win32 differences.
 
 This initiative executes under the [L1 roadmap] and consumes the shared error and endpoint contracts from
 [Initiative 0005].
+
+## Stdlib-first delivery and compiler follow-up
+
+Define complete public L1 host-service contracts and use existing compiler-private C helpers/tests as reference material
+for implementation and platform edge cases. Private argument carriers, temporary-parent policy, fixed probe limits, and
+coarse errors do not become the stdlib contract. Relevant child plans inventory those references before implementation.
+
+L2 can later consume L1 stdlib through separately scoped migration work and remove superseded private helpers. Preserve
+canonical L1's L0 bootstrap boundary. Compiler migration/removal and shared-private-code extraction are not completion
+requirements for this initiative or its stdlib plans.
 
 ## Current baseline
 
@@ -51,14 +61,16 @@ Spawned plan: [secure OS entropy].
 
 ### Phase 1 - Temporary objects (Stdlib Tier 2)
 
-Add exclusive temporary files and directories plus cleanup helpers over the filesystem and entropy foundations.
+Add exclusive temporary files and directories plus cleanup helpers over the filesystem and entropy foundations. Specify
+explicit/default parent selection, owned private directories, and observable primary/cleanup failures.
 
 Spawned plan: [secure temporary objects].
 
 ### Phase 2 - Process spawning and pipes (Stdlib Tier 2)
 
 Add anonymous pipe endpoints, child spawning, wait and try-wait, exit status, termination, and explicit standard-stream
-routing.
+routing. Add executable lookup and current-executable discovery. Assess bounded output capture only with explicit
+limits, monotonic timeout, partial-output, and cleanup contracts, or record a bounded follow-up scope.
 
 Spawned plan: [process spawning and anonymous pipes].
 
@@ -86,7 +98,7 @@ Spawned plan: [time width, sleep, and deadlines].
 ## ADR Impact
 
 - Decision: Define shell-free process spawning, separately owned anonymous pipe endpoints, explicit standard-stream
-  routing, and non-inherited native handles by default.
+  routing, executable discovery, and non-inherited native handles by default.
   - Scope: L1
   - Disposition: New ADR
   - ADR: `l1/docs/decisions/`

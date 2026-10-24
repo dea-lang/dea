@@ -1,6 +1,6 @@
 # L1 Initiative 0005 - Filesystem and Stream I/O
 
-- Version: 2026-10-21
+- Version: 2026-10-24
 - Status: Active
 - Kind: Initiative
 - Open plans:
@@ -24,6 +24,17 @@ useful portable surface.
 The target is portable systems capability with typed Dea APIs and platform-specific behavior contained behind the
 runtime boundary. It is not a literal mirror of C99 or of any one host API. This initiative executes under the
 [L1 roadmap].
+
+## Stdlib-first delivery and compiler follow-up
+
+Complete public L1 contracts through `std.*`, `sys.*`, and the runtime. Existing compiler-private C helpers and their
+tests are reference material for host behavior and regression cases, not a required shared implementation or the public
+ABI. Each affected plan inventories useful references and adapts the behavior to its own error, encoding, and ownership
+contract.
+
+Once the APIs meet compiler needs, separate follow-up work can migrate L2's L1 implementation to L1 stdlib and remove
+superseded private helpers. Canonical L1's L0 bootstrap boundary remains unchanged. Compiler migration, removal, and
+shared-private-code extraction are not completion requirements for this initiative or its stdlib plans.
 
 ## Current baseline
 
@@ -77,6 +88,7 @@ Spawned plan: [dynamic byte buffers].
 
 - Add open/close, sequential reads and writes, seek and position, positional I/O, append, truncate, flush, and durable
   synchronization.
+- Query metadata through the opened file rather than looking up its original path again.
 - Define closed-handle behavior, close-error reporting, and non-inheritance by child processes.
 
 Spawned plan: [file handles and random access].
@@ -85,6 +97,8 @@ Spawned plan: [file handles and random access].
 
 - Add metadata variants, directory creation/removal, rename/replace/copy, current-directory operations, and streaming
   directory iteration.
+- Add `same_file`, absolute-path conversion, and existing-path canonicalization with distinct identity/resolution
+  contracts; settle replacement policies and any atomic no-replace capability or deferral.
 
 Spawned plan: [filesystem mutations and directory traversal].
 
@@ -119,6 +133,13 @@ Spawned plan: [file-watch API design].
 
 ## ADR Impact
 
+- Decision: Deliver general I/O capabilities through L1 stdlib before separately migrating compiler consumers and
+  removing superseded private helpers.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: Public error, encoding, identity, and ownership contracts must govern the library implementation; private
+    compiler ABIs are reference material, and compiler adoption must not gate stdlib completion.
 - Decision: Use `long` for persistent filesystem extents, positions, offsets, and timestamp seconds while retaining
   `int` for in-memory lengths, indexes, and individual transfer counts.
   - Scope: L1

@@ -3,7 +3,7 @@
 ## Widen time seconds and add sleep and deadlines
 
 - Date: 2026-08-30
-- Last reviewed: 2026-10-10
+- Last reviewed: 2026-10-24
 - Status: Draft
 - Title: Widen L1 time seconds and add monotonic sleep, deadline, and timeout helpers
 - Kind: Feature
@@ -59,6 +59,17 @@ The width/arithmetic phase can start independently. The new structured host-erro
 error transport. Do not duplicate that error model inside `std.time`. Process and networking plans consume this contract
 later; neither is a prerequisite for completing this plan. Use deterministic consumer simulations to verify timeout
 behavior before those modules exist.
+
+## Stdlib-First Direction and Reference Material
+
+Use `l1c_timing_monotonic` in [l1/compiler/support/compiler_support.c][compiler-support] and timing/probe behavior in
+[l1/compiler/support/preparation/platform.h][platform-support] as references for host clock handling and regression
+cases. Inventory relevant failure and conversion cases before implementation. The public `long`-second, checked
+arithmetic, structured-error, and interruption contracts below govern the implementation; the private two-`int32`
+transport and floating-point millisecond deadlines are not its representation.
+
+L2 adoption of L1 stdlib and removal of superseded private timing/probe helpers are separate follow-up work. This plan
+requires neither compiler migration nor extraction of shared private C code.
 
 ## Defaults Chosen
 
@@ -185,6 +196,7 @@ check the live shared diagnostic catalog before assigning any code.
 - changing L0 time semantics or treating `.l0` harness tests as L1 ABI validation
 - adding process/network APIs, signal handlers, cancellation tokens, or automatic interruption restart
 - requiring every host to support every `long` calendar timestamp or identical suspend accounting
+- L2 compiler migration, bootstrap changes, or removal of compiler-private support
 
 ## ADR Impact
 
@@ -232,7 +244,9 @@ documented Linux Docker lane with `CMD=test-ci` for runtime portability, reusing
 Ensure new `.l1` fixtures explicitly run under ARC/memory tracing. This plan refresh requires documentation checks only.
 
 [apple-sleep]: https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/nanosleep.2.html
+[compiler-support]: ../../../compiler/support/compiler_support.c
 [glibc-sleep]: https://sourceware.org/glibc/manual/2.42/html_node/Sleeping.html
 [os-errors]: closed/2026-08-30-os-error-and-io-results-noref.md
+[platform-support]: ../../../compiler/support/preparation/platform.h
 [windows-clock]: https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps
 [windows-timer]: https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-setwaitabletimer

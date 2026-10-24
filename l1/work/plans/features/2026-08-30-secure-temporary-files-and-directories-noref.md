@@ -3,6 +3,7 @@
 ## Add secure temporary files and directories
 
 - Date: 2026-08-30
+- Last reviewed: 2026-10-24
 - Status: Draft
 - Title: Add exclusive temporary-file and temporary-directory creation
 - Kind: Feature
@@ -33,8 +34,20 @@
 Add race-free temporary-file and temporary-directory creation for compiler and linker transactions. Creation is
 exclusive, returns ownership of the created object, and provides explicit cleanup helpers.
 
+## Stdlib-First Direction and Reference Material
+
+Use temporary-parent inspection in [l1/compiler/support/compiler_support.c][compiler-support] and scratch-directory
+creation in [l1/compiler/support/preparation/identity.h][identity-support] as references for platform behavior and
+regression cases. The public contract independently defines parent selection, private creation, ownership, and cleanup.
+Compiler-specific environment precedence, UID/sticky-bit rules, deterministic workspace names, and the Windows
+temporary-file/delete/directory sequence are not sufficient definitions of that contract.
+
+L2 migration to L1 stdlib and removal of superseded private helpers are separate follow-up work, with no dependency on
+compiler migration or shared-private-code extraction for this plan's completion.
+
 ## Public Surface
 
+- Owned temporary-file and temporary-directory results carrying the created path and cleanup responsibility.
 - `system_temp_dir`
 - `create_file`
 - `create_dir`
@@ -51,10 +64,16 @@ existence check followed by a non-exclusive open.
 3. Create files with private permissions subject to the documented host contract.
 4. Keep automatic cleanup explicit; process termination is not promised to run destructors.
 5. Make cleanup failure observable.
+6. Support an explicitly selected parent and document default parent discovery, precedence, validation, and error
+   behavior. Do not silently inherit the compiler's temporary-parent policy.
+7. Create temporary directories with private access under the selected POSIX/Windows contract. Keep directory ownership
+   explicit through cleanup; a path string alone does not transfer cleanup responsibility.
+8. Cleanup reports the failed operation and partial progress without following substituted links outside the owned tree.
+   Define how a primary failure and a later cleanup failure are both preserved.
 
 ## Implementation Phases
 
-1. Define temporary root discovery and error behavior.
+1. Define explicit/default parent selection, owned result types, private-access guarantees, and error behavior.
 2. Implement exclusive file and directory creation on supported hosts.
 3. Add explicit close/remove and recursive cleanup helpers.
 4. Add collision injection, permission, symlink, trace, and cleanup-failure tests.
@@ -66,11 +85,12 @@ existence check followed by a non-exclusive open.
 - guaranteed cleanup after crash or forced process termination
 - shelling out to host utilities
 - a general transaction or package-cache abstraction
+- L2 compiler migration, bootstrap changes, or removal of compiler-private support
 
 ## ADR Impact
 
-- Decision: Require atomic exclusive creation, private defaults, bounded collision retry, and observable cleanup for
-  temporary files and directories.
+- Decision: Require atomic exclusive creation, explicit/default parent selection, owned private temporary objects,
+  bounded collision retry, and observable cleanup.
   - Scope: L1
   - Disposition: New ADR
   - ADR: `l1/docs/decisions/`
@@ -84,3 +104,8 @@ existence check followed by a non-exclusive open.
 3. Returned file handles obey ordinary ownership and close-error rules.
 4. Cleanup reports partial failure and does not traverse unexpected links.
 5. Created paths and permissions follow the documented POSIX and Windows contracts.
+6. Explicit and default parent selection have deterministic precedence and observable inspection failures. Private
+   directory access, ownership, primary failure, and cleanup failure follow the selected host contract.
+
+[compiler-support]: ../../../compiler/support/compiler_support.c
+[identity-support]: ../../../compiler/support/preparation/identity.h

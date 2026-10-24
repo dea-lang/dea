@@ -3,6 +3,7 @@
 ## Add streams and buffering
 
 - Date: 2026-08-30
+- Last reviewed: 2026-10-24
 - Status: Draft
 - Title: Add reader, writer, seeker, and buffered stream adapters
 - Kind: Feature
@@ -30,6 +31,17 @@
 
 Build reusable reader, writer, seeker, and buffering abstractions after the concrete file contract is stable. The v1
 surface uses existing function-pointer support for dispatch and makes endpoint ownership explicit.
+
+## Stdlib-First Direction and Reference Material
+
+Use the bounded file-transfer loops and buffer handling in
+[l1/compiler/support/preparation/platform.h][platform-support] as implementation references and sources of short-read,
+short-write, size-limit, and cleanup cases. Public reader/writer results and endpoint ownership define the stream
+implementation; private JSON carriers, allocation-failure exits, and compiler limits are not stream API contracts.
+Inventory the applicable reference cases before implementing the adapters.
+
+L2 adoption of L1 stdlib and removal of superseded private helpers are separate follow-up work. Shared-private-code
+extraction and compiler migration are not completion requirements for this plan.
 
 ## Proposed Surface
 
@@ -61,6 +73,7 @@ closable endpoint without lifetime enforcement.
 - escaping borrowed endpoint views
 - asynchronous streams or event-loop integration
 - silent ownership transfer or silent close of independently owned endpoints
+- L2 compiler migration, bootstrap changes, or removal of compiler-private support
 
 ## ADR Impact
 
@@ -79,3 +92,5 @@ closable endpoint without lifetime enforcement.
 3. Buffering never changes EOF or error classification.
 4. Flush failures remain observable.
 5. Trace tests cover adapters dropped before and after their endpoints according to the selected ownership rules.
+
+[platform-support]: ../../../compiler/support/preparation/platform.h

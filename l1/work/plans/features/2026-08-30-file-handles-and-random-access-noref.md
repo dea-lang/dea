@@ -3,6 +3,7 @@
 ## Add file handles and complete file I/O
 
 - Date: 2026-08-30
+- Last reviewed: 2026-10-24
 - Status: Draft
 - Title: Add opaque file handles, incremental transfers, random access, and synchronization
 - Kind: Feature
@@ -36,6 +37,14 @@
 Add the first stateful file API to L1. `std.file` owns opaque file handles and exposes incremental sequential I/O,
 64-bit positioning, positional I/O, append, truncate, flush, and durability requests through structured results.
 
+## Stdlib-First Direction and Reference Material
+
+The public file contract owns the implementation requirements. Use `pc_meta_file`, bounded read/write loops, and
+close-failure handling in [l1/compiler/support/preparation/platform.h][platform-support] as reference material and
+sources of regression cases. Replace compiler-specific error and allocation conventions with the selected stdlib results
+and ownership model. Compiler migration, shared-private-code extraction, and removal of superseded helpers are outside
+this plan; L2 can adopt L1 stdlib through separate follow-up work once the APIs are complete.
+
 ## Public Surface
 
 - Types: `File`, `OpenOptions`, `AccessMode`, `CreateMode`, `SeekOrigin`, and `FileOffset` as a `long` alias.
@@ -43,6 +52,7 @@ Add the first stateful file API to L1. `std.file` owns opaque file handles and e
 - Transfers: `read_some`, `read_exact`, `write_some`, `write_all`.
 - Positioning: `seek`, `position`, `read_at`, `write_at`.
 - Extent: `size`, `truncate`.
+- Handle metadata: `metadata`, querying the opened object and retaining `long` sizes and timestamp seconds.
 - Completion: `flush`, `sync_data`, `sync_all`.
 
 Buffer starts, lengths, and per-call counts are `int`; file sizes, positions, and positional offsets are `long`.
@@ -58,12 +68,15 @@ Buffer starts, lengths, and per-call counts are `int`; file sizes, positions, an
 7. `flush` concerns runtime/language buffering, while `sync_data` and `sync_all` request distinct host durability
    levels.
 8. No public operation exposes the native handle representation.
+9. Handle metadata is obtained from the open native handle, not by resolving its original path again. Renaming or
+   replacing that path cannot redirect the query to another object. Coordinate the metadata record and result shape with
+   the path-level filesystem plan and preserve unavailable-field and host-error distinctions.
 
 ## Implementation Phases
 
 1. Settle ownership, explicit close, cleanup integration, and runtime handle representation.
 2. Implement open/close and sequential partial/exact/all transfers.
-3. Add `long` seek, position, size, and truncate.
+3. Add `long` seek, position, size, truncate, and opened-object metadata.
 4. Add positional reads/writes and true append tests.
 5. Add flush/data-sync/full-sync behavior and cross-platform capability reporting.
 6. Add trace, failure-injection, large sparse-file, and stable-doc coverage.
@@ -75,6 +88,7 @@ Buffer starts, lengths, and per-call counts are `int`; file sizes, positions, an
 - changing container lengths to `long`
 - exposing `FILE*`, file descriptors, or Win32 handles
 - silently closing an independently owned endpoint through an adapter
+- L2 compiler migration, bootstrap changes, or removal of compiler-private support
 
 ## ADR Impact
 
@@ -90,6 +104,12 @@ Buffer starts, lengths, and per-call counts are `int`; file sizes, positions, an
   - ADR: `l1/docs/decisions/`
   - Rationale: These distinctions materially affect concurrent append behavior, shared cursors, and durability
     guarantees across supported hosts.
+- Decision: Bind file metadata queries to the opened object independently of later path replacement.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: Consumers need metadata for the object they actually opened; repeating a path lookup can inspect a
+    different object and cannot provide that contract.
 
 ## Verification Criteria
 
@@ -99,3 +119,8 @@ Buffer starts, lengths, and per-call counts are `int`; file sizes, positions, an
 4. Append behavior is atomic to the degree promised by the selected host contract.
 5. Close and synchronization failures are observable in deterministic tests.
 6. Normal and traced runtime symbol manifests remain complete.
+7. Where host sharing rules permit, rename the opened path or replace it with another object and verify handle metadata
+   still describes the original object while path metadata describes the current name. State host limitations and cover
+   closed handles, unavailable fields, and injected metadata failures.
+
+[platform-support]: ../../../compiler/support/preparation/platform.h
