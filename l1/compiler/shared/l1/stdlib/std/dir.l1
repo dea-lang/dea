@@ -1,0 +1,139 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** Incremental host-order directory traversal with explicit owned lifetime. */
+module std.dir;
+
+export Dir, DirEntry, OpenDirResult, NextResult, DirEntries, EntriesResult,
+    open, next, close, free_dir, read_all, read_all_sorted, entries_size, entries_get, free_entries;
+
+import sys.fs;
+import sys.rt;
+import std.fs;
+import std.os;
+import std.vector;
+import std.assert;
+
+/** Module-owned cursor. Do not copy its fields; aliases share close state. */
+struct Dir { _handle: void*?; }
+/** Owned name and a cheap hint, independent of subsequent cursor operations. */
+struct DirEntry { name: string; file_type: FileType; }
+/** Opening either transfers ownership or captures an error. */
+enum OpenDirResult { OpenedDir(dir: Dir*); OpenDirFailed(error: OsError); }
+/** A single next operation distinguishes an entry, clean end, and failure. */
+enum NextResult { Entry(entry: DirEntry); End; NextFailed(error: OsError); }
+/** Owned materialization; release with free_entries. */
+struct DirEntries { _storage: VectorBase*; }
+/** Materialization is all-or-error, including native close failures. */
+enum EntriesResult { Entries(entries: DirEntries*); EntriesFailed(error: OsError); }
+
+/** Open a followed directory without sorting or materializing entries. */
+func open(path: string) -> OpenDirResult {
+    let result = rt_dir_open(path);
+    if (!result.ok) { return OpenDirFailed(_os_error_from_rt(result.error)); }
+    return OpenedDir(new Dir(result.handle));
+}
+
+/** Advance; terminal end/error repeats until close. Dot entries are excluded. */
+func next(dir: Dir*) -> NextResult {
+    if (dir._handle == null) { return NextFailed(OsError(InvalidHandle, Runtime, 0 as long)); }
+    let result = rt_dir_next(dir._handle as void*);
+    if (result.state == 0) { return Entry(DirEntry(result.name, _fs_type(result.file_type))); }
+    if (result.state == 1) { return End; }
+    return NextFailed(_os_error_from_rt(result.error));
+}
+
+/** Consume the native cursor even on failure. Repeated close succeeds. */
+func close(dir: Dir*) -> FsResult {
+    if (dir._handle == null) { return FsOk; }
+    let handle = dir._handle as void*;
+    dir._handle = null;
+    return _fs_status(rt_dir_close(handle));
+}
+
+/** Best-effort close and destroy the wrapper; every pointer alias then expires. */
+func free_dir(dir: Dir*) {
+    close(dir);
+    drop dir;
+}
+
+/** Return the logical entry count. */
+func entries_size(entries: DirEntries*) -> int { return vec_size(entries._storage); }
+
+/** Return an owning copy of one entry, asserting the logical index range. */
+func entries_get(entries: DirEntries*, index: int) -> DirEntry {
+    return *(vec_get(entries._storage, index) as DirEntry*);
+}
+
+/** Release all owned names and the materialized container. */
+func free_entries(entries: DirEntries*) {
+    for (let i = 0; i < entries_size(entries); i = i + 1) {
+        let entry = vec_get(entries._storage, i) as DirEntry*;
+        rt_string_release(entry.name);
+    }
+    vec_free(entries._storage);
+    drop entries;
+}
+
+/** Read all names in host order; discard partial output on next/close failure. */
+func read_all(path: string) -> EntriesResult {
+    match (open(path)) {
+        OpenDirFailed(error) => { return EntriesFailed(error); }
+        OpenedDir(dir) => {
+            let entries = new DirEntries(vec_create(sizeof(DirEntry), 0));
+            while (true) {
+                match (next(dir)) {
+                    Entry(entry) => {
+                        // Bound vector doubling and byte-size multiplication before growth.
+                        if (entries_size(entries) >= 1073741823 / sizeof(DirEntry)) {
+                            free_entries(entries);
+                            free_dir(dir);
+                            return EntriesFailed(OsError(FileTooLarge, Runtime, 0 as long));
+                        }
+                        let slot = vec_push(entries._storage) as DirEntry*;
+                        *slot = entry;
+                    }
+                    End => { break; }
+                    NextFailed(error) => {
+                        free_entries(entries);
+                        free_dir(dir);
+                        return EntriesFailed(error);
+                    }
+                }
+            }
+            let closed = close(dir);
+            free_dir(dir);
+            match (closed) {
+                FsFailed(error) => { free_entries(entries); return EntriesFailed(error); }
+                FsOk => { return Entries(entries); }
+            }
+        }
+    }
+}
+
+/** Materialize then sort by unsigned name bytes, independent of locale. */
+func read_all_sorted(path: string) -> EntriesResult {
+    let result = read_all(path);
+    match (result) {
+        Entries(entries) => {
+            // Insertion sort retains owned copies while slots are overwritten.
+            for (let i = 1; i < entries_size(entries); i = i + 1) {
+                let key = entries_get(entries, i);
+                let j = i - 1;
+                while (j >= 0) {
+                    let current = entries_get(entries, j);
+                    if (rt_string_compare(key.name, current.name) >= 0) { break; }
+                    let slot = vec_get(entries._storage, j + 1) as DirEntry*;
+                    *slot = current;
+                    j = j - 1;
+                }
+                let slot = vec_get(entries._storage, j + 1) as DirEntry*;
+                *slot = key;
+            }
+        }
+        EntriesFailed(error) => {}
+    }
+    return result;
+}

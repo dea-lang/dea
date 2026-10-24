@@ -1,0 +1,34 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+/** ASCII-only transport keeps filesystem tests independent of Windows argv encoding. */
+module path_arguments;
+import std.assert;
+import std.string;
+import std.text;
+import std.system;
+
+/** Decode one ASCII transport digit. */
+func _fixture_hex(c: byte) -> int {
+    if (c >= '0' && c <= '9') { return (c - '0') as int; }
+    if (c >= 'a' && c <= 'f') { return ((c - 'a') as int) + 10; }
+    assert(false, "invalid hexadecimal path transport");
+    return 0;
+}
+
+/** Decode one owned path string without interpreting its filesystem bytes. */
+func fixture_decode_path(raw: string) -> string {
+    if (!starts_with_s(raw, "hex:")) { return raw; }
+    assert((len_s(raw) - 4) % 2 == 0, "hexadecimal path transport length");
+    with (let bytes = cb_create() => cb_free(bytes)) {
+        for (let i = 4; i < len_s(raw); i = i + 2) {
+            let value = _fixture_hex(char_at_s(raw, i)) * 16 + _fixture_hex(char_at_s(raw, i + 1));
+            cb_append(bytes, value as byte);
+        }
+        return cb_to_string(bytes);
+    }
+}
+
+/** Decode a command-line path argument before passing it to the UTF-8 runtime API. */
+func fixture_path_arg(index: int) -> string { return fixture_decode_path(argv(index)); }

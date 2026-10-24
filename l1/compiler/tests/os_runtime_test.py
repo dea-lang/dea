@@ -330,6 +330,7 @@ static int mappings(void) {
     REQUIRE(mapped_win32(80, DEA_OS_ERROR_ALREADY_EXISTS) == 0);
     REQUIRE(mapped_win32(87, DEA_OS_ERROR_INVALID_INPUT) == 0);
     REQUIRE(mapped_win32(206, DEA_OS_ERROR_INVALID_INPUT) == 0);
+    REQUIRE(mapped_win32(1113, DEA_OS_ERROR_INVALID_INPUT) == 0);
     REQUIRE(mapped_win32(109, DEA_OS_ERROR_BROKEN_PIPE) == 0);
     REQUIRE(mapped_win32(112, DEA_OS_ERROR_NO_SPACE) == 0);
     REQUIRE(mapped_win32(121, DEA_OS_ERROR_TIMED_OUT) == 0);

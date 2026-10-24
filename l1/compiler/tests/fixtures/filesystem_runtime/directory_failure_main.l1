@@ -1,0 +1,59 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module directory_failure_main;
+import std.dir;
+import std.fs;
+import std.os;
+import std.assert;
+import std.io;
+import std.text;
+import std.system;
+
+/** Select test-only native cursor faults. */
+extern func fs_dir_probe_config(mode: int);
+/** Read the expected native error code. */
+extern func fs_dir_probe_error() -> int;
+/** Read the number of consumed native cursors. */
+extern func fs_dir_probe_closes() -> int;
+
+/** Require cleanup success without collapsing its captured error. */
+func ok(result: FsResult) {
+    match (result) { FsOk => {} FsFailed(error) => { assert(false, error_message(error)); } }
+}
+/** Validate partial-result cleanup, close failure, and first-error precedence. */
+func main() -> int {
+    let root = "build/l1-directory-errors-" + int_to_string(get_pid());
+    ok(create_dir(root));
+    assert(write_file(root + "/alpha", "a") != null, "alpha fixture");
+    assert(write_file(root + "/zeta", "z") != null, "zeta fixture");
+    for (let mode = 1; mode <= 3; mode = mode + 1) {
+        fs_dir_probe_config(mode);
+        match (read_all_sorted(root)) {
+            EntriesFailed(error) => {
+                assert(error.native_code == (fs_dir_probe_error() as long), "saved first error");
+                assert(_os_error_to_rt(error).domain == 1, "native errno domain");
+            }
+            Entries(entries) => { free_entries(entries); assert(false, "expected materialization failure"); }
+        }
+        assert(fs_dir_probe_closes() == 1, "failure consumes exactly one cursor");
+    }
+    fs_dir_probe_config(4);
+    match (read_all(root)) {
+        Entries(entries) => {
+            assert(entries_size(entries) == 2, "unknown hints preserve entries");
+            match (entries_get(entries, 0).file_type) {
+                Unknown => {}
+                _ => { assert(false, "unknown hint must not trigger implicit metadata"); }
+            }
+            free_entries(entries);
+        }
+        EntriesFailed(error) => { assert(false, error_message(error)); }
+    }
+    assert(fs_dir_probe_closes() == 1, "success consumes exactly one cursor");
+    fs_dir_probe_config(0);
+    ok(remove_dir_all(root));
+    printl_s("directory_failure_main: PASS");
+    return 0;
+}

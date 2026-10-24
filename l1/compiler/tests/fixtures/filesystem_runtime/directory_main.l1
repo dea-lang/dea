@@ -1,0 +1,86 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module directory_main;
+import std.dir;
+import std.fs;
+import std.os;
+import std.assert;
+import std.string;
+import std.text;
+import std.io;
+import std.system;
+import path_arguments;
+
+/** Require successful mutation or retain the captured diagnostic. */
+func ok(result: FsResult) {
+    match (result) { FsOk => {} FsFailed(error) => { assert(false, error_message(error)); } }
+}
+/** Exercise entry lifetimes, explicit sorting, EOF, and close state. */
+func main() -> int {
+    if (argc() > 1) {
+        match (read_all_sorted(fixture_path_arg(1))) {
+            Entries(entries) => {
+                for (let i = 0; i < entries_size(entries); i = i + 1) { printl_s(entries_get(entries, i).name); }
+                free_entries(entries);
+            }
+            EntriesFailed(error) => { assert(false, error_message(error)); }
+        }
+        return 0;
+    }
+    let root = "build/l1-directory-" + int_to_string(get_pid());
+    ok(create_dir(root));
+    assert(write_file(root + "/zeta", "z") != null, "zeta");
+    assert(write_file(root + "/alpha", "a") != null, "alpha");
+    match (open(root)) {
+        OpenDirFailed(error) => { assert(false, error_message(error)); }
+        OpenedDir(dir) => {
+            let saved = "";
+            let count = 0;
+            while (true) {
+                match (next(dir)) {
+                    Entry(entry) => {
+                        assert(entry.name == "alpha" || entry.name == "zeta", "entry name");
+                        if (count == 0) { saved = entry.name; }
+                        count = count + 1;
+                    }
+                    End => { break; }
+                    NextFailed(error) => { assert(false, error_message(error)); }
+                }
+            }
+            assert(count == 2, "entry count excludes dots");
+            match (next(dir)) { End => {} _ => { assert(false, "repeated EOF"); } }
+            ok(close(dir));
+            ok(close(dir));
+            match (next(dir)) {
+                NextFailed(error) => { match (error.kind) { InvalidHandle => {} _ => { assert(false, "closed handle"); } } }
+                _ => { assert(false, "closed next"); }
+            }
+            assert(saved == "alpha" || saved == "zeta", "entry outlives cursor");
+            free_dir(dir);
+        }
+    }
+    match (read_all_sorted(root)) {
+        Entries(entries) => {
+            assert(entries_size(entries) == 2, "materialized count");
+            let first = entries_get(entries, 0);
+            assert(first.name == "alpha" && entries_get(entries, 1).name == "zeta", "explicit byte sorting");
+            free_entries(entries);
+            assert(first.name == "alpha", "entry copy outlives collection");
+        }
+        EntriesFailed(error) => { assert(false, error_message(error)); }
+    }
+    match (open(root + "/alpha")) { OpenDirFailed(error) => {} _ => { assert(false, "open regular file"); } }
+    ok(remove_file(root + "/alpha"));
+    ok(remove_file(root + "/zeta"));
+    match (read_all(root)) {
+        Entries(entries) => { assert(entries_size(entries) == 0, "empty materialization"); free_entries(entries); }
+        EntriesFailed(error) => { assert(false, error_message(error)); }
+    }
+    // Early cleanup closes a still-live iterator.
+    match (open(root)) { OpenedDir(dir) => { free_dir(dir); } _ => { assert(false, "open empty"); } }
+    ok(remove_dir(root));
+    printl_s("directory_main: PASS");
+    return 0;
+}

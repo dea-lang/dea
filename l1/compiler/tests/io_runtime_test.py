@@ -301,11 +301,6 @@ def require_wide_filesystem_metadata() -> None:
             assert path.stat().st_size == (1 << 32) + 123
             check_metadata()
         for seconds in (-2_208_988_800, 4_102_444_800):
-            # Python uses Win32 FILETIME, whose range exceeds the runtime's
-            # _stat64 API (1970 through 3000). Keep the post-2038 probe on Windows.
-            if os.name == "nt" and seconds < 0:
-                print(f"SKIP timestamp {seconds}: Windows _stat64 cannot represent pre-epoch dates")
-                continue
             timestamp = seconds * 1_000_000_000 + 123_456_789
             try:
                 os.utime(path, ns=(timestamp, timestamp))

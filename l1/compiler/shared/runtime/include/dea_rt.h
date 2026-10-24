@@ -370,6 +370,80 @@ struct __deaM3sys2osS10RtIoResult {
 #endif
 
 
+/* Direct filesystem records; field order matches sys.fs. */
+#ifndef DEA_DEFINED___deaM3sys2fsS10RtFsStatus
+#define DEA_DEFINED___deaM3sys2fsS10RtFsStatus
+struct __deaM3sys2fsS10RtFsStatus {
+    dea_bool ok;
+    struct __deaM3sys2osS9RtOsError error;
+};
+#endif
+
+#ifndef DEA_DEFINED___deaM3sys2fsS8RtFsBool
+#define DEA_DEFINED___deaM3sys2fsS8RtFsBool
+struct __deaM3sys2fsS8RtFsBool {
+    dea_bool ok;
+    dea_bool value;
+    struct __deaM3sys2osS9RtOsError error;
+};
+#endif
+
+#ifndef DEA_DEFINED___deaM3sys2fsS8RtFsPath
+#define DEA_DEFINED___deaM3sys2fsS8RtFsPath
+struct __deaM3sys2fsS8RtFsPath {
+    dea_bool ok;
+    dea_string value;
+    struct __deaM3sys2osS9RtOsError error;
+};
+#endif
+
+#ifndef DEA_DEFINED___deaM3sys2fsS12RtFsMetadata
+#define DEA_DEFINED___deaM3sys2fsS12RtFsMetadata
+struct __deaM3sys2fsS12RtFsMetadata {
+    dea_bool ok;
+    dea_int file_type;
+    dea_opt_long size;
+    dea_opt_long mtime_sec;
+    dea_opt_int mtime_nsec;
+    struct __deaM3sys2osS9RtOsError error;
+};
+#endif
+
+#ifndef DEA_DEFINED___deaM3sys2fsS9RtDirOpen
+#define DEA_DEFINED___deaM3sys2fsS9RtDirOpen
+struct __deaM3sys2fsS9RtDirOpen {
+    dea_bool ok;
+    void *handle;
+    struct __deaM3sys2osS9RtOsError error;
+};
+#endif
+
+#ifndef DEA_DEFINED___deaM3sys2fsS9RtDirNext
+#define DEA_DEFINED___deaM3sys2fsS9RtDirNext
+struct __deaM3sys2fsS9RtDirNext {
+    dea_int state;
+    dea_string name;
+    dea_int file_type;
+    struct __deaM3sys2osS9RtOsError error;
+};
+#endif
+
+struct __deaM3sys2fsS12RtFsMetadata rt_fs_metadata(dea_string path, dea_bool follow);
+struct __deaM3sys2fsS8RtFsBool rt_fs_same_file(dea_string left, dea_string right);
+struct __deaM3sys2fsS8RtFsPath rt_fs_absolute(dea_string path);
+struct __deaM3sys2fsS8RtFsPath rt_fs_canonicalize(dea_string path);
+struct __deaM3sys2fsS8RtFsPath rt_fs_current_dir(void);
+struct __deaM3sys2fsS10RtFsStatus rt_fs_set_current_dir(dea_string path);
+struct __deaM3sys2fsS10RtFsStatus rt_fs_create_dir(dea_string path, dea_bool recursive);
+struct __deaM3sys2fsS10RtFsStatus rt_fs_remove_file(dea_string path);
+struct __deaM3sys2fsS10RtFsStatus rt_fs_remove_dir(dea_string path, dea_bool recursive);
+struct __deaM3sys2fsS10RtFsStatus rt_fs_rename(dea_string source, dea_string destination, dea_bool replace_file);
+struct __deaM3sys2fsS10RtFsStatus rt_fs_copy_file(dea_string source, dea_string destination);
+struct __deaM3sys2fsS9RtDirOpen rt_dir_open(dea_string path);
+struct __deaM3sys2fsS9RtDirNext rt_dir_next(void *handle);
+struct __deaM3sys2fsS10RtFsStatus rt_dir_close(void *handle);
+
+
 /* =========================================================================
  * Runtime function declarations
  * ========================================================================= */

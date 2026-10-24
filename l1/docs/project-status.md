@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-10-21
+Version: 2026-10-24
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -263,6 +263,12 @@ failure, and successful partial transfers. Existing helpers retain their signatu
 consumers, and additional native error domains remain planned. The contract is recorded in
 [l1/docs/decisions/0045-direct-os-errors-and-io-results.md][os-results].
 
+`std.fs` now supplies structured metadata, native identity, absolute/canonical paths, directory creation/removal,
+rename/replace, exclusive copying, and working-directory operations. `std.dir` provides owned streaming cursors,
+explicit end/error states, and opt-in materialization/sorting. Windows paths use wide APIs and POSIX filename bytes
+remain unchanged. Atomic no-replace rename is deferred; compiler-private helpers and L2 adoption remain separate work.
+See [l1/docs/reference/filesystem.md][filesystem-contract].
+
 The stdlib currently includes the core bootstrap modules for I/O, strings, text, paths, filesystem access, time,
 randomness, assertions, optionals, the current container set, the shared `int` helper surface in `std.integer`, L1-only
 `_ui` / `_l` / `_ul` `std.integer` families for `uint`, `long`, and `ulong`, wide integer string conversions in
@@ -375,4 +381,5 @@ These remain true today:
 4. Address-of (`&`) and generics are not part of the current active language surface.
 
 [explicit-profiles]: reference/explicit-profiles.md
+[filesystem-contract]: reference/filesystem.md
 [os-results]: decisions/0045-direct-os-errors-and-io-results.md

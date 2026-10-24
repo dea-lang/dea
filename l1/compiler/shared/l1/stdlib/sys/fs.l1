@@ -1,0 +1,58 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/** Direct filesystem transport; handles are owned by std.dir. */
+module sys.fs;
+
+import sys.os;
+
+/** Successful operation or captured failure. */
+struct RtFsStatus { ok: bool; error: RtOsError; }
+/** Followed identity comparison with an independent success flag. */
+struct RtFsBool { ok: bool; value: bool; error: RtOsError; }
+/** Owned path spelling, empty only on failure. */
+struct RtFsPath { ok: bool; value: string; error: RtOsError; }
+/** Metadata tags: unknown, regular, directory, symbolic link, other. */
+struct RtFsMetadata {
+    ok: bool;
+    file_type: int;
+    size: long?;
+    mtime_sec: long?;
+    mtime_nsec: int?;
+    error: RtOsError;
+}
+/** A native directory cursor, or captured open failure. */
+struct RtDirOpen { ok: bool; handle: void*?; error: RtOsError; }
+/** Next states: entry (0), end (1), failure (2). Names are owned bytes. */
+struct RtDirNext { state: int; name: string; file_type: int; error: RtOsError; }
+
+/** Query metadata, optionally following the final link. */
+extern func rt_fs_metadata(path: string, follow: bool) -> RtFsMetadata;
+/** Compare native identities after following both paths. */
+extern func rt_fs_same_file(left: string, right: string) -> RtFsBool;
+/** Anchor a spelling at call time without resolving aliases. */
+extern func rt_fs_absolute(path: string) -> RtFsPath;
+/** Resolve an existing path through aliases. */
+extern func rt_fs_canonicalize(path: string) -> RtFsPath;
+/** Return the process working directory. */
+extern func rt_fs_current_dir() -> RtFsPath;
+/** Change process working directory, following links. */
+extern func rt_fs_set_current_dir(path: string) -> RtFsStatus;
+/** Create a directory, optionally including missing parents. */
+extern func rt_fs_create_dir(path: string, recursive: bool) -> RtFsStatus;
+/** Remove one non-directory object or symbolic link. */
+extern func rt_fs_remove_file(path: string) -> RtFsStatus;
+/** Remove an empty directory or, recursively, a tree without following links. */
+extern func rt_fs_remove_dir(path: string, recursive: bool) -> RtFsStatus;
+/** Rename with native overwrite semantics or explicit file replacement. */
+extern func rt_fs_rename(source: string, destination: string, replace_file: bool) -> RtFsStatus;
+/** Copy regular-file bytes exclusively to a new destination; never overwrite. */
+extern func rt_fs_copy_file(source: string, destination: string) -> RtFsStatus;
+/** Open an incremental directory cursor, following the path. */
+extern func rt_dir_open(path: string) -> RtDirOpen;
+/** Advance one valid cursor; no implicit full metadata lookup. */
+unsafe extern func rt_dir_next(handle: void*) -> RtDirNext;
+/** Close and consume one valid native cursor, including on failure. */
+unsafe extern func rt_dir_close(handle: void*) -> RtFsStatus;

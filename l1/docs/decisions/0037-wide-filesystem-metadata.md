@@ -1,7 +1,7 @@
 # ADR-0037: Wide Filesystem Metadata
 
 - Decision date: 2026-09-07
-- Last edited: 2026-09-07
+- Last edited: 2026-10-24
 - Status: Accepted
 
 ## Context
@@ -29,14 +29,17 @@ host file sizes and both pre-epoch and post-2038 timestamps. Normalized nanoseco
 
 - Callers requiring the old `int?` metadata signatures must adapt; no compatibility overload is provided.
 - Missing or unavailable metadata remains nullable, and host timestamp precision remains platform-dependent.
-- Timestamp range also depends on the native API: Windows `_stat64` supports 1970 through 3000, so widening its result
-  does not add pre-epoch Windows timestamp support.
+- Timestamp range also depends on the native API. The initial Windows `_stat64` implementation was limited to 1970
+  through 3000; the filesystem path API now uses wide native handle metadata and FILETIME, preserving supported
+  pre-epoch values and 100 ns precision.
 - Large-file metadata does not imply that the file can be materialized as one Dea string.
-- General clock widths, incremental file I/O, and structured errors remain separate work.
+- General clock widths and incremental file I/O remain separate work; direct structured errors are additive.
 
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-08-30-wide-filesystem-metadata-noref.md][metadata-plan]
+
+- [l1/work/plans/features/closed/2026-08-30-filesystem-mutations-and-directory-traversal-noref.md][filesystem-plan]
 
 ## Current Docs
 
@@ -45,6 +48,7 @@ host file sizes and both pre-epoch and post-2038 timestamps. Normalized nanoseco
 - [l1/docs/project-status.md][status]
 
 [design]: ../reference/design-decisions.md
+[filesystem-plan]: ../../work/plans/features/closed/2026-08-30-filesystem-mutations-and-directory-traversal-noref.md
 [metadata-plan]: ../../work/plans/features/closed/2026-08-30-wide-filesystem-metadata-noref.md
 [status]: ../project-status.md
 [stdlib]: ../reference/standard-library.md

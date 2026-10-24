@@ -5,7 +5,15 @@
 
 module std.fs;
 
+export FileInfo, stat, exists, is_file, is_dir, file_size, mtime_sec, delete_file, read_file, write_file,
+    FileType, Metadata, FsResult, MetadataResult, SameFileResult, PathResult,
+    metadata, symlink_metadata, same_file, absolute, canonicalize, current_dir, set_current_dir,
+    create_dir, create_dir_all, remove_file, remove_dir, remove_dir_all, rename, replace, copy_file,
+    _fs_type, _fs_status;
+
 import sys.rt;
+import sys.fs;
+import std.os;
 
 import std.unit;
 
@@ -133,4 +141,89 @@ func write_file(path: string, data: string) -> Unit? {
         return null;
     }
     return present();
+}
+
+
+/** Cheap entry type; Unknown means the host supplied no type hint. */
+enum FileType { Unknown; RegularFile; Directory; Symlink; OtherFile; }
+/** Direct metadata from an existing object. */
+struct Metadata {
+    file_type: FileType;
+    size: long?;
+    mtime_sec: long?;
+    mtime_nsec: int?;
+}
+/** One path mutation outcome. */
+enum FsResult { FsOk; FsFailed(error: OsError); }
+/** Metadata never conflates absence with success. */
+enum MetadataResult { FoundMetadata(info: Metadata); MetadataFailed(error: OsError); }
+/** A followed identity comparison or failed lookup. */
+enum SameFileResult { SameFile(value: bool); SameFileFailed(error: OsError); }
+/** An owned resolved path spelling or captured failure. */
+enum PathResult { ResolvedPath(path: string); PathFailed(error: OsError); }
+
+/** Convert the runtime's independent type tag. */
+func _fs_type(code: int) -> FileType {
+    if (code == 1) { return RegularFile; }
+    if (code == 2) { return Directory; }
+    if (code == 3) { return Symlink; }
+    if (code == 4) { return OtherFile; }
+    return Unknown;
+}
+/** Convert a direct mutation result. */
+func _fs_status(result: RtFsStatus) -> FsResult {
+    if (result.ok) { return FsOk; }
+    return FsFailed(_os_error_from_rt(result.error));
+}
+/** Convert owned runtime path data. */
+func _fs_path_result(result: RtFsPath) -> PathResult {
+    if (result.ok) { return ResolvedPath(result.value); }
+    return PathFailed(_os_error_from_rt(result.error));
+}
+/** Convert direct metadata without narrowing persistent values. */
+func _fs_metadata_result(result: RtFsMetadata) -> MetadataResult {
+    if (result.ok) {
+        return FoundMetadata(Metadata(_fs_type(result.file_type), result.size, result.mtime_sec, result.mtime_nsec));
+    }
+    return MetadataFailed(_os_error_from_rt(result.error));
+}
+/** Query an existing object, following its final symbolic link. */
+func metadata(path: string) -> MetadataResult { return _fs_metadata_result(rt_fs_metadata(path, true)); }
+/** Query the final entry itself; parent components still follow links. */
+func symlink_metadata(path: string) -> MetadataResult { return _fs_metadata_result(rt_fs_metadata(path, false)); }
+/** Compare followed native identities, returning failure for either failed lookup. */
+func same_file(left: string, right: string) -> SameFileResult {
+    let result = rt_fs_same_file(left, right);
+    if (result.ok) { return SameFile(result.value); }
+    return SameFileFailed(_os_error_from_rt(result.error));
+}
+/** Anchor at the current directory at call time; existence is not required. */
+func absolute(path: string) -> PathResult { return _fs_path_result(rt_fs_absolute(path)); }
+/** Resolve an existing path through aliases; this is not a containment check. */
+func canonicalize(path: string) -> PathResult { return _fs_path_result(rt_fs_canonicalize(path)); }
+/** Return the process-global current working directory. */
+func current_dir() -> PathResult { return _fs_path_result(rt_fs_current_dir()); }
+/** Follow the directory and change process-global state. */
+func set_current_dir(path: string) -> FsResult { return _fs_status(rt_fs_set_current_dir(path)); }
+/** Create one directory; an existing entry is an error. */
+func create_dir(path: string) -> FsResult { return _fs_status(rt_fs_create_dir(path, false)); }
+/** Create missing parents, accepting existing followed directories; no rollback. */
+func create_dir_all(path: string) -> FsResult { return _fs_status(rt_fs_create_dir(path, true)); }
+/** Unlink the final non-directory entry, including a symbolic link itself. */
+func remove_file(path: string) -> FsResult { return _fs_status(rt_fs_remove_file(path)); }
+/** Remove one empty real directory; reject a final symbolic link. */
+func remove_dir(path: string) -> FsResult { return _fs_status(rt_fs_remove_dir(path, false)); }
+/** Remove a tree without traversing final or descendant links; stop on first failure. */
+func remove_dir_all(path: string) -> FsResult { return _fs_status(rt_fs_remove_dir(path, true)); }
+/** Rename an entry with native overwrite rules; never fall back to copying. */
+func rename(source: string, destination: string) -> FsResult {
+    return _fs_status(rt_fs_rename(source, destination, false));
+}
+/** Rename a non-directory entry over a non-directory destination, or into an absent name. */
+func replace(source: string, destination: string) -> FsResult {
+    return _fs_status(rt_fs_rename(source, destination, true));
+}
+/** Copy regular-file bytes to a new name; existing destinations fail, including aliases. */
+func copy_file(source: string, destination: string) -> FsResult {
+    return _fs_status(rt_fs_copy_file(source, destination));
 }
