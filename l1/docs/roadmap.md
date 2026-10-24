@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-10-21
+Version: 2026-10-24
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -371,7 +371,8 @@ tiers are distinct from implementation phases within a plan or initiative.
   dynamic byte-buffer, file-handle, and directory foundations; Stdlib Tier 2 streams and buffering; and the roadmap's
   Stdlib Tier 4 file-watch design. Persistent file extents, positions, offsets, and timestamp seconds use `long`, while
   in-memory lengths, indexes, and individual transfer counts remain `int`. The shared OS-error foundation and additive
-  standard-stream result helpers are complete; file handles, dynamic buffers, and stream adapters remain planned.
+  standard-stream result helpers, path mutations/resolution/identity, and streaming directory traversal are complete;
+  file handles, dynamic buffers, and stream adapters remain planned.
 - Initiative [0006-process-and-host-services][host-services] owns Stdlib Tier 2 secure entropy, temporary objects,
   process spawning, and anonymous pipes plus Stdlib Tier 3 sleep, deadlines, timeouts, and general time-second widening.
 - Initiative [0007-blocking-networking][blocking-networking] promotes networking into a Stdlib Tier 3 blocking IPv4/IPv6
@@ -484,8 +485,9 @@ backlog does not imply missing work where L1 already has a narrower surface.
 
 - Filesystem, directory, byte-buffer, file-handle, stream, and file-watch work is tracked by Initiative
   [0005-filesystem-and-stream-io][filesystem-io]. Whole-file `std.fs::read_file` / `std.fs::write_file` and stdin/stdout
-  byte helpers plus additive structured standard-stream results form the implemented baseline. Stateful file handles and
-  stream adapters remain planned.
+  byte helpers, structured standard-stream results, complete path operations, and owned streaming directory traversal
+  form the implemented baseline. Atomic no-replace rename is deferred; stateful file handles and stream adapters remain
+  planned.
 - Secure entropy, temporary objects, process spawning, anonymous pipes, and scheduling-time helpers are tracked by
   Initiative [0006-process-and-host-services][host-services].
 - Blocking TCP, UDP, and DNS are tracked by Initiative [0007-blocking-networking][blocking-networking].

@@ -1,0 +1,105 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module filesystem_main;
+import std.fs;
+import std.os;
+import std.assert;
+import std.string;
+import std.text;
+import std.io;
+import std.system;
+import path_arguments;
+
+/** Require mutation success. */
+func ok(result: FsResult) {
+    match (result) {
+        FsOk => {}
+        FsFailed(error) => { printl_s(error_message(error)); assert(false, "filesystem mutation"); }
+    }
+}
+/** Extract an owned path. */
+func path(result: PathResult) -> string {
+    match (result) {
+        ResolvedPath(value) => { return value; }
+        PathFailed(error) => { assert(false, error_message(error)); return ""; }
+    }
+}
+/** Require an identity result independent of spelling. */
+func identity(a: string, b: string, expected: bool) {
+    match (same_file(a, b)) {
+        SameFile(value) => { assert(value == expected, "native identity"); }
+        SameFileFailed(error) => { assert(false, error_message(error)); }
+    }
+}
+/** Exercise public path mutations within one owned tree. */
+func main() -> int {
+    assert(fixture_decode_path("hex:636166c3a9") == "café", "UTF-8 path transport");
+    if (argc() > 1) {
+        let mode = argv(1);
+        if (mode == "absolute") { printl_s(path(absolute(fixture_path_arg(2)))); return 0; }
+        if (mode == "canonical") { printl_s(path(canonicalize(fixture_path_arg(2)))); return 0; }
+        if (mode == "same") { identity(fixture_path_arg(2), fixture_path_arg(3), argv(4) == "yes"); return 0; }
+        if (mode == "create-all") { ok(create_dir_all(fixture_path_arg(2))); return 0; }
+        if (mode == "wide") {
+            match (metadata(fixture_path_arg(2))) {
+                FoundMetadata(info) => { assert(info.size == (4294967313 as long?), "wide persistent extent"); }
+                _ => { assert(false, "wide metadata failure"); }
+            }
+            return 0;
+        }
+    }
+    let root = "build/l1-filesystem-" + int_to_string(get_pid());
+    ok(create_dir(root));
+    let old = path(current_dir());
+    let anchored = path(absolute(root));
+    assert(len_s(anchored) > len_s(root), "absolute spelling");
+    let a = root + "/a";
+    let b = root + "/b";
+    assert(write_file(a, "payload") != null, "write fixture");
+    assert(write_file(b, "other") != null, "write other");
+    identity(a, a, true);
+    identity(a, b, false);
+    identity(a, root + "/./a", true);
+    match (same_file(a, root + "/missing")) {
+        SameFileFailed(error) => { match (error.kind) { NotFound => {} _ => { assert(false, "identity missing"); } } }
+        _ => { assert(false, "missing identity must fail"); }
+    }
+    match (metadata(a)) {
+        FoundMetadata(info) => {
+            assert(info.size == (7 as long?), "metadata extent");
+            assert(info.mtime_sec != null && info.mtime_nsec != null, "persistent timestamp");
+            match (info.file_type) { RegularFile => {} _ => { assert(false, "metadata type"); } }
+        }
+        _ => { assert(false, "metadata must succeed"); }
+    }
+    ok(copy_file(a, root + "/copied"));
+    match (copy_file(a, b)) {
+        FsFailed(error) => { match (error.kind) { AlreadyExists => {} _ => { assert(false, "exclusive copy"); } } }
+        _ => { assert(false, "copy must reject existing destination"); }
+    }
+    ok(replace(a, b));
+    assert(read_file(b) == ("payload" as string?), "replace content");
+    ok(rename(b, a));
+    ok(create_dir_all(root + "/nested/child"));
+    ok(create_dir_all(root + "/nested/child"));
+    match (create_dir_all(a + "/child")) { FsFailed(error) => {} _ => { assert(false, "file parent"); } }
+    match (remove_dir(root)) { FsFailed(error) => {} _ => { assert(false, "nonempty directory"); } }
+    match (replace(a, root + "/nested")) { FsFailed(error) => {} _ => { assert(false, "directory replacement"); } }
+    let nul = root + "\0ignored";
+    match (create_dir(nul)) {
+        FsFailed(error) => { match (error.kind) { InvalidInput => {} _ => { assert(false, "embedded NUL category"); } } }
+        _ => { assert(false, "embedded NUL must fail"); }
+    }
+    match (canonicalize(root + "/missing")) { PathFailed(error) => {} _ => { assert(false, "missing canonical path"); } }
+    ok(set_current_dir(anchored));
+    identity("a", path(canonicalize("a")), true);
+    assert(path(absolute("absent")) != "absent", "nonexistent absolute");
+    ok(set_current_dir(old));
+    ok(remove_file(a));
+    ok(remove_dir_all(root));
+    assert(!exists(root), "tree cleanup");
+    printl_s("filesystem_main: PASS");
+    return 0;
+}

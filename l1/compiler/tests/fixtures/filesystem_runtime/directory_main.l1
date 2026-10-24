@@ -1,0 +1,239 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module directory_main;
+import std.dir;
+import std.fs;
+import std.os;
+import std.assert;
+import std.string;
+import std.text;
+import std.io;
+import std.system;
+import path_arguments;
+
+let compare_calls: int = 0;
+
+/** Require successful mutation or retain the captured diagnostic. */
+func ok(result: FsResult) {
+    match (result) { FsOk => {} FsFailed(error) => { assert(false, error_message(error)); } }
+}
+
+/** Count reverse ordering comparisons without negating an arbitrary comparator value. */
+func compare_reverse(left: DirEntry, right: DirEntry) -> int {
+    compare_calls = compare_calls + 1;
+    return cmp_s(right.name, left.name);
+}
+
+/** Make all names equivalent while checking that permutations preserve their ownership. */
+func compare_equal(left: DirEntry, right: DirEntry) -> int {
+    compare_calls = compare_calls + 1;
+    return 0;
+}
+
+/** Return a nested successful result without attaching cleanup to a temporary alias. */
+func sorted_entries(path: string) -> EntriesResult { return entries_sort_default(read_all(path)); }
+
+/** Verify every expected name, including the permutation after an all-equal comparison. */
+func check_names(entries: DirEntries*, count: int, descending: bool) {
+    assert(entries_size(entries) == count, "materialized count");
+    for (let i = 0; i < count; i = i + 1) {
+        let expected = i;
+        if (descending) { expected = count - i - 1; }
+        assert(entries_get(entries, i).name == int_to_string(1000 + expected), "complete sorted permutation");
+    }
+}
+
+/** Exercise aliases, custom/default composition, ties, and the comparison bound. */
+func check_sorting(path: string, count: int) {
+    with (let result = sorted_entries(path) => free_entries_result(result)) {
+        match (result) {
+            Entries(entries) => {
+                check_names(entries, count, false);
+                let alias = entries_sort_default(result);
+                match (alias) {
+                    Entries(same) => { assert(same == entries, "sorting preserves pointer identity"); }
+                    EntriesFailed(error) => { assert(false, "successful sort changed variant"); }
+                }
+                compare_calls = 0;
+                // Ascending input with a descending comparator is quadratic for insertion sort.
+                entries_sort(result, compare_reverse);
+                check_names(entries, count, true);
+                assert(compare_calls <= count * 20, "sorting must not become quadratic");
+                if (count > 1) { assert(compare_calls > 0, "custom comparator is used"); }
+                compare_calls = 0;
+                entries_sort(result, compare_equal);
+                assert(compare_calls <= count * 20, "equal-key comparison bound");
+                result = entries_sort_default(result);
+                check_names(entries, count, false);
+                // Sorting already-sorted input must preserve every entry as well.
+                entries_sort_default(result);
+                check_names(entries, count, false);
+            }
+            EntriesFailed(error) => { assert(false, error_message(error)); }
+        }
+    }
+    with (let result = entries_sort(entries_sort_default(read_all(path)), compare_reverse) => free_entries_result(result)) {
+        match (result) {
+            Entries(entries) => { check_names(entries, count, true); }
+            EntriesFailed(error) => { assert(false, error_message(error)); }
+        }
+    }
+}
+
+/** Keep default ordering explicit for ASCII case and multibyte UTF-8 names. */
+func check_byte_names(path: string) {
+    ok(create_dir(path));
+    assert(write_file(path + "/a", "a") != null, "lowercase fixture");
+    assert(write_file(path + "/Z", "Z") != null, "uppercase fixture");
+    assert(write_file(path + "/中", "utf8") != null, "UTF-8 fixture");
+    assert(write_file(path + "/y", "y") != null, "ASCII fixture");
+    with (let result = entries_sort_default(read_all(path)) => free_entries_result(result)) {
+        match (result) {
+            Entries(entries) => {
+                assert(entries_size(entries) == 4, "byte-order count");
+                assert(entries_get(entries, 0).name == "Z" && entries_get(entries, 1).name == "a"
+                    && entries_get(entries, 2).name == "y" && entries_get(entries, 3).name == "中", "unsigned byte order");
+            }
+            EntriesFailed(error) => { assert(false, error_message(error)); }
+        }
+    }
+}
+
+/** Return an independently owned copy through collection cleanup on an early return. */
+func retained_entry(path: string) -> DirEntry {
+    with (let result = entries_sort_default(read_all(path)) => free_entries_result(result)) {
+        match (result) {
+            Entries(entries) => {
+                let first = entries_get(entries, 0);
+                entries_sort(result, compare_reverse);
+                assert(first.name == "1000", "entry copy survives slot replacement");
+                return first;
+            }
+            EntriesFailed(error) => { assert(false, error_message(error)); }
+        }
+    }
+    return DirEntry("", Unknown);
+}
+
+/** Release a still-live streaming cursor on return, retaining an owned entry name. */
+func first_name(path: string) -> string {
+    with (let result = open(path) => ok(free_open_dir_result(result))) {
+        match (result) {
+            OpenedDir(dir) => {
+                match (next(dir)) {
+                    Entry(entry) => { return entry.name; }
+                    _ => { assert(false, "expected nonempty directory"); }
+                }
+            }
+            OpenDirFailed(error) => { assert(false, error_message(error)); }
+        }
+    }
+    return "";
+}
+
+/** Pass failures through sorting without calling its comparator or losing error data. */
+func check_failures(path: string) {
+    let failure = EntriesFailed(OsError(InvalidInput, Runtime, 73 as long));
+    compare_calls = 0;
+    with (let result = entries_sort_default(entries_sort(failure, compare_reverse)) => free_entries_result(result)) {
+        match (result) {
+            EntriesFailed(error) => {
+                let actual = _os_error_to_rt(error);
+                let expected = _os_error_to_rt(OsError(InvalidInput, Runtime, 73 as long));
+                assert(actual.kind == expected.kind && actual.domain == expected.domain && actual.native_code == expected.native_code,
+                    "sorting preserves captured failure");
+            }
+            Entries(entries) => { assert(false, "failure changed variant"); }
+        }
+    }
+    assert(compare_calls == 0, "failure never invokes comparator");
+    free_entries_result(failure);
+    ok(free_open_dir_result(OpenDirFailed(OsError(InvalidInput, Runtime, 73 as long))));
+    with (let result = open(path + "/absent") => ok(free_open_dir_result(result))) {
+        match (result) { OpenDirFailed(error) => {} _ => { assert(false, "missing directory opened"); } }
+    }
+    with (let result = entries_sort_default(read_all(path + "/absent")) => free_entries_result(result)) {
+        match (result) { EntriesFailed(error) => {} _ => { assert(false, "missing directory materialized"); } }
+    }
+}
+
+/** Exercise streaming EOF and successful cleanup without exposing a closed wrapper. */
+func check_streaming(path: string) {
+    let saved = "";
+    with (let result = open(path)) {
+        match (result) {
+            OpenDirFailed(error) => { assert(false, error_message(error)); }
+            OpenedDir(dir) => {
+                let count = 0;
+                while (true) {
+                    match (next(dir)) {
+                        Entry(entry) => {
+                            assert(entry.name == "alpha" || entry.name == "zeta", "entry name");
+                            if (count == 0) { saved = entry.name; }
+                            count = count + 1;
+                        }
+                        End => { break; }
+                        NextFailed(error) => { assert(false, error_message(error)); }
+                    }
+                }
+                assert(count == 2, "entry count excludes dots");
+                match (next(dir)) { End => {} _ => { assert(false, "repeated EOF"); } }
+            }
+        }
+    } cleanup {
+        ok(free_open_dir_result(result));
+    }
+    assert(saved == "alpha" || saved == "zeta", "entry name outlives cursor");
+    let first = first_name(path);
+    assert(first == "alpha" || first == "zeta", "early return retains entry name");
+    for (let i = 0; i < 3; i = i + 1) {
+        with (let result = open(path) => ok(free_open_dir_result(result))) {
+            if (i == 0) { continue; }
+            break;
+        }
+    }
+    for (let i = 0; i < 3; i = i + 1) {
+        with (let result = read_all(path) => free_entries_result(result)) {
+            if (i == 0) { continue; }
+            break;
+        }
+    }
+}
+
+/** Exercise result-scoped directory ownership and composable in-place sorting. */
+func main() -> int {
+    if (argc() > 1) {
+        with (let result = entries_sort_default(read_all(fixture_path_arg(1))) => free_entries_result(result)) {
+            match (result) {
+                Entries(entries) => {
+                    for (let i = 0; i < entries_size(entries); i = i + 1) { printl_s(entries_get(entries, i).name); }
+                }
+                EntriesFailed(error) => { assert(false, error_message(error)); }
+            }
+        }
+        return 0;
+    }
+    let root = "build/l1-directory-" + int_to_string(get_pid());
+    ok(create_dir(root));
+    assert(write_file(root + "/zeta", "z") != null, "zeta");
+    assert(write_file(root + "/alpha", "a") != null, "alpha");
+    check_streaming(root);
+    check_failures(root);
+    let sorting = root + "/sorting";
+    ok(create_dir(sorting));
+    check_sorting(sorting, 0);
+    for (let i = 0; i < 128; i = i + 1) {
+        assert(write_file(sorting + "/" + int_to_string(1000 + i), "entry") != null, "sort fixture");
+        if (i == 0 || i == 6 || i == 7) { check_sorting(sorting, i + 1); }
+    }
+    check_sorting(sorting, 128);
+    check_byte_names(root + "/bytes");
+    let retained = retained_entry(sorting);
+    assert(retained.name == "1000", "returned entry outlives collection");
+    ok(remove_dir_all(root));
+    assert(retained.name == "1000", "retained entry outlives filesystem deletion");
+    printl_s("directory_main: PASS");
+    return 0;
+}

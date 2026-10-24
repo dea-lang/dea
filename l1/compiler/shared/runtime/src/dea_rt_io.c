@@ -3,6 +3,25 @@
  * Copyright (c) 2025-2026 gwz
  */
 
+#if defined(_WIN32) && !defined(_WIN32_WINNT)
+#define _WIN32_WINNT 0x0602
+#endif
+
+#ifndef _WIN32
+#ifndef _DARWIN_C_SOURCE
+#define _DARWIN_C_SOURCE 1
+#endif
+#ifndef _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE 1
+#endif
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+#ifndef _XOPEN_SOURCE
+#define _XOPEN_SOURCE 700
+#endif
+#endif
+
 #include "../include/dea_rt.h"
 
 #ifdef DEA_RUNTIME_FCLOSE
@@ -12,6 +31,7 @@ extern int DEA_RUNTIME_FCLOSE(FILE *stream);
 #endif
 
 #ifdef DEA_RUNTIME_FILE_INFO_STAT
+#define DEA_RUNTIME_TEST_FILE_INFO_STAT 1
 #if defined(_WIN32)
 extern int DEA_RUNTIME_FILE_INFO_STAT(const char *path, struct _stat64 *buffer);
 #else
@@ -24,6 +44,7 @@ extern int DEA_RUNTIME_FILE_INFO_STAT(const char *path, struct stat *buffer);
 #endif
 
 #ifdef DEA_RUNTIME_REMOVE
+#define DEA_RUNTIME_TEST_REMOVE 1
 extern int DEA_RUNTIME_REMOVE(const char *path);
 #else
 #define DEA_RUNTIME_REMOVE remove
@@ -66,6 +87,9 @@ extern void DEA_RUNTIME_OS_CLEARERR(FILE *stream);
 #define DEA_RUNTIME_OS_CLEARERR clearerr
 #endif
 
+/* Path services share this translation unit and the existing runtime ABI. */
+#include "../internal/dea_rt_fs.h"
+
 /* =========================================================================
  * Runtime support for file I/O and metadata, stdin/stdout/stderr stream I/O,
  * formatted printing of dea values (strings, integers, floats, booleans),
@@ -83,31 +107,23 @@ extern void DEA_RUNTIME_OS_CLEARERR(FILE *stream);
  */
 dea_opt_string rt_read_file_all(dea_string path) {
 
-    dea_int path_len = rt_strlen(path);
-
-    if (path_len == 0) {
+    FsError error = {0};
+    FsChar *native = fs_path(path, &error);
+    if (!native) return DEA_OPT_STRING_NULL;
+    FsMetadata info = fs_metadata_native(native, 1);
+    if (!info.ok || info.file_type != 1 || !info.size.has_value || info.size.value > INT32_MAX) {
+        free(native);
         return DEA_OPT_STRING_NULL;
     }
+#if defined(_WIN32)
+    FILE *file = _wfopen(native, L"rb");
+#else
+    FILE *file = fopen(native, "rb");
+#endif
+    free(native);
+    if (!file) return DEA_OPT_STRING_NULL;
 
-    char *path_cstr = _rt_string_bytes(path);
-    struct stat st;
-
-    if (stat(path_cstr, &st) != 0) {
-        return DEA_OPT_STRING_NULL;
-    }
-    if (!S_ISREG(st.st_mode)) {
-        return DEA_OPT_STRING_NULL;
-    }
-    if (st.st_size < 0 || (uint64_t)st.st_size > INT32_MAX) {
-        return DEA_OPT_STRING_NULL;
-    }
-
-    FILE *file = fopen(path_cstr, "rb");
-    if (file == NULL) {
-        return DEA_OPT_STRING_NULL;
-    }
-
-    size_t size = (size_t)st.st_size;
+    size_t size = (size_t)info.size.value;
 
     dea_string result = _rt_alloc_string((dea_int)size);
     char *buffer = _rt_string_bytes(result);
@@ -135,17 +151,16 @@ dea_opt_string rt_read_file_all(dea_string path) {
  * Dea signature: `extern func rt_write_file_all(path: string, data: string) -> bool;`
  */
 dea_bool rt_write_file_all(dea_string path, dea_string data) {
-    dea_int path_len = rt_strlen(path);
-    if (path_len == 0) {
-        return 0;
-    }
-
-    /* Ensure path is null-terminated for fopen */
-    char *path_cstr = _rt_string_bytes(path);
-    FILE *file = fopen(path_cstr, "wb");
-    if (file == NULL) {
-        return 0;
-    }
+    FsError error = {0};
+    FsChar *native = fs_path(path, &error);
+    if (!native) return 0;
+#if defined(_WIN32)
+    FILE *file = _wfopen(native, L"wb");
+#else
+    FILE *file = fopen(native, "wb");
+#endif
+    free(native);
+    if (!file) return 0;
 
     dea_int data_len = rt_strlen(data);
     size_t written = 0;
@@ -175,9 +190,21 @@ struct __deaM3sys2rtS10RtFileInfo rt_file_info(dea_string path) {
         .mtime_sec = { .has_value = 0 },
         .mtime_nsec = { .has_value = 0 },
     };
-    if (rt_strlen(path) == 0) {
+    if (rt_strlen(path) == 0 || memchr(_rt_string_bytes(path), 0, (size_t)rt_strlen(path))) {
         return out;
     }
+#if defined(_WIN32) && !defined(DEA_RUNTIME_TEST_FILE_INFO_STAT)
+    FsMetadata info = rt_fs_metadata(path, 1);
+    if (info.ok) {
+        out.exists = 1;
+        out.is_file = info.file_type == 1;
+        out.is_dir = info.file_type == 2;
+        out.size = info.size;
+        out.mtime_sec = info.mtime_sec;
+        out.mtime_nsec = info.mtime_nsec;
+    }
+    return out;
+#else
     char *c = _rt_string_bytes(path);
 #if defined(_WIN32)
     struct _stat64 st;
@@ -223,6 +250,7 @@ struct __deaM3sys2rtS10RtFileInfo rt_file_info(dea_string path) {
     }
     return out;
 #endif
+#endif
 }
 
 /**
@@ -235,11 +263,19 @@ struct __deaM3sys2rtS10RtFileInfo rt_file_info(dea_string path) {
  * Dea signature: `extern func rt_delete_file(path: string) -> bool;`
  */
 dea_bool rt_delete_file(dea_string path) {
-    if (rt_strlen(path) == 0) {
+    if (rt_strlen(path) == 0 || memchr(_rt_string_bytes(path), 0, (size_t)rt_strlen(path))) {
         return 0;
     }
+#if defined(_WIN32) && !defined(DEA_RUNTIME_TEST_REMOVE)
+    FsError error = {0};
+    FsChar *native = fs_path(path, &error);
+    if (!native) return 0;
+    int result = _wremove(native);
+    free(native);
+#else
     char *c = _rt_string_bytes(path);
     int result = DEA_RUNTIME_REMOVE(c);
+#endif
     return result == 0;
 }
 

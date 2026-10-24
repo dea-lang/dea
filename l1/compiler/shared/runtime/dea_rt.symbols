@@ -84,6 +84,9 @@ rt_alloc
 rt_array_element
 rt_calloc
 rt_delete_file
+rt_dir_close
+rt_dir_next
+rt_dir_open
 rt_errno
 rt_exit
 rt_file_info
@@ -92,6 +95,17 @@ rt_flush_stderr_result
 rt_flush_stdout
 rt_flush_stdout_result
 rt_free
+rt_fs_absolute
+rt_fs_canonicalize
+rt_fs_copy_file
+rt_fs_create_dir
+rt_fs_current_dir
+rt_fs_metadata
+rt_fs_remove_dir
+rt_fs_remove_file
+rt_fs_rename
+rt_fs_same_file
+rt_fs_set_current_dir
 rt_get_argc
 rt_get_argv
 rt_get_env_var

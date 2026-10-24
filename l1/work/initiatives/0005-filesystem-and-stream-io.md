@@ -6,10 +6,10 @@
 - Open plans:
   - `l1/work/plans/features/2026-08-30-dynamic-byte-buffers-noref.md`
   - `l1/work/plans/features/2026-08-30-file-handles-and-random-access-noref.md`
-  - `l1/work/plans/features/2026-08-30-filesystem-mutations-and-directory-traversal-noref.md`
   - `l1/work/plans/features/2026-08-30-streams-and-buffering-noref.md`
   - `l1/work/plans/features/2026-08-30-file-watch-api-design-noref.md`
 - Closed plans:
+  - `l1/work/plans/features/closed/2026-08-30-filesystem-mutations-and-directory-traversal-noref.md`
   - `l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md`
   - `l1/work/plans/features/closed/2026-08-30-wide-filesystem-metadata-noref.md`
 
@@ -38,7 +38,9 @@ shared-private-code extraction are not completion requirements for this initiati
 
 ## Current baseline
 
-- `std.fs` exposes metadata, whole-file string reads and writes, and file deletion.
+- `std.fs` exposes structured metadata, native identity, path resolution, mutations, and legacy whole-file helpers.
+- `std.dir` provides streaming owned cursors, result-level cleanup, and explicit materialization with composable
+  comparator/default sorting through `sys.fs`.
 - `std.io` exposes standard-stream byte transfers whose buffer indexes and counts are `int`. Additive result helpers use
   shared `std.os` errors and distinguish EOF, timeout, failure, and successful partial transfer.
 - L1 has no general file-handle API, so there is no legacy 32-bit offset contract to preserve.
@@ -46,7 +48,7 @@ shared-private-code extraction are not completion requirements for this initiati
   remain `int?`.
 - Whole-file helpers are necessarily bounded by the `int` length of a Dea string.
 - `ByteArray` is fixed-sized, and general mutable growth is exposed only through lower-level `VectorBase` operations.
-- Filesystem failures currently collapse into `null`, `false`, or `-1`, losing operation-specific error information.
+- New filesystem APIs return captured `std.os` errors directly; legacy convenience helpers retain nullable results.
 
 ## Decisions and invariants
 
@@ -93,14 +95,20 @@ Spawned plan: [dynamic byte buffers].
 
 Spawned plan: [file handles and random access].
 
-### Phase 3 - Path mutations and directory traversal (Stdlib Tier 1)
+### Phase 3 - Path mutations and directory traversal (Stdlib Tier 1, complete)
 
 - Add metadata variants, directory creation/removal, rename/replace/copy, current-directory operations, and streaming
   directory iteration.
 - Add `same_file`, absolute-path conversion, and existing-path canonicalization with distinct identity/resolution
   contracts; settle replacement policies and any atomic no-replace capability or deferral.
 
-Spawned plan: [filesystem mutations and directory traversal].
+Completed public `std.fs` / `std.dir` contracts preserve native identity separately from spelling, wide Windows paths,
+POSIX bytes, non-following recursive removal, and result-level cursor/collection cleanup. Sorting composes with
+materialization through in-place iterative heapsort with custom or default name comparison. Rename and replacement have
+explicit native policies; atomic no-replace rename is deferred rather than emulated by check-then-rename. Compiler
+adoption is separate.
+
+Closed plan: [filesystem mutations and directory traversal].
 
 ### Phase 4 - Streams and buffering (Stdlib Tier 2)
 
@@ -178,7 +186,7 @@ Spawned plan: [file-watch API design].
 [dynamic byte buffers]: ../plans/features/2026-08-30-dynamic-byte-buffers-noref.md
 [file handles and random access]: ../plans/features/2026-08-30-file-handles-and-random-access-noref.md
 [file-watch api design]: ../plans/features/2026-08-30-file-watch-api-design-noref.md
-[filesystem mutations and directory traversal]: ../plans/features/2026-08-30-filesystem-mutations-and-directory-traversal-noref.md
+[filesystem mutations and directory traversal]: ../plans/features/closed/2026-08-30-filesystem-mutations-and-directory-traversal-noref.md
 [l1 roadmap]: ../../docs/roadmap.md
 [os errors and i/o results]: ../plans/features/closed/2026-08-30-os-error-and-io-results-noref.md
 [streams and buffering]: ../plans/features/2026-08-30-streams-and-buffering-noref.md

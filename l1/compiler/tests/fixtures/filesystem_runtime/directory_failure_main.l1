@@ -1,0 +1,110 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module directory_failure_main;
+import std.dir;
+import std.fs;
+import std.os;
+import std.assert;
+import std.io;
+import std.text;
+import std.system;
+
+/** Select test-only native cursor faults. */
+extern func fs_dir_probe_config(mode: int);
+/** Read the expected native error code. */
+extern func fs_dir_probe_error() -> int;
+/** Read the number of consumed native cursors. */
+extern func fs_dir_probe_closes() -> int;
+
+/** Require cleanup success without collapsing its captured error. */
+func ok(result: FsResult) {
+    match (result) { FsOk => {} FsFailed(error) => { assert(false, error_message(error)); } }
+}
+
+/** Check a recorded native failure instead of reading the current ambient errno. */
+func expected_error(error: OsError) {
+    assert(error.native_code == (fs_dir_probe_error() as long), "saved first error");
+    assert(_os_error_to_rt(error).domain == 1, "native errno domain");
+}
+
+/** Return through scoped cleanup while keeping an independently owned name alive. */
+func first_name(path: string) -> string {
+    with (let result = open(path) => ok(free_open_dir_result(result))) {
+        match (result) {
+            OpenedDir(dir) => {
+                match (next(dir)) { Entry(entry) => { return entry.name; } _ => { assert(false, "first entry"); } }
+            }
+            OpenDirFailed(error) => { assert(false, error_message(error)); }
+        }
+    }
+    return "";
+}
+
+/** Validate partial-result cleanup, cursor destruction, and first-error precedence. */
+func main() -> int {
+    let root = "build/l1-directory-errors-" + int_to_string(get_pid());
+    ok(create_dir(root));
+    assert(write_file(root + "/alpha", "a") != null, "alpha fixture");
+    assert(write_file(root + "/zeta", "z") != null, "zeta fixture");
+    for (let mode = 1; mode <= 3; mode = mode + 1) {
+        fs_dir_probe_config(mode);
+        with (let result = entries_sort_default(read_all(root)) => free_entries_result(result)) {
+            match (result) {
+                EntriesFailed(error) => { expected_error(error); }
+                Entries(entries) => { assert(false, "expected materialization failure"); }
+            }
+        }
+        assert(fs_dir_probe_closes() == 1, "failure consumes exactly one cursor");
+    }
+    fs_dir_probe_config(4);
+    with (let result = read_all(root) => free_entries_result(result)) {
+        match (result) {
+            Entries(entries) => {
+                assert(entries_size(entries) == 2, "unknown hints preserve entries");
+                match (entries_get(entries, 0).file_type) {
+                    Unknown => {}
+                    _ => { assert(false, "unknown hint must not trigger implicit metadata"); }
+                }
+            }
+            EntriesFailed(error) => { assert(false, error_message(error)); }
+        }
+    }
+    assert(fs_dir_probe_closes() == 1, "success consumes exactly one cursor");
+
+    fs_dir_probe_config(2);
+    let opened = open(root);
+    match (opened) { OpenedDir(dir) => {} OpenDirFailed(error) => { assert(false, error_message(error)); } }
+    // The cleanup consumes both cursor and wrapper even when close reports failure.
+    match (free_open_dir_result(opened)) {
+        FsFailed(error) => { expected_error(error); }
+        FsOk => { assert(false, "close failure must be returned"); }
+    }
+    assert(fs_dir_probe_closes() == 1, "failed close consumes exactly one cursor");
+    ok(free_open_dir_result(OpenDirFailed(OsError(InvalidInput, Runtime, 73 as long))));
+    assert(fs_dir_probe_closes() == 1, "failed-open cleanup never closes");
+
+    fs_dir_probe_config(0);
+    with (let result = open(root) => ok(free_open_dir_result(result))) {
+        match (result) { OpenedDir(dir) => {} OpenDirFailed(error) => { assert(false, error_message(error)); } }
+    }
+    assert(fs_dir_probe_closes() == 1, "scoped cleanup consumes cursor once");
+    let saved = first_name(root);
+    assert(saved == "alpha" || saved == "zeta", "early return keeps copied name");
+    assert(fs_dir_probe_closes() == 2, "return executes cleanup once");
+    for (let i = 0; i < 3; i = i + 1) {
+        with (let result = open(root) => ok(free_open_dir_result(result))) {
+            if (i == 0) { continue; }
+            break;
+        }
+    }
+    assert(fs_dir_probe_closes() == 4, "continue and break each execute cleanup once");
+    with (let result = open(root + "/absent") => ok(free_open_dir_result(result))) {
+        match (result) { OpenDirFailed(error) => {} _ => { assert(false, "missing cursor opened"); } }
+    }
+    assert(fs_dir_probe_closes() == 4, "native failed-open result cleanup is a no-op");
+    ok(remove_dir_all(root));
+    printl_s("directory_failure_main: PASS");
+    return 0;
+}

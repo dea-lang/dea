@@ -1,6 +1,6 @@
 # The L1 Standard Library
 
-Version: 2026-10-21
+Version: 2026-10-24
 
 The standard library provides ergonomic L1 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -71,7 +71,7 @@ abstraction used by existing containers and raw-memory helpers; it is not the re
 
 ### `std.fs`
 
-**Imports:** `sys.rt`, `std.unit`
+**Imports:** `sys.rt`, `sys.fs`, `std.os`, `std.unit`
 
 | Type/Function | Signature                                                                                                         | Description                                             |
 | ------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
@@ -90,12 +90,58 @@ File sizes and modification seconds use nullable signed 64-bit `long` values. Mo
 the normalized range 0 through 999,999,999 when supplied by the host. Whole-file reads remain bounded by `INT32_MAX`
 bytes and return `null` for oversized files; string lengths and buffer transfer counts remain `int`.
 
-Timestamp range also depends on the native metadata API. Windows uses `_stat64`, whose supported date range is 1970
-through 3000; pre-epoch timestamps are not supported by that API. POSIX hosts can preserve pre-epoch values when their
-`stat` implementation and filesystem support them.
+Path-taking operations reject empty paths and embedded NUL before host filesystem calls. Windows uses UTF-8 to UTF-16
+conversion and wide APIs, including the legacy whole-file helpers. POSIX passes filename bytes unchanged. Windows
+metadata uses native handle information and FILETIME, including host-supported pre-epoch times and 100 ns precision. A
+whole-file write succeeds only when both the write and stream close succeed.
 
-All path-taking operations treat an empty path as failure without invoking host filesystem APIs. A whole-file write
-succeeds only when both the write and stream close succeed.
+The structured surface is additive:
+
+| Type/Function                                                     | Result                                                             | Contract                                                                                                  |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `FileType`                                                        | `Unknown`, `RegularFile`, `Directory`, `Symlink`, `OtherFile`      | Native classification or cheap directory hint.                                                            |
+| `Metadata`                                                        | `file_type`, `size: long?`, `mtime_sec: long?`, `mtime_nsec: int?` | Existing-object metadata with persistent widths.                                                          |
+| `metadata(path)` / `symlink_metadata(path)`                       | `MetadataResult`                                                   | `FoundMetadata(info)` or `MetadataFailed(error)`; follow the final link or inspect its entry.             |
+| `same_file(left, right)`                                          | `SameFileResult`                                                   | `SameFile(bool)` or `SameFileFailed(error)`; compare followed native identities.                          |
+| `absolute(path)` / `canonicalize(path)` / `current_dir()`         | `PathResult`                                                       | `ResolvedPath(string)` or `PathFailed(error)`; anchoring, existing-path resolution, or current directory. |
+| `create_dir(path)` / `create_dir_all(path)`                       | `FsResult`                                                         | Create one directory or missing parents.                                                                  |
+| `remove_file(path)` / `remove_dir(path)` / `remove_dir_all(path)` | `FsResult`                                                         | Unlink an entry, remove an empty directory, or remove a tree without following links.                     |
+| `rename(source, destination)` / `replace(source, destination)`    | `FsResult`                                                         | Native entry rename or non-directory replacement; no cross-filesystem copy fallback.                      |
+| `copy_file(source, destination)`                                  | `FsResult`                                                         | Copy regular-file bytes into a new, exclusively created destination.                                      |
+| `set_current_dir(path)`                                           | `FsResult`                                                         | Change process-global current directory.                                                                  |
+
+`FsResult` is `FsOk` or `FsFailed(OsError)`. Every path argument is a `string`. Failure is returned with its saved
+native domain/code; missing identity inputs never become a successful `false`. See
+[l1/docs/reference/filesystem.md][filesystem] for link policies, Windows root rules, replacement and failure behavior.
+
+### `std.dir`
+
+`open` returns an owning `OpenDirResult`; its `Dir*` payload accesses a streaming cursor with host-defined entry order
+and no implicit full metadata query. `DirEntry { name: string; file_type: std.fs::FileType; }` owns its name
+independently of the cursor.
+
+| Function                                                                        | Result          | Contract                                                                                                                                                |
+| ------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `open(path: string)`                                                            | `OpenDirResult` | `OpenedDir(Dir*)` or `OpenDirFailed(OsError)`; follows the directory path.                                                                              |
+| `next(dir: Dir*)`                                                               | `NextResult`    | `Entry(DirEntry)`, `End`, or `NextFailed(OsError)`; excludes dot entries.                                                                               |
+| `free_open_dir_result(result: OpenDirResult)`                                   | `FsResult`      | Close and destroy a successful cursor, including on close failure; return its captured close result. Failed opens require no cleanup and return `FsOk`. |
+| `read_all(path: string)`                                                        | `EntriesResult` | `Entries(DirEntries*)` or `EntriesFailed(OsError)`; collect in host order and close before returning.                                                   |
+| `entries_sort(result: EntriesResult, compare: func(DirEntry, DirEntry) -> int)` | `EntriesResult` | Sort a successful collection in place and return the same pointer; pass failures through without comparisons.                                           |
+| `entries_sort_default(result: EntriesResult)`                                   | `EntriesResult` | Use `std.string::cmp_s` on entry names, ordering unsigned bytes without locale/case folding.                                                            |
+| `entries_size(entries: DirEntries*)`                                            | `int`           | Logical count.                                                                                                                                          |
+| `entries_get(entries: DirEntries*, index: int)`                                 | `DirEntry`      | Owning copy, with asserted logical bounds.                                                                                                              |
+| `free_entries_result(result: EntriesResult)`                                    | `void`          | Release a successful collection and its names; failure variants require no cleanup.                                                                     |
+
+Use `with (let result = entries_sort_default(read_all(path)) => free_entries_result(result))` for composable sorted
+materialization. Result copies alias one resource: schedule exactly one cleanup across all aliases. Cleanup is not
+idempotent; cursor and collection pointers expire afterward, while owning entry copies and saved names survive. The
+lower-level `close`, `free_dir`, and `free_entries` functions are private; `read_all_sorted` is removed.
+
+`End` and iteration failure repeat until cleanup. Materialization discards partial results on iteration/close failure;
+allocation failure follows the stdlib's existing fatal managed-allocation policy. Sorting uses iterative in-place
+heapsort with `O(n log n)` worst-case comparisons, constant auxiliary entry storage, and unspecified equal-key order.
+Comparators return negative/zero/positive and must not mutate or free the collection. See
+[l1/docs/reference/filesystem.md][filesystem] for error-aware cursor cleanup and ownership examples.
 
 ### `std.vector`
 
@@ -877,4 +923,5 @@ These are runtime-backed hash externs declared directly in `sys.hash`.
 | `rt_hash_ptr`        | `func(ptr: void*) -> int`             | Hashes a non-null raw pointer value.                      |
 | `rt_hash_opt_ptr`    | `func(opt: void*?) -> int`            | Hashes a present optional raw pointer.                    |
 
+[filesystem]: filesystem.md
 [os-results]: ../decisions/0045-direct-os-errors-and-io-results.md

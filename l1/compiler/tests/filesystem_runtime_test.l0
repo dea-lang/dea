@@ -1,0 +1,21 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module filesystem_runtime_test;
+import std.assert;
+import std.io;
+import std.vector;
+import l1c_lib;
+import support.driver_inputs;
+/** Execute the actual generated L1 path API consumer. */
+func main() {
+    with (let args = dti_native_argv(8) => sv_free(args)) {
+        sv_push(args, "--run");
+        sv_push(args, "--project-root");
+        sv_push(args, "compiler/tests/fixtures/filesystem_runtime");
+        sv_push(args, "filesystem_main");
+        assert(run_with_argv(args) == 0, "generated L1 filesystem consumer");
+    }
+    printl_s("filesystem_runtime_test: PASS");
+}

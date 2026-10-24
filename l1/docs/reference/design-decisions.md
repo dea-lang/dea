@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-10-21
+Version: 2026-10-24
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -724,5 +724,27 @@ ownership, exact/all transfer result APIs, process spawning, and networking rema
 
 See [l1/docs/decisions/0045-direct-os-errors-and-io-results.md][os-results].
 
+## Filesystem Paths and Streaming Directories
+
+`std.fs` adds direct metadata, followed native identity, call-time absolute anchoring, existing-path canonicalization,
+and mutations through `sys.fs`. `std.dir` owns incremental cursors with copied entry names and explicit end/error
+states. Public cleanup accepts owning results and destroys successful payloads, even on cursor-close failure; cursor and
+collection aliases require exactly one cleanup. Materialization composes with result-to-result, in-place comparator
+sorting; default sorting uses `cmp_s` on names. Iterative heapsort provides worst-case `O(n log n)` comparisons with
+constant auxiliary entry storage and unspecified equal-key order. Path operations reject NUL, use wide Windows APIs, and
+preserve POSIX bytes. Recursive deletion does not traverse links. Rename/replace use native entry operations without
+copy fallback, and copying exclusively creates a new destination. Atomic no-replace rename is explicitly deferred.
+
+See [l1/docs/reference/filesystem.md][filesystem-contract] and
+[l1/docs/decisions/0046-filesystem-paths-and-owned-directory-traversal.md][filesystem-traversal],
+[l1/docs/decisions/0047-followed-native-filesystem-identity.md][filesystem-identity],
+[l1/docs/decisions/0048-absolute-anchoring-and-existing-path-canonicalization.md][filesystem-resolution], and
+[l1/docs/decisions/0049-filesystem-replacement-and-no-replace-capability.md][filesystem-replacement].
+
+[filesystem-contract]: filesystem.md
+[filesystem-identity]: ../decisions/0047-followed-native-filesystem-identity.md
+[filesystem-replacement]: ../decisions/0049-filesystem-replacement-and-no-replace-capability.md
+[filesystem-resolution]: ../decisions/0048-absolute-anchoring-and-existing-path-canonicalization.md
+[filesystem-traversal]: ../decisions/0046-filesystem-paths-and-owned-directory-traversal.md
 [filesystem-width]: ../decisions/0037-wide-filesystem-metadata.md
 [os-results]: ../decisions/0045-direct-os-errors-and-io-results.md

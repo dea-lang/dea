@@ -299,6 +299,7 @@ static dea_int _rt_os_win32_kind(dea_long code) {
     case 123: /* ERROR_INVALID_NAME */
     case 131: /* ERROR_NEGATIVE_SEEK */
     case 161: /* ERROR_BAD_PATHNAME */
+    case 1113: /* ERROR_NO_UNICODE_TRANSLATION */
     case 206: /* ERROR_FILENAME_EXCED_RANGE */
         return DEA_OS_ERROR_INVALID_INPUT;
     case 6: /* ERROR_INVALID_HANDLE */
