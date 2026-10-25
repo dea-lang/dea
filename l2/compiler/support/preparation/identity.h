@@ -3,14 +3,29 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file identity.h Exact Dea/native identities and machine-local discovery memos. */
+/**
+ * @file identity.h Exact Dea/native identities and machine-local discovery memos.
+ */
 #ifndef L2_PREPARATION_IDENTITY_H
 #define L2_PREPARATION_IDENTITY_H
 
+/**
+ * Test whether a byte string ends with an exact suffix.
+ *
+ * @param s Borrowed NUL-terminated string whose suffix is tested.
+ * @param suffix Borrowed exact suffix bytes.
+ * @return Nonzero for a matching suffix, including the empty suffix.
+ */
 static int pc_ends(const char *s, const char *suffix) {
     size_t a = strlen(s), b = strlen(suffix);
     return a >= b && !memcmp(s + a - b, suffix, b);
 }
+
+/**
+ * Remove leading and trailing ASCII whitespace from a mutable string.
+ *
+ * @param s Caller-owned writable NUL-terminated string.
+ */
 static void pc_trim(char *s) {
     size_t n = strlen(s), first = 0;
     while (n && strchr(" \t\r\n", s[n - 1]))
@@ -20,6 +35,14 @@ static void pc_trim(char *s) {
     if (first)
         memmove(s, s + first, n - first + 1);
 }
+
+/**
+ * Load optional identity memo evidence or reset to an empty input inventory.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param key Borrowed NUL-terminated object or identity key.
+ * @param scope Borrowed observation scope label.
+ */
 static void pc_load_input_memo(PcContext *c, const char *key, const char *scope) {
     char *path = pc_memo_path(c, "toolchains", key, 0);
     int status = PC_JSON_ABSENT;
@@ -39,6 +62,14 @@ static void pc_load_input_memo(PcContext *c, const char *key, const char *scope)
     }
     pj_free(memo);
 }
+
+/**
+ * Write optional identity and discovery memos without making them authoritative.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param key Borrowed NUL-terminated object or identity key.
+ * @param discovery Borrowed native discovery evidence.
+ */
 static void pc_save_input_memo(PcContext *c, const char *key, const PcJson *discovery) {
     char *path = pc_memo_path(c, "toolchains", key, 1);
     PcJson *memo;
@@ -65,7 +96,19 @@ static void pc_save_input_memo(PcContext *c, const char *key, const PcJson *disc
     pj_free(memo);
     free(path);
 }
-/** Walk the small compiler-owned input tree; never walk a toolchain SDK. */
+
+/**
+ * Walk the small compiler-owned input tree; never walk a toolchain SDK.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param root Borrowed root path.
+ * @param relative Borrowed path relative to the selected root.
+ * @param sources Compiler-owned source inventory read or populated by this operation.
+ * @param modules Module inventory read or populated by this operation.
+ * @param depth Current nesting depth checked against the operation limit.
+ * @return Nonzero for a complete bounded owned-source inventory; zero after recording unsafe or unreadable
+ * inputs.
+ */
 static int pc_source_tree(PcContext *c, const char *root, const char *relative, PcJson *sources,
                           PcJson *modules, int depth) {
     char *directory = pc_join(root, relative);
@@ -122,6 +165,13 @@ static int pc_source_tree(PcContext *c, const char *root, const char *relative, 
     pj_free(names);
     return ok;
 }
+
+/**
+ * Resolve and hash the compiler-owned Dea inputs and bundled interfaces.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return Nonzero on a complete identity; zero after recording an actionable context failure.
+ */
 static int pc_resolve_dea_impl(PcContext *c) {
     PcJson *selection, *sources;
     char *memo_key, *digest;
@@ -188,6 +238,13 @@ static int pc_resolve_dea_impl(PcContext *c) {
     free(memo_key);
     return 1;
 }
+
+/**
+ * Resolve Dea identity and report its inclusive debug timing span.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return Nonzero on a complete identity; zero on a recorded preparation failure.
+ */
 static int pc_resolve_dea(PcContext *c) {
     double started = pc_observation_start(c);
     int result = pc_resolve_dea_impl(c);
@@ -195,7 +252,10 @@ static int pc_resolve_dea(PcContext *c) {
     return result;
 }
 
-/** Keep process selection inputs separate from native artifact roots. */
+/**
+ * Keep process selection inputs separate from native artifact roots.
+ * @return Owned JSON object containing the exact relevant environment values.
+ */
 static PcJson *pc_selection_environment(void) {
     static const char *const names[] = {"PATH",
                                         "PATHEXT",
@@ -234,7 +294,13 @@ static PcJson *pc_selection_environment(void) {
 #endif
     return env;
 }
-/** Include resolved native CPU selection when an option asks the host to choose. */
+
+/**
+ * Include resolved native CPU selection when an option asks the host to choose.
+ *
+ * @param options Borrowed ordered native option words.
+ * @return Owned SHA-256 identity string released with free.
+ */
 static char *pc_cpu_identity(const PcJson *options) {
     const PcJson *o;
     int needed = 0;
@@ -262,6 +328,7 @@ static char *pc_cpu_identity(const PcJson *options) {
                 max = a;
             if (leaf == 0x80000000)
                 max_ext = a;
+
             /* APIC/topology fields do not affect compilation. */
             if (leaf == 1)
                 bb &= 0x00ffffff;
@@ -272,6 +339,7 @@ static char *pc_cpu_identity(const PcJson *options) {
             pc_bytes(&b, (const char *)&d, sizeof(d));
             if (leaf == 1 && (cc & (1u << 27))) {
                 uint32_t low, high;
+
                 /* Byte spelling also works with TinyCC's smaller assembler. */
                 __asm__ volatile(".byte 0x0f, 0x01, 0xd0" : "=a"(low), "=d"(high) : "c"(0));
                 pc_bytes(&b, (const char *)&low, sizeof(low));
@@ -315,6 +383,13 @@ static char *pc_cpu_identity(const PcJson *options) {
     free(b.s);
     return pc_string(hex);
 }
+
+/**
+ * Construct native runtime compiler words under the selected isolation policy.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return Owned native argument array beginning with the compiler path; release with pj_free.
+ */
 static PcJson *pc_runtime_words(PcContext *c) {
     PcJson *words = pj_new(PJ_ARRAY);
     const PcJson *o;
@@ -322,6 +397,14 @@ static PcJson *pc_runtime_words(PcContext *c) {
     for (o = c->runtime_options->child; o; o = o->next) pj_add(words, NULL, pj_clone(o));
     return words;
 }
+
+/**
+ * Build owned native argv beginning with the compiler and optional configured words.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param options Nonzero to append the context native option words after the compiler.
+ * @return Owned native argument array released with pj_free.
+ */
 static PcJson *pc_words(PcContext *c, int options) {
     PcJson *words = pj_new(PJ_ARRAY);
     const PcJson *o;
@@ -331,7 +414,14 @@ static PcJson *pc_words(PcContext *c, int options) {
             pj_add(words, NULL, pj_string(o->text));
     return words;
 }
-/** TinyCC handles search queries before ordinary compilation option parsing. */
+
+/**
+ * TinyCC handles search queries before ordinary compilation option parsing.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param family Borrowed native compiler family name.
+ * @return Owned native search-query argument array released with pj_free.
+ */
 static PcJson *pc_search_words(PcContext *c, const char *family) {
     PcJson *words;
     const PcJson *option;
@@ -350,6 +440,15 @@ static PcJson *pc_search_words(PcContext *c, const char *family) {
     }
     return words;
 }
+
+/**
+ * Run a bounded native toolchain probe and update observation counters.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param words Owned native argv array consumed and released by this call.
+ * @param purpose Borrowed diagnostic label describing this command or probe.
+ * @return Owned probe result; release captured storage with pc_probe_free.
+ */
 static PcProbe pc_context_probe(PcContext *c, PcJson *words, const char *purpose) {
     PcProbe p;
     double started = pc_observation_start(c);
@@ -371,6 +470,15 @@ static PcProbe pc_context_probe(PcContext *c, PcJson *words, const char *purpose
     }
     return p;
 }
+
+/**
+ * Require a successful bounded toolchain probe and retain its failure context.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param p Borrowed bounded probe result, including captured output and native status.
+ * @param purpose Borrowed diagnostic label describing this command or probe.
+ * @return Nonzero for a successful probe; zero after recording a preparation failure.
+ */
 static int pc_probe_ok(PcContext *c, const PcProbe *p, const char *purpose) {
     if (p->status == 0 && !p->timed_out)
         return 1;
@@ -391,6 +499,13 @@ static int pc_probe_ok(PcContext *c, const PcProbe *p, const char *purpose) {
     }
     return 0;
 }
+
+/**
+ * Add one current file dependency to native discovery evidence.
+ *
+ * @param dependencies Dependency evidence populated by this operation.
+ * @param path Borrowed NUL-terminated filesystem path.
+ */
 static void pc_dependency(PcJson *dependencies, const char *path) {
     PcJson *metadata;
     if (pj_get(dependencies, path))
@@ -398,6 +513,13 @@ static void pc_dependency(PcJson *dependencies, const char *path) {
     metadata = pc_meta(path);
     pj_add(dependencies, path, metadata ? metadata : pj_new(PJ_NULL));
 }
+
+/**
+ * Add a directory metadata dependency to native discovery evidence.
+ *
+ * @param dependencies Dependency evidence populated by this operation.
+ * @param path Borrowed NUL-terminated filesystem path.
+ */
 static void pc_directory_dependency(PcJson *dependencies, const char *path) {
     if (!path || !*path)
         return;
@@ -407,6 +529,13 @@ static void pc_directory_dependency(PcJson *dependencies, const char *path) {
         free(absolute);
     }
 }
+
+/**
+ * Record the search directories in a platform-delimited path list.
+ *
+ * @param dependencies Dependency evidence populated by this operation.
+ * @param paths Path spellings or mutable path evidence for this operation.
+ */
 static void pc_path_list_dependencies(PcJson *dependencies, const char *paths) {
     const char *p = paths, *start = p;
     if (!*paths)
@@ -426,13 +555,26 @@ static void pc_path_list_dependencies(PcJson *dependencies, const char *paths) {
             start = p + 1;
         }
 }
+
+/**
+ * Record an absolute regular-file component in native discovery evidence.
+ *
+ * @param paths Path spellings or mutable path evidence for this operation.
+ * @param path Borrowed NUL-terminated filesystem path.
+ */
 static void pc_add_component(PcJson *paths, const char *path) {
     char *absolute = pc_path_call(path, l2c_fs_absolute_path);
     if (absolute && pc_kind(absolute, 1) == 1 && !pj_get(paths, absolute))
         pj_set_string(paths, absolute, absolute);
     free(absolute);
 }
-/** Track directory-selection options in both direct and expanded response arguments. */
+
+/**
+ * Track directory-selection options in both direct and expanded response arguments.
+ *
+ * @param options Borrowed ordered native option words.
+ * @param dependencies Dependency evidence populated by this operation.
+ */
 static void pc_option_directory_dependencies(const PcJson *options, PcJson *dependencies) {
     const PcJson *o;
     for (o = options->child; o; o = o->next) {
@@ -453,6 +595,13 @@ static void pc_option_directory_dependencies(const PcJson *options, PcJson *depe
             pc_directory_dependency(dependencies, path);
     }
 }
+
+/**
+ * Record environment and explicit compiler-selection dependency metadata.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param dependencies Dependency evidence populated by this operation.
+ */
 static void pc_selection_dependencies(PcContext *c, PcJson *dependencies) {
     char *parent = pc_parent(c->compiler);
     pc_directory_dependency(dependencies, parent);
@@ -481,6 +630,14 @@ static void pc_selection_dependencies(PcContext *c, PcJson *dependencies) {
         free(system);
     }
 }
+
+/**
+ * Revalidate every recorded discovery dependency against current filesystem metadata.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param memo Borrowed optional memo record.
+ * @return Nonzero only when the complete discovery evidence remains current.
+ */
 static int pc_discovery_current(PcContext *c, const PcJson *memo) {
     const PcJson *discovery = pj_get(memo, "discovery"), *memo_files = pj_get(memo, "files");
     const PcJson *deps = pj_get(discovery, "dependencies"), *paths = pj_get(discovery, "paths"), *p;
@@ -542,7 +699,11 @@ static int pc_discovery_current(PcContext *c, const PcJson *memo) {
     pc_observe_decision(c, "toolchain-observation-memo", "hit", "validated-memo", NULL);
     return 1;
 }
-/** A tiny scratch source is used only for bounded toolchain queries. */
+
+/**
+ * A tiny scratch source is used only for bounded toolchain queries.
+ * @return Owned exclusive scratch-directory path, or NULL when no workspace can be created.
+ */
 static char *pc_probe_directory(void) {
 #if defined(_WIN32)
     char parent[MAX_PATH], name[MAX_PATH];
@@ -562,6 +723,12 @@ static char *pc_probe_directory(void) {
     return pattern;
 #endif
 }
+
+/**
+ * Remove known probe outputs and the command-owned scratch directory.
+ *
+ * @param directory Borrowed owned-workspace path; the caller retains and frees its path allocation.
+ */
 static void pc_probe_directory_free(const char *directory) {
     static const char *const children[] = {"probe.c", "dependencies.d", NULL};
     int i;
@@ -576,7 +743,14 @@ static void pc_probe_directory_free(const char *directory) {
     rmdir(directory);
 #endif
 }
-/** Decode one compiler-emitted Make prerequisite into a caller-owned reusable buffer. */
+
+/**
+ * Decode one compiler-emitted Make prerequisite into a caller-owned reusable buffer.
+ *
+ * @param cursor Address of a borrowed parser cursor advanced by this operation.
+ * @param token Mutable growable byte buffer owned by the caller.
+ * @return Nonzero after reading one token; zero when no prerequisite remains.
+ */
 static int pc_dependency_token(const char **cursor, PcBuffer *token) {
     const char *p = *cursor;
     token->n = 0;
@@ -603,6 +777,7 @@ static int pc_dependency_token(const char **cursor, PcBuffer *token) {
                 continue;
             }
             if (*p == '#') {
+
                 /* GCC and Clang add one slash before # without doubling existing ones. */
                 pc_bytes(token, start, count - 1);
                 pc_char(token, *p++);
@@ -624,7 +799,17 @@ static int pc_dependency_token(const char **cursor, PcBuffer *token) {
     *cursor = p;
     return token->n != 0;
 }
-/** Parse Make dependencies, then retain the existing path and scratch checks. */
+
+/**
+ * Parse Make dependencies, then retain the existing path and scratch checks.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param text Borrowed text to parse or caller-owned buffer receiving constructed text.
+ * @param paths Path spellings or mutable path evidence for this operation.
+ * @param directories Mutable directory dependency evidence.
+ * @param scratch Borrowed command-owned probe workspace path.
+ * @return Nonzero for valid complete dependency evidence; zero after recording invalid probe output.
+ */
 static int pc_parse_dependencies(PcContext *c, const char *text, PcJson *paths, PcJson *directories,
                                  const char *scratch) {
     const char *p = text;
@@ -657,6 +842,13 @@ static int pc_parse_dependencies(PcContext *c, const char *text, PcJson *paths, 
     free(token.s);
     return 1;
 }
+
+/**
+ * Parse compiler-reported search directories into discovery dependency evidence.
+ *
+ * @param dependencies Dependency evidence populated by this operation.
+ * @param text Borrowed text to parse or caller-owned buffer receiving constructed text.
+ */
 static void pc_search_directories(PcJson *dependencies, const char *text) {
     const char *p = text, *start = p;
     for (;; ++p)
@@ -674,7 +866,15 @@ static void pc_search_directories(PcJson *dependencies, const char *text) {
             start = p + 1;
         }
 }
-/** Resolve Apple's active toolchain on every invocation, not just on memo misses. */
+
+/**
+ * Resolve Apple's active toolchain on every invocation, not just on memo misses.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param selection Compiler-selection evidence read or populated by this operation.
+ * @return Nonzero when Apple toolchain selection is established or not applicable; zero on selection
+ * failure.
+ */
 static int pc_apple_selection(PcContext *c, PcJson *selection) {
 #if defined(__APPLE__)
     char *resolved = pc_path_call(c->compiler, l2c_fs_canonical_existing_path);
@@ -723,7 +923,15 @@ static int pc_apple_selection(PcContext *c, PcJson *selection) {
 #endif
     return 1;
 }
-/** Record ordered include roots, including currently absent search candidates. */
+
+/**
+ * Record ordered include roots, including currently absent search candidates.
+ *
+ * @param text Borrowed text to parse or caller-owned buffer receiving constructed text.
+ * @param roots Header-search root evidence read or populated by this operation.
+ * @param dependencies Dependency evidence populated by this operation.
+ * @param tcc Nonzero to select TinyCC-specific probe syntax.
+ */
 static void pc_include_search(const char *text, PcJson *roots, PcJson *dependencies, int tcc) {
     const char *start = text, *p;
     int active = 0;
@@ -763,7 +971,14 @@ static void pc_include_search(const char *text, PcJson *roots, PcJson *dependenc
         start = p + 1;
     }
 }
-/** Track nested parents where a newly introduced header could shadow a prior selection. */
+
+/**
+ * Track nested parents where a newly introduced header could shadow a prior selection.
+ *
+ * @param roots Header-search root evidence read or populated by this operation.
+ * @param paths Path spellings or mutable path evidence for this operation.
+ * @param dependencies Dependency evidence populated by this operation.
+ */
 static void pc_header_shadow_dependencies(const PcJson *roots, const PcJson *paths,
                                           PcJson *dependencies) {
     const PcJson *file, *selected_root, *candidate_root;
@@ -787,7 +1002,13 @@ static void pc_header_shadow_dependencies(const PcJson *roots, const PcJson *pat
         }
     }
 }
-/** Normalize UTF-8 and BOM-marked UTF-16 option files without silently truncating malformed text. */
+
+/**
+ * Normalize UTF-8 and BOM-marked UTF-16 option files without silently truncating malformed text.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @return Owned UTF-8 text, or NULL for read, bounds, or encoding failure.
+ */
 static char *pc_option_file_text(const char *path) {
     size_t n = 0, i;
     char *raw = pc_read_file(path, 1024 * 1024, &n);
@@ -829,7 +1050,15 @@ invalid:
     free(decoded.s);
     return NULL;
 }
-/** Decode bounded GNU response arguments and Clang configuration-file syntax. */
+
+/**
+ * Decode bounded GNU response arguments and Clang configuration-file syntax.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param configuration Nonzero when the input is a compiler configuration file.
+ * @return Owned decoded option array, or NULL after recording encoding or syntax failure.
+ */
 static PcJson *pc_read_option_file(PcContext *c, const char *path, int configuration) {
     char *raw = pc_option_file_text(path), *directory = pc_parent(path);
     const char *p;
@@ -915,7 +1144,10 @@ invalid:
     pj_free(words);
     return NULL;
 }
-/** Own parsed files once per resolution; only direct and selected-config roots are flattened. */
+
+/**
+ * Own parsed files once per resolution; only direct and selected-config roots are flattened.
+ */
 typedef struct PcOptionFile {
     char *path;
     int configuration;
@@ -927,6 +1159,11 @@ typedef struct {
     PcOptionFile *files;
 } PcOptionInputs;
 
+/**
+ * Release parsed native option evidence without resetting the containing fields.
+ *
+ * @param inputs Owned parsing state to release; its fields expire and must not be freed again.
+ */
 static void pc_option_inputs_free(PcOptionInputs *inputs) {
     PcOptionFile *file = inputs->files;
     while (file) {
@@ -937,7 +1174,16 @@ static void pc_option_inputs_free(PcOptionInputs *inputs) {
     pj_free(inputs->direct);
 }
 
-/** Preserve lexical directories for configuration includes and `<CFGDIR>`, including aliases. */
+/**
+ * Preserve lexical directories for configuration includes and `<CFGDIR>`, including aliases.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param inputs Mutable native option parsing state owned by this preparation operation.
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param configuration Nonzero when the input is a compiler configuration file.
+ * @return Borrowed parsed option-file record owned by inputs, or NULL after recording a read or parse
+ * failure.
+ */
 static PcOptionFile *pc_option_file(PcContext *c, PcOptionInputs *inputs,
                                     const char *path, int configuration) {
     char *absolute = pc_path_call(path, l2c_fs_absolute_path);
@@ -957,7 +1203,17 @@ static PcOptionFile *pc_option_file(PcContext *c, PcOptionInputs *inputs,
     return file;
 }
 
-/** Expand every occurrence in order; cached parsed files never bypass the current nesting bound. */
+/**
+ * Expand every occurrence in order; cached parsed files never bypass the current nesting bound.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param inputs Mutable native option parsing state owned by this preparation operation.
+ * @param options Borrowed ordered native option words.
+ * @param config_directory Borrowed directory used to resolve configuration operands.
+ * @param depth Current nesting depth checked against the operation limit.
+ * @param expanded Mutable ordered option words receiving expansion output.
+ * @return Nonzero after complete ordered expansion; zero after recording invalid or excessive indirection.
+ */
 static int pc_expand_options(PcContext *c, PcOptionInputs *inputs, const PcJson *options,
                              const char *config_directory, int depth, PcJson *expanded) {
     const PcJson *option;
@@ -983,6 +1239,13 @@ static int pc_expand_options(PcContext *c, PcOptionInputs *inputs, const PcJson 
     return 1;
 }
 
+/**
+ * Parse explicit native option words and retain their expansion evidence.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param inputs Mutable native option parsing state owned by this preparation operation.
+ * @return Borrowed expanded direct words owned by inputs, or NULL after recording expansion failure.
+ */
 static const PcJson *pc_direct_options(PcContext *c, PcOptionInputs *inputs) {
     if (!inputs->direct) {
         PcJson *expanded = pj_new(PJ_ARRAY);
@@ -995,7 +1258,14 @@ static const PcJson *pc_direct_options(PcContext *c, PcOptionInputs *inputs) {
     return inputs->direct;
 }
 
-/** Selected configuration roots are shared by runtime extraction and later observation. */
+/**
+ * Selected configuration roots are shared by runtime extraction and later observation.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param inputs Mutable native option parsing state owned by this preparation operation.
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @return Borrowed expanded configuration words owned by inputs, or NULL after recording parse failure.
+ */
 static const PcJson *pc_config_options(PcContext *c, PcOptionInputs *inputs, const char *path) {
     PcOptionFile *file = pc_option_file(c, inputs, path, 1);
     if (!file) return NULL;
@@ -1012,7 +1282,13 @@ static const PcJson *pc_config_options(PcContext *c, PcOptionInputs *inputs, con
     return file->root;
 }
 
-/** Observe flat operands while retaining every source file removed by @ expansion. */
+/**
+ * Observe flat operands while retaining every source file removed by @ expansion.
+ *
+ * @param words Borrowed array of native argument words.
+ * @param paths Path spellings or mutable path evidence for this operation.
+ * @param dependencies Dependency evidence populated by this operation.
+ */
 static void pc_option_word_dependencies(const PcJson *words, PcJson *paths, PcJson *dependencies) {
     const PcJson *word;
     pc_option_directory_dependencies(words, dependencies);
@@ -1033,6 +1309,13 @@ static void pc_option_word_dependencies(const PcJson *words, PcJson *paths, PcJs
     }
 }
 
+/**
+ * Record metadata dependencies discovered while parsing explicit native options.
+ *
+ * @param inputs Borrowed native option parsing evidence.
+ * @param paths Path spellings or mutable path evidence for this operation.
+ * @param dependencies Dependency evidence populated by this operation.
+ */
 static void pc_option_inputs_dependencies(const PcOptionInputs *inputs, PcJson *paths, PcJson *dependencies) {
     const PcOptionFile *file;
     pc_option_word_dependencies(inputs->direct, paths, dependencies);
@@ -1044,7 +1327,16 @@ static void pc_option_inputs_dependencies(const PcOptionInputs *inputs, PcJson *
     }
 }
 
-/** Capture SDK driver metadata from Clang's effective frontend arguments, including response/config selection. */
+/**
+ * Capture SDK driver metadata from Clang's effective frontend arguments, including response/config
+ * selection.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param text Borrowed text to parse or caller-owned buffer receiving constructed text.
+ * @param paths Path spellings or mutable path evidence for this operation.
+ * @param dependencies Dependency evidence populated by this operation.
+ * @return Nonzero after recording supported SDK evidence; zero after recording malformed driver output.
+ */
 static int pc_clang_sdk_inputs(PcContext *c, const char *text, PcJson *paths,
                                 PcJson *dependencies) {
     const char *line = text;
@@ -1086,6 +1378,7 @@ static int pc_clang_sdk_inputs(PcContext *c, const char *text, PcJson *paths,
                     }
                     for (i = 0; names[i]; ++i) {
                         char *path = pc_join(root, names[i]);
+
                         /* Remember absent candidates so later creation invalidates discovery. */
                         pc_dependency(dependencies, path);
                         pc_add_component(paths, path);
@@ -1102,8 +1395,12 @@ static int pc_clang_sdk_inputs(PcContext *c, const char *text, PcJson *paths,
     return 1;
 }
 
-
-/** Hash target macros without probe-location or wall-clock predefined expansions. */
+/**
+ * Hash target macros without probe-location or wall-clock predefined expansions.
+ *
+ * @param output Caller-owned writable output span, or NULL for a length query.
+ * @param digest Caller-owned 65-byte buffer for a NUL-terminated SHA-256 digest.
+ */
 static void pc_target_macro_digest(const char *output, char digest[65]) {
     static const char *const incidental[] = {"__BASE_FILE__", "__FILE__",      "__DATE__",
                                              "__TIME__",      "__TIMESTAMP__", NULL};
@@ -1136,9 +1433,19 @@ static void pc_target_macro_digest(const char *output, char digest[65]) {
 
 #include "libraries.h"
 
+/* Record a conservative refusal without preventing command-private compilation. */
 static void pc_decline(PcContext *c, const char *reason);
 
-/** Mirror generated-C header branches before recording their effective dependencies. */
+/**
+ * Mirror generated-C header branches before recording their effective dependencies.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param uses_real Nonzero when real-number runtime support is required.
+ * @param uses_float Nonzero when floating-point runtime support is required.
+ * @return Nonzero when the synthetic source is written successfully; zero after recording probe setup
+ * failure.
+ */
 static int pc_stdlib_probe(PcContext *c, const char *path, int uses_real, int uses_float) {
     const PcJson *codegen = pj_get(c->config, "codegen");
     PcBuffer source = {0};
@@ -1153,6 +1460,14 @@ static int pc_stdlib_probe(PcContext *c, const char *path, int uses_real, int us
     return ok || pc_fail(c, 2154, "cannot write generated-C dependency probe", path);
 }
 
+/**
+ * Probe the selected native toolchain and construct its exact discovery evidence.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param selection Compiler-selection evidence read or populated by this operation.
+ * @param options Mutable native option parsing state owned by this preparation operation.
+ * @return Owned discovery record, or NULL after recording a preparation failure.
+ */
 static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection, PcOptionInputs *options) {
     PcJson *discovery = pj_new(PJ_OBJECT), *paths = pj_new(PJ_OBJECT),
            *dependencies = pj_new(PJ_OBJECT), *toolchain = pj_new(PJ_OBJECT), *words,
@@ -1201,6 +1516,7 @@ static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection, PcOp
         pc_include_search(p.out, include_roots, dependencies, 1);
     pc_probe_free(&p);
     if (strcmp(family, "tcc")) {
+
         /* GCC invokes separate tools. Clang's supported persistent path uses its
            integrated frontend/assembler; explicit external assembly declines reuse. */
         static const char *const programs[] = {"cc1", "as", NULL};
@@ -1281,6 +1597,7 @@ static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection, PcOp
         pj_set_string(toolchain, "target_macros", hex);
     }
     pc_probe_free(&p);
+
     /* Application defines can mask environment-selected target macros. Observe
        the independently configured runtime too before allowing equal identities. */
     words = pc_runtime_words(c);
@@ -1367,6 +1684,7 @@ static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection, PcOp
             }
         }
     }
+
     /* Headers of every runtime translation unit participate, including platform conditionals. */
     for (i = -4; i < 10; ++i) {
         char *runtime_source = NULL;
@@ -1446,10 +1764,20 @@ fail:
     pj_free(discovery);
     return NULL;
 }
+
+/* Record a conservative refusal without preventing command-private compilation. */
 static void pc_decline(PcContext *c, const char *reason);
+
+/* These indirections require observations outside the supported adapter boundary. */
 static void pc_option_eligibility(PcContext *c, const PcJson *options);
 
-/** Forward target/ABI settings while keeping application flags out of runtime implementation builds. */
+/**
+ * Forward target/ABI settings while keeping application flags out of runtime implementation builds.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param options Borrowed ordered native option words.
+ * @return Nonzero after copying supported target/ABI words; zero after recording invalid options.
+ */
 static int pc_runtime_target_options(PcContext *c, const PcJson *options) {
     const PcJson *o;
     for (o = options->child; o; o = o->next) {
@@ -1483,7 +1811,14 @@ static int pc_runtime_target_options(PcContext *c, const PcJson *options) {
     }
     return 1;
 }
-/** Fall back to directly readable explicit config files when a wrapper cannot report selection. */
+
+/**
+ * Fall back to directly readable explicit config files when a wrapper cannot report selection.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param inputs Mutable native option parsing state owned by this preparation operation.
+ * @return Nonzero for readable supported explicit configurations; zero after recording failure.
+ */
 static int pc_runtime_known_configs(PcContext *c, PcOptionInputs *inputs) {
     const PcJson *option;
     for (option = inputs->direct->child; option; option = option->next) {
@@ -1498,7 +1833,13 @@ static int pc_runtime_known_configs(PcContext *c, PcOptionInputs *inputs) {
     return 1;
 }
 
-/** Observe Clang's selected configuration files before extracting target options only. */
+/**
+ * Observe Clang's selected configuration files before extracting target options only.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param inputs Mutable native option parsing state owned by this preparation operation.
+ * @return Nonzero for observed supported configuration inputs; zero after recording unsupported input.
+ */
 static int pc_runtime_explicit_configs(PcContext *c, PcOptionInputs *inputs) {
     PcJson *words;
     PcProbe probe;
@@ -1537,13 +1878,21 @@ static int pc_runtime_explicit_configs(PcContext *c, PcOptionInputs *inputs) {
     return 1;
 }
 
-/** The runtime baseline and tuning are compiler-owned, independent of legacy Make variables. */
+/**
+ * The runtime baseline and tuning are compiler-owned, independent of legacy Make variables.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param variant Borrowed runtime configuration variant name.
+ * @param inputs Mutable native option parsing state owned by this preparation operation.
+ * @return Nonzero after establishing supported runtime words; zero after recording configuration failure.
+ */
 static int pc_runtime_configuration(PcContext *c, const char *variant, PcOptionInputs *inputs) {
     c->runtime_options = pj_new(PJ_ARRAY);
     pj_add(c->runtime_options, NULL, pj_string("-O2"));
     pj_add(c->runtime_options, NULL, pj_string("-std=c99"));
     if (!pc_direct_options(c, inputs) || !pc_runtime_explicit_configs(c, inputs) ||
         !pc_runtime_target_options(c, inputs->direct)) return 0;
+
     /* All effective config targets were extracted above. Do not reload arbitrary
        generated-C configuration flags while compiling the runtime implementation. */
     if (c->runtime_config_observed) pj_add(c->runtime_options, NULL, pj_string("--no-default-config"));
@@ -1558,11 +1907,23 @@ static int pc_runtime_configuration(PcContext *c, const char *variant, PcOptionI
     }
     return 1;
 }
-/** Record a conservative refusal without preventing command-private compilation. */
+
+/**
+ * Record a conservative refusal without preventing command-private compilation.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param reason Borrowed diagnostic or observation reason.
+ */
 static void pc_decline(PcContext *c, const char *reason) {
     if (!c->ineligible) c->ineligible = pc_string(reason);
 }
-/** These indirections require observations outside the supported adapter boundary. */
+
+/**
+ * These indirections require observations outside the supported adapter boundary.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param options Borrowed ordered native option words.
+ */
 static void pc_option_eligibility(PcContext *c, const PcJson *options) {
     const PcJson *option;
     for (option = options->child; option; option = option->next) {
@@ -1579,7 +1940,13 @@ static void pc_option_eligibility(PcContext *c, const PcJson *options) {
     }
 }
 
-/** Resolve an invocable existing compiler family and its archive tool. */
+/**
+ * Resolve an invocable existing compiler family and its archive tool.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return Nonzero after selecting a supported native compiler family; zero after recording selection
+ * failure.
+ */
 static int pc_compilation_family(PcContext *c) {
     PcJson *words = pc_words(c, 0);
     PcProbe p;
@@ -1615,7 +1982,14 @@ static int pc_compilation_family(PcContext *c) {
     c->family = pc_string(family);
     return 1;
 }
-/** Query the archive tool with the runtime configuration actually used to produce it. */
+
+/**
+ * Query the archive tool with the runtime configuration actually used to produce it.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return Nonzero after establishing the required native compiler and archiver; zero after recording
+ * selection failure.
+ */
 static int pc_compilation_toolchain(PcContext *c) {
     PcJson *words;
     PcProbe p;
@@ -1632,7 +2006,13 @@ static int pc_compilation_toolchain(PcContext *c) {
     if (!pc_image_kind(c->archiver)) pc_decline(c, "opaque archive-tool wrapper cannot authorize persistent reuse");
     return 1;
 }
-/** Resolve D and N once. Probe failure declines reuse without disabling compilation. */
+
+/**
+ * Resolve D and N once. Probe failure declines reuse without disabling compilation.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return Nonzero after establishing native identity; zero after recording a preparation failure.
+ */
 static int pc_resolve_native(PcContext *c) {
     PcJson *selection = NULL, *memo = NULL, *discovery = NULL, *components, *toolchain, *stdlib, *runtime;
     PcOptionInputs options = {0};
@@ -1654,6 +2034,7 @@ static int pc_resolve_native(PcContext *c) {
     pc_option_eligibility(c, options.direct);
     selection = pj_new(PJ_OBJECT);
     pj_set_number(selection, "adapter", 1);
+
     /* A compiler implementation change can tighten observation rules. Old
        discovery memos must not bypass the current adapter through a new D. */
     pj_set_string(selection, "D", c->dea_key);
@@ -1682,6 +2063,7 @@ static int pc_resolve_native(PcContext *c) {
         }
     }
 #endif
+
     /* This key only locates candidate file evidence. Discovery keeps cwd. */
     {
         PcJson *seed_selection = pj_new(PJ_OBJECT);
@@ -1745,6 +2127,7 @@ static int pc_resolve_native(PcContext *c) {
     if (c->archiver && !pj_get(toolchain, "archiver"))
         pj_set_string(toolchain, "archiver", c->archiver);
     pj_add(toolchain, "components", components);
+
     /* Raw environment text selects observations, not artifacts. The OS build
        remains native evidence for Apple libraries held in the dyld shared cache. */
     {

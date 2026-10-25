@@ -3,7 +3,9 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file preparation_observability_test.c Controlled accounting and memo rejection observations. */
+/**
+ * @file preparation_observability_test.c Controlled accounting and memo rejection observations.
+ */
 #ifndef _WIN32
 #define _XOPEN_SOURCE 700
 #define _POSIX_C_SOURCE 200809L
@@ -18,16 +20,35 @@
 #include "../support/preparation/json.h"
 
 static int clock_calls, observation_allocations;
-/** Count direct JSON allocations by observation builders. */
+
+/**
+ * Count direct JSON allocations by observation builders.
+ *
+ * @param type JSON node type tag.
+ * @return Owned JSON node; increments the fixture allocation counter.
+ */
 static PcJson *counted_json_new(int type) {
     ++observation_allocations;
     return pj_new(type);
 }
 #define pj_new counted_json_new
 #ifdef _WIN32
+
+/**
+ * Read the deterministic tick counter used by this fixture.
+ * @return Configured native tick value.
+ */
 static ULONGLONG controlled_ticks(void) { return (ULONGLONG)++clock_calls; }
 #define GetTickCount64 controlled_ticks
 #else
+
+/**
+ * Return the deterministic observation clock selected by this fixture.
+ *
+ * @param id Native clock identifier; the fixture supplies its controlled snapshot.
+ * @param value Caller-owned output receiving the fixture seconds and nanoseconds.
+ * @return Configured test clock value.
+ */
 static int controlled_clock(clockid_t id, struct timespec *value) {
     (void)id;
     value->tv_sec = ++clock_calls / 1000;
@@ -38,12 +59,23 @@ static int controlled_clock(clockid_t id, struct timespec *value) {
 #endif
 #include "../support/preparation_support.c"
 
-/** Fail a named invariant independently of assertion compilation flags. */
+/**
+ * Fail a named invariant independently of assertion compilation flags.
+ *
+ * @param ok Predicate required to hold for the fixture.
+ * @param name Borrowed NUL-terminated name.
+ */
 static void check(int ok, const char *name) {
     if (!ok) { fprintf(stderr, "observability fixture: %s\n", name); exit(1); }
 }
 
-/** Create only the minimum sealed observation memo accepted by production validation. */
+/**
+ * Create only the minimum sealed observation memo accepted by production validation.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param with_digest Nonzero to include a discovery digest in the fixture memo.
+ * @return Owned minimal sealed discovery memo released with pj_free.
+ */
 static PcJson *discovery_memo(const char *path, int with_digest) {
     PcJson *memo = pc_memo_create("identity"), *discovery = pj_new(PJ_OBJECT);
     PcJson *tc = pj_new(PJ_OBJECT), *paths = pj_new(PJ_OBJECT), *files = pj_new(PJ_OBJECT);
@@ -72,6 +104,13 @@ static PcJson *discovery_memo(const char *path, int with_digest) {
     return memo;
 }
 
+/**
+ * Run deterministic preparation observation and timing regressions.
+ *
+ * @param argc Number of process argument words.
+ * @param argv Borrowed NUL-terminated process argument vector.
+ * @return Zero when all requested checks succeed; nonzero on a fixture failure.
+ */
 int main(int argc, char **argv) {
     PcContext c = {0};
     PcJson *metadata = NULL, *previous, *single, *sparse_previous, *sparse_current, *memo, *words;

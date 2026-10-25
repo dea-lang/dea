@@ -59,9 +59,14 @@ void l1c_interface_fingerprint_sip13_hex(
 /**
  * Compiler-facing pointer adapter; input bytes remain read-only.
  *
- * @param data Read-only canonical interface bytes passed through the pointer ABI.
- * @param len Non-negative byte length of data.
- * @param out_hex Exact 16-byte output buffer; no NUL terminator is written.
+ * Compiler-private L0/L1 pointer adapter; does not modify input bytes.
+ * Pointer parameters match generated extern declarations, including under GCC array-parameter warnings.
+ *
+ * @param data Read-only canonical interface bytes passed through the pointer ABI. Canonical interface
+ * bytes.
+ * @param len Non-negative byte length of data. Number of canonical bytes.
+ * @param out_hex Exact 16-byte output buffer; no NUL terminator is written. Caller-owned storage for
+ * exactly 16 output bytes; no NUL terminator is written.
  */
 void l1c_interface_fingerprint_sip13_hex_bytes(
     uint8_t *data,
@@ -79,11 +84,21 @@ static const _rt_siphash_tag8_t _dea_sh_tag_string = { 0, 's', 't', 'r', 'i', 'n
 static const _rt_siphash_tag8_t _dea_sh_tag_data   = { 0, 'd', 'a', 't', 'a' };
 
 /* Flag bits for hash functions */
-#define _DEA_TAG_OPT 0x80    /* option */
-#define _DEA_TAG_PTR 0x40    /* pointer */
-#define _DEA_TAG_ENUM 0x20   /* enum */
-#define _DEA_TAG_STRUCT 0x10 /* struct */
-#define _DEA_TAG_ABSENT 0x08 /* absent optional */
+
+/* option */
+#define _DEA_TAG_OPT 0x80
+
+/* pointer */
+#define _DEA_TAG_PTR 0x40
+
+/* enum */
+#define _DEA_TAG_ENUM 0x20
+
+/* struct */
+#define _DEA_TAG_STRUCT 0x10
+
+/* absent optional */
+#define _DEA_TAG_ABSENT 0x08
 
 /**
  * Default (debug) SipHash key for L1 runtime.
@@ -109,7 +124,9 @@ static dea_int _rt_hash_tag8(const _rt_siphash_tag8_t tag8,
                             const void *data, size_t len,
                             const _rt_siphash_key_t key)
 {
-    uint64_t hash = siphash13_tag8_bf(tag8, flags, data, len, key); /* compute SipHash-1-3 */
+
+    /* compute SipHash-1-3 */
+    uint64_t hash = siphash13_tag8_bf(tag8, flags, data, len, key);
     return _rt_fold_u64_to_u32_fmix(hash);
 }
 
@@ -180,10 +197,10 @@ dea_int _rt_hash_data(void *data, dea_int size, const uint8_t flags) {
 /**
  * Hash a boolean value.
  *
+ * Dea signature: `extern func rt_hash_bool(value: bool) -> int;`
+ *
  * @param value Boolean value.
  * @return 32-bit hash.
- *
- * Dea signature: `extern func rt_hash_bool(value: bool) -> int;`
  */
 dea_int rt_hash_bool(dea_bool value) {
     return _rt_hash_bool(value, 0);
@@ -192,10 +209,10 @@ dea_int rt_hash_bool(dea_bool value) {
 /**
  * Hash a byte value.
  *
+ * Dea signature: `extern func rt_hash_byte(value: byte) -> int;`
+ *
  * @param value Byte value.
  * @return 32-bit hash.
- *
- * Dea signature: `extern func rt_hash_byte(value: byte) -> int;`
  */
 dea_int rt_hash_byte(dea_byte value) {
     return _rt_hash_byte(value, 0);
@@ -204,10 +221,10 @@ dea_int rt_hash_byte(dea_byte value) {
 /**
  * Hash an integer value.
  *
+ * Dea signature: `extern func rt_hash_int(value: int) -> int;`
+ *
  * @param value Integer value.
  * @return 32-bit hash.
- *
- * Dea signature: `extern func rt_hash_int(value: int) -> int;`
  */
 dea_int rt_hash_int(dea_int value) {
     return _rt_hash_int(value, 0);
@@ -216,10 +233,10 @@ dea_int rt_hash_int(dea_int value) {
 /**
  * Hash a string value.
  *
+ * Dea signature: `extern func rt_hash_string(value: string) -> int;`
+ *
  * @param value L1 string.
  * @return 32-bit hash.
- *
- * Dea signature: `extern func rt_hash_string(value: string) -> int;`
  */
 dea_int rt_hash_string(dea_string value) {
     return _rt_hash_string(value, 0);
@@ -229,11 +246,11 @@ dea_int rt_hash_string(dea_string value) {
  * Hash raw data.
  * Panics if data is null or size is negative.
  *
+ * Dea signature: `extern func rt_hash_data(data: void*, size: int) -> int;`
+ *
  * @param data Pointer to data.
  * @param size Data size.
  * @return 32-bit hash.
- *
- * Dea signature: `extern func rt_hash_data(data: void*, size: int) -> int;`
  */
 dea_int rt_hash_data(void *data, dea_int size) {
     if (size < 0) {
@@ -249,10 +266,10 @@ dea_int rt_hash_data(void *data, dea_int size) {
  * Hash an optional boolean value.
  * Semantic members are copied into a zeroed byte representation before hashing.
  *
+ * Dea signature: `extern func rt_hash_opt_bool(opt: bool?) -> int;`
+ *
  * @param opt Optional bool.
  * @return 32-bit hash.
- *
- * Dea signature: `extern func rt_hash_opt_bool(opt: bool?) -> int;`
  */
 dea_int rt_hash_opt_bool(dea_opt_bool opt) {
     uint8_t canonical[sizeof(dea_opt_bool)] = {0};
@@ -269,10 +286,10 @@ dea_int rt_hash_opt_bool(dea_opt_bool opt) {
  * Hash an optional byte value.
  * Semantic members are copied into a zeroed byte representation before hashing.
  *
+ * Dea signature: `extern func rt_hash_opt_byte(opt: byte?) -> int;`
+ *
  * @param opt Optional byte.
  * @return 32-bit hash.
- *
- * Dea signature: `extern func rt_hash_opt_byte(opt: byte?) -> int;`
  */
 dea_int rt_hash_opt_byte(dea_opt_byte opt) {
     uint8_t canonical[sizeof(dea_opt_byte)] = {0};
@@ -289,10 +306,10 @@ dea_int rt_hash_opt_byte(dea_opt_byte opt) {
  * Hash an optional integer value.
  * Semantic members are copied into a zeroed byte representation before hashing.
  *
+ * Dea signature: `extern func rt_hash_opt_int(opt: int?) -> int;`
+ *
  * @param opt Optional int.
  * @return 32-bit hash.
- *
- * Dea signature: `extern func rt_hash_opt_int(opt: int?) -> int;`
  */
 dea_int rt_hash_opt_int(dea_opt_int opt) {
     uint8_t canonical[sizeof(dea_opt_int)] = {0};
@@ -310,10 +327,12 @@ dea_int rt_hash_opt_int(dea_opt_int opt) {
  * Optional presence participates in the hash input domain.
  * An absent optional hashes empty contents with the optional and absent flags.
  *
- * @param opt Optional string.
- * @return 32-bit hash.
- *
  * Dea signature: `extern func rt_hash_opt_string(opt: string?) -> int;`
+ *
+ * Hash an optional string value with presence-sensitive domain separation.
+ *
+ * @param opt Optional string. Optional string whose presence is included in its hash domain.
+ * @return 32-bit hash. Presence-sensitive hash of the optional string value.
  */
 dea_int rt_hash_opt_string(dea_opt_string opt) {
     if (opt.has_value) {
@@ -327,10 +346,10 @@ dea_int rt_hash_opt_string(dea_opt_string opt) {
  * Note: this hashes the pointer value (address), not the data it points to.
  * Panics if ptr is null.
  *
+ * Dea signature: `extern func rt_hash_ptr(ptr: void*) -> int;`
+ *
  * @param ptr Pointer.
  * @return 32-bit hash.
- *
- * Dea signature: `extern func rt_hash_ptr(ptr: void*) -> int;`
  */
 dea_int rt_hash_ptr(void *ptr) {
     if (ptr == NULL) {
@@ -345,10 +364,10 @@ dea_int rt_hash_ptr(void *ptr) {
  * Note: this hashes the pointer value (address), not the data it points to.
  * Panics if opt is empty (null pointer).
  *
+ * Dea signature: `extern func rt_hash_opt_ptr(opt: void*?) -> int;`
+ *
  * @param opt Pointer.
  * @return 32-bit hash.
- *
- * Dea signature: `extern func rt_hash_opt_ptr(opt: void*?) -> int;`
  */
 dea_int rt_hash_opt_ptr(void *opt) {
     if (opt == NULL) {

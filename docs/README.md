@@ -25,6 +25,8 @@ Root reference docs live under `docs/reference/` and describe the whole Dea proj
 Examples:
 
 - the [docs/reference/style-guide.md](reference/style-guide.md) Dea code style guide
+- the [docs/reference/c-documentation.md](reference/c-documentation.md) C function documentation and extraction
+  convention
 - monorepo-wide release/status policy
 - cross-level architecture notes once they exist
 
@@ -45,8 +47,8 @@ Language-specific specs live in the owning subtree such as `l0/docs/specs/`.
 
 ## Decisions
 
-Root ADRs live under `docs/decisions/` and record Dea-wide architectural decisions — decisions that span both language
-levels or belong to the project as a whole.
+Root ADRs live under `docs/decisions/` and record Dea-wide architectural decisions: decisions that span language levels
+or belong to the project as a whole.
 
 Each ADR links the decision to the closed plans that shaped it and the current docs where it is normatively recorded.
 ADRs complement the `design-decisions.md` reference files (stable aggregates) and the closed plans in `work/plans/`

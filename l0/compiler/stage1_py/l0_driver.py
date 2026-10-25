@@ -214,6 +214,22 @@ class L0Driver:
         collected: dict[str, Module] = {}
 
         def visit(mod: Module) -> None:
+            """Collect a module and its transitive imports once per module name.
+
+            Update the enclosing ``visited`` set and ``collected`` mapping before
+            walking imports in declaration order. Repeated visits are no-ops.
+            Import-loading failures propagate without rolling back collected
+            modules or changes to the driver's module cache.
+
+            Args:
+                mod: Parsed module to collect along with its reachable imports.
+
+            Raises:
+                ImportCycleError: If loading an import detects a cycle.
+                FileNotFoundError: If an imported module cannot be found.
+                ValueError: If an imported module declares a different name.
+                SourceEncodingError: If an imported source is not valid UTF-8.
+            """
             if mod.name in visited:
                 return
             visited.add(mod.name)

@@ -54,6 +54,7 @@ import sys
 import urllib.parse
 import xml.etree.ElementTree as ET
 from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_file_location
 from types import SimpleNamespace as Empty
 from typing import Tuple, Dict, Any, List
 
@@ -4335,9 +4336,15 @@ if __name__ == '__main__': # pragma: no cover
 
     if args.config.endswith('.py'):
         name, _ = os.path.splitext(os.path.basename(args.config))
-        module = SourceFileLoader(name, args.config).load_module()
-        if module is not None:
-            config.update((k, v) for k, v in inspect.getmembers(module) if k.isupper())
+        spec = spec_from_file_location(name, args.config, loader=SourceFileLoader(name, args.config))
+        module = module_from_spec(spec)
+        sys.modules[name] = module
+        try:
+            spec.loader.exec_module(module)
+        except BaseException:
+            del sys.modules[name]
+            raise
+        config.update((k, v) for k, v in inspect.getmembers(module) if k.isupper())
         doxyfile = os.path.join(os.path.dirname(os.path.abspath(args.config)), config['DOXYFILE'])
     else:
         # Make the Doxyfile path absolute, otherwise everything gets messed up

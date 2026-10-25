@@ -3,7 +3,9 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file sha256.h Streaming SHA-256 for preparation identities and artifacts. */
+/**
+ * @file sha256.h Streaming SHA-256 for preparation identities and artifacts.
+ */
 #ifndef L1_PREPARATION_SHA256_H
 #define L1_PREPARATION_SHA256_H
 #include <stdint.h>
@@ -15,7 +17,22 @@ typedef struct {
     unsigned char block[64];
     size_t used;
 } PcSha;
+
+/**
+ * Rotate a 32-bit SHA-256 word right by a nonzero bit count.
+ *
+ * @param x Input word to transform.
+ * @param n Rotation count from one to thirty-one.
+ * @return Rotated word; n must be between one and thirty-one.
+ */
 static uint32_t pc_rotr(uint32_t x, unsigned n) { return (x >> n) | (x << (32 - n)); }
+
+/**
+ * Compress one complete 64-byte block into SHA-256 state.
+ *
+ * @param s Caller-owned streaming SHA-256 state to update.
+ * @param p Readable 64-byte message block.
+ */
 static void pc_sha_block(PcSha *s, const unsigned char *p) {
     static const uint32_t k[64] = {
         0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
@@ -66,12 +83,26 @@ static void pc_sha_block(PcSha *s, const unsigned char *p) {
     s->h[6] += g;
     s->h[7] += h;
 }
+
+/**
+ * Initialize fresh streaming SHA-256 state.
+ *
+ * @param s Caller-owned streaming SHA-256 state to update.
+ */
 static void pc_sha_init(PcSha *s) {
     static const uint32_t h[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
                                   0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
     memset(s, 0, sizeof(*s));
     memcpy(s->h, h, sizeof(h));
 }
+
+/**
+ * Add a byte span to streaming SHA-256 state.
+ *
+ * @param s Caller-owned streaming SHA-256 state to update.
+ * @param data Borrowed readable input byte span.
+ * @param n Number of bytes to process.
+ */
 static void pc_sha_update(PcSha *s, const void *data, size_t n) {
     const unsigned char *p = data;
     size_t take;
@@ -90,6 +121,13 @@ static void pc_sha_update(PcSha *s, const void *data, size_t n) {
         }
     }
 }
+
+/**
+ * Finalize SHA-256 state and write a lowercase hexadecimal digest.
+ *
+ * @param s Caller-owned streaming SHA-256 state to update.
+ * @param hex Caller-owned 65-byte buffer for a NUL-terminated lowercase SHA-256 digest.
+ */
 static void pc_sha_finish(PcSha *s, char hex[65]) {
     static const char digits[] = "0123456789abcdef";
     uint64_t bits = s->bytes * 8;
@@ -112,6 +150,14 @@ static void pc_sha_finish(PcSha *s, char hex[65]) {
     }
     hex[64] = 0;
 }
+
+/**
+ * Hash a byte span with SHA-256 into a lowercase hexadecimal digest.
+ *
+ * @param data Borrowed readable input byte span.
+ * @param n Number of bytes to process.
+ * @param hex Caller-owned 65-byte buffer for a NUL-terminated lowercase SHA-256 digest.
+ */
 static void pc_sha_bytes(const void *data, size_t n, char hex[65]) {
     PcSha s;
     pc_sha_init(&s);

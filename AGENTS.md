@@ -293,10 +293,20 @@ Example summaries:
   (for example asking whether the project maintainer wants a summary). End after delivering the result unless the
   project maintainer explicitly asks for more.
 - Python uses Google Style docstrings with `Args`, `Returns`, and `Raises` sections.
-- C and Dea declaration documentation uses multiline Doxygen/Javadoc-style block comments. Put the opening `/**` on its
-  own line, prefix content lines with ` *`, and include `@param` and `@return` sections where applicable. Leave a blank
-  source line before each opening Doxygen block, except at the beginning of a file. Ordinary implementation and section
-  comments may retain their existing non-Doxygen form.
+- Dea declaration documentation uses multiline Doxygen/Javadoc-style block comments. Put the opening `/**` on its own
+  line, prefix content lines with ` *`, and include `@param` and `@return` sections where applicable. C and Dea
+  contracts use Javadoc autobrief: the first sentence is the brief; omit explicit `@brief` and `\brief` commands.
+- Every repository-owned C function definition has its complete multiline Doxygen contract immediately before the
+  definition. This includes private, static, inline, and header-only definitions. Corresponding header prototypes have
+  only an ordinary single-line `/* ... */` comment reproducing the canonical brief sentence exactly, without `@brief`.
+  Consolidate parameters, returns, ownership, failures, and other guarantees in the definition's full contract. Keep
+  header-only libraries header-only, including `dea_siphash.h`.
+- Leave a blank source line before every ordinary or Doxygen block comment, except at the beginning of a file. Keep
+  type, field, enum, macro, and file documentation in its natural location. Exclude identified vendored third-party and
+  generated files from bulk comment rewrites; do not remove their existing documentation.
+- Run `python3 scripts/check_c_docs.py` after changing C contracts. Documentation inventories must include relevant
+  implementation `.c` files and implementation headers. Match documentation across prototype/definition occurrences by
+  function identity, never by name alone; preserve different static functions, signatures, and language bindings.
 - Keep code names and comments in English.
 - Update relevant tests in the same change.
 - Update relevant documentation in the same change.

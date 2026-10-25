@@ -3,7 +3,9 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file preparation_support.c Compiler-private native preparation and command ownership. */
+/**
+ * @file preparation_support.c Compiler-private native preparation and command ownership.
+ */
 #if !defined(_WIN32)
 #ifndef _XOPEN_SOURCE
 #define _XOPEN_SOURCE 700
@@ -23,7 +25,12 @@
 #include "preparation/construction.h"
 #include "preparation/build.h"
 
-/** Project resolved managed inputs without copying cache identities or storage policy. */
+/**
+ * Project resolved managed inputs without copying cache identities or storage policy.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return Owned normalized constructor input record, or NULL after recording invalid managed inputs.
+ */
 static PcJson *pc_managed_construction_inputs(PcContext *c) {
     PcJson *inputs = pj_new(PJ_OBJECT);
     pj_set_string(inputs, "compiler", c->compiler);
@@ -41,7 +48,13 @@ static PcJson *pc_managed_construction_inputs(PcContext *c) {
            pj_clone(pj_get(c->config, "codegen")) : pj_new(PJ_OBJECT));
     return inputs;
 }
-/** Establish a profile only under per-key coordination or a command-owned private directory. */
+
+/**
+ * Establish a profile only under per-key coordination or a command-owned private directory.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return Nonzero after starting the selected owned profile; zero after recording a preparation failure.
+ */
 static int pc_begin_profile(PcContext *c) {
     char *entry, *marker;
     PcJson *inputs;
@@ -61,7 +74,13 @@ static int pc_begin_profile(PcContext *c) {
     else free(entry);
     return ok;
 }
-/** Publish an already validated payload using the unchanged managed completion contract. */
+
+/**
+ * Publish an already validated payload using the unchanged managed completion contract.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return Nonzero after validated atomic publication; zero after retaining the first completion failure.
+ */
 static int pc_complete_profile(PcContext *c) {
     PcJson *manifest;
     char *marker, *pending;
@@ -84,6 +103,7 @@ static int pc_complete_profile(PcContext *c) {
         ok = pc_fail(c, 2150, "cannot establish pending completion manifest", pending);
     if (ok && !pc_write_json(pending, manifest)) ok = pc_fail(c, 2150, "cannot write completion manifest", pending);
     if (ok) ok = pc_validate_entry_manifest(c, c->selected, 1, ".manifest.pending") == 1;
+
     /* Atomic publication makes a killed/in-progress writer an incomplete miss,
        and ensures readers never mistake a partial record for completed corruption. */
     if (ok && rename(pending, marker) != 0) ok = pc_fail(c, 2150, "cannot publish completion manifest", marker);
@@ -93,7 +113,14 @@ static int pc_complete_profile(PcContext *c) {
     return ok;
 }
 
-/** Create a lazy context; semantic-only consumers never resolve native identity or storage. */
+/**
+ * Create a lazy context; semantic-only consumers never resolve native identity or storage.
+ *
+ * @param data Borrowed readable input byte span.
+ * @param length Number of input elements or bytes, as appropriate.
+ * @return Owned lazy preparation context released with l2c_prep_free, including after configuration
+ * failure.
+ */
 void *l2c_prep_create(const uint8_t *data, int32_t length) {
     PcContext *c = pc_alloc(sizeof(*c));
     const PcJson *option;
@@ -120,7 +147,12 @@ void *l2c_prep_create(const uint8_t *data, int32_t length) {
     pc_toolchain_paths(c);
     return c;
 }
-/** Release the command's allocations, OS lock and any fresh private native support. */
+
+/**
+ * Release the command's allocations, OS lock and any fresh private native support.
+ *
+ * @param context Owned preparation context to destroy; NULL is a no-op.
+ */
 void l2c_prep_free(void *context) {
     PcContext *c = context;
     if (!c) return;
@@ -134,6 +166,13 @@ void l2c_prep_free(void *context) {
     free(c->dea_key); free(c->native_key); free(c->selected); free(c->error); free(c->description);
     free(c->family); free(c->archiver); free(c->private_root); free(c->ineligible); free(c->unusable); free(c);
 }
+
+/**
+ * Resolve native preparation identity and retain any context diagnostic.
+ *
+ * @param context Borrowed preparation context created by the matching constructor.
+ * @return One on success; zero for an invalid context or resolution failure.
+ */
 int32_t l2c_prep_resolve(void *context) {
     PcContext *c = context;
     double started = pc_observation_start(c);
@@ -143,7 +182,14 @@ int32_t l2c_prep_resolve(void *context) {
     if (c) pc_observe_span(c, "native-identity-resolution", started, result);
     return result;
 }
-/** Return a validated hit (1), ordinary miss (0), unusable completion (2), or error (-1). */
+
+/**
+ * Return a validated hit (1), ordinary miss (0), unusable completion (2), or error (-1).
+ *
+ * @param context Borrowed preparation context created by the matching constructor.
+ * @return One for a validated hit, zero for an ordinary miss, two for unusable completion, or -1 for
+ * error.
+ */
 int32_t l2c_prep_find(void *context) {
     PcContext *c = context;
     double started = pc_observation_start(c);
@@ -151,6 +197,13 @@ int32_t l2c_prep_find(void *context) {
     if (c) pc_observe_span(c, "profile-validation", started, result >= 0);
     return result;
 }
+
+/**
+ * Acquire per-profile coordination for a resolved preparation context.
+ *
+ * @param context Borrowed preparation context created by the matching constructor.
+ * @return One on success; zero for invalid state or a recorded lock failure.
+ */
 int32_t l2c_prep_lock(void *context) {
     PcContext *c = context;
     double started = pc_observation_start(c);
@@ -158,6 +211,12 @@ int32_t l2c_prep_lock(void *context) {
     if (c) pc_observe_span(c, "profile-lock-wait", started, result);
     return result;
 }
+
+/**
+ * Release per-profile coordination and invalidate active construction state.
+ *
+ * @param context Borrowed preparation context created by the matching constructor.
+ */
 void l2c_prep_unlock(void *context) {
     PcContext *c = context;
     if (c) {
@@ -165,11 +224,19 @@ void l2c_prep_unlock(void *context) {
         if (c->construction) c->construction->active = 0;
     }
 }
-/** Allocate fresh support for this consuming command, without publishing persistent state. */
+
+/**
+ * Allocate fresh support for this consuming command, without publishing persistent state.
+ *
+ * @param context Borrowed preparation context created by the matching constructor.
+ * @return One after establishing private support, or zero for invalid state or a recorded allocation
+ * failure.
+ */
 int32_t l2c_prep_private(void *context) {
     PcContext *c = context;
     char *path;
     if (!c || c->private_root || c->lock) return 0;
+
     /* A consuming command may recover from an unavailable implicit destination,
        including a failed lock/output directory beneath an otherwise writable v1. */
     if (c->error && !c->explicit_root && (c->error_code == 2150 || c->error_code == 2152)) {
@@ -183,10 +250,24 @@ int32_t l2c_prep_private(void *context) {
     free(path);
     return c->private_root != NULL;
 }
+
+/**
+ * Begin native construction under the selected profile ownership.
+ *
+ * @param context Borrowed preparation context created by the matching constructor.
+ * @return One on success; zero for invalid state or a recorded construction failure.
+ */
 int32_t l2c_prep_begin(void *context) {
     PcContext *c = context;
     return c && !c->error ? pc_begin_profile(c) : 0;
 }
+
+/**
+ * Validate and publish the completed native profile under coordination.
+ *
+ * @param context Borrowed preparation context created by the matching constructor.
+ * @return One on success; zero for invalid state or a recorded publication failure.
+ */
 int32_t l2c_prep_complete(void *context) {
     PcContext *c = context;
     double started = pc_observation_start(c);
@@ -194,10 +275,17 @@ int32_t l2c_prep_complete(void *context) {
     if (c) pc_observe_span(c, "native-publication", started, result);
     return result;
 }
+
 /**
  * Internal direct constructor entry: inputs are normalized and destination is already owned.
  * No toolchain defaults, cache roots, reuse identities, locks or publication are resolved here.
  * The returned context owns its descriptions, never the caller's directory, even on failure.
+ *
+ * @param data Borrowed readable input byte span.
+ * @param length Number of input elements or bytes, as appropriate.
+ * @param destination Borrowed native byte span with an explicit length; no terminator is required.
+ * @param destination_length Number of readable destination path bytes.
+ * @return Owned context released with l2c_prep_free, including after a recorded construction failure.
  */
 void *l2c_prep_construction_create(const uint8_t *data, int32_t length,
                                   const uint8_t *destination, int32_t destination_length) {
@@ -215,16 +303,39 @@ void *l2c_prep_construction_create(const uint8_t *data, int32_t length,
     free(root);
     return c;
 }
-/** Finish payload validation without writing a managed manifest or publication memo. */
+
+/**
+ * Finish payload validation without writing a managed manifest or publication memo.
+ *
+ * @param context Borrowed preparation context created by the matching constructor.
+ * @return One after complete payload validation; zero for invalid state or a recorded validation failure.
+ */
 int32_t l2c_prep_construction_complete(void *context) {
     PcContext *c = context;
     return c && !c->error ? pc_finish_construction(c) : 0;
 }
+
+/**
+ * Read the saved preparation diagnostic code.
+ *
+ * @param context Borrowed preparation context created by the matching constructor.
+ * @return Saved code, zero if no failure is saved, or 2150 for a null context.
+ */
 int32_t l2c_prep_error_code(void *context) {
     PcContext *c = context;
     return c ? c->error_code : 2150;
 }
-/** Copy context values into caller-owned spans; a null output queries the byte length. */
+
+/**
+ * Copy context values into caller-owned spans; a null output queries the byte length.
+ *
+ * @param context Borrowed preparation context created by the matching constructor.
+ * @param field Borrowed field name or bounded field-name bytes.
+ * @param field_length Number of field-name bytes.
+ * @param output Caller-owned writable output span, or NULL for a length query.
+ * @param capacity Writable output capacity in bytes.
+ * @return Required byte length, or -1 for invalid input, unavailable field, or insufficient capacity.
+ */
 int32_t l2c_prep_get(void *context, const uint8_t *field, int32_t field_length, uint8_t *output, int32_t capacity) {
     PcContext *c = context;
     char *key, *owned = NULL;

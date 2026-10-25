@@ -84,11 +84,26 @@ func be_is_int_assignable(ty: Type*?) -> bool {
            type_is_builtin(ty as Type*, "long") || type_is_builtin(ty as Type*, "ulong");
 }
 
+/**
+ * Identify the implemented signed integer builtin types.
+ *
+ * @param ty Borrowed non-null type to inspect without modification.
+ * @return `true` for `tiny`, `short`, `int`, or `long`; otherwise `false`.
+ */
 func be_is_signed_int(ty: Type*) -> bool {
     return type_is_builtin(ty, "tiny") || type_is_builtin(ty, "short") ||
            type_is_builtin(ty, "int") || type_is_builtin(ty, "long");
 }
 
+/**
+ * Identify source types supported by the checked casts that take an `int`.
+ *
+ * Every value of these types fits in the signed 32-bit argument used by the
+ * legacy narrowing helpers. Wider signed or unsigned sources use other helpers.
+ *
+ * @param ty Borrowed non-null type to inspect without modification.
+ * @return `true` for `tiny`, `byte`, `short`, `ushort`, or `int`.
+ */
 func be_is_legacy_checked_cast_source(ty: Type*) -> bool {
     return type_is_builtin(ty, "tiny") || type_is_builtin(ty, "byte") ||
            type_is_builtin(ty, "short") || type_is_builtin(ty, "ushort") ||
@@ -210,6 +225,19 @@ func be_can_widen_int(dst: Type*, src: Type*) -> bool {
     return false;
 }
 
+/**
+ * Choose a shared builtin integer type under the backend's promotion rules.
+ *
+ * The first containing domain in the order `int`, `uint`, `long`, `ulong`
+ * wins. Small integer pairs therefore promote to `int`, while a signed type
+ * paired with `ulong` has no supported common domain. Neither input is mutated
+ * or consumed; a successful result must be released with `type_free`.
+ *
+ * @param left Borrowed non-null left operand type.
+ * @param right Borrowed non-null right operand type.
+ * @return Newly owned type descriptor, or `null` for unsupported integer pairs
+ * or non-integer inputs.
+ */
 func be_common_int_type(left: Type*, right: Type*) -> Type*? {
     if (!be_is_int_assignable(left) || !be_is_int_assignable(right)) {
         return null;

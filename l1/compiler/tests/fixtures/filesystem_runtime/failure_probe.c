@@ -119,6 +119,7 @@ int main(int argc, char **argv) {
     fail_close = 1;
     struct __deaM3sys2fsS10RtFsStatus closed = rt_dir_close(opened.handle);
     REQUIRE(!closed.ok && closed.error.native_code == EIO);
+
     /* Recursive traversal keeps its first error even if cleanup also fails. */
     fail_next = 1;
     struct __deaM3sys2fsS10RtFsStatus removed = rt_fs_remove_dir(text(argv[1]), 1);

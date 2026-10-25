@@ -55,7 +55,11 @@
 #endif
 
 #if defined(_RT_HAS_ADDRESS_SANITIZER)
+
+/* Poison a released payload for AddressSanitizer. */
 void __asan_poison_memory_region(void const volatile *addr, size_t size);
+
+/* Unpoison a payload before returning it to the C allocator. */
 void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
 #define _RT_ASAN_POISON(addr, size) __asan_poison_memory_region((addr), (size))
 #define _RT_ASAN_UNPOISON(addr, size) __asan_unpoison_memory_region((addr), (size))
@@ -90,8 +94,6 @@ void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
 #include "dea_rt.h"
 #include "dea_siphash.h"
 
-/** @cond L0_RUNTIME_IMPLEMENTATION */
-
 #ifndef _RT_ALIGNOF
 #if defined(__clang__) || (defined(__GNUC__) && !defined(__TINYC__))
 #define _RT_ALIGNOF(type) __alignof__(type)
@@ -109,6 +111,7 @@ void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
  * ========================================================================= */
 
 #if defined(__TINYC__) && __TINYC__ >= 928
+
 /* __builtin_unreachable added in mob branch post-0.9.27 */
 #   define L0_UNREACHABLE(_s) __builtin_unreachable()
 #elif defined(__GNUC__) || defined(__clang__)
@@ -128,7 +131,9 @@ static int _rt_trace_flush_each_event = 1;
 static int _rt_trace_output_started = 0;
 static char _rt_trace_stderr_buffer[_RT_TRACE_STDERR_BUFFER_SIZE];
 
-/** Flush one completed trace event when the durable policy is active. */
+/**
+ * Flush one completed trace event when the durable policy is active.
+ */
 static void _rt_trace_event_end(void) {
     _rt_trace_output_started = 1;
     if (_rt_trace_flush_each_event) {
@@ -136,7 +141,9 @@ static void _rt_trace_event_end(void) {
     }
 }
 
-/** Select the process-wide trace flush policy before user initialization. */
+/**
+ * Select the process-wide trace flush policy before user initialization.
+ */
 static void _rt_trace_init(void) {
     const char *policy = getenv("DEA_TRACE_FLUSH");
 
@@ -157,6 +164,7 @@ static void _rt_trace_init(void) {
 #endif
 
 #ifdef L0_TRACE_ARC
+
 /**
  * Trace reference counting operations to stderr.
  */
@@ -167,6 +175,7 @@ static void _rt_trace_init(void) {
         fprintf(stderr, "\n"); \
         _rt_trace_event_end(); \
     } while (0)
+
 /**
  * Trace reference counting operations with location info.
  */
@@ -184,6 +193,7 @@ static void _rt_trace_init(void) {
 #endif
 
 #ifdef L0_TRACE_MEMORY
+
 /**
  * Trace memory allocation operations to stderr.
  */
@@ -194,6 +204,7 @@ static void _rt_trace_init(void) {
         fprintf(stderr, "\n"); \
         _rt_trace_event_end(); \
     } while (0)
+
 /**
  * Trace memory allocation operations with location info.
  */
@@ -214,10 +225,14 @@ static void _rt_trace_init(void) {
  * Private runtime type helpers
  * ========================================================================= */
 
-/** Sentinel stored in released heap string headers. */
+/**
+ * Sentinel stored in released heap string headers.
+ */
 static const l0_int _RT_MEM_SENTINEL = 0xF00DB10C;
 
-/** Base structure used to inspect the `has_value` field of optional values. */
+/**
+ * Base structure used to inspect the `has_value` field of optional values.
+ */
 typedef struct { l0_bool has_value; } _l0_base_opt;
 
 /* =========================================================================
@@ -292,6 +307,7 @@ static void _rt_panic_fmt(const char* fmt, ...) {
  *
  * @param a Dividend.
  * @param b Divisor.
+ *
  * @return Quotient.
  */
 static l0_int _rt_idiv(l0_int a, l0_int b) {
@@ -309,6 +325,7 @@ static l0_int _rt_idiv(l0_int a, l0_int b) {
  *
  * @param a Dividend.
  * @param b Divisor.
+ *
  * @return Remainder.
  */
 static l0_int _rt_imod(l0_int a, l0_int b) {
@@ -326,6 +343,7 @@ static l0_int _rt_imod(l0_int a, l0_int b) {
  *
  * @param a First operand.
  * @param b Second operand.
+ *
  * @return Sum.
  */
 static l0_int _rt_iadd(l0_int a, l0_int b) {
@@ -340,6 +358,7 @@ static l0_int _rt_iadd(l0_int a, l0_int b) {
  *
  * @param a First operand.
  * @param b Second operand.
+ *
  * @return Difference.
  */
 static l0_int _rt_isub(l0_int a, l0_int b) {
@@ -354,9 +373,11 @@ static l0_int _rt_isub(l0_int a, l0_int b) {
  *
  * @param a First operand.
  * @param b Second operand.
+ *
  * @return Product.
  */
 static l0_int _rt_imul(l0_int a, l0_int b) {
+
     /* Zero multiplication always succeeds */
     if (a == 0 || b == 0) {
         return 0;
@@ -373,6 +394,7 @@ static l0_int _rt_imul(l0_int a, l0_int b) {
             _rt_panic("integer multiplication overflow");
         }
     }
+
     /* Both operands negative: result is positive, overflow if a < INT32_MAX / b
      * Note: We already handled the a=-1,b=INT32_MIN case above, so b != INT32_MIN here
      * and INT32_MAX / b is safe */
@@ -381,17 +403,21 @@ static l0_int _rt_imul(l0_int a, l0_int b) {
             _rt_panic("integer multiplication overflow");
         }
     }
+
     /* Mixed signs: result is negative or zero */
     else {
+
         /* We already handled the special cases where b=-1,a=INT32_MIN or a=-1,b=INT32_MIN
          * So all divisions below are safe from overflow */
         if (a > 0) {
+
             /* a > 0, b < 0: underflow if a > INT32_MIN / b
              * Since b != -1 (handled above), INT32_MIN / b is safe */
             if (b != -1 && a > INT32_MIN / b) {
                 _rt_panic("integer multiplication overflow");
             }
         } else {
+
             /* a < 0, b > 0: underflow if a < INT32_MIN / b */
             if (a < INT32_MIN / b) {
                 _rt_panic("integer multiplication overflow");
@@ -406,6 +432,7 @@ static l0_int _rt_imul(l0_int a, l0_int b) {
  * Narrow l0_int to l0_byte with range check.
  *
  * @param value Integer value.
+ *
  * @return Byte value.
  */
 static l0_byte _rt_narrow_l0_byte(l0_int value) {
@@ -424,6 +451,7 @@ static l0_byte _rt_narrow_l0_byte(l0_int value) {
  *
  * @param opt Pointer to unwrap.
  * @param type_name Name of the type for error reporting.
+ *
  * @return Unwrapped pointer.
  */
 static inline void *_unwrap_ptr(void *opt, const char *type_name) {
@@ -438,6 +466,7 @@ static inline void *_unwrap_ptr(void *opt, const char *type_name) {
  *
  * @param opt_ptr Pointer to the optional structure.
  * @param type_name Name of the type for error reporting.
+ *
  * @return Pointer to the optional structure.
  */
 static inline void *_unwrap_opt(void *opt_ptr, const char *type_name) {
@@ -496,6 +525,7 @@ struct _rt_alloc_record {
     size_t size;
     uint64_t generation;
 #ifdef L0_RT_CHECK_BASIC
+
     /* Sized from the pointer width so the hot layout matches the treap
      * fields of full checked mode on both 32-bit and 64-bit targets. */
     uint8_t tree_pad[2 * sizeof(_rt_alloc_record *)];
@@ -527,7 +557,9 @@ typedef char _rt_alloc_record_size_check[(sizeof(_rt_alloc_record) == 64) ? 1 : 
  */
 struct _rt_alloc_record_cold {
     size_t align;
-    uint32_t type_id; /* Reserved for a future runtime type-identity initiative. */
+
+    /* Reserved for a future runtime type-identity initiative. */
+    uint32_t type_id;
     int alloc_line;
     int drop_line;
     uint32_t reserved;
@@ -545,16 +577,7 @@ struct _rt_ptr_site {
     uint64_t generation;
 };
 
-/**
- * Register one raw runtime-owned allocation for checked pointer operations.
- *
- * @param ptr Allocation base; a null pointer is ignored.
- * @param size Allocation extent in bytes; zero is tracked as one byte.
- * @param align Allocation alignment metadata.
- * @param type_id Reserved runtime type identifier.
- * @param loc_file Source file of the allocation site.
- * @param loc_line Source line of the allocation site.
- */
+/* Register one raw runtime-owned allocation for checked pointer operations. */
 static void _rt_track_alloc_record(
     void *ptr,
     size_t size,
@@ -564,84 +587,24 @@ static void _rt_track_alloc_record(
     int loc_line
 );
 
-/**
- * Reclassify a live tracked raw allocation as storage created by `new`.
- *
- * @param ptr Allocation base to promote; a null pointer is ignored.
- */
+/* Reclassify a live tracked raw allocation as storage created by `new`. */
 static void _rt_promote_new_alloc(void *ptr);
 
-/**
- * Release one tracked raw allocation.
- *
- * Checked mode retains the allocation in quarantine for stale-pointer
- * diagnostics; unchecked mode releases it immediately.
- *
- * @param ptr Raw allocation base; a null pointer is ignored.
- * @param loc_file Source file of the release site.
- * @param loc_line Source line of the release site.
- * @param op_name Operation name used in invalid-release diagnostics.
- */
+/* Release one tracked raw allocation. */
 static void _rt_release_tracked_alloc(void *ptr, const char *loc_file, int loc_line, const char *op_name);
 
-/**
- * Reallocate tracked raw storage while preserving checked-runtime history.
- *
- * The checked implementation allocates and tracks a replacement, copies the
- * shared byte extent, and quarantines the original allocation.
- *
- * @param ptr Live raw allocation base, or null to allocate new storage.
- * @param new_size Requested replacement extent in bytes.
- * @param loc_file Source file of the reallocation site.
- * @param loc_line Source line of the reallocation site.
- * @return Replacement allocation, or null when allocation fails.
- */
+/* Reallocate tracked raw storage while preserving checked-runtime history. */
 static void *_rt_realloc_tracked_alloc(void *ptr, size_t new_size, const char *loc_file, int loc_line);
 #ifndef L0_RT_UNCHECKED
 
-/**
- * Validate a pointer access after the call-site cache fast path misses.
- *
- * @param site Optional call-site cache populated after tracked validation.
- * @param ptr Pointer about to be accessed.
- * @param required_size Required access extent; zero requests one byte.
- * @param required_align Required alignment, or zero for no alignment check.
- * @param access_mode `_RT_ACCESS_READ` or `_RT_ACCESS_WRITE`.
- * @param loc_file Source file of the access site.
- * @param loc_line Source line of the access site.
- * @return `ptr` when valid; panics on a definite invalid access.
- */
+/* Validate a pointer access after the call-site cache fast path misses. */
 static void *_rt_check_ptr_site_slow(_rt_ptr_site *site, void *ptr, l0_int required_size, l0_int required_align, int access_mode, const char *loc_file, int loc_line);
 
-/**
- * Validate an indexed pointer access before forming the target address.
- *
- * @param site Optional call-site cache populated after tracked validation.
- * @param base_ptr Pointer from which indexing starts.
- * @param index Non-negative element index.
- * @param element_size Positive element extent in bytes.
- * @param required_align Required target alignment, or zero for no check.
- * @param access_mode Read/write mode and optional `_RT_ACCESS_UNTRACKED_OK`.
- * @param loc_file Source file of the indexed access site.
- * @param loc_line Source line of the indexed access site.
- * @return Validated target address; panics on an invalid index or access.
- */
+/* Validate an indexed pointer access before forming the target address. */
 static void *_rt_check_index_ptr_site_slow(_rt_ptr_site *site, void *base_ptr, l0_int index, l0_int element_size, l0_int required_align, int access_mode, const char *loc_file, int loc_line);
 #endif
 
-/**
- * Validate the allocation base, extent, and alignment before object cleanup.
- *
- * This first phase does not change allocation state; generated cleanup runs
- * before `_rt_drop_finish_impl` performs the release.
- *
- * @param ptr Pointer supplied to `drop`; null is accepted as a no-op.
- * @param required_size Required pointee extent; zero requests one byte.
- * @param required_align Required pointee alignment, or zero for no check.
- * @param loc_file Source file of the drop site.
- * @param loc_line Source line of the drop site.
- * @return `ptr` when valid, or null when `ptr` is null; panics otherwise.
- */
+/* Validate the allocation base, extent, and alignment before object cleanup. */
 static void *_rt_drop_begin_impl(
     void *ptr,
     l0_int required_size,
@@ -650,48 +613,19 @@ static void *_rt_drop_begin_impl(
     int loc_line
 );
 
-/**
- * Complete object drop by quarantining or freeing its allocation.
- *
- * @param ptr Live `new` allocation base; null is accepted as a no-op.
- * @param loc_file Source file of the drop site.
- * @param loc_line Source line of the drop site.
- */
+/* Complete object drop by quarantining or freeing its allocation. */
 static void _rt_drop_finish_impl(void *ptr, const char *loc_file, int loc_line);
 
-/**
- * Validate a pointer derived from a tracked parent allocation.
- *
- * Unregistered parents defer validation to the eventual access site.
- *
- * @param derived Derived pointer to validate; null is returned unchanged.
- * @param parent_base Parent pointer used to locate the tracked allocation.
- * @param size Required derived extent; zero requests one byte.
- * @param align Required derived alignment, or zero for no check.
- * @param loc_file Source file of the derivation site.
- * @param loc_line Source line of the derivation site.
- * @return `derived` when valid or deferred; panics on a definite violation.
- */
+/* Validate a pointer derived from a tracked parent allocation. */
 static void *_rt_validate_derived_ptr(void *derived, void *parent_base, l0_int size, l0_int align, const char *loc_file, int loc_line);
+
+/* Lazily register ARC-managed string storage as a read-only tracked record. */
 static void _rt_track_arc_bytes(void *ptr, size_t size);
 
-/**
- * Remove ARC allocation metadata without releasing the ARC payload.
- *
- * @param ptr Tracked ARC allocation base; null or untracked pointers are
- *     ignored.
- */
+/* Remove ARC allocation metadata without releasing the ARC payload. */
 static void _rt_untrack_arc_alloc(void *ptr);
 
-/**
- * Lazily register one static byte span as read-only tracked storage.
- *
- * An existing tracked base makes the operation a no-op. Full checked mode
- * also ignores a span already contained by tracked storage.
- *
- * @param ptr Static span base; a null pointer is ignored.
- * @param size Static span extent; zero is tracked as one byte.
- */
+/* Lazily register one static byte span as read-only tracked storage. */
 static void _rt_track_static_bytes(const void *ptr, size_t size);
 
 /**
@@ -704,6 +638,7 @@ static void _rt_track_static_bytes(const void *ptr, size_t size);
  * @param access_mode `_RT_ACCESS_READ` or `_RT_ACCESS_WRITE`.
  * @param loc_file Source file of the access site.
  * @param loc_line Source line of the access site.
+ *
  * @return `ptr` when the access is valid; panics otherwise.
  */
 static inline void *_rt_check_ptr_site(_rt_ptr_site *site, void *ptr, l0_int required_size, l0_int required_align, int access_mode, const char *loc_file, int loc_line) {
@@ -746,6 +681,7 @@ static inline void *_rt_check_ptr_site(_rt_ptr_site *site, void *ptr, l0_int req
  * @param access_mode `_RT_ACCESS_READ` or `_RT_ACCESS_WRITE`.
  * @param loc_file Source file of the access site.
  * @param loc_line Source line of the access site.
+ *
  * @return Target pointer when the access is valid; panics otherwise.
  */
 static inline void *_rt_check_index_ptr_site(
@@ -772,6 +708,7 @@ static inline void *_rt_check_index_ptr_site(
         (index_flags == 0 || index_flags == _RT_ACCESS_UNTRACKED_OK) &&
         (index_mode == _RT_ACCESS_READ || index_mode == _RT_ACCESS_WRITE) &&
         (index_mode != _RT_ACCESS_WRITE || !owner->read_only)) {
+
         /* `l0_int` is 32-bit, so the 64-bit product of two non-negative
          * operands cannot wrap and the SIZE_MAX comparison is exact. */
         uint64_t offset64 = (uint64_t)index * (uint64_t)element_size;
@@ -806,12 +743,14 @@ static inline void *_rt_check_index_ptr_site(
 
 /**
  * Create an L0 string from a constant C string.
+ *
  * Returns a string with len=0 if c_str is NULL.
  *
  * Note: Does NOT allocate or copy - just wraps the existing C string.
  * Use only for string literals or static const data.
  *
  * @param c_str Constant C string.
+ *
  * @return L0 string.
  */
 static l0_string _rt_l0_string_from_const_literal(const char *c_str) {
@@ -832,6 +771,7 @@ static l0_string _rt_l0_string_from_const_literal(const char *c_str) {
 
 /**
  * Initialize a heap-allocated L0_string in the given memory.
+ *
  * Character data (bytes[]) is uninitialized; caller must fill it in.
  * Length is assumed to be already validated by the caller.
  * Size of mem MUST be at least sizeof(_l0_h_string) + s_len + 1.
@@ -841,22 +781,30 @@ static l0_string _rt_l0_string_from_const_literal(const char *c_str) {
  *
  * @param mem Allocated memory block.
  * @param s_len Length of the string.
+ *
  * @return Initialized L0 string.
  */
 static l0_string _rt_init_heap_string(void *mem, l0_int s_len) {
     l0_string s;
     _l0_h_string *hs = (_l0_h_string *)mem;
-    hs->refcount = 1;       /* reference counted */
+
+    /* reference counted */
+    hs->refcount = 1;
     hs->len = (l0_int)s_len;
-    hs->bytes[s_len] = '\0';   /* null-terminate */
+
+    /* null-terminate */
+    hs->bytes[s_len] = '\0';
 
     s.kind = L0_STRING_K_HEAP;
     s.data.h_str = hs;
     return s;
 }
 
+#ifdef L0_TRACE_MEMORY
+
 /**
  * Allocate a new reference counted L0_string of the given length.
+ *
  * Character data (bytes[]) is uninitialized; caller must fill it in.
  * Panics on allocation failure or negative length.
  * Size of allocated memory is: string header + len + 1 for null terminator.
@@ -865,9 +813,11 @@ static l0_string _rt_init_heap_string(void *mem, l0_int s_len) {
  * its data is null-terminated in advance.
  *
  * @param len Length of the string.
+ * @param _loc_file Source filename captured by the trace-enabled call site.
+ * @param _loc_line Source line captured by the trace-enabled call site.
+ *
  * @return Allocated L0 string.
  */
-#ifdef L0_TRACE_MEMORY
 static l0_string _rt_alloc_string_impl(l0_int len, const char *_loc_file, int _loc_line) {
     if (len < 0) {
         _rt_panic("_rt_alloc_string: negative length");
@@ -882,6 +832,21 @@ static l0_string _rt_alloc_string_impl(l0_int len, const char *_loc_file, int _l
 }
 #define _rt_alloc_string(len) _rt_alloc_string_impl((len), __FILE__, __LINE__)
 #else
+
+/**
+ * Allocate a new reference counted L0_string of the given length.
+ *
+ * Character data (bytes[]) is uninitialized; caller must fill it in.
+ * Panics on allocation failure or negative length.
+ * Size of allocated memory is: string header + len + 1 for null terminator.
+ *
+ * The returned string is of kind L0_STRING_K_HEAP and
+ * its data is null-terminated in advance.
+ *
+ * @param len Length of the string.
+ *
+ * @return Allocated L0 string.
+ */
 static l0_string _rt_alloc_string(l0_int len) {
     if (len < 0) {
         _rt_panic("_rt_alloc_string: negative length");
@@ -896,15 +861,20 @@ static l0_string _rt_alloc_string(l0_int len) {
 }
 #endif
 
+#if defined(L0_TRACE_ARC) || defined(L0_TRACE_MEMORY)
+
 /**
  * Free a string's allocated data, if applicable.
+ *
  * If reference counted, decrements reference count and frees when it reaches zero.
- * 
+ *
  * @param str L0 string to free.
+ * @param _loc_file Source filename captured by the trace-enabled call site.
+ * @param _loc_line Source line captured by the trace-enabled call site.
  */
-#if defined(L0_TRACE_ARC) || defined(L0_TRACE_MEMORY)
 static void _rt_free_string_impl(l0_string str, const char *_loc_file, int _loc_line) {
     if (str.kind == L0_STRING_K_STATIC) {
+
         /* Static string: do nothing */
         _RT_TRACE_ARC_LOC(_loc_file, _loc_line, "op=release kind=static ptr=%p rc_before=-1 rc_after=-1 action=noop", (void*)str.data.s_str.bytes);
         return;
@@ -917,6 +887,7 @@ static void _rt_free_string_impl(l0_string str, const char *_loc_file, int _loc_
     }
     l0_int rc_before = hs->refcount;
     if (rc_before > 0 && rc_before < INT32_MAX) {
+
         /* Reference counted string */
         hs->refcount--;
         if (hs->refcount == 0) {
@@ -926,7 +897,9 @@ static void _rt_free_string_impl(l0_string str, const char *_loc_file, int _loc_
                 (void*)hs, (int)rc_before
             );
             _RT_TRACE_MEM_LOC(_loc_file, _loc_line, "op=free_string ptr=%p action=free", (void*)hs);
-            hs->refcount = _RT_MEM_SENTINEL; /* prevent double free */
+
+            /* prevent double free */
+            hs->refcount = _RT_MEM_SENTINEL;
             _rt_untrack_arc_alloc((void*)hs->bytes);
             free((void*)hs);
         } else {
@@ -940,6 +913,7 @@ static void _rt_free_string_impl(l0_string str, const char *_loc_file, int _loc_
         return;
     }
     if (rc_before == INT32_MAX) {
+
         /* Non-reference counted string: do nothing */
         _RT_TRACE_ARC_LOC(
             _loc_file, _loc_line,
@@ -968,8 +942,17 @@ static void _rt_free_string_impl(l0_string str, const char *_loc_file, int _loc_
 }
 #define _rt_free_string(str) _rt_free_string_impl((str), __FILE__, __LINE__)
 #else
+
+/**
+ * Free a string's allocated data, if applicable.
+ *
+ * If reference counted, decrements reference count and frees when it reaches zero.
+ *
+ * @param str L0 string to free.
+ */
 static void _rt_free_string(l0_string str) {
     if (str.kind == L0_STRING_K_STATIC) {
+
         /* Static string: do nothing */
         _RT_TRACE_ARC("op=release kind=static ptr=%p rc_before=-1 rc_after=-1 action=noop", (void*)str.data.s_str.bytes);
         return;
@@ -982,6 +965,7 @@ static void _rt_free_string(l0_string str) {
     }
     l0_int rc_before = hs->refcount;
     if (rc_before > 0 && rc_before < INT32_MAX) {
+
         /* Reference counted string */
         hs->refcount--;
         if (hs->refcount == 0) {
@@ -990,7 +974,9 @@ static void _rt_free_string(l0_string str) {
                 (void*)hs, (int)rc_before
             );
             _RT_TRACE_MEM("op=free_string ptr=%p action=free", (void*)hs);
-            hs->refcount = _RT_MEM_SENTINEL; /* prevent double free */
+
+            /* prevent double free */
+            hs->refcount = _RT_MEM_SENTINEL;
             _rt_untrack_arc_alloc((void*)hs->bytes);
             free((void*)hs);
         } else {
@@ -1003,6 +989,7 @@ static void _rt_free_string(l0_string str) {
         return;
     }
     if (rc_before == INT32_MAX) {
+
         /* Non-reference counted string: do nothing */
         _RT_TRACE_ARC(
             "op=release kind=heap ptr=%p rc_before=%d rc_after=%d action=noop-nonref",
@@ -1030,9 +1017,10 @@ static void _rt_free_string(l0_string str) {
 
 /**
  * Reallocate a heap string to a new length.
- * 
+ *
  * @param s Current L0 string.
  * @param new_len New length.
+ *
  * @return Updated L0 string.
  */
 static l0_string _rt_realloc_string(l0_string s, l0_int new_len) {
@@ -1044,6 +1032,7 @@ static l0_string _rt_realloc_string(l0_string s, l0_int new_len) {
         return L0_STRING_EMPTY;
     }
     if (s.kind == L0_STRING_K_STATIC && s.data.s_str.len == 0) {
+
         /* Reallocating empty static string: allocate new heap string */
         return _rt_alloc_string(new_len);
     }
@@ -1051,8 +1040,8 @@ static l0_string _rt_realloc_string(l0_string s, l0_int new_len) {
         _RT_TRACE_MEM("op=realloc_string old_ptr=%p new_len=%d action=panic-invalid-string", (void*)s.data.h_str, (int)new_len);
         _rt_panic("_rt_realloc_string: string is not heap-allocated");
     }
-    
-    /* Use volatile to prevent the compiler from tracking the pointer across realloc 
+
+    /* Use volatile to prevent the compiler from tracking the pointer across realloc
        and complaining about use-after-free when tracing the old pointer value. */
     volatile uintptr_t old_ptr_addr = (uintptr_t)s.data.h_str;
     size_t new_size = sizeof(_l0_h_string) + new_len + 1;
@@ -1064,7 +1053,9 @@ static l0_string _rt_realloc_string(l0_string s, l0_int new_len) {
     }
     _l0_h_string *new_hs = (_l0_h_string *)new_mem;
     new_hs->len = new_len;
-    new_hs->bytes[new_len] = '\0'; /* null-terminate */
+
+    /* null-terminate */
+    new_hs->bytes[new_len] = '\0';
     s.data.h_str = new_hs;
     _RT_TRACE_MEM(
         "op=realloc_string old_ptr=%p new_ptr=%p new_len=%d action=ok",
@@ -1075,9 +1066,11 @@ static l0_string _rt_realloc_string(l0_string s, l0_int new_len) {
 
 /**
  * Create a new reference counted L0_string from a null-terminated C string.
+ *
  * Allocates new memory and copies data.
- * 
+ *
  * @param c_str Null-terminated C string.
+ *
  * @return L0 string.
  */
 static l0_string _rt_new_l0_string(const char *c_str) {
@@ -1097,12 +1090,14 @@ static l0_string _rt_new_l0_string(const char *c_str) {
 
 /**
  * Gets the null-terminated C string underlying an L0 string.
+ *
  * or NULL if not available, e.g. for static empty strings.
  * Useful when interfacing with C APIs that require null-terminated strings.
  *
  * Note: This is an internal helper, not exposed to L0 code.
- * 
+ *
  * @param s L0 string.
+ *
  * @return Pointer to character data.
  */
 static char *_rt_string_bytes(l0_string s) {
@@ -1113,10 +1108,13 @@ static char *_rt_string_bytes(l0_string s) {
             if (s.data.h_str != NULL) {
                 return s.data.h_str->bytes;
             }
+
             /* fallthrough */
         default:
             _rt_panic_fmt("_rt_string_bytes: invalid string kind: %d or null data", (int)s.kind);
-            return NULL; /* Unreachable */
+
+            /* Unreachable */
+            return NULL;
     }
 }
 
@@ -1125,12 +1123,13 @@ static char *_rt_string_bytes(l0_string s) {
  * ========================================================================= */
 
 /**
- * Get the length of a string.
- * 
- * @param str L0 string.
- * @return Length in bytes.
+ * Return the length of a string in bytes.
  *
- * L0 signature: `extern func rt_strlen(str: string) -> int;` 
+ * L0 signature: `extern func rt_strlen(str: string) -> int;`
+ *
+ * @param str L0 string.
+ *
+ * @return Length in bytes.
  */
 l0_int rt_strlen(l0_string str) {
     switch(str.kind) {
@@ -1139,24 +1138,30 @@ l0_int rt_strlen(l0_string str) {
     case L0_STRING_K_HEAP:
         if (str.data.h_str == NULL) {
             _rt_panic("rt_strlen: string data is null");
-            return 0; /* Unreachable */
+
+            /* Unreachable */
+            return 0;
         }
         return str.data.h_str->len;
     default:
         _rt_panic_fmt("rt_strlen: invalid string kind: %d", (int)str.kind);
-        return 0; /* Unreachable */
+
+        /* Unreachable */
+        return 0;
     }
 }
 
 /**
- * Bounds-checked character access.
+ * Return the byte at a string index.
+ *
  * Returns the character at the given index, or panics if out of bounds.
- * 
+ *
+ * L0 signature: `extern func rt_string_get(s: string, index: int) -> byte;`
+ *
  * @param a L0 string.
  * @param index Index.
- * @return Byte value.
  *
- * L0 signature: `extern func rt_string_get(s: string, index: int) -> byte;` 
+ * @return Byte value.
  */
 l0_byte rt_string_get(l0_string a, l0_int index) {
     l0_int a_len = rt_strlen(a);
@@ -1174,9 +1179,6 @@ l0_byte rt_string_get(l0_string a, l0_int index) {
 /**
  * Return a pointer to the raw byte data of a string.
  *
- * @param s L0 string.
- * @return Pointer to the first byte.
- *
  * L0 signature: `extern func rt_string_bytes_ptr(s: string) -> byte*;`
  *
  * Heap and static string storage is registered with the pointer access
@@ -1184,6 +1186,13 @@ l0_byte rt_string_get(l0_string a, l0_int index) {
  * stays dereferenceable by checked generated code while strings that never
  * hand out raw bytes stay out of the tracker. Both are runtime-managed:
  * passing the returned pointer to `drop` or `rt_free` is a runtime error.
+ *
+ * The returned storage is runtime-managed and read-only to checked generated
+ * L0 code. It must not be passed to `drop` or `rt_free`.
+ *
+ * @param s L0 string.
+ *
+ * @return Pointer to the first byte.
  */
 l0_byte *rt_string_bytes_ptr(l0_string s) {
     char *bytes = _rt_string_bytes(s);
@@ -1197,13 +1206,14 @@ l0_byte *rt_string_bytes_ptr(l0_string s) {
 }
 
 /**
- * Check if two strings are equal.
- * 
+ * Return whether two strings contain equal bytes.
+ *
+ * L0 signature: `extern func rt_string_equals(a: string, b: string) -> bool;`
+ *
  * @param a First string.
  * @param b Second string.
- * @return 1 if equal, 0 otherwise.
  *
- * L0 signature: `extern func rt_string_equals(a: string, b: string) -> bool;` 
+ * @return 1 if equal, 0 otherwise.
  */
 l0_bool rt_string_equals(l0_string a, l0_string b) {
     l0_int a_len = rt_strlen(a);
@@ -1212,7 +1222,9 @@ l0_bool rt_string_equals(l0_string a, l0_string b) {
         return 0;
     }
     if (a_len == 0) {
-        return 1;  /* Both empty */
+
+        /* Both empty */
+        return 1;
     }
     char *a_data = _rt_string_bytes(a);
     char *b_data = _rt_string_bytes(b);
@@ -1223,14 +1235,16 @@ l0_bool rt_string_equals(l0_string a, l0_string b) {
 }
 
 /**
- * Compare two strings lexicographically.
+ * Compare two strings lexicographically by byte value.
+ *
  * Returns 0 if equal, <0 if a < b, >0 if a > b.
- * 
+ *
+ * L0 signature: `extern func rt_string_compare(a: string, b: string) -> int;`
+ *
  * @param a First string.
  * @param b Second string.
- * @return Comparison result.
  *
- * L0 signature: `extern func rt_string_compare(a: string, b: string) -> int;` 
+ * @return Comparison result.
  */
 l0_int rt_string_compare(l0_string a, l0_string b) {
     l0_int a_len = rt_strlen(a);
@@ -1266,21 +1280,29 @@ l0_int rt_string_compare(l0_string a, l0_string b) {
     return 0;
 }
 
+#ifdef L0_TRACE_MEMORY
+
 /**
- * Concatenate two strings (allocates new memory).
- * Returns a heap-allocated string containing a + b.
- * 
+ * Concatenate two strings.
+ *
+ * Returns the byte concatenation of a and b.
+ *
+ * The inputs remain borrowed. The result is owned and must be released with rt_string_release;
+ * an empty result uses static storage. Length overflow and allocation failure panic.
+ *
+ * L0 signature: `extern func rt_string_concat(a: string, b: string) -> string;`
+ *
  * @param a First string.
  * @param b Second string.
- * @return Concatenated string.
+ * @param _loc_file Source filename captured by the trace-enabled call site.
+ * @param _loc_line Source line captured by the trace-enabled call site.
  *
- * L0 signature: `extern func rt_string_concat(a: string, b: string) -> string;` 
+ * @return Concatenated string.
  */
-#ifdef L0_TRACE_MEMORY
 static l0_string _rt_string_concat_impl(l0_string a, l0_string b, const char *_loc_file, int _loc_line) {
     l0_int a_len = rt_strlen(a);
     l0_int b_len = rt_strlen(b);
-    
+
     /* Check for overflow in total length */
     if (a_len > INT32_MAX - b_len) {
         _rt_panic("rt_string_concat: combined length too large for l0_int");
@@ -1292,7 +1314,8 @@ static l0_string _rt_string_concat_impl(l0_string a, l0_string b, const char *_l
         return L0_STRING_EMPTY;
     }
 
-    l0_string s = _rt_alloc_string_impl(total_len, _loc_file, _loc_line); /* result string */
+    /* result string */
+    l0_string s = _rt_alloc_string_impl(total_len, _loc_file, _loc_line);
     char *s_data = _rt_string_bytes(s);
     char *a_data = _rt_string_bytes(a);
     char *b_data = _rt_string_bytes(b);
@@ -1305,18 +1328,52 @@ static l0_string _rt_string_concat_impl(l0_string a, l0_string b, const char *_l
     if (b_data != NULL && b_len > 0) {
         memcpy(s_data + a_len, b_data, (size_t)b_len);
     }
-    s_data[total_len] = '\0'; /* null-terminate */
+
+    /* null-terminate */
+    s_data[total_len] = '\0';
     return s;
 }
+
+/**
+ * Concatenate two strings.
+ *
+ * Returns the byte concatenation of a and b.
+ *
+ * The inputs remain borrowed. The result is owned and must be released with rt_string_release;
+ * an empty result uses static storage. Length overflow and allocation failure panic.
+ *
+ * L0 signature: `extern func rt_string_concat(a: string, b: string) -> string;`
+ *
+ * @param a First string.
+ * @param b Second string.
+ *
+ * @return Concatenated string.
+ */
 l0_string (rt_string_concat)(l0_string a, l0_string b) {
     return _rt_string_concat_impl(a, b, "<runtime>", 0);
 }
 #define rt_string_concat(a, b) _rt_string_concat_impl((a), (b), __FILE__, __LINE__)
 #else
+
+/**
+ * Concatenate two strings.
+ *
+ * Returns the byte concatenation of a and b.
+ *
+ * The inputs remain borrowed. The result is owned and must be released with rt_string_release;
+ * an empty result uses static storage. Length overflow and allocation failure panic.
+ *
+ * L0 signature: `extern func rt_string_concat(a: string, b: string) -> string;`
+ *
+ * @param a First string.
+ * @param b Second string.
+ *
+ * @return Concatenated string.
+ */
 l0_string rt_string_concat(l0_string a, l0_string b) {
     l0_int a_len = rt_strlen(a);
     l0_int b_len = rt_strlen(b);
-    
+
     /* Check for overflow in total length */
     if (a_len > INT32_MAX - b_len) {
         _rt_panic("rt_string_concat: combined length too large for l0_int");
@@ -1328,7 +1385,8 @@ l0_string rt_string_concat(l0_string a, l0_string b) {
         return L0_STRING_EMPTY;
     }
 
-    l0_string s = _rt_alloc_string(total_len); /* result string */
+    /* result string */
+    l0_string s = _rt_alloc_string(total_len);
     char *s_data = _rt_string_bytes(s);
     char *a_data = _rt_string_bytes(a);
     char *b_data = _rt_string_bytes(b);
@@ -1341,21 +1399,28 @@ l0_string rt_string_concat(l0_string a, l0_string b) {
     if (b_data != NULL && b_len > 0) {
         memcpy(s_data + a_len, b_data, (size_t)b_len);
     }
-    s_data[total_len] = '\0'; /* null-terminate */
+
+    /* null-terminate */
+    s_data[total_len] = '\0';
     return s;
 }
 #endif
 
 /**
- * Create a substring (allocates new memory).
+ * Return a byte slice of a string.
+ *
  * Panics if start/end are out of bounds or start > end.
- * 
+ *
+ * The source remains borrowed. Release the result with rt_string_release; an empty slice uses
+ * static storage. Allocation failure panics.
+ *
+ * L0 signature: `extern func rt_string_slice(s: string, start: int, end: int) -> string;`
+ *
  * @param s Source string.
  * @param start Start index.
  * @param end End index.
- * @return Slice string.
  *
- * L0 signature: `extern func rt_string_slice(s: string, start: int, end: int) -> string;` 
+ * @return Slice string.
  */
 l0_string rt_string_slice(l0_string s, l0_int start, l0_int end) {
     l0_int s_len = rt_strlen(s);
@@ -1384,35 +1449,46 @@ l0_string rt_string_slice(l0_string s, l0_int start, l0_int end) {
 }
 
 /**
- * Create an L0 string from a single character (byte).
- * Allocates a new heap string of length 1.
- * Note: Caller must free the returned string using _rt_free_string.
- * 
- * @param b Character.
- * @return L0 string.
+ * Create a string from one byte.
  *
- * L0 signature: `extern func rt_string_from_byte(b: byte) -> string;` 
+ * Allocates a new heap string of length 1.
+ *
+ * The byte is copied into owned storage. Release the result with rt_string_release. Allocation
+ * failure panics.
+ *
+ * L0 signature: `extern func rt_string_from_byte(b: byte) -> string;`
+ *
+ * @param b Character.
+ *
+ * @return L0 string.
  */
 l0_string rt_string_from_byte(l0_byte b) {
     l0_string s = _rt_alloc_string(1);
     char *s_data = _rt_string_bytes(s);
     s_data[0] = (char)b;
-    s_data[1] = '\0'; /* null-terminate */
+
+    /* null-terminate */
+    s_data[1] = '\0';
     return s;
 }
 
 /**
- * Create an L0 string from a byte array and a length.
+ * Create a string from a byte array.
+ *
  * Allocates a new heap string of the given length and copies data.
  * The array does not need to be a null-terminated C string: all bytes are copied and a null
  * terminator is added for C interoperability.
  * Panics if len is negative.
- * 
+ *
+ * The input bytes remain borrowed. Release the result with rt_string_release. Allocation failure
+ * panics; even a zero length produces an owned heap string.
+ *
+ * L0 signature: `extern func rt_string_from_byte_array(bytes: byte*, len: int) -> string;`
+ *
  * @param bytes Pointer to bytes.
  * @param len Length.
- * @return L0 string.
  *
- * L0 signature: `extern func rt_string_from_byte_array(bytes: byte*, len: int) -> string;` 
+ * @return L0 string.
  */
 l0_string rt_string_from_byte_array(l0_byte* bytes, l0_int len) {
     if (len < 0) {
@@ -1424,19 +1500,28 @@ l0_string rt_string_from_byte_array(l0_byte* bytes, l0_int len) {
     return s;
 }
 
-/**
- * Increment reference count for heap strings (no-op for static).
- * Panics if the string is heap-allocated but has an invalid refcount state (e.g. double free detected).
- * 
- * @param s L0 string.
- *
- * L0 signature: `extern func rt_string_retain(s: string) -> void;` 
- */
 #ifdef L0_TRACE_ARC
+
+/**
+ * Increment the reference count of a heap string.
+ *
+ * Panics if the string is heap-allocated but has an invalid refcount state (e.g. double free
+ * detected).
+ *
+ * L0 signature: `extern func rt_string_retain(s: string) -> void;`
+ *
+ * This is a no-op for static or non-reference-counted strings.
+ *
+ * @param s L0 string.
+ * @param _loc_file Source filename captured by the trace-enabled call site.
+ * @param _loc_line Source line captured by the trace-enabled call site.
+ */
 static void _rt_string_retain_impl(l0_string s, const char *_loc_file, int _loc_line) {
     if (s.kind == L0_STRING_K_STATIC) {
         _RT_TRACE_ARC("op=retain kind=static ptr=%p rc_before=-1 rc_after=-1 action=noop loc=\"%s\":%d", (void*)s.data.s_str.bytes, _loc_file, _loc_line);
-        return; /* Static strings are not reference counted */
+
+        /* Static strings are not reference counted */
+        return;
     }
     _l0_h_string *hs = s.data.h_str;
     if (hs == NULL) {
@@ -1464,6 +1549,7 @@ static void _rt_string_retain_impl(l0_string s, const char *_loc_file, int _loc_
         );
         _rt_panic_fmt("rt_string_retain: invalid refcount state: %d", (int)hs->refcount);
     } else if (hs->refcount == INT32_MAX) {
+
         /* Non-refcounted heap string: no-op */
         _RT_TRACE_ARC(
             "op=retain kind=heap ptr=%p rc_before=%d rc_after=%d action=noop-nonref loc=\"%s\":%d",
@@ -1477,15 +1563,43 @@ static void _rt_string_retain_impl(l0_string s, const char *_loc_file, int _loc_
         _rt_panic_fmt("rt_string_retain: invalid refcount state: %d", (int)hs->refcount);
     }
 }
+
+/**
+ * Increment the reference count of a heap string.
+ *
+ * Panics if the string is heap-allocated but has an invalid refcount state (e.g. double free
+ * detected).
+ *
+ * L0 signature: `extern func rt_string_retain(s: string) -> void;`
+ *
+ * This is a no-op for static or non-reference-counted strings.
+ *
+ * @param s L0 string.
+ */
 void (rt_string_retain)(l0_string s) {
     _rt_string_retain_impl(s, "<runtime>", 0);
 }
 #define rt_string_retain(s) _rt_string_retain_impl((s), __FILE__, __LINE__)
 #else
+
+/**
+ * Increment the reference count of a heap string.
+ *
+ * Panics if the string is heap-allocated but has an invalid refcount state (e.g. double free
+ * detected).
+ *
+ * L0 signature: `extern func rt_string_retain(s: string) -> void;`
+ *
+ * This is a no-op for static or non-reference-counted strings.
+ *
+ * @param s L0 string.
+ */
 void rt_string_retain(l0_string s) {
     if (s.kind == L0_STRING_K_STATIC) {
         _RT_TRACE_ARC("op=retain kind=static ptr=%p rc_before=-1 rc_after=-1 action=noop", (void*)s.data.s_str.bytes);
-        return; /* Static strings are not reference counted */
+
+        /* Static strings are not reference counted */
+        return;
     }
     _l0_h_string *hs = s.data.h_str;
     if (hs == NULL) {
@@ -1513,6 +1627,7 @@ void rt_string_retain(l0_string s) {
         );
         _rt_panic_fmt("rt_string_retain: invalid refcount state: %d", (int)hs->refcount);
     } else if (hs->refcount == INT32_MAX) {
+
         /* Non-refcounted heap string: no-op */
         _RT_TRACE_ARC(
             "op=retain kind=heap ptr=%p rc_before=%d rc_after=%d action=noop-nonref",
@@ -1528,22 +1643,56 @@ void rt_string_retain(l0_string s) {
 }
 #endif
 
-/**
- * Decrement reference count, freeing if zero.
- * 
- * @param s L0 string.
- *
- * L0 signature: `extern func rt_string_release(s: string) -> void;` 
- */
 #ifdef L0_TRACE_ARC
+
+/**
+ * Decrement the reference count of a heap string and free it at zero.
+ *
+ * Releasing the last reference invalidates all borrowed views of that heap string. Invalid heap
+ * state panics.
+ *
+ * L0 signature: `extern func rt_string_release(s: string) -> void;`
+ *
+ * This is a no-op for static or non-reference-counted strings.
+ *
+ * @param s L0 string.
+ * @param _loc_file Source filename captured by the trace-enabled call site.
+ * @param _loc_line Source line captured by the trace-enabled call site.
+ */
 static void _rt_string_release_impl(l0_string s, const char *_loc_file, int _loc_line) {
     _rt_free_string_impl(s, _loc_file, _loc_line);
 }
+
+/**
+ * Decrement the reference count of a heap string and free it at zero.
+ *
+ * Releasing the last reference invalidates all borrowed views of that heap string. Invalid heap
+ * state panics.
+ *
+ * L0 signature: `extern func rt_string_release(s: string) -> void;`
+ *
+ * This is a no-op for static or non-reference-counted strings.
+ *
+ * @param s L0 string.
+ */
 void (rt_string_release)(l0_string s) {
     _rt_string_release_impl(s, "<runtime>", 0);
 }
 #define rt_string_release(s) _rt_string_release_impl((s), __FILE__, __LINE__)
 #else
+
+/**
+ * Decrement the reference count of a heap string and free it at zero.
+ *
+ * Releasing the last reference invalidates all borrowed views of that heap string. Invalid heap
+ * state panics.
+ *
+ * L0 signature: `extern func rt_string_release(s: string) -> void;`
+ *
+ * This is a no-op for static or non-reference-counted strings.
+ *
+ * @param s L0 string.
+ */
 void rt_string_release(l0_string s) {
     _rt_free_string(s);
 }
@@ -1555,13 +1704,15 @@ void rt_string_release(l0_string s) {
 
 /**
  * Execute a system command and return its normalized status.
+ *
  * Returns the command exit code, `128 + signal` when terminated by a signal,
  * or a negative value on error launching the shell.
- * 
- * @param cmd Command string.
- * @return Normalized status.
  *
- * L0 signature: `extern func rt_system(cmd: string) -> int;` 
+ * L0 signature: `extern func rt_system(cmd: string) -> int;`
+ *
+ * @param cmd Command string.
+ *
+ * @return Normalized status.
  */
 l0_int rt_system(l0_string cmd) {
     char *c = _rt_string_bytes(cmd);
@@ -1586,13 +1737,18 @@ l0_int rt_system(l0_string cmd) {
 }
 
 /**
- * Get an environment variable as an L0 optional string.
- * Returns null (empty optional) if the variable is not set.
- * 
- * @param name Variable name.
- * @return Optional string value.
+ * Return the value of an environment variable.
  *
- * L0 signature: `extern func rt_get_env_var(name: string) -> string?;` 
+ * Returns null (empty optional) if the variable is not set.
+ *
+ * A present result owns a copied heap string that must be released with rt_string_release.
+ * Allocation failure panics.
+ *
+ * L0 signature: `extern func rt_get_env_var(name: string) -> string?;`
+ *
+ * @param name Variable name.
+ *
+ * @return Optional string value.
  */
 l0_opt_string rt_get_env_var(l0_string name) {
     if (rt_strlen(name) == 0) {
@@ -1618,11 +1774,11 @@ l0_opt_string rt_get_env_var(l0_string name) {
 }
 
 /**
- * Get the number of command-line arguments.
- * 
- * @return Argument count.
+ * Return the number of process arguments.
  *
- * L0 signature: `extern func rt_get_argc() -> int;` 
+ * L0 signature: `extern func rt_get_argc() -> int;`
+ *
+ * @return Argument count.
  */
 l0_int rt_get_argc(void) {
     return (l0_int)_rt_argc;
@@ -1633,6 +1789,7 @@ l0_int rt_get_argc(void) {
  *
  * @param value Native process identifier.
  * @param out Output location.
+ *
  * @return 1 when `value` fits in `l0_int`, otherwise 0.
  */
 static l0_bool _rt_pid_to_l0_int(intmax_t value, l0_int *out) {
@@ -1644,11 +1801,13 @@ static l0_bool _rt_pid_to_l0_int(intmax_t value, l0_int *out) {
 }
 
 /**
- * Get the current process identifier.
- *
- * @return Process identifier.
+ * Return the current process identifier.
  *
  * L0 signature: `extern func rt_get_pid() -> int;`
+ *
+ * Panics if the native process identifier does not fit in l0_int.
+ *
+ * @return Process identifier.
  */
 l0_int rt_get_pid(void) {
     l0_int out = 0;
@@ -1665,13 +1824,17 @@ l0_int rt_get_pid(void) {
 }
 
 /**
- * Get the command-line argument at the given index.
- * Panics if index is out of bounds.
- * 
- * @param i Index.
- * @return Argument string.
+ * Return one process argument.
  *
- * L0 signature: `extern func rt_get_argv(i: int) -> string;` 
+ * Panics if index is out of bounds.
+ *
+ * The returned view borrows process argument storage and requires no deallocation.
+ *
+ * L0 signature: `extern func rt_get_argv(i: int) -> string;`
+ *
+ * @param i Index.
+ *
+ * @return Argument string.
  */
 l0_string rt_get_argv(l0_int i) {
     if (i < 0 || i >= _rt_argc) {
@@ -1686,6 +1849,11 @@ l0_string rt_get_argv(l0_int i) {
 
 /**
  * Internal helper to convert time_t to l0_int seconds.
+ *
+ * @param value Native timestamp seconds.
+ * @param out Destination written only when the value fits.
+ *
+ * @return Nonzero on successful conversion; zero when outside the L0 range.
  */
 static l0_bool _rt_time_to_l0_int_sec(time_t value, l0_int *out) {
     long long sec = (long long)value;
@@ -1698,6 +1866,11 @@ static l0_bool _rt_time_to_l0_int_sec(time_t value, l0_int *out) {
 
 /**
  * Internal helper to convert long to l0_int nanoseconds.
+ *
+ * @param value Native fraction, required to be in [0, 1000000000).
+ * @param out Destination written only for a valid fraction.
+ *
+ * @return Nonzero when the fraction is valid.
  */
 static l0_bool _rt_time_to_l0_int_nsec(long value, l0_int *out) {
     long long nsec = (long long)value;
@@ -1710,6 +1883,12 @@ static l0_bool _rt_time_to_l0_int_nsec(long value, l0_int *out) {
 
 /**
  * Internal helper to write time parts to struct.
+ *
+ * @param out Caller-owned destination; null is rejected.
+ * @param sec Whole seconds.
+ * @param nsec Nanosecond fraction.
+ *
+ * @return Nonzero after writing both fields, or zero for a null destination.
  */
 static l0_bool _rt_time_write_parts(struct l0_sys_rt_RtTimeParts *out, l0_int sec, l0_int nsec) {
     if (out == NULL) {
@@ -1721,12 +1900,13 @@ static l0_bool _rt_time_write_parts(struct l0_sys_rt_RtTimeParts *out, l0_int se
 }
 
 /**
- * Capture current unix wall clock into `out`.
- * 
- * @param out Pointer to RtTimeParts.
- * @return 1 on success, 0 on failure.
+ * Capture current Unix wall time.
  *
- * L0 signature: `extern func rt_time_unix(out: RtTimeParts*) -> bool;` 
+ * L0 signature: `extern func rt_time_unix(out: RtTimeParts*) -> bool;`
+ *
+ * @param out Pointer to RtTimeParts.
+ *
+ * @return 1 on success, 0 on failure.
  */
 l0_bool rt_time_unix(struct l0_sys_rt_RtTimeParts *out) {
     if (out == NULL) {
@@ -1761,12 +1941,13 @@ l0_bool rt_time_unix(struct l0_sys_rt_RtTimeParts *out) {
 }
 
 /**
- * Capture current monotonic clock into `out`.
- * 
- * @param out Pointer to RtTimeParts.
- * @return 1 on success, 0 on failure.
+ * Capture current monotonic time.
  *
- * L0 signature: `extern func rt_time_monotonic(out: RtTimeParts*) -> bool;` 
+ * L0 signature: `extern func rt_time_monotonic(out: RtTimeParts*) -> bool;`
+ *
+ * @param out Pointer to RtTimeParts.
+ *
+ * @return 1 on success, 0 on failure.
  */
 l0_bool rt_time_monotonic(struct l0_sys_rt_RtTimeParts *out) {
     if (out == NULL) {
@@ -1795,11 +1976,11 @@ l0_bool rt_time_monotonic(struct l0_sys_rt_RtTimeParts *out) {
 }
 
 /**
- * Returns whether a monotonic clock source is available.
- * 
- * @return 1 if supported, 0 otherwise.
+ * Return whether the runtime supports a monotonic clock.
  *
- * L0 signature: `extern func rt_time_monotonic_supported() -> bool;` 
+ * L0 signature: `extern func rt_time_monotonic_supported() -> bool;`
+ *
+ * @return 1 if supported, 0 otherwise.
  */
 l0_bool rt_time_monotonic_supported(void) {
 #if defined(CLOCK_MONOTONIC)
@@ -1810,15 +1991,16 @@ l0_bool rt_time_monotonic_supported(void) {
 }
 
 /**
- * Returns local UTC offset in seconds for `unix_sec`.
+ * Return the local UTC offset for a Unix timestamp.
  *
  * Computes the offset by comparing `gmtime` and `localtime` breakdowns
  * directly, avoiding `mktime` which rejects pre-epoch values on some platforms.
  *
- * @param unix_sec Unix timestamp.
- * @return Optional integer offset.
- *
  * L0 signature: `extern func rt_time_local_offset_sec(unix_sec: int) -> int?;`
+ *
+ * @param unix_sec Unix timestamp.
+ *
+ * @return Optional integer offset.
  */
 l0_opt_int rt_time_local_offset_sec(l0_int unix_sec) {
     time_t t = (time_t)unix_sec;
@@ -1860,12 +2042,13 @@ l0_opt_int rt_time_local_offset_sec(l0_int unix_sec) {
 }
 
 /**
- * Returns whether local time is daylight-saving time for `unix_sec`.
- * 
- * @param unix_sec Unix timestamp.
- * @return Optional boolean.
+ * Return whether local time is in daylight-saving time.
  *
- * L0 signature: `extern func rt_time_local_is_dst(unix_sec: int) -> bool?;` 
+ * L0 signature: `extern func rt_time_local_is_dst(unix_sec: int) -> bool?;`
+ *
+ * @param unix_sec Unix timestamp.
+ *
+ * @return Optional boolean.
  */
 l0_opt_bool rt_time_local_is_dst(l0_int unix_sec) {
     time_t t = (time_t)unix_sec;
@@ -1889,13 +2072,17 @@ l0_opt_bool rt_time_local_is_dst(l0_int unix_sec) {
  * ========================================================================= */
 
 /**
- * Read entire file contents into a string.
- * Returns empty string on error (file not found, read error, allocation failure).
- * 
- * @param path File path.
- * @return Optional string containing file contents.
+ * Read an entire file into a string.
  *
- * L0 signature: `extern func rt_read_file_all(path: string) -> string?;` 
+ * Returns an empty optional on invalid paths or file I/O failure.
+ * The returned present string is owned and must be released with rt_string_release.
+ * String allocation failure panics.
+ *
+ * L0 signature: `extern func rt_read_file_all(path: string) -> string?;`
+ *
+ * @param path File path.
+ *
+ * @return Optional string containing file contents.
  */
 l0_opt_string rt_read_file_all(l0_string path) {
 
@@ -1941,14 +2128,16 @@ l0_opt_string rt_read_file_all(l0_string path) {
 }
 
 /**
- * Write string data to a file.
+ * Write a string completely to a file.
+ *
  * Returns 1 (true) on success, 0 (false) on error.
- * 
+ *
+ * L0 signature: `extern func rt_write_file_all(path: string, data: string) -> bool;`
+ *
  * @param path File path.
  * @param data Data string.
- * @return 1 on success, 0 on failure.
  *
- * L0 signature: `extern func rt_write_file_all(path: string, data: string) -> bool;` 
+ * @return 1 on success, 0 on failure.
  */
 l0_bool rt_write_file_all(l0_string path, l0_string data) {
     l0_int path_len = rt_strlen(path);
@@ -1976,11 +2165,12 @@ l0_bool rt_write_file_all(l0_string path, l0_string data) {
 
 /**
  * Return basic metadata for a path.
- * 
- * @param path File path.
- * @return Metadata record with nullable size and mtime fields.
  *
  * L0 signature: `extern func rt_file_info(path: string) -> RtFileInfo;`
+ *
+ * @param path File path.
+ *
+ * @return Metadata record with nullable size and mtime fields.
  */
 struct l0_sys_rt_RtFileInfo rt_file_info(l0_string path) {
     struct l0_sys_rt_RtFileInfo out = {
@@ -2042,13 +2232,15 @@ struct l0_sys_rt_RtFileInfo rt_file_info(l0_string path) {
 }
 
 /**
- * Delete the file at the given path.
- * Returns 1 (true) on success, 0 (false) on error.
- * 
- * @param path File path.
- * @return 1 on success, 0 on failure.
+ * Delete a file.
  *
- * L0 signature: `extern func rt_delete_file(path: string) -> bool;` 
+ * Returns 1 (true) on success, 0 (false) on error.
+ *
+ * L0 signature: `extern func rt_delete_file(path: string) -> bool;`
+ *
+ * @param path File path.
+ *
+ * @return 1 on success, 0 on failure.
  */
 l0_bool rt_delete_file(l0_string path) {
     if (rt_strlen(path) == 0) {
@@ -2065,6 +2257,7 @@ l0_bool rt_delete_file(l0_string path) {
  * @param stream Target stream.
  * @param buf Source bytes.
  * @param len Maximum number of bytes to write.
+ *
  * @return Bytes written, or `-1` on error.
  */
 static l0_int _rt_stream_write_some(FILE *stream, const l0_byte *buf, l0_int len) {
@@ -2087,14 +2280,15 @@ static l0_int _rt_stream_write_some(FILE *stream, const l0_byte *buf, l0_int len
 }
 
 /**
- * Read raw bytes from standard input.
+ * Read bytes from standard input.
+ *
+ * L0 signature: `extern func rt_stdin_read(buf: byte*?, capacity: int) -> int;`
  *
  * @param buf Destination bytes. A NULL buffer is reported as `-1`.
  * @param capacity Maximum number of bytes to read.
+ *
  * @return Bytes read, `0` on EOF, or `-1` on error (including a NULL `buf`
  *         when `capacity > 0`).
- *
- * L0 signature: `extern func rt_stdin_read(buf: byte*?, capacity: int) -> int;`
  */
 l0_int rt_stdin_read(l0_byte *buf, l0_int capacity) {
     if (capacity < 0) {
@@ -2116,28 +2310,30 @@ l0_int rt_stdin_read(l0_byte *buf, l0_int capacity) {
 }
 
 /**
- * Write raw bytes to standard output.
+ * Write bytes to standard output.
+ *
+ * L0 signature: `extern func rt_stdout_write(buf: byte*?, len: int) -> int;`
  *
  * @param buf Source bytes. A NULL buffer is reported as `-1`.
  * @param len Maximum number of bytes to write.
+ *
  * @return Bytes written, or `-1` on error (including a NULL `buf`
  *         when `len > 0`).
- *
- * L0 signature: `extern func rt_stdout_write(buf: byte*?, len: int) -> int;`
  */
 l0_int rt_stdout_write(l0_byte *buf, l0_int len) {
     return _rt_stream_write_some(stdout, buf, len);
 }
 
 /**
- * Write raw bytes to standard error.
+ * Write bytes to standard error.
+ *
+ * L0 signature: `extern func rt_stderr_write(buf: byte*?, len: int) -> int;`
  *
  * @param buf Source bytes. A NULL buffer is reported as `-1`.
  * @param len Maximum number of bytes to write.
+ *
  * @return Bytes written, or `-1` on error (including a NULL `buf`
  *         when `len > 0`).
- *
- * L0 signature: `extern func rt_stderr_write(buf: byte*?, len: int) -> int;`
  */
 l0_int rt_stderr_write(l0_byte *buf, l0_int len) {
     return _rt_stream_write_some(stderr, buf, len);
@@ -2148,18 +2344,18 @@ l0_int rt_stderr_write(l0_byte *buf, l0_int len) {
  * ========================================================================= */
 
 /**
- * Flush stdout. */
+ * Flush the standard output buffer.
+ */
 void rt_flush_stdout(void) {
     fflush(stdout);
 }
 
 /**
- * Flush stderr.
+ * Flush the standard error buffer.
  *
-
  * L0 signature: `extern func rt_flush_stdout() -> void;`
  *
- * L0 signature: `extern func rt_flush_stderr() -> void;` 
+ * L0 signature: `extern func rt_flush_stderr() -> void;`
  */
 void rt_flush_stderr(void) {
     fflush(stderr);
@@ -2167,7 +2363,7 @@ void rt_flush_stderr(void) {
 
 /**
  * Internal helper to print an l0_string to a given stream.
- * 
+ *
  * @param s String to print.
  * @param stream Target stream.
  */
@@ -2180,84 +2376,84 @@ static void _rt_print(l0_string s, FILE *stream){
 }
 
 /**
- * Print a string to stdout.
- * 
- * @param s String to print.
+ * Print a string to standard output without a newline.
  *
- * L0 signature: `extern func rt_print(s: string) -> void;` 
+ * L0 signature: `extern func rt_print(s: string) -> void;`
+ *
+ * @param s String to print.
  */
 void rt_print(l0_string s) {
     _rt_print(s, stdout);
 }
 
 /**
- * Print a string to stderr.
- * 
- * @param s String to print.
+ * Print a string to standard error without a newline.
  *
- * L0 signature: `extern func rt_print_stderr(s: string) -> void;` 
+ * L0 signature: `extern func rt_print_stderr(s: string) -> void;`
+ *
+ * @param s String to print.
  */
 void rt_print_stderr(l0_string s) {
     _rt_print(s, stderr);
 }
 
 /**
- * Print a newline to stdout. */
+ * Print a newline to standard output.
+ */
 void rt_println(void) {
     fputc('\n', stdout);
 }
 
 /**
- * Print a newline to stderr.
+ * Print a newline to standard error.
  *
-
  * L0 signature: `extern func rt_println() -> void;`
  *
- * L0 signature: `extern func rt_println_stderr() -> void;` 
+ * L0 signature: `extern func rt_println_stderr() -> void;`
  */
 void rt_println_stderr(void) {
     fputc('\n', stderr);
 }
 
 /**
- * Print an integer to stdout.
- * 
- * @param x Integer value.
+ * Print an integer to standard output.
  *
- * L0 signature: `extern func rt_print_int(x: int) -> void;` 
+ * L0 signature: `extern func rt_print_int(x: int) -> void;`
+ *
+ * @param x Integer value.
  */
 void rt_print_int(l0_int x) {
     printf("%d", (int)x);
 }
 
 /**
- * Print an integer to stderr.
- * 
- * @param x Integer value.
+ * Print an integer to standard error.
  *
- * L0 signature: `extern func rt_print_int_stderr(x: int) -> void;` 
+ * L0 signature: `extern func rt_print_int_stderr(x: int) -> void;`
+ *
+ * @param x Integer value.
  */
 void rt_print_int_stderr(l0_int x) {
     fprintf(stderr, "%d", (int)x);
 }
 
 /**
- * Print a bool to stdout.
- * 
- * @param x Boolean value.
+ * Print a boolean to standard output.
  *
- * L0 signature: `extern func rt_print_bool(x: bool) -> void;` 
+ * L0 signature: `extern func rt_print_bool(x: bool) -> void;`
+ *
+ * @param x Boolean value.
  */
 void rt_print_bool(l0_bool x) {
     printf("%s", x ? "true" : "false");
 }
 
 /**
- * Print a bool to stderr.
- * 
- * @param x Boolean value.
+ * Print a boolean to standard error.
  *
- * L0 signature: `extern func rt_print_bool_stderr(x: bool) -> void;` 
+ * L0 signature: `extern func rt_print_bool_stderr(x: bool) -> void;`
+ *
+ * @param x Boolean value.
  */
 void rt_print_bool_stderr(l0_bool x) {
     fprintf(stderr, "%s", x ? "true" : "false");
@@ -2268,15 +2464,16 @@ void rt_print_bool_stderr(l0_bool x) {
  * ========================================================================= */
 
 /**
- * Read a line from stdin into a dynamically allocated buffer.
+ * Read one line from standard input.
+ *
  * Returns None on EOF (no characters read).
  * *
  * Ownership: on Some(s), s.data is heap-allocated and must be freed by calling
  * rt_string_release(s) (directly or indirectly via stdlib).
- * 
- * @return Optional string containing the line.
  *
- * L0 signature: `extern func rt_read_line() -> string?;` 
+ * L0 signature: `extern func rt_read_line() -> string?;`
+ *
+ * @return Optional string containing the line.
  */
 l0_opt_string rt_read_line(void) {
     size_t capacity = 128;
@@ -2320,14 +2517,14 @@ l0_opt_string rt_read_line(void) {
     return (l0_opt_string){ .has_value = 1, .value = s };
 }
 
-
 /**
- * Read one character from stdin.
- * Returns -1 on EOF or error.
- * 
- * @return Character value or -1.
+ * Read one byte from standard input.
  *
- * L0 signature: `extern func rt_read_char() -> int;` 
+ * Returns -1 on EOF or error.
+ *
+ * L0 signature: `extern func rt_read_char() -> int;`
+ *
+ * @return Character value or -1.
  */
 l0_int rt_read_char(void) {
     int c = fgetc(stdin);
@@ -2342,11 +2539,11 @@ l0_int rt_read_char(void) {
  * ========================================================================= */
 
 /**
- * Abort the program with a panic message.
- * 
- * @param message Panic message.
+ * Abort execution with a message.
  *
- * L0 signature: `extern func rt_abort(message: string) -> void;` 
+ * L0 signature: `extern func rt_abort(message: string) -> void;`
+ *
+ * @param message Panic message.
  */
 void rt_abort(l0_string message) {
     if (rt_strlen(message) == 0) {
@@ -2358,11 +2555,11 @@ void rt_abort(l0_string message) {
 }
 
 /**
- * Exit the program with the given exit code.
- * 
- * @param code Exit code.
+ * Exit the process with a status code.
  *
- * L0 signature: `extern func rt_exit(code: int) -> void;` 
+ * L0 signature: `extern func rt_exit(code: int) -> void;`
+ *
+ * @param code Exit code.
  */
 void rt_exit(l0_int code) {
     exit((int)code);
@@ -2373,12 +2570,13 @@ void rt_exit(l0_int code) {
  * ========================================================================= */
 
 /**
- * Seed the random number generator.
- * Uses current time if seed is 0.
- * 
- * @param seed Seed value.
+ * Seed the runtime pseudo-random number generator.
  *
- * L0 signature: `extern func rt_srand(seed: int) -> void;` 
+ * Uses current time if seed is 0.
+ *
+ * L0 signature: `extern func rt_srand(seed: int) -> void;`
+ *
+ * @param seed Seed value.
  */
 void rt_srand(l0_int seed) {
     if (seed == 0) {
@@ -2389,13 +2587,15 @@ void rt_srand(l0_int seed) {
 }
 
 /**
- * Generate a random integer in the range [0, max).
- * Returns 0 if max <= 0.
- * 
- * @param max Upper bound (exclusive).
- * @return Random value.
+ * Return a pseudo-random integer below an upper bound.
  *
- * L0 signature: `extern func rt_rand(max: int) -> int;` 
+ * Returns 0 if max <= 0.
+ *
+ * L0 signature: `extern func rt_rand(max: int) -> int;`
+ *
+ * @param max Upper bound (exclusive).
+ *
+ * @return Random value.
  */
 l0_int rt_rand(l0_int max) {
     if (max <= 0) {
@@ -2405,11 +2605,11 @@ l0_int rt_rand(l0_int max) {
 }
 
 /**
- * Get the current errno value.
- * 
- * @return errno value.
+ * Return the current C runtime error number.
  *
- * L0 signature: `extern func rt_errno() -> int;` 
+ * L0 signature: `extern func rt_errno() -> int;`
+ *
+ * @return errno value.
  */
 l0_int rt_errno(void) {
     return (l0_int)errno;
@@ -2430,18 +2630,25 @@ l0_int rt_errno(void) {
  * Memory allocation and manipulation functions.
  * ========================================================================= */
 
-/**
- * Allocate memory of the given size in bytes.
- * Returns NULL on allocation failure or if bytes is zero.
- * Panics if bytes is negative, or too large to fit in size_t (platform-dependent).
- * 
- * @param bytes Size in bytes.
- * @return Pointer to allocated memory or NULL.
- *
- * L0 signature: `extern func rt_alloc(bytes: int) -> void*?;` 
- */
 #ifdef L0_TRACE_MEMORY
+
+/**
+ * Allocate raw memory.
+ *
+ * Successful storage is uninitialized, owned by the caller, and must be released
+ * with rt_free. Allocation failure returns NULL. Non-positive sizes and sizes
+ * outside size_t panic.
+ *
+ * L0 signature: `extern func rt_alloc(bytes: int) -> void*?;`
+ *
+ * @param bytes Positive allocation extent in bytes.
+ * @param _loc_file Source filename captured by the trace-enabled call site.
+ * @param _loc_line Source line captured by the trace-enabled call site.
+ *
+ * @return Owned raw allocation, or NULL on allocation failure.
+ */
 static void *_rt_alloc_impl(l0_int bytes, const char *_loc_file, int _loc_line) {
+
     /* zero-size allocations are not allowed */
     if (bytes <= 0) {
         _rt_panic("rt_alloc: invalid allocation size");
@@ -2456,6 +2663,7 @@ static void *_rt_alloc_impl(l0_int bytes, const char *_loc_file, int _loc_line) 
     void *ptr = malloc(size);
 
     if (ptr == NULL) {
+
         /* Allocation failed - return NULL and let caller handle it */
         _RT_TRACE_MEM("op=alloc bytes=%d ptr=%p action=fail loc=\"%s\":%d", (int)bytes, (void*)ptr, _loc_file, _loc_line);
         return NULL;
@@ -2465,12 +2673,41 @@ static void *_rt_alloc_impl(l0_int bytes, const char *_loc_file, int _loc_line) 
     _RT_TRACE_MEM("op=alloc bytes=%d ptr=%p action=ok loc=\"%s\":%d", (int)bytes, ptr, _loc_file, _loc_line);
     return ptr;
 }
+
+/**
+ * Allocate raw memory.
+ *
+ * Successful storage is uninitialized, owned by the caller, and must be released
+ * with rt_free. Allocation failure returns NULL. Non-positive sizes and sizes
+ * outside size_t panic.
+ *
+ * L0 signature: `extern func rt_alloc(bytes: int) -> void*?;`
+ *
+ * @param bytes Positive allocation extent in bytes.
+ *
+ * @return Owned raw allocation, or NULL on allocation failure.
+ */
 void *(rt_alloc)(l0_int bytes) {
     return _rt_alloc_impl(bytes, "<runtime>", 0);
 }
 #define rt_alloc(bytes) _rt_alloc_impl((bytes), __FILE__, __LINE__)
 #else
+
+/**
+ * Allocate raw memory.
+ *
+ * Successful storage is uninitialized, owned by the caller, and must be released
+ * with rt_free. Allocation failure returns NULL. Non-positive sizes and sizes
+ * outside size_t panic.
+ *
+ * L0 signature: `extern func rt_alloc(bytes: int) -> void*?;`
+ *
+ * @param bytes Positive allocation extent in bytes.
+ *
+ * @return Owned raw allocation, or NULL on allocation failure.
+ */
 void *rt_alloc(l0_int bytes) {
+
     /* zero-size allocations are not allowed */
     if (bytes <= 0) {
         _rt_panic("rt_alloc: invalid allocation size");
@@ -2485,6 +2722,7 @@ void *rt_alloc(l0_int bytes) {
     void *ptr = malloc(size);
 
     if (ptr == NULL) {
+
         /* Allocation failed - return NULL and let caller handle it */
         _RT_TRACE_MEM("op=alloc bytes=%d ptr=%p action=fail", (int)bytes, (void*)ptr);
         return NULL;
@@ -2496,20 +2734,29 @@ void *rt_alloc(l0_int bytes) {
 }
 #endif
 
+#ifdef L0_TRACE_MEMORY
+
 /**
- * Reallocate a raw runtime allocation to a new size.
- * Returns NULL on failure.
- * Panics if new_bytes is negative or too large to fit in size_t (platform-dependent).
- * If ptr is NULL, behaves like rt_alloc.
+ * Resize a raw runtime allocation.
  *
- * @param ptr Pointer to memory, or NULL to allocate fresh.
- * @param new_bytes New size.
- * @return Pointer to reallocated memory or NULL.
+ * NULL input allocates new storage. On success the returned pointer replaces the
+ * original allocation and must be released with rt_free. On allocation failure
+ * the original allocation remains valid and owned by the caller. Non-positive
+ * sizes and sizes outside size_t panic. Checked builds reject interior, released,
+ * new, ARC, static, and foreign pointers; checked reallocation copies the common
+ * extent to a replacement and quarantines the original allocation.
  *
  * L0 signature: `extern func rt_realloc(ptr: void*?, new_bytes: int) -> void*?;`
+ *
+ * @param ptr Live raw allocation base, or NULL to allocate fresh storage.
+ * @param new_bytes Positive replacement extent in bytes.
+ * @param _loc_file Source filename captured by the trace-enabled call site.
+ * @param _loc_line Source line captured by the trace-enabled call site.
+ *
+ * @return Owned replacement allocation, or NULL on allocation failure.
  */
-#ifdef L0_TRACE_MEMORY
 static void *_rt_realloc_impl(void *ptr, l0_int new_bytes, const char *_loc_file, int _loc_line) {
+
     /* zero-size allocations are not allowed */
     if (new_bytes <= 0) {
         _rt_panic("rt_realloc: invalid allocation size");
@@ -2524,6 +2771,7 @@ static void *_rt_realloc_impl(void *ptr, l0_int new_bytes, const char *_loc_file
     void *new_ptr = _rt_realloc_tracked_alloc(ptr, new_size, _loc_file, _loc_line);
 
     if (new_ptr == NULL) {
+
         /* Real failure! original pointer is still valid */
         _RT_TRACE_MEM("op=realloc old_ptr=%p bytes=%d new_ptr=%p action=fail loc=\"%s\":%d", (void*)old_ptr_addr, (int)new_bytes, (void*)new_ptr, _loc_file, _loc_line);
         return NULL;
@@ -2532,12 +2780,49 @@ static void *_rt_realloc_impl(void *ptr, l0_int new_bytes, const char *_loc_file
     _RT_TRACE_MEM("op=realloc old_ptr=%p bytes=%d new_ptr=%p action=ok loc=\"%s\":%d", (void*)old_ptr_addr, (int)new_bytes, new_ptr, _loc_file, _loc_line);
     return new_ptr;
 }
+
+/**
+ * Resize a raw runtime allocation.
+ *
+ * NULL input allocates new storage. On success the returned pointer replaces the
+ * original allocation and must be released with rt_free. On allocation failure
+ * the original allocation remains valid and owned by the caller. Non-positive
+ * sizes and sizes outside size_t panic. Checked builds reject interior, released,
+ * new, ARC, static, and foreign pointers; checked reallocation copies the common
+ * extent to a replacement and quarantines the original allocation.
+ *
+ * L0 signature: `extern func rt_realloc(ptr: void*?, new_bytes: int) -> void*?;`
+ *
+ * @param ptr Live raw allocation base, or NULL to allocate fresh storage.
+ * @param new_bytes Positive replacement extent in bytes.
+ *
+ * @return Owned replacement allocation, or NULL on allocation failure.
+ */
 void *(rt_realloc)(void *ptr, l0_int new_bytes) {
     return _rt_realloc_impl(ptr, new_bytes, "<runtime>", 0);
 }
 #define rt_realloc(ptr, new_bytes) _rt_realloc_impl((ptr), (new_bytes), __FILE__, __LINE__)
 #else
+
+/**
+ * Resize a raw runtime allocation.
+ *
+ * NULL input allocates new storage. On success the returned pointer replaces the
+ * original allocation and must be released with rt_free. On allocation failure
+ * the original allocation remains valid and owned by the caller. Non-positive
+ * sizes and sizes outside size_t panic. Checked builds reject interior, released,
+ * new, ARC, static, and foreign pointers; checked reallocation copies the common
+ * extent to a replacement and quarantines the original allocation.
+ *
+ * L0 signature: `extern func rt_realloc(ptr: void*?, new_bytes: int) -> void*?;`
+ *
+ * @param ptr Live raw allocation base, or NULL to allocate fresh storage.
+ * @param new_bytes Positive replacement extent in bytes.
+ *
+ * @return Owned replacement allocation, or NULL on allocation failure.
+ */
 void *rt_realloc(void *ptr, l0_int new_bytes) {
+
     /* zero-size allocations are not allowed */
     if (new_bytes <= 0) {
         _rt_panic("rt_realloc: invalid allocation size");
@@ -2551,6 +2836,7 @@ void *rt_realloc(void *ptr, l0_int new_bytes) {
     void *new_ptr = _rt_realloc_tracked_alloc(ptr, new_size, "<runtime>", 0);
 
     if (new_ptr == NULL) {
+
         /* Real failure! original pointer is still valid */
         _RT_TRACE_MEM("op=realloc old_ptr=%p bytes=%d new_ptr=%p action=fail", ptr, (int)new_bytes, (void*)new_ptr);
         return NULL;
@@ -2561,42 +2847,81 @@ void *rt_realloc(void *ptr, l0_int new_bytes) {
 }
 #endif
 
+#ifdef L0_TRACE_MEMORY
+
 /**
  * Free a raw runtime allocation.
- * 
- * @param ptr Pointer to free.
  *
- * L0 signature: `extern func rt_free(ptr: void*?) -> void;` 
+ * NULL is a no-op. Checked builds reject invalid raw-allocation ownership and
+ * quarantine released storage for stale-pointer diagnostics; unchecked builds
+ * release it immediately. A successful release invalidates all aliases.
+ *
+ * L0 signature: `extern func rt_free(ptr: void*?) -> void;`
+ *
+ * @param ptr Exact base returned by rt_alloc, rt_calloc, or rt_realloc, or NULL.
+ * @param _loc_file Source filename captured by the trace-enabled call site.
+ * @param _loc_line Source line captured by the trace-enabled call site.
  */
-#ifdef L0_TRACE_MEMORY
 static void _rt_free_impl(void *ptr, const char *_loc_file, int _loc_line) {
+
     /* free(NULL) is a no-op in C */
     _RT_TRACE_MEM("op=free ptr=%p action=call loc=\"%s\":%d", ptr, _loc_file, _loc_line);
     _rt_release_tracked_alloc(ptr, _loc_file, _loc_line, "rt_free");
 }
+
+/**
+ * Free a raw runtime allocation.
+ *
+ * NULL is a no-op. Checked builds reject invalid raw-allocation ownership and
+ * quarantine released storage for stale-pointer diagnostics; unchecked builds
+ * release it immediately. A successful release invalidates all aliases.
+ *
+ * L0 signature: `extern func rt_free(ptr: void*?) -> void;`
+ *
+ * @param ptr Exact base returned by rt_alloc, rt_calloc, or rt_realloc, or NULL.
+ */
 void (rt_free)(void *ptr) {
     _rt_free_impl(ptr, "<runtime>", 0);
 }
 #define rt_free(ptr) _rt_free_impl((ptr), __FILE__, __LINE__)
 #else
+
+/**
+ * Free a raw runtime allocation.
+ *
+ * NULL is a no-op. Checked builds reject invalid raw-allocation ownership and
+ * quarantine released storage for stale-pointer diagnostics; unchecked builds
+ * release it immediately. A successful release invalidates all aliases.
+ *
+ * L0 signature: `extern func rt_free(ptr: void*?) -> void;`
+ *
+ * @param ptr Exact base returned by rt_alloc, rt_calloc, or rt_realloc, or NULL.
+ */
 void rt_free(void *ptr) {
+
     /* free(NULL) is a no-op in C */
     _RT_TRACE_MEM("op=free ptr=%p action=call", ptr);
     _rt_release_tracked_alloc(ptr, "<runtime>", 0, "rt_free");
 }
 #endif
 
-/**
- * Allocate zeroed memory for an array of elements.
- * Returns NULL on allocation failure or if count/elem_size is negative.
- * 
- * @param count Number of elements.
- * @param elem_size Element size.
- * @return Pointer to zeroed memory or NULL.
- *
- * L0 signature: `extern func rt_calloc(count: int, elem_size: int) -> void*?;` 
- */
 #ifdef L0_TRACE_MEMORY
+
+/**
+ * Allocate zero-initialized raw memory.
+ *
+ * Successful storage is owned by the caller and must be released with rt_free.
+ * Non-positive dimensions and a product outside size_t panic.
+ *
+ * L0 signature: `extern func rt_calloc(count: int, elem_size: int) -> void*?;`
+ *
+ * @param count Positive element count.
+ * @param elem_size Positive element extent in bytes.
+ * @param _loc_file Source filename captured by the trace-enabled call site.
+ * @param _loc_line Source line captured by the trace-enabled call site.
+ *
+ * @return Owned zero-initialized allocation, or NULL on allocation failure.
+ */
 static void *_rt_calloc_impl(l0_int count, l0_int elem_size, const char *_loc_file, int _loc_line) {
     if (count <= 0 || elem_size <= 0) {
         _rt_panic("rt_calloc: invalid count or element size");
@@ -2621,11 +2946,39 @@ static void *_rt_calloc_impl(l0_int count, l0_int elem_size, const char *_loc_fi
     );
     return ptr;
 }
+
+/**
+ * Allocate zero-initialized raw memory.
+ *
+ * Successful storage is owned by the caller and must be released with rt_free.
+ * Non-positive dimensions and a product outside size_t panic.
+ *
+ * L0 signature: `extern func rt_calloc(count: int, elem_size: int) -> void*?;`
+ *
+ * @param count Positive element count.
+ * @param elem_size Positive element extent in bytes.
+ *
+ * @return Owned zero-initialized allocation, or NULL on allocation failure.
+ */
 void *(rt_calloc)(l0_int count, l0_int elem_size) {
     return _rt_calloc_impl(count, elem_size, "<runtime>", 0);
 }
 #define rt_calloc(count, elem_size) _rt_calloc_impl((count), (elem_size), __FILE__, __LINE__)
 #else
+
+/**
+ * Allocate zero-initialized raw memory.
+ *
+ * Successful storage is owned by the caller and must be released with rt_free.
+ * Non-positive dimensions and a product outside size_t panic.
+ *
+ * L0 signature: `extern func rt_calloc(count: int, elem_size: int) -> void*?;`
+ *
+ * @param count Positive element count.
+ * @param elem_size Positive element extent in bytes.
+ *
+ * @return Owned zero-initialized allocation, or NULL on allocation failure.
+ */
 void *rt_calloc(l0_int count, l0_int elem_size) {
     if (count <= 0 || elem_size <= 0) {
         _rt_panic("rt_calloc: invalid count or element size");
@@ -2653,15 +3006,17 @@ void *rt_calloc(l0_int count, l0_int elem_size) {
 #endif
 
 /**
- * Set memory to a specific byte value.
+ * Fill a memory region with one byte value.
+ *
  * Returns destination pointer.
- * 
+ *
+ * L0 signature: `extern func rt_memset(dest: void*, value: int, bytes: int) -> void*;`
+ *
  * @param dest Destination pointer.
  * @param value Byte value.
  * @param bytes Number of bytes.
- * @return dest.
  *
- * L0 signature: `extern func rt_memset(dest: void*, value: int, bytes: int) -> void*;` 
+ * @return dest.
  */
 void *rt_memset(void *dest, l0_int value, l0_int bytes) {
     if (bytes < 0) {
@@ -2678,15 +3033,17 @@ void *rt_memset(void *dest, l0_int value, l0_int bytes) {
 }
 
 /**
- * Copy memory from source to destination.
+ * Copy bytes between non-overlapping memory regions.
+ *
  * Returns destination pointer.
- * 
+ *
+ * L0 signature: `extern func rt_memcpy(dest: void*, src: void*, bytes: int) -> void*;`
+ *
  * @param dest Destination.
  * @param src Source.
  * @param bytes Number of bytes.
- * @return dest.
  *
- * L0 signature: `extern func rt_memcpy(dest: void*, src: void*, bytes: int) -> void*;` 
+ * @return dest.
  */
 void *rt_memcpy(void *dest, void *src, l0_int bytes) {
     if (bytes < 0) {
@@ -2702,17 +3059,22 @@ void *rt_memcpy(void *dest, void *src, l0_int bytes) {
 }
 
 /**
- * Return a candidate address's byte offset within a half-open byte span.
+ * Return a candidate address's offset within a half-open byte span.
+ *
  * Null pointers, non-positive spans, exact-end addresses, and disjoint
  * addresses return the non-alias sentinel `-1`. This helper performs only
  * checked integer-address arithmetic and never dereferences either pointer.
  *
+ * L0 signature: `extern func _rt_byte_span_offset(base: void*?, span_bytes: int, candidate: void*?) -> int;`
+ *
+ * This implementation-private helper is used by the bundled standard library
+ * and is not part of the stable public runtime API.
+ *
  * @param base Base address of the byte span.
  * @param span_bytes Positive extent of the span.
  * @param candidate Address to classify.
- * @return Byte offset within the span, or `-1` when not contained.
  *
- * L0 signature: `extern func _rt_byte_span_offset(base: void*?, span_bytes: int, candidate: void*?) -> int;`
+ * @return Byte offset within the span, or `-1` when not contained.
  */
 l0_int _rt_byte_span_offset(void *base, l0_int span_bytes, void *candidate) {
     if (base == NULL || candidate == NULL || span_bytes <= 0) {
@@ -2734,17 +3096,22 @@ l0_int _rt_byte_span_offset(void *base, l0_int span_bytes, void *candidate) {
 
 /**
  * Return whether two positive half-open byte spans overlap.
+ *
  * Address differences are compared against extents without computing either
  * end address, so the classification cannot wrap around `UINTPTR_MAX`.
  * Null pointers and non-positive spans do not overlap.
+ *
+ * L0 signature: `extern func _rt_byte_spans_overlap(first: void*?, first_bytes: int, second: void*?, second_bytes: int) -> bool;`
+ *
+ * This implementation-private helper is used by the bundled standard library
+ * and is not part of the stable public runtime API.
  *
  * @param first Base address of the first byte span.
  * @param first_bytes Byte extent of the first span.
  * @param second Base address of the second byte span.
  * @param second_bytes Byte extent of the second span.
- * @return Non-zero when the spans overlap.
  *
- * L0 signature: `extern func _rt_byte_spans_overlap(first: void*?, first_bytes: int, second: void*?, second_bytes: int) -> bool;`
+ * @return Non-zero when the spans overlap.
  */
 l0_bool _rt_byte_spans_overlap(void *first, l0_int first_bytes, void *second, l0_int second_bytes) {
     if (first == NULL || second == NULL || first_bytes <= 0 || second_bytes <= 0) {
@@ -2761,14 +3128,16 @@ l0_bool _rt_byte_spans_overlap(void *first, l0_int first_bytes, void *second, l0
 
 /**
  * Compare two memory regions.
+ *
  * Returns 0 if equal, <0 if a < b, >0 if a > b.
- * 
+ *
+ * L0 signature: `extern func rt_memcmp(a: void*, b: void*, bytes: int) -> int;`
+ *
  * @param a First region.
  * @param b Second region.
  * @param bytes Number of bytes.
- * @return Comparison result.
  *
- * L0 signature: `extern func rt_memcmp(a: void*, b: void*, bytes: int) -> int;` 
+ * @return Comparison result.
  */
 l0_int rt_memcmp(void *a, void *b, l0_int bytes) {
     if (bytes < 0) {
@@ -2791,15 +3160,17 @@ l0_int rt_memcmp(void *a, void *b, l0_int bytes) {
 }
 
 /**
- * Get a pointer to an element in an array.
+ * Return a pointer to an array element.
+ *
  * Panics if array_data is NULL, element_size is non-positive, or index is negative.
- * 
+ *
+ * L0 signature: `extern func rt_array_element(array_data: void*, element_size: int, index: int) -> void*;`
+ *
  * @param array_data Pointer to array data.
  * @param element_size Size of one element.
  * @param index Element index.
- * @return Pointer to the element.
  *
- * L0 signature: `extern func rt_array_element(array_data: void*, element_size: int, index: int) -> void*;` 
+ * @return Pointer to the element.
  */
 void *rt_array_element(void *array_data, l0_int element_size, l0_int index) {
     if (array_data == NULL) {
@@ -2879,9 +3250,15 @@ static size_t _rt_quarantine_count = 0;
 #endif
 
 /**
- * Take one record from the pool, refilling it chunk-wise. Pool memory is
+ * Take one record from the pool, refilling it chunk-wise.
+ *
+ * Pool memory is
  * never returned to the C allocator, so stale record pointers held by
  * call-site caches remain safe to dereference.
+ *
+ * @param cold_out Destination for the paired cold metadata record.
+ *
+ * @return One pool-owned record; panics if pool allocation or index arithmetic fails.
  */
 static _rt_alloc_record *_rt_rec_new(_rt_alloc_record_cold **cold_out) {
     if (_rt_rec_free_list == NULL) {
@@ -2969,6 +3346,7 @@ static void _rt_rec_recycle(_rt_alloc_record *rec) {
  *
  * @param ptr Allocation base to hash.
  * @param cap Non-zero power-of-two table capacity.
+ *
  * @return Table index in the range `[0, cap)`.
  */
 static inline size_t _rt_alloc_hash(void *ptr, size_t cap) {
@@ -2981,7 +3359,9 @@ static inline size_t _rt_alloc_hash(void *ptr, size_t cap) {
 }
 
 /**
- * Rebuild the hash table sized from the live record count. Sizing from the
+ * Rebuild the hash table sized from the live record count.
+ *
+ * Sizing from the
  * live count (not the old capacity) keeps sustained alloc/free churn from
  * ratcheting the table up: a tombstone-triggered rebuild purges tombstones
  * at a stable or smaller capacity instead of doubling it, and a shrunken
@@ -3021,6 +3401,7 @@ static void _rt_alloc_table_rehash(void) {
  * Look up the record whose base exactly matches a pointer.
  *
  * @param ptr Allocation base to find; null is never tracked.
+ *
  * @return Matching live or quarantined record, or null when absent.
  */
 static _rt_alloc_record *_rt_alloc_table_lookup(void *ptr) {
@@ -3173,6 +3554,7 @@ static void _rt_trace_invalid_drop(void *ptr, const char *loc_file, int loc_line
  *
  * @param ptr Pointer to test.
  * @param align Required alignment; values below two impose no constraint.
+ *
  * @return Non-zero when aligned, otherwise zero.
  */
 static int _rt_ptr_is_aligned(void *ptr, size_t align) {
@@ -3191,6 +3573,7 @@ static int _rt_ptr_is_aligned(void *ptr, size_t align) {
  * @param ptr Candidate contained-range base.
  * @param need_size Required contained-range extent in bytes.
  * @param offset_out Optional destination for the candidate offset on success.
+ *
  * @return Non-zero when the complete candidate range is contained.
  */
 static int _rt_range_contains(void *base, size_t total_size, void *ptr, size_t need_size, size_t *offset_out) {
@@ -3213,6 +3596,7 @@ static int _rt_range_contains(void *base, size_t total_size, void *ptr, size_t n
  * Derive a deterministic non-zero treap priority from an allocation base.
  *
  * @param base Allocation base to mix.
+ *
  * @return Odd treap priority associated with `base`.
  */
 static inline uint32_t _rt_tree_prio_for(void *base) {
@@ -3229,6 +3613,7 @@ static inline uint32_t _rt_tree_prio_for(void *base) {
  *
  * @param node Current subtree root, or null for an empty subtree.
  * @param rec Record with a unique base and initialized priority.
+ *
  * @return Root of the updated subtree.
  */
 static _rt_alloc_record *_rt_tree_insert_at(_rt_alloc_record *node, _rt_alloc_record *rec) {
@@ -3257,7 +3642,14 @@ static _rt_alloc_record *_rt_tree_insert_at(_rt_alloc_record *node, _rt_alloc_re
     return node;
 }
 
-/** Merge two treaps where every base in `a` is below every base in `b`. */
+/**
+ * Merge two treaps where every base in `a` is below every base in `b`.
+ *
+ * @param a Lower-key subtree, or null.
+ * @param b Higher-key subtree, or null.
+ *
+ * @return Root of the merged subtree; ownership of records is unchanged.
+ */
 static _rt_alloc_record *_rt_tree_merge(_rt_alloc_record *a, _rt_alloc_record *b) {
     if (a == NULL) return b;
     if (b == NULL) return a;
@@ -3274,6 +3666,7 @@ static _rt_alloc_record *_rt_tree_merge(_rt_alloc_record *a, _rt_alloc_record *b
  *
  * @param node Current subtree root, or null for an empty subtree.
  * @param base Exact allocation base to remove.
+ *
  * @return Root of the updated subtree.
  */
 static _rt_alloc_record *_rt_tree_remove_at(_rt_alloc_record *node, void *base) {
@@ -3307,7 +3700,13 @@ static void _rt_alloc_tree_remove(_rt_alloc_record *rec) {
     _rt_alloc_tree_root = _rt_tree_remove_at(_rt_alloc_tree_root, rec->base);
 }
 
-/** Return the tracked record with the greatest base at or below `ptr`. */
+/**
+ * Return the tracked record with the greatest base at or below `ptr`.
+ *
+ * @param ptr Address used as the inclusive upper search bound.
+ *
+ * @return Borrowed matching tracker record, or null if no base is low enough.
+ */
 static _rt_alloc_record *_rt_alloc_tree_glb(void *ptr) {
     _rt_alloc_record *node = _rt_alloc_tree_root;
     _rt_alloc_record *best = NULL;
@@ -3323,7 +3722,13 @@ static _rt_alloc_record *_rt_alloc_tree_glb(void *ptr) {
     return best;
 }
 
-/** Return the tracked record with the lowest base at or above `ptr`. */
+/**
+ * Return the tracked record with the lowest base at or above `ptr`.
+ *
+ * @param ptr Address used as the inclusive lower search bound.
+ *
+ * @return Borrowed matching tracker record, or null if no base is high enough.
+ */
 static _rt_alloc_record *_rt_alloc_tree_lub(void *ptr) {
     _rt_alloc_record *node = _rt_alloc_tree_root;
     _rt_alloc_record *best = NULL;
@@ -3347,6 +3752,7 @@ static _rt_alloc_record *_rt_alloc_tree_lub(void *ptr) {
  *
  * @param ptr Candidate byte-range base; null is never contained.
  * @param need_size Required range extent in bytes.
+ *
  * @return Containing live or quarantined record, or null when none exists.
  */
 static _rt_alloc_record *_rt_alloc_tree_find_containing(void *ptr, size_t need_size) {
@@ -3357,6 +3763,7 @@ static _rt_alloc_record *_rt_alloc_tree_find_containing(void *ptr, size_t need_s
         if (_rt_range_contains(candidate->base, candidate->size, ptr, need_size, NULL)) {
             return candidate;
         }
+
         /* Static spans may overlap when the C compiler shares literal
          * suffixes; heap spans never overlap, so only static candidates
          * warrant walking further down the address order. */
@@ -3367,7 +3774,9 @@ static _rt_alloc_record *_rt_alloc_tree_find_containing(void *ptr, size_t need_s
     }
     return NULL;
 }
-#endif /* L0_RT_CHECK_BASIC */
+
+/* L0_RT_CHECK_BASIC */
+#endif
 
 /**
  * Populate a pointer-check call-site cache from a validated owner record.
@@ -3385,6 +3794,7 @@ static void _rt_ptr_site_store(_rt_ptr_site *site, _rt_alloc_record *owner) {
  * Normalize a generated pointer-access extent.
  *
  * @param required_size Requested byte extent.
+ *
  * @return Positive extent, with zero normalized to one byte; panics when the
  *     requested extent is negative.
  */
@@ -3399,6 +3809,7 @@ static size_t _rt_required_size(l0_int required_size) {
  * Validate and convert a generated pointer-alignment requirement.
  *
  * @param required_align Requested alignment, where zero disables the check.
+ *
  * @return Non-negative alignment as `size_t`; panics when negative.
  */
 static size_t _rt_required_align(l0_int required_align) {
@@ -3412,6 +3823,7 @@ static size_t _rt_required_align(l0_int required_align) {
  * Validate and convert an indexed pointer's element extent.
  *
  * @param element_size Requested element extent in bytes.
+ *
  * @return Positive element extent as `size_t`; panics when non-positive.
  */
 static size_t _rt_index_element_size(l0_int element_size) {
@@ -3426,6 +3838,7 @@ static size_t _rt_index_element_size(l0_int element_size) {
  *
  * @param index Non-negative element index.
  * @param element_size Validated positive element extent in bytes.
+ *
  * @return `index * element_size`; panics on a negative index or `size_t`
  *     overflow.
  */
@@ -3433,6 +3846,7 @@ static size_t _rt_index_offset(l0_int index, size_t element_size) {
     if (index < 0) {
         _rt_panic("runtime pointer index: negative pointer index");
     }
+
     /* `l0_int` is 32-bit, so the 64-bit product of two non-negative
      * operands cannot wrap and the SIZE_MAX comparison is exact. */
     if ((uint64_t)index * (uint64_t)element_size > SIZE_MAX) {
@@ -3449,6 +3863,7 @@ static size_t _rt_index_offset(l0_int index, size_t element_size) {
  * Validate a non-indexed pointer access mode.
  *
  * @param access_mode Candidate access mode.
+ *
  * @return `_RT_ACCESS_READ` or `_RT_ACCESS_WRITE`; panics otherwise.
  */
 static int _rt_required_access_mode(int access_mode) {
@@ -3463,6 +3878,7 @@ static int _rt_required_access_mode(int access_mode) {
  *
  * @param access_mode Read/write mode with optional
  *     `_RT_ACCESS_UNTRACKED_OK`.
+ *
  * @return `_RT_ACCESS_READ` or `_RT_ACCESS_WRITE`; panics on unknown flags.
  */
 static int _rt_index_access_mode(int access_mode) {
@@ -3479,6 +3895,7 @@ static int _rt_index_access_mode(int access_mode) {
  * Test whether indexed access explicitly permits untracked storage.
  *
  * @param access_mode Indexed pointer access mode and flags.
+ *
  * @return Non-zero when `_RT_ACCESS_UNTRACKED_OK` is present.
  */
 static int _rt_index_allows_untracked(int access_mode) {
@@ -3570,6 +3987,18 @@ static void _rt_track_alloc_record_kind(
 #endif
 }
 
+/**
+ * Register one raw runtime-owned allocation for checked pointer operations.
+ *
+ * Unchecked builds leave the pointer and tracker state unchanged.
+ *
+ * @param ptr Allocation base; a null pointer is ignored.
+ * @param size Allocation extent in bytes; zero is tracked as one byte.
+ * @param align Allocation alignment metadata.
+ * @param type_id Reserved runtime type identifier.
+ * @param loc_file Source file of the allocation site.
+ * @param loc_line Source line of the allocation site.
+ */
 static void _rt_track_alloc_record(
     void *ptr,
     size_t size,
@@ -3581,6 +4010,14 @@ static void _rt_track_alloc_record(
     _rt_track_alloc_record_kind(ptr, size, align, type_id, _RT_MEM_RAW, 0, loc_file, loc_line);
 }
 
+/**
+ * Reclassify a live tracked raw allocation as storage created by `new`.
+ *
+ * Checked builds panic unless the non-null pointer names a live raw allocation. Unchecked builds
+ * perform no tracking.
+ *
+ * @param ptr Allocation base to promote; a null pointer is ignored.
+ */
 static void _rt_promote_new_alloc(void *ptr) {
     if (ptr == NULL) return;
 
@@ -3593,8 +4030,14 @@ static void _rt_promote_new_alloc(void *ptr) {
 
 /**
  * Lazily register ARC-managed string storage as a read-only tracked record.
+ *
  * Idempotent: repeated exposure of the same live block is a no-op, so
  * `rt_string_bytes_ptr` may call this on every invocation.
+ *
+ * Unchecked builds perform no tracking and do not change storage ownership.
+ *
+ * @param ptr ARC payload base; null and existing tracked bases are ignored.
+ * @param size Payload extent including any terminator; zero is tracked as one byte.
  */
 static void _rt_track_arc_bytes(void *ptr, size_t size) {
     if (ptr == NULL) return;
@@ -3603,6 +4046,14 @@ static void _rt_track_arc_bytes(void *ptr, size_t size) {
     _rt_track_alloc_record_kind(ptr, size, 0, 0, _RT_MEM_ARC, 1, "<runtime>", 0);
 }
 
+/**
+ * Remove ARC allocation metadata without releasing the ARC payload.
+ *
+ * Unchecked builds perform no tracking and do not free the payload.
+ *
+ * @param ptr Tracked ARC allocation base; null or untracked pointers are
+ *     ignored.
+ */
 static void _rt_untrack_arc_alloc(void *ptr) {
     if (ptr == NULL) return;
 
@@ -3616,6 +4067,17 @@ static void _rt_untrack_arc_alloc(void *ptr) {
     _rt_rec_recycle(rec);
 }
 
+/**
+ * Lazily register one static byte span as read-only tracked storage.
+ *
+ * An existing tracked base makes the operation a no-op. Full checked mode
+ * also ignores a span already contained by tracked storage.
+ *
+ * Unchecked builds perform no tracking and do not change storage ownership.
+ *
+ * @param ptr Static span base; a null pointer is ignored.
+ * @param size Static span extent; zero is tracked as one byte.
+ */
 static void _rt_track_static_bytes(const void *ptr, size_t size) {
     if (ptr == NULL) return;
     if (_rt_alloc_table_lookup((void*)ptr) != NULL) return;
@@ -3628,7 +4090,20 @@ static void _rt_track_static_bytes(const void *ptr, size_t size) {
     _rt_track_alloc_record_kind((void*)ptr, size, 0, 0, _RT_MEM_STATIC, 1, "<static>", 0);
 }
 
-/** Register externally owned storage for checked generated pointer accesses. */
+/**
+ * Register externally owned storage with the checked pointer runtime.
+ *
+ * Repeating an identical live registration is a no-op. Registration does not
+ * transfer ownership; unregister the range before its external lifetime ends.
+ *
+ * Checked builds reject conflicting registrations, invalid ranges, and overlaps detectable in
+ * the selected check mode. All modes reject null bases, non-positive extents, and invalid
+ * boolean flags. Unchecked mode stores no registration.
+ *
+ * @param ptr Exact storage base pointer.
+ * @param bytes Positive accessible extent in bytes.
+ * @param read_only Whether checked writes must be rejected.
+ */
 void rt_register_foreign(void *ptr, l0_int bytes, l0_bool read_only) {
     if (ptr == NULL) {
         _rt_panic("rt_register_foreign: null pointer");
@@ -3668,7 +4143,14 @@ void rt_register_foreign(void *ptr, l0_int bytes, l0_bool read_only) {
     _rt_track_alloc_record_kind(ptr, size, 0, 0, _RT_MEM_FOREIGN, read_only, "<foreign>", 0);
 }
 
-/** Unregister externally owned storage without releasing its payload. */
+/**
+ * Remove a foreign-storage registration without freeing its payload.
+ *
+ * Checked builds panic unless the pointer is an exact live foreign base. Unchecked mode accepts
+ * any non-null pointer without tracking; all modes reject null.
+ *
+ * @param ptr Exact base pointer passed to `rt_register_foreign`.
+ */
 void rt_unregister_foreign(void *ptr) {
     if (ptr == NULL) {
         _rt_panic("rt_unregister_foreign: null pointer");
@@ -3742,6 +4224,17 @@ static void _rt_quarantine_alloc_record(_rt_alloc_record *rec, _rt_alloc_record_
     _rt_evict_quarantine();
 }
 
+/**
+ * Release one tracked raw allocation.
+ *
+ * Checked mode retains the allocation in quarantine for stale-pointer
+ * diagnostics; unchecked mode releases it immediately.
+ *
+ * @param ptr Raw allocation base; a null pointer is ignored.
+ * @param loc_file Source file of the release site.
+ * @param loc_line Source line of the release site.
+ * @param op_name Operation name used in invalid-release diagnostics.
+ */
 static void _rt_release_tracked_alloc(void *ptr, const char *loc_file, int loc_line, const char *op_name) {
     if (ptr == NULL) return;
 
@@ -3778,6 +4271,19 @@ static void _rt_release_tracked_alloc(void *ptr, const char *loc_file, int loc_l
     _rt_quarantine_alloc_record(rec, cold, loc_file, loc_line);
 }
 
+/**
+ * Reallocate tracked raw storage while preserving checked-runtime history.
+ *
+ * The checked implementation allocates and tracks a replacement, copies the
+ * shared byte extent, and quarantines the original allocation.
+ *
+ * @param ptr Live raw allocation base, or null to allocate new storage.
+ * @param new_size Requested replacement extent in bytes.
+ * @param loc_file Source file of the reallocation site.
+ * @param loc_line Source line of the reallocation site.
+ *
+ * @return Replacement allocation, or null when allocation fails.
+ */
 static void *_rt_realloc_tracked_alloc(void *ptr, size_t new_size, const char *loc_file, int loc_line) {
     if (ptr == NULL) {
         void *new_ptr = malloc(new_size);
@@ -3814,6 +4320,19 @@ static void *_rt_realloc_tracked_alloc(void *ptr, size_t new_size, const char *l
     return new_ptr;
 }
 
+/**
+ * Validate a pointer access after the call-site cache fast path misses.
+ *
+ * @param site Optional call-site cache populated after tracked validation.
+ * @param ptr Pointer about to be accessed.
+ * @param required_size Required access extent; zero requests one byte.
+ * @param required_align Required alignment, or zero for no alignment check.
+ * @param access_mode `_RT_ACCESS_READ` or `_RT_ACCESS_WRITE`.
+ * @param loc_file Source file of the access site.
+ * @param loc_line Source line of the access site.
+ *
+ * @return `ptr` when valid; panics on a definite invalid access.
+ */
 static void *_rt_check_ptr_site_slow(_rt_ptr_site *site, void *ptr, l0_int required_size, l0_int required_align, int access_mode, const char *loc_file, int loc_line) {
     if (ptr == NULL) {
         _rt_panic_invalid_access("null pointer access", ptr, loc_file, loc_line);
@@ -3871,6 +4390,20 @@ static void *_rt_check_ptr_site_slow(_rt_ptr_site *site, void *ptr, l0_int requi
 #endif
 }
 
+/**
+ * Validate an indexed pointer access before forming the target address.
+ *
+ * @param site Optional call-site cache populated after tracked validation.
+ * @param base_ptr Pointer from which indexing starts.
+ * @param index Non-negative element index.
+ * @param element_size Positive element extent in bytes.
+ * @param required_align Required target alignment, or zero for no check.
+ * @param access_mode Read/write mode and optional `_RT_ACCESS_UNTRACKED_OK`.
+ * @param loc_file Source file of the indexed access site.
+ * @param loc_line Source line of the indexed access site.
+ *
+ * @return Validated target address; panics on an invalid index or access.
+ */
 static void *_rt_check_index_ptr_site_slow(_rt_ptr_site *site, void *base_ptr, l0_int index, l0_int element_size, l0_int required_align, int access_mode, const char *loc_file, int loc_line) {
     if (base_ptr == NULL) {
         _rt_panic_invalid_access("null pointer access", base_ptr, loc_file, loc_line);
@@ -3944,6 +4477,22 @@ static void *_rt_check_index_ptr_site_slow(_rt_ptr_site *site, void *base_ptr, l
     return target;
 }
 
+/**
+ * Validate the allocation base, extent, and alignment before object cleanup.
+ *
+ * This first phase does not change allocation state; generated cleanup runs
+ * before `_rt_drop_finish_impl` performs the release.
+ *
+ * Unchecked builds return the pointer unchanged without validating ownership, extent, or alignment.
+ *
+ * @param ptr Pointer supplied to `drop`; null is accepted as a no-op.
+ * @param required_size Required pointee extent; zero requests one byte.
+ * @param required_align Required pointee alignment, or zero for no check.
+ * @param loc_file Source file of the drop site.
+ * @param loc_line Source line of the drop site.
+ *
+ * @return `ptr` when valid, or null when `ptr` is null; panics otherwise.
+ */
 static void *_rt_drop_begin_impl(
     void *ptr,
     l0_int required_size,
@@ -4000,6 +4549,22 @@ static void *_rt_drop_begin_impl(
     return ptr;
 }
 
+/**
+ * Validate a pointer derived from a tracked parent allocation.
+ *
+ * Unregistered parents defer validation to the eventual access site.
+ *
+ * Unchecked builds return the derived pointer unchanged without validation.
+ *
+ * @param derived Derived pointer to validate; null is returned unchanged.
+ * @param parent_base Parent pointer used to locate the tracked allocation.
+ * @param size Required derived extent; zero requests one byte.
+ * @param align Required derived alignment, or zero for no check.
+ * @param loc_file Source file of the derivation site.
+ * @param loc_line Source line of the derivation site.
+ *
+ * @return `derived` when valid or deferred; panics on a definite violation.
+ */
 static void *_rt_validate_derived_ptr(void *derived, void *parent_base, l0_int size, l0_int align, const char *loc_file, int loc_line) {
     if (derived == NULL || parent_base == NULL) {
         return derived;
@@ -4015,6 +4580,7 @@ static void *_rt_validate_derived_ptr(void *derived, void *parent_base, l0_int s
     }
 #endif
     if (parent == NULL) {
+
         /* Unregistered parent storage: leave validation to the access site. */
         return derived;
     }
@@ -4030,28 +4596,93 @@ static void *_rt_validate_derived_ptr(void *derived, void *parent_base, l0_int s
     return derived;
 }
 
-#else /* L0_RT_UNCHECKED */
+/* L0_RT_UNCHECKED */
+#else
 
+/**
+ * Register one raw runtime-owned allocation for checked pointer operations.
+ *
+ * Unchecked builds leave the pointer and tracker state unchanged.
+ *
+ * @param ptr Allocation base; a null pointer is ignored.
+ * @param size Allocation extent in bytes; zero is tracked as one byte.
+ * @param align Allocation alignment metadata.
+ * @param type_id Reserved runtime type identifier.
+ * @param loc_file Source file of the allocation site.
+ * @param loc_line Source line of the allocation site.
+ */
 static void _rt_track_alloc_record(void *ptr, size_t size, size_t align, uint32_t type_id, const char *loc_file, int loc_line) {
     (void)ptr; (void)size; (void)align; (void)type_id; (void)loc_file; (void)loc_line;
 }
 
+/**
+ * Reclassify a live tracked raw allocation as storage created by `new`.
+ *
+ * Checked builds panic unless the non-null pointer names a live raw allocation. Unchecked builds
+ * perform no tracking.
+ *
+ * @param ptr Allocation base to promote; a null pointer is ignored.
+ */
 static void _rt_promote_new_alloc(void *ptr) {
     (void)ptr;
 }
 
+/**
+ * Lazily register ARC-managed string storage as a read-only tracked record.
+ *
+ * Idempotent: repeated exposure of the same live block is a no-op, so
+ * `rt_string_bytes_ptr` may call this on every invocation.
+ *
+ * Unchecked builds perform no tracking and do not change storage ownership.
+ *
+ * @param ptr ARC payload base; null and existing tracked bases are ignored.
+ * @param size Payload extent including any terminator; zero is tracked as one byte.
+ */
 static void _rt_track_arc_bytes(void *ptr, size_t size) {
     (void)ptr; (void)size;
 }
 
+/**
+ * Remove ARC allocation metadata without releasing the ARC payload.
+ *
+ * Unchecked builds perform no tracking and do not free the payload.
+ *
+ * @param ptr Tracked ARC allocation base; null or untracked pointers are
+ *     ignored.
+ */
 static void _rt_untrack_arc_alloc(void *ptr) {
     (void)ptr;
 }
 
+/**
+ * Lazily register one static byte span as read-only tracked storage.
+ *
+ * An existing tracked base makes the operation a no-op. Full checked mode
+ * also ignores a span already contained by tracked storage.
+ *
+ * Unchecked builds perform no tracking and do not change storage ownership.
+ *
+ * @param ptr Static span base; a null pointer is ignored.
+ * @param size Static span extent; zero is tracked as one byte.
+ */
 static void _rt_track_static_bytes(const void *ptr, size_t size) {
     (void)ptr; (void)size;
 }
 
+/**
+ * Register externally owned storage with the checked pointer runtime.
+ *
+ * Repeating an identical live registration is a no-op. Registration does not
+ * transfer ownership; unregister the range before its external lifetime ends.
+ *
+ * Checked builds reject conflicting registrations, invalid ranges, and overlaps detectable in
+ * the selected check mode. All modes reject null bases, non-positive extents, and invalid
+ * boolean flags. Unchecked mode stores no registration.
+ *
+ * @param ptr Exact storage base pointer.
+ * @param bytes Positive accessible extent in bytes.
+ * @param read_only Whether checked writes must be rejected.
+ */
 void rt_register_foreign(void *ptr, l0_int bytes, l0_bool read_only) {
     if (ptr == NULL) {
         _rt_panic("rt_register_foreign: null pointer");
@@ -4064,22 +4695,70 @@ void rt_register_foreign(void *ptr, l0_int bytes, l0_bool read_only) {
     }
 }
 
+/**
+ * Remove a foreign-storage registration without freeing its payload.
+ *
+ * Checked builds panic unless the pointer is an exact live foreign base. Unchecked mode accepts
+ * any non-null pointer without tracking; all modes reject null.
+ *
+ * @param ptr Exact base pointer passed to `rt_register_foreign`.
+ */
 void rt_unregister_foreign(void *ptr) {
     if (ptr == NULL) {
         _rt_panic("rt_unregister_foreign: null pointer");
     }
 }
 
+/**
+ * Release one tracked raw allocation.
+ *
+ * Checked mode retains the allocation in quarantine for stale-pointer
+ * diagnostics; unchecked mode releases it immediately.
+ *
+ * @param ptr Raw allocation base; a null pointer is ignored.
+ * @param loc_file Source file of the release site.
+ * @param loc_line Source line of the release site.
+ * @param op_name Operation name used in invalid-release diagnostics.
+ */
 static void _rt_release_tracked_alloc(void *ptr, const char *loc_file, int loc_line, const char *op_name) {
     (void)loc_file; (void)loc_line; (void)op_name;
     free(ptr);
 }
 
+/**
+ * Reallocate tracked raw storage while preserving checked-runtime history.
+ *
+ * The checked implementation allocates and tracks a replacement, copies the
+ * shared byte extent, and quarantines the original allocation.
+ *
+ * @param ptr Live raw allocation base, or null to allocate new storage.
+ * @param new_size Requested replacement extent in bytes.
+ * @param loc_file Source file of the reallocation site.
+ * @param loc_line Source line of the reallocation site.
+ *
+ * @return Replacement allocation, or null when allocation fails.
+ */
 static void *_rt_realloc_tracked_alloc(void *ptr, size_t new_size, const char *loc_file, int loc_line) {
     (void)loc_file; (void)loc_line;
     return realloc(ptr, new_size);
 }
 
+/**
+ * Validate the allocation base, extent, and alignment before object cleanup.
+ *
+ * This first phase does not change allocation state; generated cleanup runs
+ * before `_rt_drop_finish_impl` performs the release.
+ *
+ * Unchecked builds return the pointer unchanged without validating ownership, extent, or alignment.
+ *
+ * @param ptr Pointer supplied to `drop`; null is accepted as a no-op.
+ * @param required_size Required pointee extent; zero requests one byte.
+ * @param required_align Required pointee alignment, or zero for no check.
+ * @param loc_file Source file of the drop site.
+ * @param loc_line Source line of the drop site.
+ *
+ * @return `ptr` when valid, or null when `ptr` is null; panics otherwise.
+ */
 static void *_rt_drop_begin_impl(
     void *ptr,
     l0_int required_size,
@@ -4091,13 +4770,37 @@ static void *_rt_drop_begin_impl(
     return ptr;
 }
 
+/**
+ * Validate a pointer derived from a tracked parent allocation.
+ *
+ * Unregistered parents defer validation to the eventual access site.
+ *
+ * Unchecked builds return the derived pointer unchanged without validation.
+ *
+ * @param derived Derived pointer to validate; null is returned unchanged.
+ * @param parent_base Parent pointer used to locate the tracked allocation.
+ * @param size Required derived extent; zero requests one byte.
+ * @param align Required derived alignment, or zero for no check.
+ * @param loc_file Source file of the derivation site.
+ * @param loc_line Source line of the derivation site.
+ *
+ * @return `derived` when valid or deferred; panics on a definite violation.
+ */
 static void *_rt_validate_derived_ptr(void *derived, void *parent_base, l0_int size, l0_int align, const char *loc_file, int loc_line) {
     (void)parent_base; (void)size; (void)align; (void)loc_file; (void)loc_line;
     return derived;
 }
 
-#endif /* L0_RT_UNCHECKED */
+/* L0_RT_UNCHECKED */
+#endif
 
+/**
+ * Complete object drop by quarantining or freeing its allocation.
+ *
+ * @param ptr Live `new` allocation base; null is accepted as a no-op.
+ * @param loc_file Source file of the drop site.
+ * @param loc_line Source line of the drop site.
+ */
 static void _rt_drop_finish_impl(void *ptr, const char *loc_file, int loc_line) {
     if (ptr == NULL) {
         _RT_TRACE_MEM("op=drop ptr=%p action=noop-null loc=\"%s\":%d", ptr, loc_file, loc_line);
@@ -4125,6 +4828,7 @@ static void _rt_drop_finish_impl(void *ptr, const char *loc_file, int loc_line) 
  * @param bytes Positive allocation extent in bytes.
  * @param _loc_file Generated C file containing the allocation site.
  * @param _loc_line Generated C line containing the allocation site.
+ *
  * @return Newly allocated object storage; panics on invalid size or failure.
  */
 static void *_rt_alloc_obj_impl(l0_int bytes, const char *_loc_file, int _loc_line) {
@@ -4150,6 +4854,7 @@ static void *_rt_alloc_obj_impl(l0_int bytes, const char *_loc_file, int _loc_li
  * Allocate and track zero-initialized storage for a `new` expression.
  *
  * @param bytes Positive allocation extent in bytes.
+ *
  * @return Newly allocated object storage; panics on invalid size or failure.
  */
 static void *_rt_alloc_obj(l0_int bytes) {
@@ -4176,8 +4881,9 @@ static void *_rt_alloc_obj(l0_int bytes) {
 
 /**
  * Final mixing function for 32-bit hashes (MurmurHash3 fmix32).
- * 
+ *
  * @param x Current hash.
+ *
  * @return Mixed hash.
  */
 static inline uint32_t _rt_fmix32(uint32_t x) {
@@ -4191,8 +4897,9 @@ static inline uint32_t _rt_fmix32(uint32_t x) {
 
 /**
  * Fold a 64-bit hash into a 32-bit hash with final mixing.
- * 
+ *
  * @param h 64-bit hash.
+ *
  * @return 32-bit hash.
  */
 static inline uint32_t _rt_fold_u64_to_u32_fmix(uint64_t h) {
@@ -4211,11 +4918,21 @@ static const _rt_siphash_tag8_t _l0_sh_tag_string = { 0, 's', 't', 'r', 'i', 'n'
 static const _rt_siphash_tag8_t _l0_sh_tag_data   = { 0, 'd', 'a', 't', 'a' };
 
 /* Flag bits for hash functions */
-#define _L0_TAG_OPT 0x80    /* option */
-#define _L0_TAG_PTR 0x40    /* pointer */
-#define _L0_TAG_ENUM 0x20   /* enum */
-#define _L0_TAG_STRUCT 0x10 /* struct */
-#define _L0_TAG_ABSENT 0x08 /* absent optional */
+
+/* option */
+#define _L0_TAG_OPT 0x80
+
+/* pointer */
+#define _L0_TAG_PTR 0x40
+
+/* enum */
+#define _L0_TAG_ENUM 0x20
+
+/* struct */
+#define _L0_TAG_STRUCT 0x10
+
+/* absent optional */
+#define _L0_TAG_ABSENT 0x08
 
 /**
  * Default (debug) SipHash key for L0 runtime.
@@ -4228,12 +4945,13 @@ static _rt_siphash_key_t _rt_sh_key = {
 
 /**
  * Internal helper to hash data with a given 8-byte tag and flags.
- * 
+ *
  * @param tag8 8-byte tag.
  * @param flags Flags.
  * @param data Pointer to data.
  * @param len Data length.
  * @param key SipHash key.
+ *
  * @return 32-bit hash.
  */
 static l0_int _rt_hash_tag8(const _rt_siphash_tag8_t tag8,
@@ -4241,7 +4959,9 @@ static l0_int _rt_hash_tag8(const _rt_siphash_tag8_t tag8,
                             const void *data, size_t len,
                             const _rt_siphash_key_t key)
 {
-    uint64_t hash = siphash13_tag8_bf(tag8, flags, data, len, key); /* compute SipHash-1-3 */
+
+    /* compute SipHash-1-3 */
+    uint64_t hash = siphash13_tag8_bf(tag8, flags, data, len, key);
     return _rt_fold_u64_to_u32_fmix(hash);
 }
 
@@ -4252,6 +4972,7 @@ static l0_int _rt_hash_tag8(const _rt_siphash_tag8_t tag8,
  *
  * @param value Boolean value to hash.
  * @param flags Type-shaping flags mixed into the hash domain.
+ *
  * @return 32-bit hash.
  */
 static l0_int _rt_hash_bool(l0_bool value, const uint8_t flags) {
@@ -4263,6 +4984,7 @@ static l0_int _rt_hash_bool(l0_bool value, const uint8_t flags) {
  *
  * @param value Byte value to hash.
  * @param flags Type-shaping flags mixed into the hash domain.
+ *
  * @return 32-bit hash.
  */
 static l0_int _rt_hash_byte(l0_byte value, const uint8_t flags) {
@@ -4274,6 +4996,7 @@ static l0_int _rt_hash_byte(l0_byte value, const uint8_t flags) {
  *
  * @param value Integer value to hash.
  * @param flags Type-shaping flags mixed into the hash domain.
+ *
  * @return 32-bit hash.
  */
 static l0_int _rt_hash_int(l0_int value, const uint8_t flags) {
@@ -4285,6 +5008,7 @@ static l0_int _rt_hash_int(l0_int value, const uint8_t flags) {
  *
  * @param str String value to hash.
  * @param flags Type-shaping flags mixed into the hash domain.
+ *
  * @return 32-bit hash.
  */
 static l0_int _rt_hash_string(l0_string str, const uint8_t flags) {
@@ -4299,6 +5023,7 @@ static l0_int _rt_hash_string(l0_string str, const uint8_t flags) {
  * @param data Pointer to the byte sequence.
  * @param size Size of `data` in bytes.
  * @param flags Type-shaping flags mixed into the hash domain.
+ *
  * @return 32-bit hash.
  */
 static l0_int _rt_hash_data(void *data, l0_int size, const uint8_t flags) {
@@ -4311,11 +5036,12 @@ static l0_int _rt_hash_data(void *data, l0_int size, const uint8_t flags) {
 
 /**
  * Hash a boolean value.
- * 
- * @param value Boolean value.
- * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_bool(value: bool) -> int;` 
+ * L0 signature: `extern func rt_hash_bool(value: bool) -> int;`
+ *
+ * @param value Boolean value.
+ *
+ * @return 32-bit hash.
  */
 l0_int rt_hash_bool(l0_bool value) {
     return _rt_hash_bool(value, 0);
@@ -4323,11 +5049,12 @@ l0_int rt_hash_bool(l0_bool value) {
 
 /**
  * Hash a byte value.
- * 
- * @param value Byte value.
- * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_byte(value: byte) -> int;` 
+ * L0 signature: `extern func rt_hash_byte(value: byte) -> int;`
+ *
+ * @param value Byte value.
+ *
+ * @return 32-bit hash.
  */
 l0_int rt_hash_byte(l0_byte value) {
     return _rt_hash_byte(value, 0);
@@ -4335,11 +5062,12 @@ l0_int rt_hash_byte(l0_byte value) {
 
 /**
  * Hash an integer value.
- * 
- * @param value Integer value.
- * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_int(value: int) -> int;` 
+ * L0 signature: `extern func rt_hash_int(value: int) -> int;`
+ *
+ * @param value Integer value.
+ *
+ * @return 32-bit hash.
  */
 l0_int rt_hash_int(l0_int value) {
     return _rt_hash_int(value, 0);
@@ -4347,25 +5075,28 @@ l0_int rt_hash_int(l0_int value) {
 
 /**
  * Hash a string value.
- * 
- * @param value L0 string.
- * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_string(value: string) -> int;` 
+ * L0 signature: `extern func rt_hash_string(value: string) -> int;`
+ *
+ * @param value L0 string.
+ *
+ * @return 32-bit hash.
  */
 l0_int rt_hash_string(l0_string value) {
     return _rt_hash_string(value, 0);
 }
 
 /**
- * Hash raw data.
+ * Hash raw bytes.
+ *
  * Panics if data is null or size is negative.
- * 
+ *
+ * L0 signature: `extern func rt_hash_data(data: void*, size: int) -> int;`
+ *
  * @param data Pointer to data.
  * @param size Data size.
- * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_data(data: void*, size: int) -> int;` 
+ * @return 32-bit hash.
  */
 l0_int rt_hash_data(void *data, l0_int size) {
     if (size < 0) {
@@ -4379,12 +5110,14 @@ l0_int rt_hash_data(void *data, l0_int size) {
 
 /**
  * Hash an optional boolean value.
- * Semantic members are copied into a zeroed byte representation before hashing.
- * 
- * @param opt Optional bool.
- * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_opt_bool(opt: bool?) -> int;` 
+ * Semantic members are copied into a zeroed byte representation before hashing.
+ *
+ * L0 signature: `extern func rt_hash_opt_bool(opt: bool?) -> int;`
+ *
+ * @param opt Optional bool.
+ *
+ * @return 32-bit hash.
  */
 l0_int rt_hash_opt_bool(l0_opt_bool opt) {
     uint8_t canonical[sizeof(l0_opt_bool)] = {0};
@@ -4399,12 +5132,14 @@ l0_int rt_hash_opt_bool(l0_opt_bool opt) {
 
 /**
  * Hash an optional byte value.
- * Semantic members are copied into a zeroed byte representation before hashing.
- * 
- * @param opt Optional byte.
- * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_opt_byte(opt: byte?) -> int;` 
+ * Semantic members are copied into a zeroed byte representation before hashing.
+ *
+ * L0 signature: `extern func rt_hash_opt_byte(opt: byte?) -> int;`
+ *
+ * @param opt Optional byte.
+ *
+ * @return 32-bit hash.
  */
 l0_int rt_hash_opt_byte(l0_opt_byte opt) {
     uint8_t canonical[sizeof(l0_opt_byte)] = {0};
@@ -4419,12 +5154,14 @@ l0_int rt_hash_opt_byte(l0_opt_byte opt) {
 
 /**
  * Hash an optional integer value.
- * Semantic members are copied into a zeroed byte representation before hashing.
- * 
- * @param opt Optional int.
- * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_opt_int(opt: int?) -> int;` 
+ * Semantic members are copied into a zeroed byte representation before hashing.
+ *
+ * L0 signature: `extern func rt_hash_opt_int(opt: int?) -> int;`
+ *
+ * @param opt Optional int.
+ *
+ * @return 32-bit hash.
  */
 l0_int rt_hash_opt_int(l0_opt_int opt) {
     uint8_t canonical[sizeof(l0_opt_int)] = {0};
@@ -4438,14 +5175,16 @@ l0_int rt_hash_opt_int(l0_opt_int opt) {
 }
 
 /**
- * Hash an optional string value.
+ * Hash an optional string value with presence-sensitive domain separation.
+ *
  * Optional presence participates in the hash input domain.
  * An absent optional hashes empty contents with the optional and absent flags.
- * 
- * @param opt Optional string.
- * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_opt_string(opt: string?) -> int;` 
+ * L0 signature: `extern func rt_hash_opt_string(opt: string?) -> int;`
+ *
+ * @param opt Optional string.
+ *
+ * @return 32-bit hash.
  */
 l0_int rt_hash_opt_string(l0_opt_string opt) {
     if (opt.has_value) {
@@ -4455,14 +5194,16 @@ l0_int rt_hash_opt_string(l0_opt_string opt) {
 }
 
 /**
- * Hash a pointer value.
+ * Hash a pointer address.
+ *
  * Note: this hashes the pointer value (address), not the data it points to.
  * Panics if ptr is null.
- * 
- * @param ptr Pointer.
- * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_ptr(ptr: void*) -> int;` 
+ * L0 signature: `extern func rt_hash_ptr(ptr: void*) -> int;`
+ *
+ * @param ptr Pointer.
+ *
+ * @return 32-bit hash.
  */
 l0_int rt_hash_ptr(void *ptr) {
     if (ptr == NULL) {
@@ -4473,14 +5214,16 @@ l0_int rt_hash_ptr(void *ptr) {
 }
 
 /**
- * Hash an optional pointer value.
+ * Hash an optional pointer address.
+ *
  * Note: this hashes the pointer value (address), not the data it points to.
  * Panics if opt is empty (null pointer).
- * 
- * @param opt Pointer.
- * @return 32-bit hash.
  *
- * L0 signature: `extern func rt_hash_opt_ptr(opt: void*?) -> int;` 
+ * L0 signature: `extern func rt_hash_opt_ptr(opt: void*?) -> int;`
+ *
+ * @param opt Pointer.
+ *
+ * @return 32-bit hash.
  */
 l0_int rt_hash_opt_ptr(void *opt) {
     if (opt == NULL) {
@@ -4494,6 +5237,5 @@ l0_int rt_hash_opt_ptr(void *opt) {
  * End of L0 Runtime
  * ========================================================================= */
 
-/** @endcond */
-
-#endif /* L0_RUNTIME_H */
+/* L0_RUNTIME_H */
+#endif

@@ -39,6 +39,8 @@ def build_source_manifest(root: Path, stage: str = "all") -> SourceManifest:
                 files.append(rel)
     if stage in {"stage2", "all"}:
         files.extend(path.relative_to(root) for path in sorted((root / "compiler/stage2_l0/src").rglob("*.l0")))
+        files.extend(path.relative_to(root) for path in sorted((root / "compiler/stage2_l0/support").rglob("*.c")))
+        files.extend(path.relative_to(root) for path in sorted((root / "compiler/stage2_l0/support").rglob("*.h")))
         # The trace checker is the explicitly selected Stage 2 support tool.
         files.append(Path("compiler/stage2_l0/scripts/check_trace_log.py"))
     files.extend(path.relative_to(root) for path in sorted((root / "compiler/shared/l0/stdlib").rglob("*.l0")))

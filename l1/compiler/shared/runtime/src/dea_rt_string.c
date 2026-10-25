@@ -53,28 +53,38 @@ dea_string _rt_dea_string_from_const_literal(const char *c_str) {
 dea_string _rt_init_heap_string(void *mem, dea_int s_len) {
     dea_string s;
     _dea_h_string *hs = (_dea_h_string *)mem;
-    hs->refcount = 1;       /* reference counted */
+
+    /* reference counted */
+    hs->refcount = 1;
     hs->len = (dea_int)s_len;
-    hs->bytes[s_len] = '\0';   /* null-terminate */
+
+    /* null-terminate */
+    hs->bytes[s_len] = '\0';
 
     s.kind = DEA_STRING_K_HEAP;
     s.data.h_str = hs;
     return s;
 }
 
-/**
- * Allocate a new reference counted dea_string of the given length.
- * Character data (bytes[]) is uninitialized; caller must fill it in.
- * Panics on allocation failure or negative length.
- * Size of allocated memory is: string header + len + 1 for null terminator.
- *
- * The returned string is of kind DEA_STRING_K_HEAP and
- * its data is null-terminated in advance.
- *
- * @param len Length of the string.
- * @return Allocated Dea string.
- */
 #ifdef DEA_TRACE_MEMORY
+
+/**
+ * Allocate a reference-counted heap string of the requested byte length.
+ *
+ * The character payload is uninitialized and must be filled by the caller. The trailing NUL byte is
+ * written before return. The initial reference count is one; release the resulting owned string with
+ * rt_string_release.
+ *
+ * Negative lengths or native allocation failure terminate execution. Zero length is permitted and still
+ * returns a heap string.
+ *
+ * This source-located entry records the supplied location when tracing is enabled.
+ *
+ * @param len Nonnegative byte length excluding the trailing NUL byte.
+ * @param _loc_file Borrowed source filename for trace events and diagnostics.
+ * @param _loc_line Source line for trace events and diagnostics.
+ * @return Owned heap string with an uninitialized payload and a prewritten NUL terminator.
+ */
 dea_string _rt_alloc_string_impl(dea_int len, const char *_loc_file, int _loc_line) {
     if (len < 0) {
         _rt_panic("_rt_alloc_string: negative length");
@@ -89,6 +99,20 @@ dea_string _rt_alloc_string_impl(dea_int len, const char *_loc_file, int _loc_li
 }
 #define _rt_alloc_string(len) _rt_alloc_string_impl((len), __FILE__, __LINE__)
 #else
+
+/**
+ * Allocate a reference-counted heap string of the requested byte length.
+ *
+ * The character payload is uninitialized and must be filled by the caller. The trailing NUL byte is
+ * written before return. The initial reference count is one; release the resulting owned string with
+ * rt_string_release.
+ *
+ * Negative lengths or native allocation failure terminate execution. Zero length is permitted and still
+ * returns a heap string.
+ *
+ * @param len Nonnegative byte length excluding the trailing NUL byte.
+ * @return Owned heap string with an uninitialized payload and a prewritten NUL terminator.
+ */
 dea_string _rt_alloc_string(dea_int len) {
     if (len < 0) {
         _rt_panic("_rt_alloc_string: negative length");
@@ -103,15 +127,27 @@ dea_string _rt_alloc_string(dea_int len) {
 }
 #endif
 
-/**
- * Free a string's allocated data, if applicable.
- * If reference counted, decrements reference count and frees when it reaches zero.
- *
- * @param str Dea string to free.
- */
 #if defined(DEA_TRACE_ARC) || defined(DEA_TRACE_MEMORY)
+
+/**
+ * Release a runtime string reference and free its heap storage at zero references.
+ *
+ * Static strings and non-reference-counted heap strings with the INT32_MAX sentinel are no-ops. A counted
+ * heap string loses one reference; its owned bytes and header are freed when the count reaches zero.
+ *
+ * The caller relinquishes one owned reference. Independently retained aliases remain valid while
+ * references remain; aliases into storage expire when the final reference is released. NULL heap headers,
+ * freed sentinels, and invalid reference counts terminate execution.
+ *
+ * This source-located entry records the supplied location when tracing is enabled.
+ *
+ * @param str Runtime string whose owned counted reference is consumed, if applicable.
+ * @param _loc_file Borrowed source filename for trace events and diagnostics.
+ * @param _loc_line Source line for trace events and diagnostics.
+ */
 void _rt_free_string_impl(dea_string str, const char *_loc_file, int _loc_line) {
     if (str.kind == DEA_STRING_K_STATIC) {
+
         /* Static string: do nothing */
         _RT_TRACE_ARC_LOC(_loc_file, _loc_line, "op=release kind=static ptr=%p rc_before=-1 rc_after=-1 action=noop", (void*)str.data.s_str.bytes);
         return;
@@ -124,6 +160,7 @@ void _rt_free_string_impl(dea_string str, const char *_loc_file, int _loc_line) 
     }
     dea_int rc_before = hs->refcount;
     if (rc_before > 0 && rc_before < INT32_MAX) {
+
         /* Reference counted string */
         hs->refcount--;
         if (hs->refcount == 0) {
@@ -133,7 +170,9 @@ void _rt_free_string_impl(dea_string str, const char *_loc_file, int _loc_line) 
                 (void*)hs, (int)rc_before
             );
             _RT_TRACE_MEM_LOC(_loc_file, _loc_line, "op=free_string ptr=%p action=free", (void*)hs);
-            hs->refcount = _RT_MEM_SENTINEL; /* prevent double free */
+
+            /* prevent double free */
+            hs->refcount = _RT_MEM_SENTINEL;
             _rt_untrack_arc_alloc((void*)hs->bytes);
             free((void*)hs);
         } else {
@@ -147,6 +186,7 @@ void _rt_free_string_impl(dea_string str, const char *_loc_file, int _loc_line) 
         return;
     }
     if (rc_before == INT32_MAX) {
+
         /* Non-reference counted string: do nothing */
         _RT_TRACE_ARC_LOC(
             _loc_file, _loc_line,
@@ -175,8 +215,22 @@ void _rt_free_string_impl(dea_string str, const char *_loc_file, int _loc_line) 
 }
 #define _rt_free_string(str) _rt_free_string_impl((str), __FILE__, __LINE__)
 #else
+
+/**
+ * Release a runtime string reference and free its heap storage at zero references.
+ *
+ * Static strings and non-reference-counted heap strings with the INT32_MAX sentinel are no-ops. A counted
+ * heap string loses one reference; its owned bytes and header are freed when the count reaches zero.
+ *
+ * The caller relinquishes one owned reference. Independently retained aliases remain valid while
+ * references remain; aliases into storage expire when the final reference is released. NULL heap headers,
+ * freed sentinels, and invalid reference counts terminate execution.
+ *
+ * @param str Runtime string whose owned counted reference is consumed, if applicable.
+ */
 void _rt_free_string(dea_string str) {
     if (str.kind == DEA_STRING_K_STATIC) {
+
         /* Static string: do nothing */
         _RT_TRACE_ARC("op=release kind=static ptr=%p rc_before=-1 rc_after=-1 action=noop", (void*)str.data.s_str.bytes);
         return;
@@ -189,6 +243,7 @@ void _rt_free_string(dea_string str) {
     }
     dea_int rc_before = hs->refcount;
     if (rc_before > 0 && rc_before < INT32_MAX) {
+
         /* Reference counted string */
         hs->refcount--;
         if (hs->refcount == 0) {
@@ -197,7 +252,9 @@ void _rt_free_string(dea_string str) {
                 (void*)hs, (int)rc_before
             );
             _RT_TRACE_MEM("op=free_string ptr=%p action=free", (void*)hs);
-            hs->refcount = _RT_MEM_SENTINEL; /* prevent double free */
+
+            /* prevent double free */
+            hs->refcount = _RT_MEM_SENTINEL;
             _rt_untrack_arc_alloc((void*)hs->bytes);
             free((void*)hs);
         } else {
@@ -210,6 +267,7 @@ void _rt_free_string(dea_string str) {
         return;
     }
     if (rc_before == INT32_MAX) {
+
         /* Non-reference counted string: do nothing */
         _RT_TRACE_ARC(
             "op=release kind=heap ptr=%p rc_before=%d rc_after=%d action=noop-nonref",
@@ -251,6 +309,7 @@ dea_string _rt_realloc_string(dea_string s, dea_int new_len) {
         return DEA_STRING_EMPTY;
     }
     if (s.kind == DEA_STRING_K_STATIC && s.data.s_str.len == 0) {
+
         /* Reallocating empty static string: allocate new heap string */
         return _rt_alloc_string(new_len);
     }
@@ -271,7 +330,9 @@ dea_string _rt_realloc_string(dea_string s, dea_int new_len) {
     }
     _dea_h_string *new_hs = (_dea_h_string *)new_mem;
     new_hs->len = new_len;
-    new_hs->bytes[new_len] = '\0'; /* null-terminate */
+
+    /* null-terminate */
+    new_hs->bytes[new_len] = '\0';
     s.data.h_str = new_hs;
     _RT_TRACE_MEM(
         "op=realloc_string old_ptr=%p new_ptr=%p new_len=%d action=ok",
@@ -320,10 +381,13 @@ char *_rt_string_bytes(dea_string s) {
             if (s.data.h_str != NULL) {
                 return s.data.h_str->bytes;
             }
+
             /* fallthrough */
         default:
             _rt_panic_fmt("_rt_string_bytes: invalid string kind: %d or null data", (int)s.kind);
-            return NULL; /* Unreachable */
+
+            /* Unreachable */
+            return NULL;
     }
 }
 
@@ -334,10 +398,10 @@ char *_rt_string_bytes(dea_string s) {
 /**
  * Get the length of a string.
  *
+ * Dea signature: `extern func rt_strlen(str: string) -> int;`
+ *
  * @param str Dea string.
  * @return Length in bytes.
- *
- * Dea signature: `extern func rt_strlen(str: string) -> int;`
  */
 dea_int rt_strlen(dea_string str) {
     switch(str.kind) {
@@ -346,12 +410,16 @@ dea_int rt_strlen(dea_string str) {
     case DEA_STRING_K_HEAP:
         if (str.data.h_str == NULL) {
             _rt_panic("rt_strlen: string data is null");
-            return 0; /* Unreachable */
+
+            /* Unreachable */
+            return 0;
         }
         return str.data.h_str->len;
     default:
         _rt_panic_fmt("rt_strlen: invalid string kind: %d", (int)str.kind);
-        return 0; /* Unreachable */
+
+        /* Unreachable */
+        return 0;
     }
 }
 
@@ -359,11 +427,11 @@ dea_int rt_strlen(dea_string str) {
  * Bounds-checked character access.
  * Returns the character at the given index, or panics if out of bounds.
  *
+ * Dea signature: `extern func rt_string_get(s: string, index: int) -> byte;`
+ *
  * @param a Dea string.
  * @param index Index.
  * @return Byte value.
- *
- * Dea signature: `extern func rt_string_get(s: string, index: int) -> byte;`
  */
 dea_byte rt_string_get(dea_string a, dea_int index) {
     dea_int a_len = rt_strlen(a);
@@ -381,9 +449,6 @@ dea_byte rt_string_get(dea_string a, dea_int index) {
 /**
  * Return a pointer to the raw byte data of a string.
  *
- * @param s Dea string.
- * @return Pointer to the first byte.
- *
  * Dea signature: `extern func rt_string_bytes_ptr(s: string) -> byte*;`
  *
  * Heap and static string storage is registered with the pointer access
@@ -391,6 +456,9 @@ dea_byte rt_string_get(dea_string a, dea_int index) {
  * stays dereferenceable by checked generated code while strings that never
  * hand out raw bytes stay out of the tracker. Both are runtime-managed:
  * passing the returned pointer to `drop` or `rt_free` is a runtime error.
+ *
+ * @param s Dea string.
+ * @return Pointer to the first byte.
  */
 dea_byte *rt_string_bytes_ptr(dea_string s) {
     char *bytes = _rt_string_bytes(s);
@@ -406,11 +474,11 @@ dea_byte *rt_string_bytes_ptr(dea_string s) {
 /**
  * Check if two strings are equal.
  *
+ * Dea signature: `extern func rt_string_equals(a: string, b: string) -> bool;`
+ *
  * @param a First string.
  * @param b Second string.
  * @return 1 if equal, 0 otherwise.
- *
- * Dea signature: `extern func rt_string_equals(a: string, b: string) -> bool;`
  */
 dea_bool rt_string_equals(dea_string a, dea_string b) {
     dea_int a_len = rt_strlen(a);
@@ -419,7 +487,9 @@ dea_bool rt_string_equals(dea_string a, dea_string b) {
         return 0;
     }
     if (a_len == 0) {
-        return 1;  /* Both empty */
+
+        /* Both empty */
+        return 1;
     }
     char *a_data = _rt_string_bytes(a);
     char *b_data = _rt_string_bytes(b);
@@ -433,11 +503,11 @@ dea_bool rt_string_equals(dea_string a, dea_string b) {
  * Compare two strings lexicographically.
  * Returns 0 if equal, <0 if a < b, >0 if a > b.
  *
+ * Dea signature: `extern func rt_string_compare(a: string, b: string) -> int;`
+ *
  * @param a First string.
  * @param b Second string.
  * @return Comparison result.
- *
- * Dea signature: `extern func rt_string_compare(a: string, b: string) -> int;`
  */
 dea_int rt_string_compare(dea_string a, dea_string b) {
     dea_int a_len = rt_strlen(a);
@@ -473,17 +543,27 @@ dea_int rt_string_compare(dea_string a, dea_string b) {
     return 0;
 }
 
+#ifdef DEA_TRACE_MEMORY
+
 /**
- * Concatenate two strings (allocates new memory).
- * Returns a heap-allocated string containing a + b.
+ * Concatenate two runtime strings into an owned result.
  *
- * @param a First string.
- * @param b Second string.
- * @return Concatenated string.
+ * The input strings are borrowed and remain owned by their callers. The result is a separate
+ * NUL-terminated heap string, including when both inputs are empty, and must be released with
+ * rt_string_release.
+ *
+ * A combined length exceeding INT32_MAX or a native string allocation failure terminates execution.
+ *
+ * This source-located entry records the supplied location when tracing is enabled.
  *
  * Dea signature: `extern func rt_string_concat(a: string, b: string) -> string;`
+ *
+ * @param a First borrowed string.
+ * @param b Second borrowed string.
+ * @param _loc_file Borrowed source filename for trace events and diagnostics.
+ * @param _loc_line Source line for trace events and diagnostics.
+ * @return Owned heap string containing the byte contents of a followed by b.
  */
-#ifdef DEA_TRACE_MEMORY
 dea_string _rt_string_concat_impl(dea_string a, dea_string b, const char *_loc_file, int _loc_line) {
     dea_int a_len = rt_strlen(a);
     dea_int b_len = rt_strlen(b);
@@ -499,7 +579,8 @@ dea_string _rt_string_concat_impl(dea_string a, dea_string b, const char *_loc_f
         return DEA_STRING_EMPTY;
     }
 
-    dea_string s = _rt_alloc_string_impl(total_len, _loc_file, _loc_line); /* result string */
+    /* result string */
+    dea_string s = _rt_alloc_string_impl(total_len, _loc_file, _loc_line);
     char *s_data = _rt_string_bytes(s);
     char *a_data = _rt_string_bytes(a);
     char *b_data = _rt_string_bytes(b);
@@ -512,11 +593,29 @@ dea_string _rt_string_concat_impl(dea_string a, dea_string b, const char *_loc_f
     if (b_data != NULL && b_len > 0) {
         memcpy(s_data + a_len, b_data, (size_t)b_len);
     }
-    s_data[total_len] = '\0'; /* null-terminate */
+
+    /* null-terminate */
+    s_data[total_len] = '\0';
     return s;
 }
 #define rt_string_concat(a, b) _rt_string_concat_impl((a), (b), __FILE__, __LINE__)
 #else
+
+/**
+ * Concatenate two runtime strings into an owned result.
+ *
+ * The input strings are borrowed and remain owned by their callers. The result is a separate
+ * NUL-terminated heap string, including when both inputs are empty, and must be released with
+ * rt_string_release.
+ *
+ * A combined length exceeding INT32_MAX or a native string allocation failure terminates execution.
+ *
+ * Dea signature: `extern func rt_string_concat(a: string, b: string) -> string;`
+ *
+ * @param a First borrowed string.
+ * @param b Second borrowed string.
+ * @return Owned heap string containing the byte contents of a followed by b.
+ */
 dea_string rt_string_concat(dea_string a, dea_string b) {
     dea_int a_len = rt_strlen(a);
     dea_int b_len = rt_strlen(b);
@@ -532,7 +631,8 @@ dea_string rt_string_concat(dea_string a, dea_string b) {
         return DEA_STRING_EMPTY;
     }
 
-    dea_string s = _rt_alloc_string(total_len); /* result string */
+    /* result string */
+    dea_string s = _rt_alloc_string(total_len);
     char *s_data = _rt_string_bytes(s);
     char *a_data = _rt_string_bytes(a);
     char *b_data = _rt_string_bytes(b);
@@ -545,7 +645,9 @@ dea_string rt_string_concat(dea_string a, dea_string b) {
     if (b_data != NULL && b_len > 0) {
         memcpy(s_data + a_len, b_data, (size_t)b_len);
     }
-    s_data[total_len] = '\0'; /* null-terminate */
+
+    /* null-terminate */
+    s_data[total_len] = '\0';
     return s;
 }
 #endif
@@ -554,12 +656,12 @@ dea_string rt_string_concat(dea_string a, dea_string b) {
  * Create a substring (allocates new memory).
  * Panics if start/end are out of bounds or start > end.
  *
+ * Dea signature: `extern func rt_string_slice(s: string, start: int, end: int) -> string;`
+ *
  * @param s Source string.
  * @param start Start index.
  * @param end End index.
  * @return Slice string.
- *
- * Dea signature: `extern func rt_string_slice(s: string, start: int, end: int) -> string;`
  */
 dea_string rt_string_slice(dea_string s, dea_int start, dea_int end) {
     dea_int s_len = rt_strlen(s);
@@ -592,16 +694,18 @@ dea_string rt_string_slice(dea_string s, dea_int start, dea_int end) {
  * Allocates a new heap string of length 1.
  * Note: Caller must free the returned string using _rt_free_string.
  *
+ * Dea signature: `extern func rt_string_from_byte(b: byte) -> string;`
+ *
  * @param b Character.
  * @return Dea string.
- *
- * Dea signature: `extern func rt_string_from_byte(b: byte) -> string;`
  */
 dea_string rt_string_from_byte(dea_byte b) {
     dea_string s = _rt_alloc_string(1);
     char *s_data = _rt_string_bytes(s);
     s_data[0] = (char)b;
-    s_data[1] = '\0'; /* null-terminate */
+
+    /* null-terminate */
+    s_data[1] = '\0';
     return s;
 }
 
@@ -612,11 +716,11 @@ dea_string rt_string_from_byte(dea_byte b) {
  * terminator is added for C interoperability.
  * Panics if len is negative.
  *
+ * Dea signature: `extern func rt_string_from_byte_array(bytes: byte*, len: int) -> string;`
+ *
  * @param bytes Pointer to bytes.
  * @param len Length.
  * @return Dea string.
- *
- * Dea signature: `extern func rt_string_from_byte_array(bytes: byte*, len: int) -> string;`
  */
 dea_string rt_string_from_byte_array(dea_byte* bytes, dea_int len) {
     if (len < 0) {
@@ -628,19 +732,31 @@ dea_string rt_string_from_byte_array(dea_byte* bytes, dea_int len) {
     return s;
 }
 
+#ifdef DEA_TRACE_ARC
+
 /**
- * Increment reference count for heap strings (no-op for static).
- * Panics if the string is heap-allocated but has an invalid refcount state (e.g. double free detected).
+ * Retain one owned reference to a runtime string.
  *
- * @param s Dea string.
+ * A live counted heap string gains one reference. Static strings and non-reference-counted heap strings
+ * with the INT32_MAX sentinel are no-ops.
+ *
+ * A NULL heap header, a freed sentinel, an invalid reference count, or incrementing INT32_MAX - 1
+ * terminates execution. The caller later balances each retained reference with rt_string_release.
+ *
+ * This source-located entry records the supplied location when tracing is enabled.
  *
  * Dea signature: `extern func rt_string_retain(s: string) -> void;`
+ *
+ * @param s Live string whose counted storage gains one owned reference, if applicable.
+ * @param _loc_file Borrowed source filename for trace events and diagnostics.
+ * @param _loc_line Source line for trace events and diagnostics.
  */
-#ifdef DEA_TRACE_ARC
 void _rt_string_retain_impl(dea_string s, const char *_loc_file, int _loc_line) {
     if (s.kind == DEA_STRING_K_STATIC) {
         _RT_TRACE_ARC("op=retain kind=static ptr=%p rc_before=-1 rc_after=-1 action=noop loc=\"%s\":%d", (void*)s.data.s_str.bytes, _loc_file, _loc_line);
-        return; /* Static strings are not reference counted */
+
+        /* Static strings are not reference counted */
+        return;
     }
     _dea_h_string *hs = s.data.h_str;
     if (hs == NULL) {
@@ -668,6 +784,7 @@ void _rt_string_retain_impl(dea_string s, const char *_loc_file, int _loc_line) 
         );
         _rt_panic_fmt("rt_string_retain: invalid refcount state: %d", (int)hs->refcount);
     } else if (hs->refcount == INT32_MAX) {
+
         /* Non-refcounted heap string: no-op */
         _RT_TRACE_ARC(
             "op=retain kind=heap ptr=%p rc_before=%d rc_after=%d action=noop-nonref loc=\"%s\":%d",
@@ -683,10 +800,26 @@ void _rt_string_retain_impl(dea_string s, const char *_loc_file, int _loc_line) 
 }
 #define rt_string_retain(s) _rt_string_retain_impl((s), __FILE__, __LINE__)
 #else
+
+/**
+ * Retain one owned reference to a runtime string.
+ *
+ * A live counted heap string gains one reference. Static strings and non-reference-counted heap strings
+ * with the INT32_MAX sentinel are no-ops.
+ *
+ * A NULL heap header, a freed sentinel, an invalid reference count, or incrementing INT32_MAX - 1
+ * terminates execution. The caller later balances each retained reference with rt_string_release.
+ *
+ * Dea signature: `extern func rt_string_retain(s: string) -> void;`
+ *
+ * @param s Live string whose counted storage gains one owned reference, if applicable.
+ */
 void rt_string_retain(dea_string s) {
     if (s.kind == DEA_STRING_K_STATIC) {
         _RT_TRACE_ARC("op=retain kind=static ptr=%p rc_before=-1 rc_after=-1 action=noop", (void*)s.data.s_str.bytes);
-        return; /* Static strings are not reference counted */
+
+        /* Static strings are not reference counted */
+        return;
     }
     _dea_h_string *hs = s.data.h_str;
     if (hs == NULL) {
@@ -714,6 +847,7 @@ void rt_string_retain(dea_string s) {
         );
         _rt_panic_fmt("rt_string_retain: invalid refcount state: %d", (int)hs->refcount);
     } else if (hs->refcount == INT32_MAX) {
+
         /* Non-refcounted heap string: no-op */
         _RT_TRACE_ARC(
             "op=retain kind=heap ptr=%p rc_before=%d rc_after=%d action=noop-nonref",
@@ -729,19 +863,46 @@ void rt_string_retain(dea_string s) {
 }
 #endif
 
+#ifdef DEA_TRACE_ARC
+
 /**
- * Decrement reference count, freeing if zero.
+ * Release one runtime string reference and free heap storage at zero references.
  *
- * @param s Dea string.
+ * A counted heap string loses one owned reference. Its bytes and header are freed when the count reaches
+ * zero. Static strings and non-reference-counted heap strings with the INT32_MAX sentinel are no-ops.
+ *
+ * The caller relinquishes one owned reference. Independently retained strings remain valid; borrowed views
+ * and aliases into storage expire after its final release. NULL heap headers, freed sentinels, and invalid
+ * reference counts terminate execution.
+ *
+ * This source-located entry records the supplied location when tracing is enabled.
  *
  * Dea signature: `extern func rt_string_release(s: string) -> void;`
+ *
+ * @param s String whose owned counted reference is consumed, if applicable.
+ * @param _loc_file Borrowed source filename for trace events and diagnostics.
+ * @param _loc_line Source line for trace events and diagnostics.
  */
-#ifdef DEA_TRACE_ARC
 void _rt_string_release_impl(dea_string s, const char *_loc_file, int _loc_line) {
     _rt_free_string_impl(s, _loc_file, _loc_line);
 }
 #define rt_string_release(s) _rt_string_release_impl((s), __FILE__, __LINE__)
 #else
+
+/**
+ * Release one runtime string reference and free heap storage at zero references.
+ *
+ * A counted heap string loses one owned reference. Its bytes and header are freed when the count reaches
+ * zero. Static strings and non-reference-counted heap strings with the INT32_MAX sentinel are no-ops.
+ *
+ * The caller relinquishes one owned reference. Independently retained strings remain valid; borrowed views
+ * and aliases into storage expire after its final release. NULL heap headers, freed sentinels, and invalid
+ * reference counts terminate execution.
+ *
+ * Dea signature: `extern func rt_string_release(s: string) -> void;`
+ *
+ * @param s String whose owned counted reference is consumed, if applicable.
+ */
 void rt_string_release(dea_string s) {
     _rt_free_string(s);
 }
@@ -749,11 +910,41 @@ void rt_string_release(dea_string s) {
 
 #if defined(DEA_TRACE_MEMORY)
 #undef _rt_alloc_string
+
+/**
+ * Allocate a reference-counted heap string of the requested byte length.
+ *
+ * The character payload is uninitialized and must be filled by the caller. The trailing NUL byte is
+ * written before return. The initial reference count is one; release the resulting owned string with
+ * rt_string_release.
+ *
+ * Negative lengths or native allocation failure terminate execution. Zero length is permitted and still
+ * returns a heap string.
+ *
+ * @param len Nonnegative byte length excluding the trailing NUL byte.
+ * @return Owned heap string with an uninitialized payload and a prewritten NUL terminator.
+ */
 dea_string _rt_alloc_string(dea_int len) {
     return _rt_alloc_string_impl(len, "<runtime>", 0);
 }
 
 #undef rt_string_concat
+
+/**
+ * Concatenate two runtime strings into an owned result.
+ *
+ * The input strings are borrowed and remain owned by their callers. The result is a separate
+ * NUL-terminated heap string, including when both inputs are empty, and must be released with
+ * rt_string_release.
+ *
+ * A combined length exceeding INT32_MAX or a native string allocation failure terminates execution.
+ *
+ * Dea signature: `extern func rt_string_concat(a: string, b: string) -> string;`
+ *
+ * @param a First borrowed string.
+ * @param b Second borrowed string.
+ * @return Owned heap string containing the byte contents of a followed by b.
+ */
 dea_string rt_string_concat(dea_string a, dea_string b) {
     return _rt_string_concat_impl(a, b, "<runtime>", 0);
 }
@@ -761,6 +952,19 @@ dea_string rt_string_concat(dea_string a, dea_string b) {
 
 #if defined(DEA_TRACE_ARC) || defined(DEA_TRACE_MEMORY)
 #undef _rt_free_string
+
+/**
+ * Release a runtime string reference and free its heap storage at zero references.
+ *
+ * Static strings and non-reference-counted heap strings with the INT32_MAX sentinel are no-ops. A counted
+ * heap string loses one reference; its owned bytes and header are freed when the count reaches zero.
+ *
+ * The caller relinquishes one owned reference. Independently retained aliases remain valid while
+ * references remain; aliases into storage expire when the final reference is released. NULL heap headers,
+ * freed sentinels, and invalid reference counts terminate execution.
+ *
+ * @param str Runtime string whose owned counted reference is consumed, if applicable.
+ */
 void _rt_free_string(dea_string str) {
     _rt_free_string_impl(str, "<runtime>", 0);
 }
@@ -768,11 +972,40 @@ void _rt_free_string(dea_string str) {
 
 #if defined(DEA_TRACE_ARC)
 #undef rt_string_retain
+
+/**
+ * Retain one owned reference to a runtime string.
+ *
+ * A live counted heap string gains one reference. Static strings and non-reference-counted heap strings
+ * with the INT32_MAX sentinel are no-ops.
+ *
+ * A NULL heap header, a freed sentinel, an invalid reference count, or incrementing INT32_MAX - 1
+ * terminates execution. The caller later balances each retained reference with rt_string_release.
+ *
+ * Dea signature: `extern func rt_string_retain(s: string) -> void;`
+ *
+ * @param s Live string whose counted storage gains one owned reference, if applicable.
+ */
 void rt_string_retain(dea_string s) {
     _rt_string_retain_impl(s, "<runtime>", 0);
 }
 
 #undef rt_string_release
+
+/**
+ * Release one runtime string reference and free heap storage at zero references.
+ *
+ * A counted heap string loses one owned reference. Its bytes and header are freed when the count reaches
+ * zero. Static strings and non-reference-counted heap strings with the INT32_MAX sentinel are no-ops.
+ *
+ * The caller relinquishes one owned reference. Independently retained strings remain valid; borrowed views
+ * and aliases into storage expire after its final release. NULL heap headers, freed sentinels, and invalid
+ * reference counts terminate execution.
+ *
+ * Dea signature: `extern func rt_string_release(s: string) -> void;`
+ *
+ * @param s String whose owned counted reference is consumed, if applicable.
+ */
 void rt_string_release(dea_string s) {
     _rt_string_release_impl(s, "<runtime>", 0);
 }

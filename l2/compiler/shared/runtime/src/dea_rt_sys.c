@@ -40,10 +40,10 @@ void _rt_init_args(int argc, char** argv) {
  * Returns the command exit code, `128 + signal` when terminated by a signal,
  * or a negative value on error launching the shell.
  *
+ * Dea signature: `extern func rt_system(cmd: string) -> int;`
+ *
  * @param cmd Command string.
  * @return Normalized status.
- *
- * Dea signature: `extern func rt_system(cmd: string) -> int;`
  */
 dea_int rt_system(dea_string cmd) {
     char *c = _rt_string_bytes(cmd);
@@ -71,10 +71,10 @@ dea_int rt_system(dea_string cmd) {
  * Get an environment variable as a Dea optional string.
  * Returns null (empty optional) if the variable is not set.
  *
+ * Dea signature: `extern func rt_get_env_var(name: string) -> string?;`
+ *
  * @param name Variable name.
  * @return Optional string value.
- *
- * Dea signature: `extern func rt_get_env_var(name: string) -> string?;`
  */
 dea_opt_string rt_get_env_var(dea_string name) {
     if (rt_strlen(name) == 0) {
@@ -117,9 +117,8 @@ dea_bool _rt_pid_to_dea_int(intmax_t value, dea_int *out) {
 /**
  * Get the current process identifier.
  *
- * @return Process identifier.
- *
  * Dea signature: `extern func rt_get_pid() -> int;`
+ * @return Process identifier.
  */
 dea_int rt_get_pid(void) {
     dea_int out = 0;
@@ -138,9 +137,8 @@ dea_int rt_get_pid(void) {
 /**
  * Get the number of command-line arguments.
  *
- * @return Argument count.
- *
  * Dea signature: `extern func rt_get_argc() -> int;`
+ * @return Argument count.
  */
 dea_int rt_get_argc(void) {
     return (dea_int)_rt_argc;
@@ -150,10 +148,10 @@ dea_int rt_get_argc(void) {
  * Get the command-line argument at the given index.
  * Panics if index is out of bounds.
  *
+ * Dea signature: `extern func rt_get_argv(i: int) -> string;`
+ *
  * @param i Index.
  * @return Argument string.
- *
- * Dea signature: `extern func rt_get_argv(i: int) -> string;`
  */
 dea_string rt_get_argv(dea_int i) {
     if (i < 0 || i >= _rt_argc) {
@@ -165,9 +163,9 @@ dea_string rt_get_argv(dea_int i) {
 /**
  * Exit the program with the given exit code.
  *
- * @param code Exit code.
- *
  * Dea signature: `extern func rt_exit(code: int) -> void;`
+ *
+ * @param code Exit code.
  */
 void rt_exit(dea_int code) {
     exit((int)code);
@@ -175,7 +173,6 @@ void rt_exit(dea_int code) {
 
 /**
  * Get the current C standard library `errno` value from `<errno.h>`.
- *
  * @return the current `errno` value.
  */
 dea_int rt_errno(void) {

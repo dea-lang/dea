@@ -43,6 +43,11 @@
 #endif
 
 /* Return actual-host Darwin identity without consulting CLI test overrides. */
+
+/**
+ * Test whether this support library was compiled for Darwin.
+ * @return One on Apple hosts; zero otherwise.
+ */
 int32_t l2c_fs_host_is_darwin(void) {
 #if defined(__APPLE__)
     return 1;
@@ -89,7 +94,15 @@ typedef struct {
 } l2c_fs_temp_report;
 
 #if defined(_WIN32)
-/** Store a previously captured Win32 error before cleanup can replace it. */
+
+/**
+ * Store a previously captured Win32 error before cleanup can replace it.
+ *
+ * @param report Optional caller-owned failure report to update.
+ * @param status Optional caller-owned status output.
+ * @param operation Borrowed name of the measured or failed native operation.
+ * @param error Captured native error code.
+ */
 static void l2c_fs_temp_windows_failure(
     l2c_fs_temp_report *report, int32_t status, const char *operation, DWORD error
 ) {
@@ -102,7 +115,14 @@ static void l2c_fs_temp_windows_failure(
 #endif
 
 #if !defined(_WIN32)
-/** Capture the failing component during validation, before restoring separators. */
+
+/**
+ * Capture the failing component during validation, before restoring separators.
+ *
+ * @param report Optional caller-owned failure report to update.
+ * @param status Optional caller-owned status output.
+ * @param path Borrowed NUL-terminated filesystem path.
+ */
 static void l2c_fs_temp_failure(l2c_fs_temp_report *report, int32_t status, const char *path) {
     size_t length;
     char *copy;
@@ -120,12 +140,26 @@ static void l2c_fs_temp_failure(l2c_fs_temp_report *report, int32_t status, cons
 }
 #endif
 
+/**
+ * Validate a nonempty length-delimited path without embedded NUL bytes.
+ *
+ * @param path Borrowed native byte span with an explicit length; no terminator is required.
+ * @param path_len Number of readable path bytes; excludes a NUL terminator.
+ * @return Nonzero for a valid raw path span.
+ */
 static int l2c_fs_raw_path_is_valid(const uint8_t *path, int32_t path_len) {
     return path != NULL &&
            path_len > 0 &&
            memchr(path, '\0', (size_t)path_len) == NULL;
 }
 
+/**
+ * Copy a validated raw path into an owned native NUL-terminated string.
+ *
+ * @param path Borrowed native byte span with an explicit length; no terminator is required.
+ * @param path_len Number of readable path bytes; excludes a NUL terminator.
+ * @return Owned path, or NULL for invalid input or allocation failure.
+ */
 static char *l2c_fs_native_path(const uint8_t *path, int32_t path_len) {
     char *native;
     if (!l2c_fs_raw_path_is_valid(path, path_len)) {
@@ -147,6 +181,14 @@ static char *l2c_fs_native_path(const uint8_t *path, int32_t path_len) {
  * this support ABI in that same native byte encoding so classification and
  * mutation address the same paths as read_file, write_file, and system.
  * Directory access control is inherited from the caller-selected parent.
+ */
+
+/**
+ * Classify a native path with explicit symlink-following behavior.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param follow Nonzero to follow a final symbolic link.
+ * @return Filesystem kind tag, absence tag, or error tag.
  */
 static int32_t l2c_fs_path_kind_native(const char *path, int follow) {
     BY_HANDLE_FILE_INFORMATION info;
@@ -190,6 +232,13 @@ static int32_t l2c_fs_path_kind_native(const char *path, int follow) {
     return L2C_FS_REGULAR;
 }
 
+/**
+ * Compare existing native filesystem objects by physical identity.
+ *
+ * @param left Borrowed left operand.
+ * @param right Borrowed right operand.
+ * @return One for the same object, zero for different objects, or the filesystem error tag.
+ */
 static int32_t l2c_fs_same_file_native(
     const char *left,
     const char *right
@@ -237,6 +286,14 @@ static int32_t l2c_fs_same_file_native(
     return result;
 }
 
+/**
+ * Resolve an existing Windows path through an owned file handle.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param require_directory Nonzero to reject non-directory objects.
+ * @param report Optional caller-owned failure report to update.
+ * @return Owned canonical path, or NULL after recording an optional query or close failure.
+ */
 static char *l2c_fs_canonical_existing_windows(
     const char *path,
     int require_directory,
@@ -304,6 +361,7 @@ static char *l2c_fs_canonical_existing_windows(
     if (attempt == 4 && report != NULL) report->status = 8;
     if (!CloseHandle(handle)) {
         DWORD error = GetLastError();
+
         /* A completed query has no earlier error; otherwise retain its cause. */
         if (resolved != NULL) {
             l2c_fs_temp_windows_failure(report, 7, "CloseHandle", error);
@@ -322,16 +380,36 @@ static char *l2c_fs_canonical_existing_windows(
     return resolved;
 }
 
+/**
+ * Resolve an existing native path to its canonical absolute spelling.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @return Owned canonical path, or NULL on resolution or allocation failure.
+ */
 static char *l2c_fs_canonical_existing_native(const char *path) {
     return l2c_fs_canonical_existing_windows(path, 0, NULL);
 }
 
+/**
+ * Resolve and validate a native temporary-parent directory.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param report Optional caller-owned failure report to update.
+ * @return Owned canonical directory path, or NULL after an optional failure report.
+ */
 static char *l2c_fs_resolve_temp_parent_native(const char *path, l2c_fs_temp_report *report) {
     return l2c_fs_canonical_existing_windows(path, 1, report);
 }
 
 #else
 
+/**
+ * Classify a native path with explicit symlink-following behavior.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param follow Nonzero to follow a final symbolic link.
+ * @return Filesystem kind tag, absence tag, or error tag.
+ */
 static int32_t l2c_fs_path_kind_native(const char *path, int follow) {
     struct stat info;
     int status = follow ? stat(path, &info) : lstat(path, &info);
@@ -350,6 +428,13 @@ static int32_t l2c_fs_path_kind_native(const char *path, int follow) {
     return L2C_FS_ERROR;
 }
 
+/**
+ * Compare existing native filesystem objects by physical identity.
+ *
+ * @param left Borrowed left operand.
+ * @param right Borrowed right operand.
+ * @return One for the same object, zero for different objects, or the filesystem error tag.
+ */
 static int32_t l2c_fs_same_file_native(
     const char *left,
     const char *right
@@ -363,6 +448,14 @@ static int32_t l2c_fs_same_file_native(
            left_info.st_ino == right_info.st_ino;
 }
 
+/**
+ * Validate temporary-parent directory ownership and writable-mode restrictions.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param effective_uid Effective process UID accepted as a trusted owner.
+ * @param report Optional caller-owned failure report to update.
+ * @return Nonzero for an owned or root-owned trusted directory; zero after reporting failure.
+ */
 static int l2c_fs_temp_component_is_trusted(
     const char *path,
     uid_t effective_uid,
@@ -394,6 +487,13 @@ static int l2c_fs_temp_component_is_trusted(
     return 1;
 }
 
+/**
+ * Validate every component of a resolved temporary-parent hierarchy.
+ *
+ * @param resolved Writable canonical path spelling, temporarily split and restored.
+ * @param report Optional caller-owned failure report to update.
+ * @return Nonzero when every component is trusted; the original spelling is restored.
+ */
 static int l2c_fs_temp_hierarchy_is_trusted(char *resolved, l2c_fs_temp_report *report) {
     uid_t effective_uid = geteuid();
     char *cursor;
@@ -422,10 +522,23 @@ static int l2c_fs_temp_hierarchy_is_trusted(char *resolved, l2c_fs_temp_report *
     return 1;
 }
 
+/**
+ * Resolve an existing native path to its canonical absolute spelling.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @return Owned canonical path, or NULL on resolution or allocation failure.
+ */
 static char *l2c_fs_canonical_existing_native(const char *path) {
     return realpath(path, NULL);
 }
 
+/**
+ * Resolve and validate a native temporary-parent directory.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param report Optional caller-owned failure report to update.
+ * @return Owned canonical directory path, or NULL after an optional failure report.
+ */
 static char *l2c_fs_resolve_temp_parent_native(const char *path, l2c_fs_temp_report *report) {
     char *resolved = l2c_fs_canonical_existing_native(path);
     if (resolved == NULL) {
@@ -440,6 +553,15 @@ static char *l2c_fs_resolve_temp_parent_native(const char *path, l2c_fs_temp_rep
 
 #endif
 
+/**
+ * Join a bounded executable search component and a program name.
+ *
+ * @param component Borrowed search-path component byte span.
+ * @param component_len Number of readable component bytes.
+ * @param name Borrowed NUL-terminated name.
+ * @param separator Native separator inserted between path components when needed.
+ * @return Owned joined spelling, or NULL on size overflow or allocation failure.
+ */
 static char *l2c_fs_join_search_component(
     const char *component,
     size_t component_len,
@@ -475,6 +597,12 @@ static char *l2c_fs_join_search_component(
 
 #if defined(_WIN32)
 
+/**
+ * Require a regular Windows file and obtain its absolute path spelling.
+ *
+ * @param candidate Borrowed candidate executable spelling.
+ * @return Owned absolute path, or NULL when validation, query, or allocation fails.
+ */
 static char *l2c_fs_windows_absolute_regular(const char *candidate) {
     DWORD required;
     DWORD actual;
@@ -498,6 +626,14 @@ static char *l2c_fs_windows_absolute_regular(const char *candidate) {
     return absolute;
 }
 
+/**
+ * Append a bounded Windows executable suffix to a path spelling.
+ *
+ * @param candidate Borrowed candidate executable spelling.
+ * @param extension Borrowed executable extension byte span.
+ * @param extension_len Number of extension bytes.
+ * @return Owned extended spelling, or NULL on size overflow or allocation failure.
+ */
 static char *l2c_fs_windows_append_extension(
     const char *candidate,
     const char *extension,
@@ -518,6 +654,12 @@ static char *l2c_fs_windows_append_extension(
     return extended;
 }
 
+/**
+ * Test whether a Windows path basename contains an extension separator.
+ *
+ * @param candidate Borrowed candidate executable spelling.
+ * @return Nonzero when a dot occurs after the final path separator.
+ */
 static int l2c_fs_windows_basename_has_extension(const char *candidate) {
     const char *base = candidate;
     const char *slash = strrchr(candidate, '/');
@@ -531,6 +673,12 @@ static int l2c_fs_windows_basename_has_extension(const char *candidate) {
     return strrchr(base, '.') != NULL;
 }
 
+/**
+ * Try an explicit Windows executable spelling and ordered PATHEXT suffixes.
+ *
+ * @param candidate Borrowed candidate executable spelling.
+ * @return Owned absolute regular-file path, or NULL when no candidate succeeds.
+ */
 static char *l2c_fs_windows_try_executable(const char *candidate) {
     const char *pathext;
     const char *cursor;
@@ -569,6 +717,12 @@ static char *l2c_fs_windows_try_executable(const char *candidate) {
     return NULL;
 }
 
+/**
+ * Search the host executable path under its native lookup rules.
+ *
+ * @param name Borrowed NUL-terminated name.
+ * @return Owned absolute executable path, or NULL when no candidate succeeds.
+ */
 static char *l2c_fs_resolve_executable_native(const char *name) {
     const char *path;
     const char *cursor;
@@ -613,6 +767,10 @@ static char *l2c_fs_resolve_executable_native(const char *name) {
 
 #else
 
+/**
+ * Read the POSIX default executable search path.
+ * @return Owned search-path text, or NULL on native query or allocation failure.
+ */
 static char *l2c_fs_default_exec_path(void) {
     size_t required = confstr(_CS_PATH, NULL, 0);
     char *path;
@@ -627,6 +785,12 @@ static char *l2c_fs_default_exec_path(void) {
     return path;
 }
 
+/**
+ * Make a POSIX path absolute without resolving symbolic links.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @return Owned absolute spelling, or NULL on working-directory or allocation failure.
+ */
 static char *l2c_fs_posix_absolute_spelling(const char *path) {
     char *cwd;
     char *absolute;
@@ -643,6 +807,12 @@ static char *l2c_fs_posix_absolute_spelling(const char *path) {
     return absolute;
 }
 
+/**
+ * Search the host executable path under its native lookup rules.
+ *
+ * @param name Borrowed NUL-terminated name.
+ * @return Owned absolute executable path, or NULL when no candidate succeeds.
+ */
 static char *l2c_fs_resolve_executable_native(const char *name) {
     const char *configured_path;
     const char *cursor;
@@ -691,6 +861,14 @@ static char *l2c_fs_resolve_executable_native(const char *name) {
 
 #endif
 
+/**
+ * Validate a raw path and classify it using native filesystem metadata.
+ *
+ * @param path Borrowed native byte span with an explicit length; no terminator is required.
+ * @param path_len Number of readable path bytes; excludes a NUL terminator.
+ * @param follow Nonzero to follow a final symbolic link.
+ * @return Filesystem kind tag, absence tag, or error tag.
+ */
 static int32_t l2c_fs_path_kind(
     const uint8_t *path,
     int32_t path_len,
@@ -714,6 +892,9 @@ static int32_t l2c_fs_path_kind(
  * `mode` is validated but ignored because Win32 directory creation has no
  * POSIX mode.
  *
+ * @param path Borrowed native byte span with an explicit length; no terminator is required.
+ * @param path_len Number of readable path bytes; excludes a NUL terminator.
+ * @param mode Requested access or processing mode.
  * @return 1 after creation, 0 when the path already exists, or -1 on error.
  */
 int32_t l2c_fs_mkdir(
@@ -760,8 +941,10 @@ int32_t l2c_fs_mkdir(
 /**
  * Classify one path without following symbolic links or reparse points.
  *
- * @return -1 on error, 0 if absent, 1 for a regular file, 2 for a directory,
- *     or 3 for another filesystem object.
+ * @param path Borrowed native byte span with an explicit length; no terminator is required.
+ * @param path_len Number of readable path bytes; excludes a NUL terminator.
+ * @return -1 on error, 0 if absent, 1 for a regular file, 2 for a directory, or 3 for another filesystem
+ * object.
  */
 int32_t l2c_fs_path_kind_nofollow(
     const uint8_t *path,
@@ -773,8 +956,10 @@ int32_t l2c_fs_path_kind_nofollow(
 /**
  * Classify one path after following symbolic links or reparse points.
  *
- * @return -1 on error, 0 if absent or dangling, 1 for a regular file, 2 for a
- *     directory, or 3 for another filesystem object.
+ * @param path Borrowed native byte span with an explicit length; no terminator is required.
+ * @param path_len Number of readable path bytes; excludes a NUL terminator.
+ * @return -1 on error, 0 if absent or dangling, 1 for a regular file, 2 for a directory, or 3 for another
+ * filesystem object.
  */
 int32_t l2c_fs_path_kind_follow(
     const uint8_t *path,
@@ -794,6 +979,12 @@ int32_t l2c_fs_path_kind_follow(
  * `output` is null or too small, no bytes are copied and the required length
  * is still returned.
  *
+ * @param parent Borrowed native byte span with an explicit length; no terminator is required.
+ * @param parent_len Number of readable parent path bytes.
+ * @param child Borrowed native byte span with an explicit length; no terminator is required.
+ * @param child_len Number of readable child path bytes.
+ * @param output Caller-owned writable output span, or NULL for a length query.
+ * @param output_capacity Writable capacity of the output byte span.
  * @return Positive joined byte length, or -1 on invalid input/overflow.
  */
 int32_t l2c_fs_join_child(
@@ -840,8 +1031,12 @@ int32_t l2c_fs_join_child(
 /**
  * Compare the followed filesystem identities of two existing paths.
  *
- * @return 1 when both names address the same file, 0 when distinct, or -1 on
- *     invalid input or an operating-system error.
+ * @param left Borrowed native byte span with an explicit length; no terminator is required.
+ * @param left_len Number of readable left path bytes.
+ * @param right Borrowed native byte span with an explicit length; no terminator is required.
+ * @param right_len Number of readable right path bytes.
+ * @return 1 when both names address the same file, 0 when distinct, or -1 on invalid input or an
+ * operating-system error.
  */
 int32_t l2c_fs_same_file(
     const uint8_t *left,
@@ -873,6 +1068,10 @@ int32_t l2c_fs_same_file(
  * When `output` is null or too small, no bytes are copied and the required
  * length is still returned so the caller can allocate and retry.
  *
+ * @param path Borrowed native byte span with an explicit length; no terminator is required.
+ * @param path_len Number of readable path bytes; excludes a NUL terminator.
+ * @param output Caller-owned writable output span, or NULL for a length query.
+ * @param output_capacity Writable capacity of the output byte span.
  * @return Positive canonical byte length, or -1 on validation/error.
  */
 int32_t l2c_fs_resolve_trusted_temp_parent(
@@ -907,7 +1106,13 @@ int32_t l2c_fs_resolve_trusted_temp_parent(
     return result;
 }
 
-/** Inspect once and return a caller-owned snapshot, or NULL on invalid input/allocation failure. */
+/**
+ * Inspect once and return a caller-owned snapshot, or NULL on invalid input/allocation failure.
+ *
+ * @param path Borrowed native byte span with an explicit length; no terminator is required.
+ * @param path_len Number of readable path bytes; excludes a NUL terminator.
+ * @return Owned opaque inspection snapshot, or NULL for invalid input or allocation failure.
+ */
 uint8_t *l2c_fs_inspect_temp_parent(const uint8_t *path, int32_t path_len) {
     char *native = l2c_fs_native_path(path, path_len);
     char *resolved;
@@ -929,17 +1134,29 @@ uint8_t *l2c_fs_inspect_temp_parent(const uint8_t *path, int32_t path_len) {
     return (uint8_t *)report;
 }
 
-/** Read status from a live snapshot; NULL denotes an internal failure. */
+/**
+ * Read status from a live snapshot; NULL denotes an internal failure.
+ *
+ * @param raw Opaque temporary-parent report allocated by its matching constructor.
+ * @return Saved inspection status, or the internal-failure status for NULL.
+ */
 int32_t l2c_fs_temp_parent_status(const uint8_t *raw) {
     const l2c_fs_temp_report *report = (const l2c_fs_temp_report *)raw;
     return report == NULL ? 6 : report->status;
 }
 
-/** Copy snapshot field 0 (path), 1 (owner UID), 2 (effective UID),
+/**
+ * Copy snapshot field 0 (path), 1 (owner UID), 2 (effective UID),
  * 3 (failing Win32 operation), or 4 (unsigned Windows error code).
  * Windows fields are empty unless a Windows API failure was captured.
  * Return required byte length without NUL, or -1 for invalid arguments/overflow.
  * NULL/zero queries and undersized buffers never write; no inspection is repeated.
+ *
+ * @param raw Opaque temporary-parent report allocated by its matching constructor.
+ * @param field Borrowed field name or bounded field-name bytes.
+ * @param output Caller-owned writable output span, or NULL for a length query.
+ * @param capacity Writable output capacity in bytes.
+ * @return Required field byte length, or -1 for an invalid report, field, or output capacity.
  */
 int32_t l2c_fs_temp_parent_field(
     const uint8_t *raw, int32_t field, uint8_t *output, int32_t capacity
@@ -960,7 +1177,11 @@ int32_t l2c_fs_temp_parent_field(
     return (int32_t)length;
 }
 
-/** Release one caller-owned snapshot; NULL is accepted. */
+/**
+ * Release one caller-owned snapshot; NULL is accepted.
+ *
+ * @param raw Opaque temporary-parent report allocated by its matching constructor.
+ */
 void l2c_fs_temp_parent_free(uint8_t *raw) {
     l2c_fs_temp_report *report = (l2c_fs_temp_report *)raw;
     if (report != NULL) {
@@ -976,6 +1197,10 @@ void l2c_fs_temp_parent_free(uint8_t *raw) {
  * invocation-directory meaning of a compiler or include path while a driver
  * runs the host compiler from private staging.
  *
+ * @param path Borrowed native byte span with an explicit length; no terminator is required.
+ * @param path_len Number of readable path bytes; excludes a NUL terminator.
+ * @param output Caller-owned writable output span, or NULL for a length query.
+ * @param output_capacity Writable capacity of the output byte span.
  * @return Positive absolute byte length, or -1 on validation/error.
  */
 int32_t l2c_fs_absolute_path(
@@ -1052,6 +1277,10 @@ int32_t l2c_fs_absolute_path(
  * driver still invokes the executable through its originally selected alias
  * so argv[0]-sensitive compiler behavior is preserved.
  *
+ * @param path Borrowed native byte span with an explicit length; no terminator is required.
+ * @param path_len Number of readable path bytes; excludes a NUL terminator.
+ * @param output Caller-owned writable output span, or NULL for a length query.
+ * @param output_capacity Writable capacity of the output byte span.
  * @return Positive canonical byte length, or -1 on validation/error.
  */
 int32_t l2c_fs_canonical_existing_path(
@@ -1095,6 +1324,10 @@ int32_t l2c_fs_canonical_existing_path(
  * directory change cannot select a different executable, but the selected
  * executable's alias spelling is retained for argv[0]-sensitive drivers.
  *
+ * @param name Borrowed native byte span with an explicit length; no terminator is required.
+ * @param name_len Number of readable executable name bytes.
+ * @param output Caller-owned writable output span, or NULL for a length query.
+ * @param output_capacity Writable capacity of the output byte span.
  * @return Positive absolute byte length, or -1 when no executable is found.
  */
 int32_t l2c_fs_resolve_executable(
@@ -1139,6 +1372,10 @@ int32_t l2c_fs_resolve_executable(
  * `MoveFileExA` without replacement flags enforces the absent-destination
  * condition itself. Directories and non-regular source objects are rejected.
  *
+ * @param source Borrowed native byte span with an explicit length; no terminator is required.
+ * @param source_len Number of readable source path bytes.
+ * @param destination Borrowed native byte span with an explicit length; no terminator is required.
+ * @param destination_len Number of readable destination path bytes.
  * @return 1 after the move, 0 when the destination exists, or -1 on error.
  */
 int32_t l2c_fs_rename_absent(
@@ -1206,6 +1443,8 @@ int32_t l2c_fs_rename_absent(
 /**
  * Remove one regular file without accepting a symbolic link/reparse point.
  *
+ * @param path Borrowed native byte span with an explicit length; no terminator is required.
+ * @param path_len Number of readable path bytes; excludes a NUL terminator.
  * @return 1 after removal, 0 when the path is absent, or -1 on error.
  */
 int32_t l2c_fs_remove_regular_file(
@@ -1261,6 +1500,8 @@ int32_t l2c_fs_remove_regular_file(
 /**
  * Remove one empty real directory without accepting a symlink/reparse point.
  *
+ * @param path Borrowed native byte span with an explicit length; no terminator is required.
+ * @param path_len Number of readable path bytes; excludes a NUL terminator.
  * @return 1 after removal, 0 when the path is absent, or -1 on error.
  */
 int32_t l2c_fs_remove_empty_dir(
@@ -1313,6 +1554,12 @@ int32_t l2c_fs_remove_empty_dir(
 #endif
 }
 
+/**
+ * Release an owned native argument vector and its copied words.
+ *
+ * @param words Borrowed array of native argument words.
+ * @param count Number of elements in the supplied collection.
+ */
 static void l2c_process_free_words(char **words, int32_t count) {
     int32_t i;
     if (words == NULL) {
@@ -1324,6 +1571,14 @@ static void l2c_process_free_words(char **words, int32_t count) {
     free(words);
 }
 
+/**
+ * Copy bounded raw argument words into a NUL-terminated native vector.
+ *
+ * @param words Borrowed array of native argument words.
+ * @param lengths Readable byte lengths corresponding to the argument words.
+ * @param count Number of elements in the supplied collection.
+ * @return Owned vector, or NULL for invalid spans, embedded NUL bytes, or allocation failure.
+ */
 static char **l2c_process_copy_words(
     const uint8_t *const *words,
     const int32_t *lengths,
@@ -1356,6 +1611,16 @@ static char **l2c_process_copy_words(
 }
 
 #if defined(_WIN32)
+
+/**
+ * Append one command-line byte while growing its owned buffer.
+ *
+ * @param buffer Address of the owned growable byte buffer.
+ * @param length Number of input elements or bytes, as appropriate.
+ * @param capacity Writable output capacity in bytes.
+ * @param value Value to append or compare.
+ * @return Nonzero on success; zero on allocation failure.
+ */
 static int l2c_process_append_char(
     char **buffer,
     size_t *length,
@@ -1376,6 +1641,15 @@ static int l2c_process_append_char(
     return 1;
 }
 
+/**
+ * Append one argument using Windows command-line escaping rules.
+ *
+ * @param buffer Address of the owned growable byte buffer.
+ * @param length Number of input elements or bytes, as appropriate.
+ * @param capacity Writable output capacity in bytes.
+ * @param word Borrowed NUL-terminated native argument.
+ * @return Nonzero on success; zero on buffer growth failure.
+ */
 static int l2c_process_append_quoted_word(
     char **buffer,
     size_t *length,
@@ -1423,6 +1697,13 @@ static int l2c_process_append_quoted_word(
     return l2c_process_append_char(buffer, length, capacity, '"');
 }
 
+/**
+ * Encode argument words into one owned Windows command line.
+ *
+ * @param words Borrowed array of native argument words.
+ * @param count Number of elements in the supplied collection.
+ * @return Owned NUL-terminated command line, or NULL on allocation failure.
+ */
 static char *l2c_process_windows_command_line(
     char **words,
     int32_t count
@@ -1455,8 +1736,12 @@ static char *l2c_process_windows_command_line(
 /**
  * Launch one exact executable/argument vector and wait for its status.
  *
- * @return 1 after launch and wait, 0 when the executable could not be
- * launched, or -1 for invalid input and process-management failures.
+ * @param words Borrowed array of native argument words.
+ * @param lengths Readable byte lengths corresponding to the argument words.
+ * @param count Number of elements in the supplied collection.
+ * @param status_out Caller-owned output receiving the child exit status.
+ * @return 1 after launch and wait, 0 when the executable could not be launched, or -1 for invalid input
+ * and process-management failures.
  */
 int32_t l2c_process_run(
     const uint8_t *const *words,

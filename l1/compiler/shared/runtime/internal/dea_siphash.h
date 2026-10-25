@@ -22,74 +22,23 @@
 extern "C" {
 #endif
 
-/**
- * SipHash-2-4 (64-bit tag).
- * 
- * @param data Pointer to the data to hash.
- * @param len Length of the data in bytes.
- * @param key 16-byte key, interpreted as little-endian (k0 = key[0..7], k1 = key[8..15]).
- * @return 64-bit hash value.
- */
+/* SipHash with c=2, d=4 rounds. */
 uint64_t siphash24(const void *data, size_t len, const uint8_t key[16]);
 
-/**
- * SipHash-1-3 (64-bit tag).
- * 
- * @param data Pointer to the data to hash.
- * @param len Length of the data in bytes.
- * @param key 16-byte key, interpreted as little-endian (k0 = key[0..7], k1 = key[8..15]).
- * @return 64-bit hash value.
- */
+/* SipHash with c=1, d=3 rounds. */
 uint64_t siphash13(const void *data, size_t len, const uint8_t key[16]);
 
-/**
- * Hash (tag8 || data) where tag8 is a raw 8-byte array using SipHash-2-4.
- * 
- * @param tag8 8-byte tag/prefix.
- * @param data Pointer to the data to hash.
- * @param len Length of the data in bytes.
- * @param key 16-byte key.
- * @return 64-bit hash value.
- */
+/* SipHash-2-4 with 8-byte tag prefix as byte array. */
 uint64_t siphash24_tag8_bytes(const uint8_t tag8[8], const void *data, size_t len, const uint8_t key[16]);
 
-/**
- * Hash (tag8 || data) where tag8 is a raw 8-byte array using SipHash-1-3.
- * 
- * @param tag8 8-byte tag/prefix.
- * @param data Pointer to the data to hash.
- * @param len Length of the data in bytes.
- * @param key 16-byte key.
- * @return 64-bit hash value.
- */
+/* SipHash-1-3 with 8-byte tag prefix as byte array. */
 uint64_t siphash13_tag8_bytes(const uint8_t tag8[8], const void *data, size_t len, const uint8_t key[16]);
 
-/**
- * Hash (tag8^flags || data) where tag8 is a raw 8-byte array and flags is one byte (XORed into tag8[0]).
- * Uses SipHash-2-4.
- * 
- * @param tag8 8-byte tag/prefix.
- * @param flags One byte flags XORed into tag8[0].
- * @param data Pointer to the data to hash.
- * @param len Length of the data in bytes.
- * @param key 16-byte key.
- * @return 64-bit hash value.
- */
+/* SipHash-2-4 with 8-byte tag prefix as byte array and 1 byte flags XORed into tag8[0]. */
 uint64_t siphash24_tag8_bf(const uint8_t tag8[8], const uint8_t flags, const void *data, size_t len, const uint8_t key[16]);
 
-/**
- * Hash (tag8^flags || data) where tag8 is a raw 8-byte array and flags is one byte (XORed into tag8[0]).
- * Uses SipHash-1-3.
- * 
- * @param tag8 8-byte tag/prefix.
- * @param flags One byte flags XORed into tag8[0].
- * @param data Pointer to the data to hash.
- * @param len Length of the data in bytes.
- * @param key 16-byte key.
- * @return 64-bit hash value.
- */
+/* SipHash-1-3 with 8-byte tag prefix as byte array and 1 byte flags XORed into tag8[0]. */
 uint64_t siphash13_tag8_bf(const uint8_t tag8[8], const uint8_t flags, const void *data, size_t len, const uint8_t key[16]);
-
 
 #ifdef __cplusplus
 }
@@ -103,7 +52,7 @@ extern "C" {
 
 /**
  * Rotate left a 64-bit value.
- * 
+ *
  * @param x 64-bit value to rotate.
  * @param b Number of bits to rotate (MUST be nonzero to avoid undefined behavior).
  * @return Rotated value.
@@ -114,7 +63,7 @@ static uint64_t sh_rotl64(uint64_t x, unsigned b) {
 
 /**
  * Load 64-bit little-endian word from bytes (portable across host endianness and alignment).
- * 
+ *
  * @param p Pointer to bytes.
  * @return 64-bit word.
  */
@@ -153,7 +102,7 @@ static uint64_t sh_load64_le(const uint8_t *p) {
 /**
  * Core SipHash implementation with configurable (c, d) rounds.
  * Used by siphash24 and siphash13.
- * 
+ *
  * @param data Pointer to the data to hash.
  * @param len Length of the data in bytes.
  * @param k0 First 64 bits of the key.
@@ -183,16 +132,31 @@ static uint64_t sh_siphash_cd(const void *data, size_t len,
   }
 
   /* Final block: top byte is message length mod 256, lower bytes are remaining tail (per SipHash spec). */
+
   /* In other words, b = (len << 56) | tail */
   uint64_t b = ((uint64_t)len) << 56;
   switch (len & 7) {
-  case 7: b |= (uint64_t)in[6] << 48; /* fallthrough */
-  case 6: b |= (uint64_t)in[5] << 40; /* fallthrough */
-  case 5: b |= (uint64_t)in[4] << 32; /* fallthrough */
-  case 4: b |= (uint64_t)in[3] << 24; /* fallthrough */
-  case 3: b |= (uint64_t)in[2] << 16; /* fallthrough */
-  case 2: b |= (uint64_t)in[1] << 8;  /* fallthrough */
-  case 1: b |= (uint64_t)in[0]; /* fallthrough */
+
+  /* fallthrough */
+  case 7: b |= (uint64_t)in[6] << 48;
+
+  /* fallthrough */
+  case 6: b |= (uint64_t)in[5] << 40;
+
+  /* fallthrough */
+  case 5: b |= (uint64_t)in[4] << 32;
+
+  /* fallthrough */
+  case 4: b |= (uint64_t)in[3] << 24;
+
+  /* fallthrough */
+  case 3: b |= (uint64_t)in[2] << 16;
+
+  /* fallthrough */
+  case 2: b |= (uint64_t)in[1] << 8;
+
+  /* fallthrough */
+  case 1: b |= (uint64_t)in[0];
   default: break;
   }
 
@@ -209,7 +173,7 @@ static uint64_t sh_siphash_cd(const void *data, size_t len,
 
 /**
  * Load 128-bit key as (k0,k1) in little-endian order to be endian-independent.
- * 
+ *
  * @param key 16-byte key.
  * @param k0 Output for first 64 bits.
  * @param k1 Output for second 64 bits.
@@ -221,6 +185,13 @@ static void sh_key_to_k01(const uint8_t key[16], uint64_t *k0, uint64_t *k1) {
 
 /**
  * SipHash with c=2, d=4 rounds.
+ *
+ * SipHash-2-4 (64-bit tag).
+ *
+ * @param data Pointer to the data to hash.
+ * @param len Length of the data in bytes.
+ * @param key 16-byte key, interpreted as little-endian (k0 = key[0..7], k1 = key[8..15]).
+ * @return 64-bit hash value.
  */
 uint64_t siphash24(const void *data, size_t len, const uint8_t key[16]) {
   uint64_t k0, k1;
@@ -230,6 +201,13 @@ uint64_t siphash24(const void *data, size_t len, const uint8_t key[16]) {
 
 /**
  * SipHash with c=1, d=3 rounds.
+ *
+ * SipHash-1-3 (64-bit tag).
+ *
+ * @param data Pointer to the data to hash.
+ * @param len Length of the data in bytes.
+ * @param key 16-byte key, interpreted as little-endian (k0 = key[0..7], k1 = key[8..15]).
+ * @return 64-bit hash value.
  */
 uint64_t siphash13(const void *data, size_t len, const uint8_t key[16]) {
   uint64_t k0, k1;
@@ -239,7 +217,7 @@ uint64_t siphash13(const void *data, size_t len, const uint8_t key[16]) {
 
 /**
  * Core SipHash implementation with 8-byte tag prefix.
- * 
+ *
  * @param data Pointer to the data.
  * @param len Length of the data.
  * @param k0 First 64 bits of key.
@@ -283,12 +261,24 @@ static uint64_t sh_siphash_cd_tag8(const void *data, size_t len,
   uint64_t b = total_len << 56;
 
   switch (len & 7) {
-    case 7: b |= (uint64_t)in[6] << 48; /* fallthrough */
-    case 6: b |= (uint64_t)in[5] << 40; /* fallthrough */
-    case 5: b |= (uint64_t)in[4] << 32; /* fallthrough */
-    case 4: b |= (uint64_t)in[3] << 24; /* fallthrough */
-    case 3: b |= (uint64_t)in[2] << 16; /* fallthrough */
-    case 2: b |= (uint64_t)in[1] << 8;  /* fallthrough */
+    case 7: b |= (uint64_t)in[6] << 48;
+
+    /* fallthrough */
+    case 6: b |= (uint64_t)in[5] << 40;
+
+    /* fallthrough */
+    case 5: b |= (uint64_t)in[4] << 32;
+
+    /* fallthrough */
+    case 4: b |= (uint64_t)in[3] << 24;
+
+    /* fallthrough */
+    case 3: b |= (uint64_t)in[2] << 16;
+
+    /* fallthrough */
+    case 2: b |= (uint64_t)in[1] << 8;
+
+    /* fallthrough */
     case 1: b |= (uint64_t)in[0]; break;
     default: break;
   }
@@ -305,6 +295,12 @@ static uint64_t sh_siphash_cd_tag8(const void *data, size_t len,
 
 /**
  * SipHash-2-4 with 8-byte tag prefix.
+ *
+ * @param tag8_le Eight-byte prefix supplied as a little-endian word.
+ * @param data Borrowed readable input byte span.
+ * @param len Number of readable input bytes.
+ * @param key Borrowed NUL-terminated object or identity key.
+ * @return 64-bit SipHash-2-4 digest with the supplied eight-byte prefix.
  */
 uint64_t siphash24_tag8_u64(uint64_t tag8_le, const void *data, size_t len, const uint8_t key[16]) {
   uint64_t k0, k1;
@@ -314,6 +310,12 @@ uint64_t siphash24_tag8_u64(uint64_t tag8_le, const void *data, size_t len, cons
 
 /**
  * SipHash-1-3 with 8-byte tag prefix.
+ *
+ * @param tag8_le Eight-byte prefix supplied as a little-endian word.
+ * @param data Borrowed readable input byte span.
+ * @param len Number of readable input bytes.
+ * @param key Borrowed NUL-terminated object or identity key.
+ * @return 64-bit SipHash-1-3 digest with the supplied eight-byte prefix.
  */
 uint64_t siphash13_tag8_u64(uint64_t tag8_le, const void *data, size_t len, const uint8_t key[16]) {
   uint64_t k0, k1;
@@ -323,6 +325,14 @@ uint64_t siphash13_tag8_u64(uint64_t tag8_le, const void *data, size_t len, cons
 
 /**
  * SipHash-2-4 with 8-byte tag prefix as byte array.
+ *
+ * Hash (tag8 || data) where tag8 is a raw 8-byte array using SipHash-2-4.
+ *
+ * @param tag8 8-byte tag/prefix.
+ * @param data Pointer to the data to hash.
+ * @param len Length of the data in bytes.
+ * @param key 16-byte key.
+ * @return 64-bit hash value.
  */
 uint64_t siphash24_tag8_bytes(const uint8_t tag8[8], const void *data, size_t len, const uint8_t key[16]) {
   return siphash24_tag8_u64(sh_load64_le(tag8), data, len, key);
@@ -330,6 +340,14 @@ uint64_t siphash24_tag8_bytes(const uint8_t tag8[8], const void *data, size_t le
 
 /**
  * SipHash-1-3 with 8-byte tag prefix as byte array.
+ *
+ * Hash (tag8 || data) where tag8 is a raw 8-byte array using SipHash-1-3.
+ *
+ * @param tag8 8-byte tag/prefix.
+ * @param data Pointer to the data to hash.
+ * @param len Length of the data in bytes.
+ * @param key 16-byte key.
+ * @return 64-bit hash value.
  */
 uint64_t siphash13_tag8_bytes(const uint8_t tag8[8], const void *data, size_t len, const uint8_t key[16]) {
   return siphash13_tag8_u64(sh_load64_le(tag8), data, len, key);
@@ -337,6 +355,16 @@ uint64_t siphash13_tag8_bytes(const uint8_t tag8[8], const void *data, size_t le
 
 /**
  * SipHash-2-4 with 8-byte tag prefix as byte array and 1 byte flags XORed into tag8[0].
+ *
+ * Hash (tag8^flags || data) where tag8 is a raw 8-byte array and flags is one byte (XORed into tag8[0]).
+ * Uses SipHash-2-4.
+ *
+ * @param tag8 8-byte tag/prefix.
+ * @param flags One byte flags XORed into tag8[0].
+ * @param data Pointer to the data to hash.
+ * @param len Length of the data in bytes.
+ * @param key 16-byte key.
+ * @return 64-bit hash value.
  */
 uint64_t siphash24_tag8_bf(const uint8_t tag8[8], const uint8_t flags, const void *data, size_t len, const uint8_t key[16]) {
   return siphash24_tag8_u64(sh_load64_le(tag8)^flags, data, len, key);
@@ -344,6 +372,16 @@ uint64_t siphash24_tag8_bf(const uint8_t tag8[8], const uint8_t flags, const voi
 
 /**
  * SipHash-1-3 with 8-byte tag prefix as byte array and 1 byte flags XORed into tag8[0].
+ *
+ * Hash (tag8^flags || data) where tag8 is a raw 8-byte array and flags is one byte (XORed into tag8[0]).
+ * Uses SipHash-1-3.
+ *
+ * @param tag8 8-byte tag/prefix.
+ * @param flags One byte flags XORed into tag8[0].
+ * @param data Pointer to the data to hash.
+ * @param len Length of the data in bytes.
+ * @param key 16-byte key.
+ * @return 64-bit hash value.
  */
 uint64_t siphash13_tag8_bf(const uint8_t tag8[8], const uint8_t flags, const void *data, size_t len, const uint8_t key[16]) {
   return siphash13_tag8_u64(sh_load64_le(tag8)^flags, data, len, key);
@@ -353,6 +391,8 @@ uint64_t siphash13_tag8_bf(const uint8_t tag8[8], const uint8_t flags, const voi
 }
 #endif
 
-#endif /* SIPHASH_IMPLEMENTATION */
+/* SIPHASH_IMPLEMENTATION */
+#endif
 
-#endif /* SIPHASH_C99_SIPHASH_H */
+/* SIPHASH_C99_SIPHASH_H */
+#endif

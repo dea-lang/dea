@@ -25,7 +25,15 @@ in `docs/`; recreate directories on demand.
 Generated API documentation is not stored in this tree. `make docs` and `make docs-pdf` generate independent Stage 1 and
 Stage 2 references, with `DOC_STAGE=stage1|stage2|all` (default `all`). `--output-dir` selects their common parent. Each
 stage has its own source manifest, XML database, search index, Markdown, LaTeX, report, and successful preview. Shared
-stdlib and the runtime headers `dea_rt.h`, `dea_siphash.h`, and `l0_runtime.h` appear in both references.
+stdlib and the runtime headers `dea_rt.h`, `dea_siphash.h`, and `l0_runtime.h` appear in both references. Stage 2
+additionally includes its production filesystem C support. Header-only runtime and SipHash implementations remain
+visible, with full function contracts at definitions and short ordinary comments at public prototypes. The
+repository-wide convention is in [docs/reference/c-documentation.md](../../docs/reference/c-documentation.md).
+
+Language bindings and native implementation roles are extracted independently before combining the references. This
+prevents Doxygen from copying contracts across unrelated same-named functions. The undocumented report associates only
+matching declaration/definition identities; its entries remain informational. Tests, examples, benchmark probes,
+vendored code, and generated C are outside the production reference inventory.
 
 Enum references retain the original named payload declarations for inline and multiline source forms. The source adapter
 preserves declaration line positions when translating enums, structs (including inline and empty declarations), and

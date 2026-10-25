@@ -648,6 +648,19 @@ func etc_expr_contains_unqualified_local_ref(self: ExpressionTypeChecker*, expr_
     return false;
 }
 
+/**
+ * Copy declared parameter names for a directly named function.
+ *
+ * Resolve a variable-reference callee to a function symbol, taking names from
+ * its source declaration or loaded interface metadata. Other callee forms and
+ * missing metadata return `null`; an available zero-parameter declaration
+ * returns an empty vector. The callee and declaration metadata are unchanged.
+ *
+ * @param self Expression checker providing symbol and interface lookup state.
+ * @param callee Borrowed expression naming the function to inspect.
+ * @return New vector retaining names in parameter order, to release with
+ *     `sv_free`, or `null` when parameter names are unavailable.
+ */
 func etc_get_call_param_names(self: ExpressionTypeChecker*, callee: ExprNode*) -> StringVector*? {
     if (ord(callee.kind) == ord(EX_VAR_REF)) {
         let sym = etc_lookup_symbol(self, callee.text_value, callee.module_path, callee.name_qualifier);
@@ -670,6 +683,18 @@ func etc_get_call_param_names(self: ExpressionTypeChecker*, callee: ExprNode*) -
     return null;
 }
 
+/**
+ * Copy a struct's field names in declaration order.
+ *
+ * Look up the nominal type's module and name in the signature tables without
+ * changing the type or its field metadata. A known struct with no fields
+ * produces an empty vector.
+ *
+ * @param self Expression checker providing resolved struct signatures.
+ * @param base Borrowed nominal struct type identifying the declaration.
+ * @return New vector retaining the field names, to release with `sv_free`, or
+ *     `null` when no matching struct information exists.
+ */
 func etc_get_struct_field_names(self: ExpressionTypeChecker*, base: Type*) -> StringVector*? {
     let info = sig_lookup_struct_info(self.result.signatures as SignatureTables*, base.module_name, base.name);
     if (info != null) {
@@ -684,6 +709,18 @@ func etc_get_struct_field_names(self: ExpressionTypeChecker*, base: Type*) -> St
     return null;
 }
 
+/**
+ * Copy an enum variant's payload field names from its declaration or signature.
+ *
+ * Prefer a source variant declaration when present; otherwise find the variant
+ * in its owning enum's signature metadata. A known variant without payload
+ * fields produces an empty vector. The symbol and metadata remain unchanged.
+ *
+ * @param self Expression checker providing resolved enum signatures.
+ * @param sym Borrowed symbol to inspect for an enum variant.
+ * @return New vector retaining names in payload order, to release with
+ *     `sv_free`, or `null` for another symbol kind or unavailable variant data.
+ */
 func etc_get_enum_variant_field_names_for_symbol(self: ExpressionTypeChecker*, sym: Symbol*) -> StringVector*? {
     if (ord(sym.kind) != ord(SYM_ENUM_VARIANT)) {
         return null;
@@ -717,6 +754,18 @@ func etc_get_enum_variant_field_names_for_symbol(self: ExpressionTypeChecker*, s
     return null;
 }
 
+/**
+ * Resolve a type-reference spelling and copy its enum variant's field names.
+ *
+ * Use the reference's name, module path, and qualifier for symbol lookup, then
+ * obtain payload names from the source declaration or signature metadata. The
+ * reference and resolved metadata remain unchanged.
+ *
+ * @param self Expression checker providing symbol and enum signature lookup.
+ * @param target_ref Borrowed reference identifying an enum variant constructor.
+ * @return New vector retaining names in payload order, to release with
+ *     `sv_free`, or `null` when no variant or field metadata is available.
+ */
 func etc_get_enum_variant_field_names(self: ExpressionTypeChecker*, target_ref: TypeRef*) -> StringVector*? {
     let sym = etc_lookup_symbol(self, target_ref.name, target_ref.module_path, target_ref.name_qualifier);
     if (sym != null) {
@@ -725,6 +774,25 @@ func etc_get_enum_variant_field_names(self: ExpressionTypeChecker*, target_ref: 
     return null;
 }
 
+/**
+ * Validate named arguments and copy their expression ids into declaration order.
+ *
+ * Require matching label and argument counts and exactly one supplied argument
+ * for each expected name. Report `TYP-0761` for count mismatch, `TYP-0762` for
+ * unknown labels, `TYP-0763` for duplicate expected labels in the supplied
+ * arguments, and `TYP-0764` for missing names. Diagnostic suppression is
+ * respected, but validation still fails. On any error, free the partial result
+ * before returning `null`. Input vectors and expressions are never modified or
+ * consumed; this helper neither evaluates arguments nor checks their types.
+ *
+ * @param self Expression checker with a current unit for diagnostic filenames.
+ * @param span Source span to attach to any named-argument diagnostic.
+ * @param expected_names Borrowed unique parameter or field names in declaration order.
+ * @param given_labels Borrowed supplied labels parallel to `given_args`.
+ * @param given_args Borrowed vector of expression ids in source argument order.
+ * @return New expression-id vector in expected-name order, to release with
+ *     `id_vec_free`, or `null` if any validation fails.
+ */
 func etc_resolve_named_args(self: ExpressionTypeChecker*, span: Span, expected_names: StringVector*, given_labels: StringVector*, given_args: VectorBase*) -> VectorBase*? {
     let count = vec_size(expected_names);
     if (vec_size(given_labels) != vec_size(given_args)) {

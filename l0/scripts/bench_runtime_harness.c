@@ -3,7 +3,34 @@
  * Copyright (c) 2026 gwz
  */
 
+#if !defined(_WIN32) && !defined(__APPLE__) && !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L
+#endif
+
+#ifndef BENCH_SCENARIO
+#define BENCH_SCENARIO "all"
+#endif
+#ifndef BENCH_SCALE
+#define BENCH_SCALE 1
+#endif
+
+#define SIPHASH_IMPLEMENTATION
+#include "l0_runtime.h"
+
+#include <time.h>
+
+#if defined(_WIN32)
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <mach/mach_time.h>
+#endif
+
+#if defined(_WIN32)
+
 /**
+ * White-box benchmark and memory-invariant harness for the shared L0 header runtime
+ * allocation tracker.
+ *
  * White-box benchmark and memory-invariant harness for the shared L0 header
  * runtime allocation tracker.
  *
@@ -28,36 +55,46 @@
  * `max_rss_kib` values.
  * Scenario and scale come from argv ("harness <scenario> <scale>") or from
  * the BENCH_SCENARIO / BENCH_SCALE defines.
+ *
+ * @return Peak resident set size, or zero when unavailable; Windows reports zero.
  */
-
-#if !defined(_WIN32) && !defined(__APPLE__) && !defined(_POSIX_C_SOURCE)
-#define _POSIX_C_SOURCE 200809L
-#endif
-
-#ifndef BENCH_SCENARIO
-#define BENCH_SCENARIO "all"
-#endif
-#ifndef BENCH_SCALE
-#define BENCH_SCALE 1
-#endif
-
-#define SIPHASH_IMPLEMENTATION
-#include "l0_runtime.h"
-
-#include <time.h>
-
-#if defined(_WIN32)
-#include <windows.h>
-#elif defined(__APPLE__)
-#include <mach/mach_time.h>
-#endif
-
-#if defined(_WIN32)
 static long bench_max_rss_kib(void) {
     return 0;
 }
 #else
 #include <sys/resource.h>
+
+/**
+ * White-box benchmark and memory-invariant harness for the shared L0 header runtime
+ * allocation tracker.
+ *
+ * White-box benchmark and memory-invariant harness for the shared L0 header
+ * runtime allocation tracker.
+ *
+ * The harness includes `l0_runtime.h` directly so it can observe tracker
+ * internals (table capacity, quarantine counters, record-pool chunks) that
+ * generated programs cannot reach. Scenarios:
+ *
+ *   tight    N uniform 32-byte alloc/free pairs (allocator-reuse and
+ *            quarantine-retention sensitivity).
+ *   window   Rotating 4096-slot live window with mixed sizes, including
+ *            periodic large blocks so the quarantine byte cap is exercised.
+ *            Uniform sizes would mask tracker effects because the C allocator
+ *            returns the same address each iteration.
+ *   ramp     Grow a large mixed-size live set, hold it, free it all, then
+ *            churn until the tracker table contracts (memory-intensive).
+ *   cached   Warm one pointer-check site per live allocation, then time only
+ *            cache-hit pointer validation sweeps.
+ *   strings  Heap-string churn; lazily registered ARC storage stays out of
+ *            the tracker.
+ *
+ * Output is `scenario.key=value` lines plus process-wide `bench.ptr_sink` and
+ * `max_rss_kib` values.
+ * Scenario and scale come from argv ("harness <scenario> <scale>") or from
+ * the BENCH_SCENARIO / BENCH_SCALE defines.
+ *
+ * @return Peak resident set size, or zero when unavailable; Windows reports zero.
+ */
 static long bench_max_rss_kib(void) {
     struct rusage usage;
     if (getrusage(RUSAGE_SELF, &usage) != 0) {
@@ -71,6 +108,11 @@ static long bench_max_rss_kib(void) {
 }
 #endif
 
+/**
+ * Read a platform monotonic clock in nanoseconds.
+ *
+ * @return Monotonic tick count; exits with status 2 when the clock is unavailable.
+ */
 static uint64_t bench_monotonic_ns(void) {
 #if defined(_WIN32)
     LARGE_INTEGER counter;
@@ -97,10 +139,24 @@ static uint64_t bench_monotonic_ns(void) {
 #endif
 }
 
+/**
+ * Measure elapsed monotonic time in milliseconds.
+ *
+ * @param start_ns Earlier value returned by bench_monotonic_ns.
+ *
+ * @return Elapsed milliseconds; inherits monotonic-clock failure handling.
+ */
 static double bench_ms_since(uint64_t start_ns) {
     return (double)(bench_monotonic_ns() - start_ns) / 1000000.0;
 }
 
+/**
+ * Advance the benchmark deterministic pseudo-random sequence.
+ *
+ * @param rng Non-null caller-owned sequence state, updated in place.
+ *
+ * @return Updated unsigned state; arithmetic wraps modulo the unsigned range.
+ */
 static unsigned bench_rng_next(unsigned *rng) {
     *rng = *rng * 1664525u + 1013904223u;
     return *rng;
@@ -108,10 +164,22 @@ static unsigned bench_rng_next(unsigned *rng) {
 
 static volatile uintptr_t bench_ptr_sink = 0;
 
+/**
+ * Accumulate an address in the observable benchmark sink.
+ *
+ * @param ptr Address to mix; the pointee is neither accessed nor owned.
+ */
 static void bench_escape_ptr(const void *ptr) {
     bench_ptr_sink ^= (uintptr_t)ptr;
 }
 
+/**
+ * Print allocation tracker counters for one benchmark scenario.
+ *
+ * Unchecked builds emit no tracker counters.
+ *
+ * @param scenario Borrowed NUL-terminated output-key prefix.
+ */
 static void bench_print_tracker_stats(const char *scenario) {
 #ifndef L0_RT_UNCHECKED
     printf("%s.table_cap=%zu\n", scenario, _rt_alloc_table_cap);
@@ -124,6 +192,13 @@ static void bench_print_tracker_stats(const char *scenario) {
 #endif
 }
 
+/**
+ * Measure repeated fixed-size runtime allocation and release.
+ *
+ * @param scale Positive multiplier of one million allocation pairs.
+ *
+ * @return Zero on completion, or 2 after allocation failure.
+ */
 static int bench_tight(long scale) {
     long pairs = 1000000L * scale;
     uint64_t start = bench_monotonic_ns();
@@ -139,6 +214,13 @@ static int bench_tight(long scale) {
     return 0;
 }
 
+/**
+ * Measure mixed-size allocation churn in a rotating live window.
+ *
+ * @param scale Positive multiplier of the operation count.
+ *
+ * @return Zero after printing statistics and releasing the window, or 2 after allocation failure.
+ */
 static int bench_window(long scale) {
     enum { WINDOW = 4096 };
     static void *live[WINDOW];
@@ -157,6 +239,7 @@ static int bench_window(long scale) {
         unsigned draw = bench_rng_next(&rng);
         l0_int size = (l0_int)(8 + (draw >> 20 & 1023));
         if (i % 13 == 0) {
+
             /* Periodic large blocks so the quarantine byte cap binds. */
             size = (l0_int)(32768 + (draw & 0xFFFF));
         }
@@ -184,6 +267,14 @@ static int bench_window(long scale) {
     return 0;
 }
 
+/**
+ * Measure growth, release, and settle churn of a large live set.
+ *
+ * @param scale Positive multiplier of the peak live allocation count.
+ *
+ * @return Zero on completion, or 2 after allocation failure; failure aborts this standalone
+ *     harness scenario.
+ */
 static int bench_ramp(long scale) {
     long live_peak = 100000L * scale;
     void **live = (void**)malloc((size_t)live_peak * sizeof(void*));
@@ -231,6 +322,13 @@ static int bench_ramp(long scale) {
     return 0;
 }
 
+/**
+ * Measure warmed pointer-validation cache hits over live allocations.
+ *
+ * @param scale Positive multiplier of the live allocation count.
+ *
+ * @return Zero after releasing the allocations and caches, or 2 after allocation failure.
+ */
 static int bench_cached(long scale) {
     long live_count = 65536L * scale;
     long sweeps = 64;
@@ -281,6 +379,13 @@ static int bench_cached(long scale) {
     return 0;
 }
 
+/**
+ * Measure heap-string allocation and release without raw-byte exposure.
+ *
+ * @param scale Positive multiplier of one million string pairs.
+ *
+ * @return Zero after printing timing and tracker counters; string allocation failure panics.
+ */
 static int bench_strings(long scale) {
     long pairs = 1000000L * scale;
     uint64_t start = bench_monotonic_ns();
@@ -295,6 +400,14 @@ static int bench_strings(long scale) {
     return 0;
 }
 
+/**
+ * Run the selected runtime benchmark scenarios and print their metrics.
+ *
+ * @param argc Process argument count.
+ * @param argv Borrowed arguments selecting the scenario and optional positive scale.
+ *
+ * @return Zero on success, or 2 for an unknown scenario or a reported benchmark failure.
+ */
 int main(int argc, char **argv) {
     const char *scenario = BENCH_SCENARIO;
     long scale = BENCH_SCALE;

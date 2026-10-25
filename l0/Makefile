@@ -263,7 +263,11 @@ test-cleanup: | venv
 test-ci-bootstrap: | venv
 	"$(VENV_PYTHON)" -m pytest -q -n 0 ../scripts/tests/test_ci_bootstrap.py
 
-test-workflows: test-cleanup test-compiler-runtime-flags test-dist test-dea-build test-dist-fallback test-release-tags test-shuffle-sources test-ci-bootstrap
+.PHONY: test-docgen
+test-docgen: | venv
+	"$(VENV_PYTHON)" -m pytest -q -n 0 compiler/stage1_py/tests/cli/test_docgen_*.py ../scripts/tests/test_docgen_function_inventory.py ../scripts/tests/test_c_docs.py ../scripts/tests/test_docgen_inputs.py
+
+test-workflows: test-docgen test-cleanup test-compiler-runtime-flags test-dist test-dea-build test-dist-fallback test-release-tags test-shuffle-sources test-ci-bootstrap
 	@printf 'All workflow tests passed!\n'
 
 test: test-stage1 test-stage2 check-examples test-workflows

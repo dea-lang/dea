@@ -3,19 +3,32 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file preparation_digest_seed_test.c Disposable donor evidence and fallback regressions. */
+/**
+ * @file preparation_digest_seed_test.c Disposable donor evidence and fallback regressions.
+ */
 #include "../support/preparation_support.c"
 
 static const char *seed_key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 static const char *donor_key = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 static const char *current_key = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
-/** Fail a named invariant independently of assertion flags. */
+/**
+ * Fail a named invariant independently of assertion flags.
+ *
+ * @param ok Predicate required to hold for the fixture.
+ * @param name Borrowed NUL-terminated name.
+ */
 static void check(int ok, const char *name) {
     if (!ok) { fprintf(stderr, "digest seed fixture: %s\n", name); exit(1); }
 }
 
-/** Create an invocation with only the storage and digest state under test. */
+/**
+ * Create an invocation with only the storage and digest state under test.
+ *
+ * @param root Borrowed root path.
+ * @param verbosity Preparation diagnostic verbosity selected for the fixture.
+ * @return Owned fixture preparation context released through the normal context cleanup.
+ */
 static PcContext *context(const char *root, int verbosity) {
     PcContext *c = pc_alloc(sizeof(*c));
     c->config = pj_new(PJ_OBJECT);
@@ -28,7 +41,14 @@ static PcContext *context(const char *root, int verbosity) {
     return c;
 }
 
-/** Require the selected digest and whether file hashing was necessary. */
+/**
+ * Require the selected digest and whether file hashing was necessary.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param expected Expected fixture value or classification.
+ * @param reads Expected or updated fixture count of input reads.
+ */
 static void digest(PcContext *c, const char *path, const char *expected, int reads) {
     char *actual = pc_input_digest(c, path, "toolchain-input");
     check(actual && !strcmp(actual, expected), "correct file content digest");
@@ -36,7 +56,13 @@ static void digest(PcContext *c, const char *path, const char *expected, int rea
     free(actual);
 }
 
-/** Write a hint through the production versioned JSON representation. */
+/**
+ * Write a hint through the production versioned JSON representation.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param key Borrowed NUL-terminated object or identity key.
+ * @param schema Fixture memo schema number.
+ */
 static void hint(const char *path, const char *key, int schema) {
     PcJson *j = pj_new(PJ_OBJECT);
     pj_set_number(j, "schema", schema);
@@ -46,6 +72,13 @@ static void hint(const char *path, const char *key, int schema) {
     pj_free(j);
 }
 
+/**
+ * Run preparation digest-seed reuse and invalidation regressions.
+ *
+ * @param argc Number of process argument words.
+ * @param argv Borrowed NUL-terminated process argument vector.
+ * @return Zero when all requested checks succeed; nonzero on a fixture failure.
+ */
 int main(int argc, char **argv) {
     PcContext *c;
     PcJson *donor, *discovery, *changed, *record;
@@ -60,7 +93,9 @@ int main(int argc, char **argv) {
     pc_sha_bytes("changed", 7, modified);
     c = context(argv[1], 0);
     digest(c, path, expected, 1);
-    discovery = pj_new(PJ_OBJECT); /* Deliberately unusable discovery: only files may be donated. */
+
+    /* Deliberately unusable discovery: only files may be donated. */
+    discovery = pj_new(PJ_OBJECT);
     pc_save_input_memo(c, donor_key, discovery);
     hint_path = pc_memo_path(c, "digest-seeds", seed_key, 0);
     donor_path = pc_memo_path(c, "toolchains", donor_key, 0);
@@ -82,6 +117,7 @@ int main(int argc, char **argv) {
         c = context(argv[1], verbosity);
         digest(c, path, expected, 0);
         check(c->digest_seed_loaded && c->digest_donor, "one donor loaded");
+
         /* Removing the donor after loading does not affect the copied record. */
         check(remove(donor_path) == 0, "donor removed");
         pc_save_input_memo(c, current_key, discovery);
@@ -94,6 +130,7 @@ int main(int argc, char **argv) {
         check(pc_write_json(donor_path, donor), "restore donor");
         hint(hint_path, donor_key, 1);
     }
+
     /* Rejected hints must not even load a donor, and a late hint is not retried. */
     for (i = 0; i < 5; ++i) {
         if (i == 0) check(remove(hint_path) == 0, "hint removed");
@@ -148,6 +185,7 @@ int main(int argc, char **argv) {
     check(remove(path) == 0 && pc_write_file(path, "changed", 7), "replace selected file");
     c = context(argv[1], 3);
     digest(c, path, modified, 1);
+
     /* Hint publication failure is ignored after successful memo publication. */
     check(remove(hint_path) == 0 && pc_mkdirs(hint_path), "block hint publication");
     pc_save_input_memo(c, current_key, discovery);

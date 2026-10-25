@@ -27,31 +27,43 @@ typedef char FsChar;
 /* Independent host primitive hooks for deterministic failure boundary probes. */
 #if !defined(_WIN32)
 #ifdef DEA_FS_RENAME
+
+/* Rename a native path through the fixture-selectable hook. */
 extern int DEA_FS_RENAME(const char *source, const char *destination);
 #else
 #define DEA_FS_RENAME rename
 #endif
 #ifdef DEA_FS_CLOSE
+
+/* Close a native file descriptor through the fixture-selectable hook. */
 extern int DEA_FS_CLOSE(int fd);
 #else
 #define DEA_FS_CLOSE close
 #endif
 #ifdef DEA_FS_READDIR
+
+/* Read a native directory entry through the fixture-selectable hook. */
 extern struct dirent *DEA_FS_READDIR(DIR *dir);
 #else
 #define DEA_FS_READDIR readdir
 #endif
 #ifdef DEA_FS_CLOSEDIR
+
+/* Close a native directory stream through the fixture-selectable hook. */
 extern int DEA_FS_CLOSEDIR(DIR *dir);
 #else
 #define DEA_FS_CLOSEDIR closedir
 #endif
 #ifdef DEA_FS_READ
+
+/* Read native descriptor bytes through the fixture-selectable hook. */
 extern ssize_t DEA_FS_READ(int fd, void *buffer, size_t size);
 #else
 #define DEA_FS_READ read
 #endif
 #ifdef DEA_FS_WRITE
+
+/* Write native descriptor bytes through the fixture-selectable hook. */
 extern ssize_t DEA_FS_WRITE(int fd, const void *buffer, size_t size);
 #else
 #define DEA_FS_WRITE write
@@ -80,7 +92,6 @@ static FsError fs_error(int kind) {
 
 /**
  * Capture the failing host call immediately.
- *
  * @return Captured error from the immediately preceding failing host call.
  */
 static FsError fs_native_error(void) {
@@ -221,6 +232,7 @@ static FsMetadata fs_metadata_native(const FsChar *path, int follow) {
     uint64_t size = ((uint64_t)st.nFileSizeHigh << 32) | st.nFileSizeLow;
     if (size <= INT64_MAX) out.size = (dea_opt_long){1, (dea_long)size};
     uint64_t ticks = ((uint64_t)st.ftLastWriteTime.dwHighDateTime << 32) | st.ftLastWriteTime.dwLowDateTime;
+
     /* Divide before subtracting so even pre-epoch times retain their sign. */
     out.mtime_sec = (dea_opt_long){1, (dea_long)(ticks / 10000000) - INT64_C(11644473600)};
     out.mtime_nsec = (dea_opt_int){1, (dea_int)((ticks % 10000000) * 100)};
@@ -246,6 +258,8 @@ static FsMetadata fs_metadata_native(const FsChar *path, int follow) {
 /**
  * Public metadata transport, with shared input validation.
  *
+ * Query filesystem metadata with explicit final-link following.
+ *
  * @param path Filesystem path to inspect.
  * @param follow Whether to follow the final symbolic link or reparse point.
  * @return Metadata with preserved widths, or a captured failure.
@@ -259,6 +273,8 @@ FsMetadata rt_fs_metadata(dea_string path, dea_bool follow) {
 
 /**
  * Compare followed native identities; a failed lookup is never false success.
+ *
+ * Compare followed native identities without comparing path spellings.
  *
  * @param left First path whose final link is followed.
  * @param right Second path whose final link is followed.
@@ -340,6 +356,7 @@ static FsPath fs_path_result(FsChar *native, FsError error) {
 /**
  * Return the working-directory spelling as supplied by the host.
  *
+ * Return the process working-directory spelling.
  * @return Owned host working-directory spelling, or a captured failure.
  */
 FsPath rt_fs_current_dir(void) {
@@ -350,6 +367,8 @@ FsPath rt_fs_current_dir(void) {
 
 /**
  * Anchor at call time. POSIX preserves dots and literal backslashes.
+ *
+ * Anchor a path at call time without requiring an existing object.
  *
  * @param path Path to anchor without requiring an existing object.
  * @return Owned absolute spelling, or a captured failure.
@@ -382,6 +401,8 @@ FsPath rt_fs_absolute(dea_string path) {
 
 /**
  * Resolve existing aliases without equating canonical spelling with identity.
+ *
+ * Resolve an existing path through aliases.
  *
  * @param path Existing path to resolve through aliases.
  * @return Owned resolved host spelling, or a captured failure.
@@ -416,6 +437,8 @@ FsPath rt_fs_canonicalize(dea_string path) {
 
 /**
  * Follow the supplied directory and change the process-global working directory.
+ *
+ * Follow a directory path and change process-global working-directory state.
  *
  * @param path Directory path to follow and select.
  * @return Successful status, or a captured failure.
@@ -461,6 +484,8 @@ static FsError fs_mkdir(const FsChar *path, int allow_existing) {
 /**
  * Create missing prefixes in order; on failure keep successful earlier creations.
  *
+ * Create one directory or missing parent directories.
+ *
  * @param path Directory path to create.
  * @param recursive Whether to create missing parents and accept existing directories.
  * @return Successful status, or the first captured failure.
@@ -472,6 +497,7 @@ FsStatus rt_fs_create_dir(dea_string path, dea_bool recursive) {
     if (recursive) {
         size_t len = fs_length(native), start = 1;
 #if defined(_WIN32)
+
         /* Ordinary paths anchor/normalize once; verbatim paths must retain their components. */
         if (!fs_verbatim_path(native)) {
             FsPath abs = rt_fs_absolute(path);
@@ -500,6 +526,8 @@ FsStatus rt_fs_create_dir(dea_string path, dea_bool recursive) {
 
 /**
  * Remove a non-directory entry, including a final symbolic link itself.
+ *
+ * Unlink one non-directory entry, including a final link itself.
  *
  * @param path Non-directory entry to unlink, including a final link itself.
  * @return Successful status, or a captured failure.
@@ -610,6 +638,8 @@ static FsError fs_remove_tree(const wchar_t *path, unsigned depth) {
 /**
  * Remove one empty real directory or a tree; recursive final links are unlinked.
  *
+ * Remove an empty real directory or a tree without traversing final links.
+ *
  * @param path Directory or, for recursive removal, final link to remove.
  * @param recursive Whether to remove a tree instead of one empty real directory.
  * @return Successful status, or the first captured failure.
@@ -636,6 +666,7 @@ FsStatus rt_fs_remove_dir(dea_string path, dea_bool recursive) {
             char *name = native;
             int parent = AT_FDCWD;
             if (slash) {
+
                 /* Retain the final parent separator, including an exact // root. */
                 name = slash + 1;
                 char first = *name; *name = 0;
@@ -662,6 +693,8 @@ FsStatus rt_fs_remove_dir(dea_string path, dea_bool recursive) {
 
 /**
  * Native rename has no copy fallback. File replacement rejects real directories.
+ *
+ * Rename an entry with native overwrite rules or non-directory replacement checks.
  *
  * @param source Entry path to move.
  * @param destination Destination entry path.
@@ -693,6 +726,8 @@ FsStatus rt_fs_rename(dea_string source, dea_string destination, dea_bool replac
 
 /**
  * Copy bytes to an exclusively created destination; failures leave partial data.
+ *
+ * Copy regular-file bytes exclusively to a new destination.
  *
  * @param source Path followed to a regular source file.
  * @param destination New destination path; existing entries are rejected.
@@ -755,6 +790,8 @@ typedef struct FsDir {
 /**
  * Open a cursor without materializing or sorting entries.
  *
+ * Open an owned incremental directory cursor.
+ *
  * @param path Directory path to follow and enumerate incrementally.
  * @return Owned native cursor, or a captured open failure.
  */
@@ -796,6 +833,8 @@ FsDirOpen rt_dir_open(dea_string path) {
 /**
  * Return entry/end/error, copying each name before advancing the host cursor.
  *
+ * Advance a live cursor while distinguishing entry, end, and failure.
+ *
  * @param handle Live cursor returned by rt_dir_open.
  * @return Owned entry name, clean end, or the saved iteration failure.
  */
@@ -827,6 +866,7 @@ FsDirNext rt_dir_next(void *handle) {
         }
         if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
         out.name = fs_string(entry->d_name, &out.error);
+
         /* d_type is an optional hint. Never fall back to stat for DT_UNKNOWN. */
 #if defined(_DIRENT_HAVE_D_TYPE) || defined(__APPLE__)
         out.file_type = entry->d_type == DT_REG ? 1 : entry->d_type == DT_DIR ? 2 :
@@ -842,6 +882,8 @@ FsDirNext rt_dir_next(void *handle) {
 
 /**
  * Consume a valid cursor exactly once, including when native close fails.
+ *
+ * Close and consume one live native cursor, including on native close failure.
  *
  * @param handle Live native cursor to consume exactly once.
  * @return Successful status, or the captured native close failure.

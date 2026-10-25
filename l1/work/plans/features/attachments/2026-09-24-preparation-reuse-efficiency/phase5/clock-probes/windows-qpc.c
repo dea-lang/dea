@@ -3,7 +3,9 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file Frozen production-function extraction for simulated clock correctness evidence. */
+/**
+ * @file Frozen production-function extraction for simulated clock correctness evidence.
+ */
 #include <stdint.h>
 #include <stddef.h>
 #include <inttypes.h>
@@ -14,8 +16,31 @@
 typedef struct { int64_t QuadPart; } LARGE_INTEGER;
 static int counter_ok = 1, frequency_ok = 1;
 static int64_t counter_value = 0, frequency_value = 10000000;
+
+/**
+ * Supply the controlled Windows performance-counter fixture value.
+ *
+ * @param p Caller-owned output receiving the controlled counter value.
+ * @return Configured success status; always writes the fixture counter value.
+ */
 static int QueryPerformanceCounter(LARGE_INTEGER *p) { p->QuadPart = counter_value; return counter_ok; }
+
+/**
+ * Supply the controlled Windows performance-frequency fixture value.
+ *
+ * @param p Caller-owned output receiving the controlled frequency value.
+ * @return Configured success status; always writes the fixture frequency value.
+ */
 static int QueryPerformanceFrequency(LARGE_INTEGER *p) { p->QuadPart = frequency_value; return frequency_ok; }
+
+/**
+ * Capture a compiler-private monotonic snapshot as two native int32 values.
+ *
+ * @param output Caller-owned writable output span, or NULL for a length query.
+ * @param capacity Writable output capacity in bytes.
+ * @return One after writing both components; zero for an invalid output or unavailable or unrepresentable
+ * clock.
+ */
 int32_t l1c_timing_monotonic(uint8_t *output, int32_t capacity) {
     int32_t parts[2];
     if (output == NULL || capacity < (int32_t)sizeof(parts)) return 0;
@@ -50,6 +75,14 @@ int32_t l1c_timing_monotonic(uint8_t *output, int32_t capacity) {
     return 1;
 }
 
+/**
+ * Check a simulated monotonic snapshot against its expected status and components.
+ *
+ * @param expected Expected success flag from the selected monotonic clock adapter.
+ * @param sec Whole seconds in the normalized time value.
+ * @param nsec Nanosecond component of the normalized time value.
+ * @return Zero on a match; a distinct nonzero code for an invalid-input, status, data, or bounds mismatch.
+ */
 static int check_snapshot(int expected, int32_t sec, int32_t nsec) {
     uint8_t storage[11], original[11];
     int32_t actual[2];
@@ -65,6 +98,10 @@ static int check_snapshot(int expected, int32_t sec, int32_t nsec) {
     return 0;
 }
 
+/**
+ * Exercise controlled Windows performance-counter snapshots.
+ * @return Zero when all requested checks succeed; nonzero on a fixture failure.
+ */
 int main(void) {
     if (check_snapshot(1,0,0)) return 1;
     counter_ok = 0; if (check_snapshot(0,0,0)) return 2; counter_ok = 1;

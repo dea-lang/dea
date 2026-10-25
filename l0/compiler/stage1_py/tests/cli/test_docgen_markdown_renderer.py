@@ -1544,7 +1544,7 @@ def test_render_compat_redirect_pages_creates_namespace_alias(tmp_path: Path) ->
     markdown_page.write_text(
         """# compiler/stage1_py/l0_driver.py
 
-<a id="namespace-l0-driver"></a>
+<a id="namespace-l0_driver"></a>
 ## Namespace `l0_driver`
 """,
         encoding="utf-8",

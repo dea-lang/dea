@@ -67,7 +67,8 @@ enum {
     L0C_FS_OTHER = 3
 };
 
-/** Caller-owned snapshot; status: 0 trusted, 1 resolution, 2 inspection,
+/**
+ * Caller-owned snapshot; status: 0 trusted, 1 resolution, 2 inspection,
  * 3 non-directory, 4 owner, 5 sticky bit, 6 allocation/invalid input,
  * 7 handle cleanup, 8 canonical-path retry exhaustion.
  * Fields are native byte strings; UIDs use unsigned decimal without narrowing.
@@ -82,7 +83,15 @@ typedef struct {
 } l0c_fs_temp_report;
 
 #if defined(_WIN32)
-/** Store a previously captured Win32 error before cleanup can replace it. */
+
+/**
+ * Store a previously captured Win32 error before cleanup can replace it.
+ *
+ * @param report Optional caller-owned failure report to update.
+ * @param status Captured compiler filesystem status code.
+ * @param operation Borrowed static name of the failed Win32 operation.
+ * @param error Previously captured Win32 error number.
+ */
 static void l0c_fs_temp_windows_failure(
     l0c_fs_temp_report *report, int32_t status, const char *operation, DWORD error
 ) {
@@ -95,7 +104,14 @@ static void l0c_fs_temp_windows_failure(
 #endif
 
 #if !defined(_WIN32)
-/** Capture the failing component during validation, before restoring separators. */
+
+/**
+ * Capture the failing component during validation, before restoring separators.
+ *
+ * @param report Optional caller-owned failure report to update.
+ * @param status Captured compiler filesystem status code.
+ * @param path Borrowed native path bytes; no embedded NUL is permitted.
+ */
 static void l0c_fs_temp_failure(l0c_fs_temp_report *report, int32_t status, const char *path) {
     size_t length;
     char *copy;
@@ -113,6 +129,14 @@ static void l0c_fs_temp_failure(l0c_fs_temp_report *report, int32_t status, cons
 }
 #endif
 
+/**
+ * Validate one nonempty native path byte span.
+ *
+ * @param path Borrowed path bytes; null is invalid.
+ * @param path_len Positive number of readable bytes.
+ *
+ * @return Nonzero when the span is nonempty and contains no NUL.
+ */
 static int l0c_fs_raw_path_is_valid(
     const uint8_t *path,
     int32_t path_len
@@ -122,6 +146,15 @@ static int l0c_fs_raw_path_is_valid(
            memchr(path, '\0', (size_t)path_len) == NULL;
 }
 
+/**
+ * Copy a valid path byte span into an owned native C string.
+ *
+ * @param path Borrowed native path bytes.
+ * @param path_len Positive byte count excluding any terminator.
+ *
+ * @return Newly allocated NUL-terminated copy, or NULL on invalid input or allocation failure;
+ *     the caller frees it.
+ */
 static char *l0c_fs_native_path(
     const uint8_t *path,
     int32_t path_len
@@ -150,6 +183,13 @@ static char *l0c_fs_native_path(
  * Calling with `output == NULL` and zero capacity queries the required byte
  * length. A sufficiently large non-null buffer receives the exact bytes
  * without a trailing NUL.
+ *
+ * @param parent Borrowed trusted parent path bytes.
+ * @param parent_len Positive parent path length in bytes.
+ * @param child Borrowed internal child-name bytes.
+ * @param child_len Positive child-name length in bytes.
+ * @param output Caller-owned byte buffer, or NULL to query the required size.
+ * @param output_capacity Non-negative output capacity in bytes; must be zero for NULL output.
  *
  * @return Required byte length, or -1 on invalid input or overflow.
  */
@@ -204,6 +244,16 @@ int32_t l0c_fs_join_child(
  * the same paths. Directory access control is inherited from the selected
  * temporary parent under the documented trusted-ACL assumption.
  */
+
+/**
+ * Classify one native path using the selected link-following policy.
+ *
+ * @param path Borrowed NUL-terminated native path.
+ * @param follow Nonzero to follow symbolic links or reparse points.
+ *
+ * @return L0C_FS_ABSENT, L0C_FS_REGULAR, L0C_FS_DIRECTORY, L0C_FS_OTHER, or L0C_FS_ERROR on
+ *     inspection or handle cleanup failure.
+ */
 static int32_t l0c_fs_path_kind_native(const char *path, int follow) {
     BY_HANDLE_FILE_INFORMATION info;
     DWORD flags = FILE_FLAG_BACKUP_SEMANTICS;
@@ -246,6 +296,19 @@ static int32_t l0c_fs_path_kind_native(const char *path, int follow) {
     return L0C_FS_REGULAR;
 }
 
+/**
+ * Resolve and validate a native compiler temporary parent.
+ *
+ * POSIX checks every resolved directory owner and shared-write sticky-bit policy. Windows
+ * queries a directory handle, retries canonical-path sizing at most four times, and relies on
+ * the selected parent ACL. Failure closes handles and frees intermediate path storage.
+ *
+ * @param path Borrowed NUL-terminated native directory path.
+ * @param report Optional caller-owned report populated with a captured failure.
+ *
+ * @return Owned canonical path to free with free, or NULL after resolution, trust, allocation,
+ *     or handle cleanup failure.
+ */
 static char *l0c_fs_resolve_temp_parent_native(const char *path, l0c_fs_temp_report *report) {
     DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
     HANDLE handle = CreateFileA(
@@ -307,6 +370,7 @@ static char *l0c_fs_resolve_temp_parent_native(const char *path, l0c_fs_temp_rep
     if (attempt == 4 && report != NULL) report->status = 8;
     if (!CloseHandle(handle)) {
         DWORD error = GetLastError();
+
         /* A completed query has no earlier error; otherwise retain its cause. */
         if (resolved != NULL) {
             l0c_fs_temp_windows_failure(report, 7, "CloseHandle", error);
@@ -327,6 +391,15 @@ static char *l0c_fs_resolve_temp_parent_native(const char *path, l0c_fs_temp_rep
 
 #else
 
+/**
+ * Classify one native path using the selected link-following policy.
+ *
+ * @param path Borrowed NUL-terminated native path.
+ * @param follow Nonzero to follow symbolic links or reparse points.
+ *
+ * @return L0C_FS_ABSENT, L0C_FS_REGULAR, L0C_FS_DIRECTORY, L0C_FS_OTHER, or L0C_FS_ERROR on
+ *     inspection or handle cleanup failure.
+ */
 static int32_t l0c_fs_path_kind_native(const char *path, int follow) {
     struct stat info;
     int status = follow ? stat(path, &info) : lstat(path, &info);
@@ -345,6 +418,16 @@ static int32_t l0c_fs_path_kind_native(const char *path, int follow) {
     return L0C_FS_ERROR;
 }
 
+/**
+ * Validate the owner and sticky-bit policy for one POSIX directory.
+ *
+ * @param path Borrowed NUL-terminated directory path.
+ * @param effective_uid Effective process UID accepted along with root ownership.
+ * @param report Optional failure snapshot receiving the offending component and UIDs.
+ *
+ * @return Nonzero for a directory owned by root or the effective UID whose shared-write
+ *     permissions are protected by the sticky bit.
+ */
 static int l0c_fs_posix_component_is_trusted(
     const char *path,
     uid_t effective_uid,
@@ -375,6 +458,15 @@ static int l0c_fs_posix_component_is_trusted(
     return 1;
 }
 
+/**
+ * Validate every directory in a resolved POSIX parent chain.
+ *
+ * @param resolved Writable absolute path; trailing separators are trimmed and temporary
+ *     component terminators are restored.
+ * @param report Optional caller-owned failure snapshot.
+ *
+ * @return Nonzero when root and every component satisfy the directory trust policy.
+ */
 static int l0c_fs_posix_trust_chain_is_valid(char *resolved, l0c_fs_temp_report *report) {
     size_t len = strlen(resolved);
     uid_t effective_uid = geteuid();
@@ -409,6 +501,19 @@ static int l0c_fs_posix_trust_chain_is_valid(char *resolved, l0c_fs_temp_report 
     return 1;
 }
 
+/**
+ * Resolve and validate a native compiler temporary parent.
+ *
+ * POSIX checks every resolved directory owner and shared-write sticky-bit policy. Windows
+ * queries a directory handle, retries canonical-path sizing at most four times, and relies on
+ * the selected parent ACL. Failure closes handles and frees intermediate path storage.
+ *
+ * @param path Borrowed NUL-terminated native directory path.
+ * @param report Optional caller-owned report populated with a captured failure.
+ *
+ * @return Owned canonical path to free with free, or NULL after resolution, trust, allocation,
+ *     or handle cleanup failure.
+ */
 static char *l0c_fs_resolve_temp_parent_native(const char *path, l0c_fs_temp_report *report) {
     char *resolved = realpath(path, NULL);
     if (resolved == NULL) {
@@ -431,8 +536,13 @@ static char *l0c_fs_resolve_temp_parent_native(const char *path, l0c_fs_temp_rep
  * without a trailing NUL. A larger returned length asks the caller to retry.
  *
  * POSIX validates the complete resolved owner/sticky-bit directory chain.
- * Windows uses actual-host lexical canonicalization and the documented
- * trusted-parent ACL assumption.
+ * Windows resolves an opened directory handle to its final path and relies
+ * on the documented trusted-parent ACL assumption.
+ *
+ * @param path Borrowed native path bytes; no embedded NUL is permitted.
+ * @param path_len Positive path length in bytes, excluding a terminator.
+ * @param output Caller-owned byte buffer, or NULL to query the required size.
+ * @param output_capacity Non-negative output capacity in bytes; must be zero for NULL output.
  *
  * @return Canonical byte length, or -1 on invalid input, trust failure, or an
  *     operating-system error.
@@ -475,7 +585,16 @@ int32_t l0c_fs_resolve_trusted_temp_parent(
     return result;
 }
 
-/** Inspect once and return a caller-owned snapshot, or NULL on invalid input/allocation failure. */
+/**
+ * Inspect once and return a caller-owned snapshot, or NULL on invalid input/allocation
+ * failure.
+ *
+ * @param path Borrowed native path bytes; no embedded NUL is permitted.
+ * @param path_len Positive path length in bytes, excluding a terminator.
+ *
+ * @return New caller-owned snapshot to release exactly once with l0c_fs_temp_parent_free, or
+ *     NULL on invalid input or allocation failure.
+ */
 uint8_t *l0c_fs_inspect_temp_parent(const uint8_t *path, int32_t path_len) {
     char *native = l0c_fs_native_path(path, path_len);
     char *resolved;
@@ -497,17 +616,38 @@ uint8_t *l0c_fs_inspect_temp_parent(const uint8_t *path, int32_t path_len) {
     return (uint8_t *)report;
 }
 
-/** Read status from a live snapshot; NULL denotes an internal failure. */
+/**
+ * Read status from a live snapshot; NULL denotes an internal failure.
+ *
+ * @param raw Live caller-owned snapshot returned by l0c_fs_inspect_temp_parent, or NULL where
+ *     accepted.
+ *
+ * @return Captured status code, or 6 for a null snapshot.
+ */
 int32_t l0c_fs_temp_parent_status(const uint8_t *raw) {
     const l0c_fs_temp_report *report = (const l0c_fs_temp_report *)raw;
     return report == NULL ? 6 : report->status;
 }
 
-/** Copy snapshot field 0 (path), 1 (owner UID), 2 (effective UID),
+/**
+ * Copy snapshot field 0 (path), 1 (owner UID), 2 (effective UID), 3 (failing Win32
+ * operation), or 4 (unsigned Windows error code).
+ *
+ * Copy snapshot field 0 (path), 1 (owner UID), 2 (effective UID),
  * 3 (failing Win32 operation), or 4 (unsigned Windows error code).
  * Windows fields are empty unless a Windows API failure was captured.
  * Return required byte length without NUL, or -1 for invalid arguments/overflow.
  * NULL/zero queries and undersized buffers never write; no inspection is repeated.
+ *
+ * @param raw Live caller-owned snapshot returned by l0c_fs_inspect_temp_parent, or NULL where
+ *     accepted.
+ * @param field Field selector: 0 path, 1 owner UID, 2 effective UID, 3 Win32 operation, or 4
+ *     Win32 error.
+ * @param output Caller-owned byte buffer, or NULL to query the required size.
+ * @param capacity Non-negative output capacity in bytes; must be zero for NULL output.
+ *
+ * @return Required byte count excluding NUL, or -1 for invalid arguments or length overflow;
+ *     undersized buffers are untouched.
  */
 int32_t l0c_fs_temp_parent_field(
     const uint8_t *raw, int32_t field, uint8_t *output, int32_t capacity
@@ -528,7 +668,12 @@ int32_t l0c_fs_temp_parent_field(
     return (int32_t)length;
 }
 
-/** Release one caller-owned snapshot; NULL is accepted. */
+/**
+ * Release one caller-owned snapshot; NULL is accepted.
+ *
+ * @param raw Live caller-owned snapshot returned by l0c_fs_inspect_temp_parent, or NULL where
+ *     accepted.
+ */
 void l0c_fs_temp_parent_free(uint8_t *raw) {
     l0c_fs_temp_report *report = (l0c_fs_temp_report *)raw;
     if (report != NULL) {
@@ -544,6 +689,10 @@ void l0c_fs_temp_parent_free(uint8_t *raw) {
  * and is filtered by the process umask in the conventional way. On MinGW,
  * `mode` is validated but ignored because Win32 directory creation has no
  * POSIX mode.
+ *
+ * @param path Borrowed native path bytes; no embedded NUL is permitted.
+ * @param path_len Positive path length in bytes, excluding a terminator.
+ * @param mode POSIX permission and special bits through 07777; validated but ignored on Windows.
  *
  * @return 1 after creation, 0 when the path already exists, or -1 on error.
  */
@@ -583,6 +732,16 @@ int32_t l0c_fs_mkdir(
     return result;
 }
 
+/**
+ * Classify a bounded path byte span and release its native copy.
+ *
+ * @param path Borrowed native path bytes.
+ * @param path_len Positive byte count excluding a terminator.
+ * @param follow Nonzero to follow links.
+ *
+ * @return Filesystem kind code, or L0C_FS_ERROR on invalid input, allocation, or inspection
+ *     failure.
+ */
 static int32_t l0c_fs_path_kind(
     const uint8_t *path,
     int32_t path_len,
@@ -601,6 +760,9 @@ static int32_t l0c_fs_path_kind(
 /**
  * Classify one path without following symbolic links or reparse points.
  *
+ * @param path Borrowed native path bytes; no embedded NUL is permitted.
+ * @param path_len Positive path length in bytes, excluding a terminator.
+ *
  * @return -1 on error, 0 if absent, 1 for a regular file, 2 for a directory,
  *     or 3 for another filesystem object.
  */
@@ -614,6 +776,9 @@ int32_t l0c_fs_path_kind_nofollow(
 /**
  * Classify one path after following symbolic links or reparse points.
  *
+ * @param path Borrowed native path bytes; no embedded NUL is permitted.
+ * @param path_len Positive path length in bytes, excluding a terminator.
+ *
  * @return -1 on error, 0 if absent or dangling, 1 for a regular file, 2 for a
  *     directory, or 3 for another filesystem object.
  */
@@ -626,6 +791,9 @@ int32_t l0c_fs_path_kind_follow(
 
 /**
  * Remove one regular file without following a substituted object.
+ *
+ * @param path Borrowed native path bytes; no embedded NUL is permitted.
+ * @param path_len Positive path length in bytes, excluding a terminator.
  *
  * @return 1 after removal, 0 when absent, or -1 on invalid input, an
  *     unsupported object kind, or an operating-system error.
@@ -668,6 +836,9 @@ int32_t l0c_fs_remove_regular_file(
 
 /**
  * Remove one empty real directory without accepting a symlink/reparse point.
+ *
+ * @param path Borrowed native path bytes; no embedded NUL is permitted.
+ * @param path_len Positive path length in bytes, excluding a terminator.
  *
  * @return 1 after removal, 0 when absent, or -1 on error.
  */

@@ -10,6 +10,7 @@
  *
  * @param left Left operand.
  * @param right Right operand.
+ *
  * @return The sum of the operands.
  */
 dea_int add_in_c(dea_int left, dea_int right)

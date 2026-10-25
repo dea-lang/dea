@@ -636,8 +636,9 @@ def check_windows_path_spellings(root: Path) -> None:
     profile = (SUPPORT / "preparation/profile.h").read_text()
     separator = platform[platform.index("static int pc_separator("):platform.index("static char *pc_join(")]
     comparisons = platform[platform.index("static int pc_path_equal("):
-                           platform.index("/** Resolve aliases through")]
-    absolute = profile[profile.index("static int pc_profile_absolute("):profile.index("/** Bound argv")]
+                           platform.index("static char *pc_canonical_future(")]
+    absolute = profile[profile.index("static int pc_profile_absolute("):
+                       profile.index("static PcJson *pc_profile_options(")]
     source = root / "windows-profile-paths.c"
     source.write_text(r'''#include <assert.h>
 #include <ctype.h>

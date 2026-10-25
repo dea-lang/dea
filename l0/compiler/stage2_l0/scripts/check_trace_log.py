@@ -60,6 +60,18 @@ def _iter_events(
     counts = {"mem_events": 0, "arc_events": 0, "total_events": 0}
 
     def event_iter() -> Iterable[dict[str, str]]:
+        """Consume trace lines lazily, updating shared counts and warnings.
+
+        Ignore lines that do not match a memory or ARC trace prefix. Count each
+        matching event, and warn when its payload has no ``op`` field while still
+        yielding it. Counts and warnings become complete only upon exhaustion.
+        Input-iterator failures propagate after any preceding updates.
+
+        Yields:
+            Event dictionaries containing the trace family, source line number,
+            raw line, and parsed payload fields. Payload fields override matching
+            metadata keys, and later duplicate payload keys replace earlier ones.
+        """
         for line_no, raw in enumerate(lines, start=1):
             m = TRACE_RE.match(raw.lstrip())
             if not m:
@@ -115,11 +127,29 @@ def _validate_events(
     str_last_ptr_line: dict[str, str] = {}
 
     def forget_object(ptr: str) -> None:
+        """Discard all object balance and allocation metadata for a pointer.
+
+        Remove entries from the enclosing object balance, allocation metadata,
+        and last-seen-line mappings. Missing entries are harmless, and string
+        tracking for the same pointer is unchanged.
+
+        Args:
+            ptr: Pointer spelling from the trace log.
+        """
         obj_balance.pop(ptr, None)
         obj_new_meta.pop(ptr, None)
         obj_last_ptr_line.pop(ptr, None)
 
     def forget_string(ptr: str) -> None:
+        """Discard all string balance and allocation metadata for a pointer.
+
+        Remove entries from the enclosing string balance, allocation line,
+        allocation location, and last-seen-line mappings. Missing entries are
+        harmless, and object tracking for the same pointer is unchanged.
+
+        Args:
+            ptr: Pointer spelling from the trace log.
+        """
         str_balance.pop(ptr, None)
         str_alloc_line.pop(ptr, None)
         str_alloc_loc.pop(ptr, None)

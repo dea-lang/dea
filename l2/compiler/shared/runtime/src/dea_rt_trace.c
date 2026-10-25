@@ -13,7 +13,9 @@ static int _rt_trace_flush_each_event = 1;
 static int _rt_trace_output_started = 0;
 static char _rt_trace_stderr_buffer[_RT_TRACE_STDERR_BUFFER_SIZE];
 
-/** Select the process-wide trace flush policy before user initialization. */
+/**
+ * Select the process-wide trace flush policy before user initialization.
+ */
 void _rt_trace_init(void) {
     const char *policy = getenv("DEA_TRACE_FLUSH");
 
@@ -32,7 +34,9 @@ void _rt_trace_init(void) {
     }
 }
 
-/** Flush one completed trace event when the durable policy is active. */
+/**
+ * Flush one completed trace event when the durable policy is active.
+ */
 void _rt_trace_event_end(void) {
     _rt_trace_output_started = 1;
     if (_rt_trace_flush_each_event) {
@@ -40,7 +44,9 @@ void _rt_trace_event_end(void) {
     }
 }
 
-/** Flush pending block-buffered trace bytes at a process boundary. */
+/**
+ * Flush pending block-buffered trace bytes at a process boundary.
+ */
 void _rt_trace_flush_pending(void) {
     fflush(stderr);
 }

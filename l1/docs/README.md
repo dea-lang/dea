@@ -72,6 +72,16 @@ Graphviz, the shared Python environment, and vendored m.css; `make docs-pdf` add
 toolchain and builds the full indexed `pdf/dea_l1_api_reference.pdf`. Preview PDF builds cannot produce distribution
 evidence.
 
+Native inputs include production runtime `.c` units and implementation headers, including filesystem helpers and
+`compiler/support/preparation/profile.h`. C functions keep complete contracts at definitions; header prototypes carry
+only the exact brief. Header-only functions remain fully documented. See [docs/reference/c-documentation.md][c-docs] for
+the shared convention and validation command.
+
+Language bindings and alternative native providers are extracted independently before combining the reference. Matching
+C prototypes and definitions share documentation through explicit source identity and signature; unrelated static
+functions, signatures, and language bindings remain distinct. Tests, examples, benchmark probes, vendored code, and
+generated C are outside the production reference inventory.
+
 The source adapter preserves declaration lines for inline, empty, multiline, and split-header structs, including
 comments within fields and after closing braces. It retains L1 callback, array, and nullable type conversion for
 Doxygen; rendered signatures use the original source declarations. Export manifests are removed before declaration
@@ -101,6 +111,7 @@ builds the complete PDF and verified offline bundle, then explicitly prints the 
 Entries are informational and do not fail the job, matching L0. Reports, available build diagnostics, and any completed
 bundle are retained on build failure. Local generation and release workflows retain their existing coverage policy.
 
+[c-docs]: ../../docs/reference/c-documentation.md
 [developer-guide]: ../README.md
 [explicit-profiles]: reference/explicit-profiles.md
 [releases]: releases/README.md

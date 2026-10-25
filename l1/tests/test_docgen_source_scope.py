@@ -19,6 +19,12 @@ def test_source_scope_and_native_build_contract():
     assert not any(set(p.parts) & {'tests', 'fixtures', 'build', 'work'} for p in files)
     assert Path('compiler/src/l1c.l0') in files
     assert Path('compiler/support/installation.h') in files
+    assert Path('compiler/support/preparation/profile.h') in files
+    assert Path('compiler/shared/runtime/src/dea_rt_alloc.c') in files
+    assert Path('compiler/shared/runtime/internal/dea_rt_fs.h') in files
+    assert Path('compiler/shared/runtime/internal/dea_rt_fs_path.h') in files
+    assert {p.relative_to(ROOT) for directory in ('compiler/shared/runtime', 'compiler/support')
+            for p in (ROOT / directory).rglob('*') if p.suffix in {'.h', '.c'}} <= files
     assert Path('compiler/support/interface_fingerprint.c') in files
     assert Path('compiler/shared/runtime/internal/dea_interface_fingerprint.h') in files
     assert Path('compiler/shared/runtime/include/dea_rt.h') in files

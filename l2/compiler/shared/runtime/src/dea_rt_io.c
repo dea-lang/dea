@@ -6,6 +6,8 @@
 #include "../include/dea_rt.h"
 
 #ifdef DEA_RUNTIME_FCLOSE
+
+/* Close a file stream through the fixture-selectable runtime hook. */
 extern int DEA_RUNTIME_FCLOSE(FILE *stream);
 #else
 #define DEA_RUNTIME_FCLOSE fclose
@@ -13,8 +15,12 @@ extern int DEA_RUNTIME_FCLOSE(FILE *stream);
 
 #ifdef DEA_RUNTIME_FILE_INFO_STAT
 #if defined(_WIN32)
+
+/* Read native file metadata through the fixture-selectable runtime hook. */
 extern int DEA_RUNTIME_FILE_INFO_STAT(const char *path, struct _stat64 *buffer);
 #else
+
+/* Read native file metadata through the fixture-selectable runtime hook. */
 extern int DEA_RUNTIME_FILE_INFO_STAT(const char *path, struct stat *buffer);
 #endif
 #elif defined(_WIN32)
@@ -24,6 +30,8 @@ extern int DEA_RUNTIME_FILE_INFO_STAT(const char *path, struct stat *buffer);
 #endif
 
 #ifdef DEA_RUNTIME_REMOVE
+
+/* Remove a file through the fixture-selectable runtime hook. */
 extern int DEA_RUNTIME_REMOVE(const char *path);
 #else
 #define DEA_RUNTIME_REMOVE remove
@@ -37,12 +45,18 @@ extern int DEA_RUNTIME_REMOVE(const char *path);
 
 /**
  * Read entire file contents into a string.
- * Returns empty optional on error (file not found, read error, allocation failure).
  *
- * @param path File path.
- * @return Optional string containing file contents.
+ * An absent optional reports invalid or unrepresentable paths, path-conversion allocation failure,
+ * unavailable or non-regular files, unsupported size, open failure, or a short read.
+ *
+ * Allocating the result string terminates execution on allocation failure. A present payload is
+ * independently owned by the caller and must be released with rt_string_release.
  *
  * Dea signature: `extern func rt_read_file_all(path: string) -> string?;`
+ *
+ * @param path Borrowed file path string.
+ * @return Owned file-content string in a present optional, or an absent optional on a recoverable read
+ *     failure.
  */
 dea_opt_string rt_read_file_all(dea_string path) {
 
@@ -91,11 +105,11 @@ dea_opt_string rt_read_file_all(dea_string path) {
  * Write string data to a file.
  * Returns 1 (true) on success, 0 (false) on error.
  *
+ * Dea signature: `extern func rt_write_file_all(path: string, data: string) -> bool;`
+ *
  * @param path File path.
  * @param data Data string.
  * @return 1 on success, 0 on failure.
- *
- * Dea signature: `extern func rt_write_file_all(path: string, data: string) -> bool;`
  */
 dea_bool rt_write_file_all(dea_string path, dea_string data) {
     dea_int path_len = rt_strlen(path);
@@ -124,10 +138,10 @@ dea_bool rt_write_file_all(dea_string path, dea_string data) {
 /**
  * Return basic metadata for a path.
  *
+ * Dea signature: `extern func rt_file_info(path: string) -> RtFileInfo;`
+ *
  * @param path File path.
  * @return Metadata record with nullable size and mtime fields.
- *
- * Dea signature: `extern func rt_file_info(path: string) -> RtFileInfo;`
  */
 struct __deaM3sys2rtS10RtFileInfo rt_file_info(dea_string path) {
     struct __deaM3sys2rtS10RtFileInfo out = {
@@ -192,10 +206,10 @@ struct __deaM3sys2rtS10RtFileInfo rt_file_info(dea_string path) {
  * Delete the file at the given path.
  * Returns 1 (true) on success, 0 (false) on error.
  *
+ * Dea signature: `extern func rt_delete_file(path: string) -> bool;`
+ *
  * @param path File path.
  * @return 1 on success, 0 on failure.
- *
- * Dea signature: `extern func rt_delete_file(path: string) -> bool;`
  */
 dea_bool rt_delete_file(dea_string path) {
     if (rt_strlen(path) == 0) {
@@ -236,12 +250,11 @@ dea_int _rt_stream_write_some(FILE *stream, const dea_byte *buf, dea_int len) {
 /**
  * Read raw bytes from standard input.
  *
+ * Dea signature: `unsafe extern func rt_stdin_read(buf: byte*?, capacity: int) -> int;`
+ *
  * @param buf Destination bytes. A NULL buffer is reported as `-1`.
  * @param capacity Maximum number of bytes to read.
- * @return Bytes read, `0` on EOF, or `-1` on error (including a NULL `buf`
- *         when `capacity > 0`).
- *
- * Dea signature: `unsafe extern func rt_stdin_read(buf: byte*?, capacity: int) -> int;`
+ * @return Bytes read, `0` on EOF, or `-1` on error (including a NULL `buf` when `capacity > 0`).
  */
 dea_int rt_stdin_read(dea_byte *buf, dea_int capacity) {
     if (capacity < 0) {
@@ -265,12 +278,11 @@ dea_int rt_stdin_read(dea_byte *buf, dea_int capacity) {
 /**
  * Write raw bytes to standard output.
  *
+ * Dea signature: `unsafe extern func rt_stdout_write(buf: byte*?, len: int) -> int;`
+ *
  * @param buf Source bytes. A NULL buffer is reported as `-1`.
  * @param len Maximum number of bytes to write.
- * @return Bytes written, or `-1` on error (including a NULL `buf`
- *         when `len > 0`).
- *
- * Dea signature: `unsafe extern func rt_stdout_write(buf: byte*?, len: int) -> int;`
+ * @return Bytes written, or `-1` on error (including a NULL `buf` when `len > 0`).
  */
 dea_int rt_stdout_write(dea_byte *buf, dea_int len) {
     return _rt_stream_write_some(stdout, buf, len);
@@ -279,12 +291,11 @@ dea_int rt_stdout_write(dea_byte *buf, dea_int len) {
 /**
  * Write raw bytes to standard error.
  *
+ * Dea signature: `unsafe extern func rt_stderr_write(buf: byte*?, len: int) -> int;`
+ *
  * @param buf Source bytes. A NULL buffer is reported as `-1`.
  * @param len Maximum number of bytes to write.
- * @return Bytes written, or `-1` on error (including a NULL `buf`
- *         when `len > 0`).
- *
- * Dea signature: `unsafe extern func rt_stderr_write(buf: byte*?, len: int) -> int;`
+ * @return Bytes written, or `-1` on error (including a NULL `buf` when `len > 0`).
  */
 dea_int rt_stderr_write(dea_byte *buf, dea_int len) {
     return _rt_stream_write_some(stderr, buf, len);
@@ -295,7 +306,10 @@ dea_int rt_stderr_write(dea_byte *buf, dea_int len) {
  * ========================================================================= */
 
 /**
- * Flush stdout. */
+ * Flush stdout.
+ * Dea signature: `extern func rt_flush_stdout() -> void;`
+ *
+ */
 void rt_flush_stdout(void) {
     fflush(stdout);
 }
@@ -303,7 +317,6 @@ void rt_flush_stdout(void) {
 /**
  * Flush stderr.
  *
-
  * Dea signature: `extern func rt_flush_stdout() -> void;`
  *
  * Dea signature: `extern func rt_flush_stderr() -> void;`
@@ -329,9 +342,9 @@ void _rt_print(dea_string s, FILE *stream){
 /**
  * Print a string to stdout.
  *
- * @param s String to print.
- *
  * Dea signature: `extern func rt_print(s: string) -> void;`
+ *
+ * @param s String to print.
  */
 void rt_print(dea_string s) {
     _rt_print(s, stdout);
@@ -340,16 +353,19 @@ void rt_print(dea_string s) {
 /**
  * Print a string to stderr.
  *
- * @param s String to print.
- *
  * Dea signature: `extern func rt_print_stderr(s: string) -> void;`
+ *
+ * @param s String to print.
  */
 void rt_print_stderr(dea_string s) {
     _rt_print(s, stderr);
 }
 
 /**
- * Print a newline to stdout. */
+ * Print a newline to stdout.
+ * Dea signature: `extern func rt_println() -> void;`
+ *
+ */
 void rt_println(void) {
     fputc('\n', stdout);
 }
@@ -357,7 +373,6 @@ void rt_println(void) {
 /**
  * Print a newline to stderr.
  *
-
  * Dea signature: `extern func rt_println() -> void;`
  *
  * Dea signature: `extern func rt_println_stderr() -> void;`
@@ -369,9 +384,9 @@ void rt_println_stderr(void) {
 /**
  * Print an integer to stdout.
  *
- * @param x Integer value.
- *
  * Dea signature: `extern func rt_print_int(x: int) -> void;`
+ *
+ * @param x Integer value.
  */
 void rt_print_int(dea_int x) {
     printf("%d", (int)x);
@@ -380,9 +395,9 @@ void rt_print_int(dea_int x) {
 /**
  * Print an unsigned integer to stdout.
  *
- * @param x Unsigned integer value.
- *
  * Dea signature: `extern func rt_print_uint(x: uint) -> void;`
+ *
+ * @param x Unsigned integer value.
  */
 void rt_print_uint(dea_uint x) {
     printf("%" PRIu32, (uint32_t)x);
@@ -391,9 +406,9 @@ void rt_print_uint(dea_uint x) {
 /**
  * Print a long integer to stdout.
  *
- * @param x Long integer value.
- *
  * Dea signature: `extern func rt_print_long(x: long) -> void;`
+ *
+ * @param x Long integer value.
  */
 void rt_print_long(dea_long x) {
     printf("%" PRId64, (int64_t)x);
@@ -402,9 +417,9 @@ void rt_print_long(dea_long x) {
 /**
  * Print an unsigned long integer to stdout.
  *
- * @param x Unsigned long integer value.
- *
  * Dea signature: `extern func rt_print_ulong(x: ulong) -> void;`
+ *
+ * @param x Unsigned long integer value.
  */
 void rt_print_ulong(dea_ulong x) {
     printf("%" PRIu64, (uint64_t)x);
@@ -413,9 +428,9 @@ void rt_print_ulong(dea_ulong x) {
 /**
  * Print a float to stdout.
  *
- * @param x Float value.
- *
  * Dea signature: `extern func rt_print_float(x: float) -> void;`
+ *
+ * @param x Float value.
  */
 void rt_print_float(dea_float x) {
     printf("%.9g", (double)x);
@@ -424,9 +439,9 @@ void rt_print_float(dea_float x) {
 /**
  * Print a double to stdout.
  *
- * @param x Double value.
- *
  * Dea signature: `extern func rt_print_double(x: double) -> void;`
+ *
+ * @param x Double value.
  */
 void rt_print_double(dea_double x) {
     printf("%.17g", (double)x);
@@ -435,9 +450,9 @@ void rt_print_double(dea_double x) {
 /**
  * Print an integer to stderr.
  *
- * @param x Integer value.
- *
  * Dea signature: `extern func rt_print_int_stderr(x: int) -> void;`
+ *
+ * @param x Integer value.
  */
 void rt_print_int_stderr(dea_int x) {
     fprintf(stderr, "%d", (int)x);
@@ -446,9 +461,9 @@ void rt_print_int_stderr(dea_int x) {
 /**
  * Print an unsigned integer to stderr.
  *
- * @param x Unsigned integer value.
- *
  * Dea signature: `extern func rt_print_uint_stderr(x: uint) -> void;`
+ *
+ * @param x Unsigned integer value.
  */
 void rt_print_uint_stderr(dea_uint x) {
     fprintf(stderr, "%" PRIu32, (uint32_t)x);
@@ -457,9 +472,9 @@ void rt_print_uint_stderr(dea_uint x) {
 /**
  * Print a long integer to stderr.
  *
- * @param x Long integer value.
- *
  * Dea signature: `extern func rt_print_long_stderr(x: long) -> void;`
+ *
+ * @param x Long integer value.
  */
 void rt_print_long_stderr(dea_long x) {
     fprintf(stderr, "%" PRId64, (int64_t)x);
@@ -468,9 +483,9 @@ void rt_print_long_stderr(dea_long x) {
 /**
  * Print an unsigned long integer to stderr.
  *
- * @param x Unsigned long integer value.
- *
  * Dea signature: `extern func rt_print_ulong_stderr(x: ulong) -> void;`
+ *
+ * @param x Unsigned long integer value.
  */
 void rt_print_ulong_stderr(dea_ulong x) {
     fprintf(stderr, "%" PRIu64, (uint64_t)x);
@@ -479,9 +494,9 @@ void rt_print_ulong_stderr(dea_ulong x) {
 /**
  * Print a float to stderr.
  *
- * @param x Float value.
- *
  * Dea signature: `extern func rt_print_float_stderr(x: float) -> void;`
+ *
+ * @param x Float value.
  */
 void rt_print_float_stderr(dea_float x) {
     fprintf(stderr, "%.9g", (double)x);
@@ -490,9 +505,9 @@ void rt_print_float_stderr(dea_float x) {
 /**
  * Print a double to stderr.
  *
- * @param x Double value.
- *
  * Dea signature: `extern func rt_print_double_stderr(x: double) -> void;`
+ *
+ * @param x Double value.
  */
 void rt_print_double_stderr(dea_double x) {
     fprintf(stderr, "%.17g", (double)x);
@@ -501,9 +516,9 @@ void rt_print_double_stderr(dea_double x) {
 /**
  * Print a bool to stdout.
  *
- * @param x Boolean value.
- *
  * Dea signature: `extern func rt_print_bool(x: bool) -> void;`
+ *
+ * @param x Boolean value.
  */
 void rt_print_bool(dea_bool x) {
     printf("%s", x ? "true" : "false");
@@ -512,9 +527,9 @@ void rt_print_bool(dea_bool x) {
 /**
  * Print a bool to stderr.
  *
- * @param x Boolean value.
- *
  * Dea signature: `extern func rt_print_bool_stderr(x: bool) -> void;`
+ *
+ * @param x Boolean value.
  */
 void rt_print_bool_stderr(dea_bool x) {
     fprintf(stderr, "%s", x ? "true" : "false");
@@ -525,15 +540,18 @@ void rt_print_bool_stderr(dea_bool x) {
  * ========================================================================= */
 
 /**
- * Read a line from stdin into a dynamically allocated buffer.
- * Returns None on EOF (no characters read).
- * *
- * Ownership: on Some(s), s.data is heap-allocated and must be freed by calling
- * rt_string_release(s) (directly or indirectly via stdlib).
+ * Read one line from stdin without its terminating newline.
  *
- * @return Optional string containing the line.
+ * EOF or a stream error before any characters produces an absent optional. An empty line produces a
+ * present empty static string. Other present results own heap storage; release every present payload
+ * safely with rt_string_release.
+ *
+ * String allocation failure or a line exceeding the runtime length range terminates execution.
  *
  * Dea signature: `extern func rt_read_line() -> string?;`
+ *
+ * @return Present line contents, or an absent optional when no characters are available before EOF or
+ *     error.
  */
 dea_opt_string rt_read_line(void) {
     size_t capacity = 128;
@@ -577,14 +595,12 @@ dea_opt_string rt_read_line(void) {
     return (dea_opt_string){ .has_value = 1, .value = s };
 }
 
-
 /**
  * Read one character from stdin.
  * Returns -1 on EOF or error.
  *
- * @return Character value or -1.
- *
  * Dea signature: `extern func rt_read_char() -> int;`
+ * @return Character value or -1.
  */
 dea_int rt_read_char(void) {
     int c = fgetc(stdin);

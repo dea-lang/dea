@@ -2,7 +2,10 @@
  * SPDX-License-Identifier: MIT OR Apache-2.0
  * Copyright (c) 2026 gwz
  */
-/** @file installation.h Shared native installed-prefix startup and inventory reader. */
+
+/**
+ * @file installation.h Shared native installed-prefix startup and inventory reader.
+ */
 #ifndef L1_INSTALLATION_H
 #define L1_INSTALLATION_H
 #include "preparation/json.h"
@@ -11,12 +14,26 @@
 
 #define INSTALL_MANIFEST "share/dea/l1/install-manifest.json"
 
-/** Compare a required JSON string without dereferencing missing fields. */
+/**
+ * Compare a required JSON string without dereferencing missing fields.
+ *
+ * @param j Borrowed JSON node.
+ * @param key Borrowed NUL-terminated object or identity key.
+ * @param expected Expected fixture value or classification.
+ * @return Nonzero for an exact string match.
+ */
 static int install_text(const PcJson *j, const char *key, const char *expected) {
     const char *value = pj_field(j, key);
     return value && !strcmp(value, expected);
 }
-/** Validate portable version/host tokens independently of locale. */
+
+/**
+ * Validate portable version/host tokens independently of locale.
+ *
+ * @param s Borrowed NUL-terminated version or host token.
+ * @param target Expected target value or borrowed target spelling.
+ * @return Nonzero for a valid portable version or target token.
+ */
 static int install_token(const char *s, int target) {
     const char *p;
     if (!s || !*s) return 0;
@@ -27,7 +44,13 @@ static int install_token(const char *s, int target) {
     }
     return 1;
 }
-/** Validate a canonical portable inventory path, without filesystem traversal. */
+
+/**
+ * Validate a canonical portable inventory path, without filesystem traversal.
+ *
+ * @param s Borrowed NUL-terminated inventory path.
+ * @return Nonzero for a canonical portable relative inventory path.
+ */
 static int install_path(const char *s) {
     const char *p, *start;
     if (!s || !*s) return 0;
@@ -51,7 +74,14 @@ static int install_path(const char *s) {
         } else if (ch < 32 || ch == 127 || strchr("\\:*?\"<>|", ch)) return 0;
     }
 }
-/** Resolve a relative alias lexically, rejecting escape from the prefix. */
+
+/**
+ * Resolve a relative alias lexically, rejecting escape from the prefix.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param target Expected target value or borrowed target spelling.
+ * @return Owned resolved relative target, or NULL for an invalid or escaping alias.
+ */
 static char *install_alias(const char *path, const char *target) {
     char *result, *slash;
     const char *p, *end;
@@ -79,7 +109,13 @@ static char *install_alias(const char *path, const char *target) {
     if (!install_path(result)) { free(result); return NULL; }
     return result;
 }
-/** Check required complete-state structure; installers own payload hashing and preflight. */
+
+/**
+ * Check required complete-state structure; installers own payload hashing and preflight.
+ *
+ * @param record JSON observation or metadata record updated by the operation.
+ * @return Nonzero for a structurally valid complete installation inventory.
+ */
 static int install_inventory(const PcJson *record) {
     const PcJson *entries = pj_get(record, "entries"), *entry, *provenance = pj_get(record, "provenance");
     PcJson *paths = pj_new(PJ_OBJECT);
@@ -135,7 +171,11 @@ done:
     pj_free(paths);
     return valid;
 }
-/** Validate installed state and select context before any compiler command. */
+
+/**
+ * Validate installed state and select context before any compiler command.
+ * @return Zero for valid startup, or the startup rejection code.
+ */
 int32_t l1c_installation_startup(void) {
     char *executable = pc_self_executable(), *physical = NULL, *bin = NULL, *prefix = NULL;
     char *manifest = NULL, *contents = NULL, *parent = NULL;

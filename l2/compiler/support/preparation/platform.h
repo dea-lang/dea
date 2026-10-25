@@ -3,7 +3,9 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file platform.h Native metadata, stable reads, coordination, and bounded probes. */
+/**
+ * @file platform.h Native metadata, stable reads, coordination, and bounded probes.
+ */
 #ifndef L2_PREPARATION_PLATFORM_H
 #define L2_PREPARATION_PLATFORM_H
 #include <limits.h>
@@ -30,14 +32,33 @@
 #endif
 #endif
 
+/* Resolve one path against the process current working directory. */
 int32_t l2c_fs_absolute_path(const uint8_t *, int32_t, uint8_t *, int32_t);
+
+/* Resolve one existing path through filesystem aliases. */
 int32_t l2c_fs_canonical_existing_path(const uint8_t *, int32_t, uint8_t *, int32_t);
+
+/* Resolve one bare executable name through the process PATH. */
 int32_t l2c_fs_resolve_executable(const uint8_t *, int32_t, uint8_t *, int32_t);
+
+/* Classify one path without following symbolic links or reparse points. */
 int32_t l2c_fs_path_kind_nofollow(const uint8_t *, int32_t);
+
+/* Classify one path after following symbolic links or reparse points. */
 int32_t l2c_fs_path_kind_follow(const uint8_t *, int32_t);
+
+/* Remove one empty real directory without accepting a symlink/reparse point. */
 int32_t l2c_fs_remove_empty_dir(const uint8_t *, int32_t);
 
 typedef int32_t (*PcPathFunction)(const uint8_t *, int32_t, uint8_t *, int32_t);
+
+/**
+ * Call a length-query path operation and copy its result.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param fn Length-query operation used to resolve the path.
+ * @return Owned NUL-terminated path, or NULL for invalid length or operation failure.
+ */
 static char *pc_path_call(const char *path, PcPathFunction fn) {
     int32_t n, actual;
     char *s;
@@ -54,7 +75,13 @@ static char *pc_path_call(const char *path, PcPathFunction fn) {
     }
     return s;
 }
-/** Backslashes are ordinary filename bytes on POSIX hosts. */
+
+/**
+ * Backslashes are ordinary filename bytes on POSIX hosts.
+ *
+ * @param ch Input character to classify.
+ * @return Nonzero for a path separator recognized by the running host.
+ */
 static int pc_separator(char ch) {
 #if defined(_WIN32)
     return ch == '/' || ch == '\\';
@@ -62,6 +89,14 @@ static int pc_separator(char ch) {
     return ch == '/';
 #endif
 }
+
+/**
+ * Join two path spellings with a separator when needed.
+ *
+ * @param a Borrowed parent path spelling.
+ * @param b Borrowed child path spelling appended without filesystem resolution.
+ * @return Owned joined path released with free; no filesystem resolution is performed.
+ */
 static char *pc_join(const char *a, const char *b) {
     PcBuffer s = {0};
     pc_text(&s, a);
@@ -70,6 +105,13 @@ static char *pc_join(const char *a, const char *b) {
     pc_text(&s, b);
     return pc_take(&s);
 }
+
+/**
+ * Copy a path spelling and remove its last component without crossing its root.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @return Owned parent spelling released with free.
+ */
 static char *pc_parent(const char *path) {
     char *s = pc_string(path);
     size_t n = strlen(s), root = 1;
@@ -77,6 +119,7 @@ static char *pc_parent(const char *path) {
     if (n >= 3 && isalpha((unsigned char)s[0]) && s[1] == ':' && pc_separator(s[2]))
         root = 3;
     else if (n >= 2 && pc_separator(s[0]) && pc_separator(s[1])) {
+
         /* Never turn a drive root into C: or cross above an absolute UNC share. */
         root = 2;
         while (root < n && !pc_separator(s[root]))
@@ -97,6 +140,13 @@ static char *pc_parent(const char *path) {
         s[n - 1] = 0;
     return s;
 }
+
+/**
+ * Find the basename after the final host-recognized path separator.
+ *
+ * @param s Borrowed NUL-terminated path spelling.
+ * @return Borrowed pointer into the input path.
+ */
 static const char *pc_base(const char *s) {
     const char *p, *base = s;
     for (p = s; *p; ++p)
@@ -104,10 +154,25 @@ static const char *pc_base(const char *s) {
             base = p + 1;
     return base;
 }
+
+/**
+ * Classify a path using the selected symlink-following policy.
+ *
+ * @param s Borrowed NUL-terminated path spelling.
+ * @param follow Nonzero to follow a final symbolic link.
+ * @return Compiler filesystem kind tag, including absence and error tags.
+ */
 static int pc_kind(const char *s, int follow) {
     return follow ? l2c_fs_path_kind_follow((const uint8_t *)s, (int32_t)strlen(s))
                   : l2c_fs_path_kind_nofollow((const uint8_t *)s, (int32_t)strlen(s));
 }
+
+/**
+ * Resolve a bare executable or validate an explicitly spelled executable path.
+ *
+ * @param name Borrowed NUL-terminated name.
+ * @return Owned absolute path, or NULL when no executable is usable.
+ */
 static char *pc_executable(const char *name) {
     char *path;
     if (strchr(name, '/') || (pc_separator('\\') && strchr(name, '\\'))) {
@@ -127,13 +192,24 @@ static char *pc_executable(const char *name) {
     return pc_path_call(name, l2c_fs_resolve_executable);
 }
 #if defined(_WIN32)
-/** Return whether a Windows executable spelling already contains a suffix. */
+
+/**
+ * Return whether a Windows executable spelling already contains a suffix.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @return Nonzero when the basename contains an extension separator.
+ */
 static int pc_windows_basename_has_extension(const char *path) {
     const char *base = pc_base(path);
     return strchr(base, '.') != NULL;
 }
 
-/** Try one explicitly spelled Windows executable with a PATHEXT suffix. */
+/**
+ * Try one explicitly spelled Windows executable with a PATHEXT suffix.
+ *
+ * @param name Borrowed NUL-terminated name.
+ * @return Owned resolved executable path, or NULL when no suffixed candidate succeeds.
+ */
 static char *pc_windows_executable_variant(const char *name) {
     const char *pathext = getenv("PATHEXT");
     const char *cursor;
@@ -161,7 +237,12 @@ static char *pc_windows_executable_variant(const char *name) {
     return NULL;
 }
 
-/** Resolve an explicit Windows executable, including a path without PATHEXT. */
+/**
+ * Resolve an explicit Windows executable, including a path without PATHEXT.
+ *
+ * @param name Borrowed NUL-terminated name.
+ * @return Owned resolved executable path, or NULL when neither explicit nor suffixed lookup succeeds.
+ */
 static char *pc_windows_reported_path(const char *name) {
     char *path = pc_executable(name);
     if (!path && (strchr(name, '/') || strchr(name, '\\')))
@@ -170,7 +251,13 @@ static char *pc_windows_reported_path(const char *name) {
 }
 #endif
 
-/** Resolve a compiler-reported tool path across native and MSYS spellings. */
+/**
+ * Resolve a compiler-reported tool path across native and MSYS spellings.
+ *
+ * @param name Borrowed NUL-terminated name.
+ * @param compiler Borrowed selected compiler executable path.
+ * @return Owned native executable path, or NULL when the reported spelling cannot be resolved.
+ */
 static char *pc_reported_executable(const char *name, const char *compiler) {
     char *path;
     if (!name || !*name)
@@ -193,6 +280,14 @@ static char *pc_reported_executable(const char *name, const char *compiler) {
 #endif
     return path;
 }
+
+/**
+ * Compare path spellings using native separator and case rules.
+ *
+ * @param a Borrowed first NUL-terminated path spelling.
+ * @param b Borrowed second NUL-terminated path spelling.
+ * @return Nonzero when the spellings compare equal under the host policy.
+ */
 static int pc_path_equal(const char *a, const char *b) {
 #if defined(_WIN32)
     for (; *a && *b; ++a, ++b) {
@@ -206,6 +301,14 @@ static int pc_path_equal(const char *a, const char *b) {
     return !strcmp(a, b);
 #endif
 }
+
+/**
+ * Test whether a path spelling lies at or below another path component boundary.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param root Borrowed root path.
+ * @return Nonzero for the same path or a descendant spelling.
+ */
 static int pc_within(const char *path, const char *root) {
     size_t n = strlen(root);
     char *prefix;
@@ -217,7 +320,13 @@ static int pc_within(const char *path, const char *root) {
     free(prefix);
     return same && (!path[n] || pc_separator(root[n - 1]) || pc_separator(path[n]));
 }
-/** Resolve aliases through the nearest existing parent, also for future roots. */
+
+/**
+ * Resolve aliases through the nearest existing parent, also for future roots.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @return Owned canonical path, or NULL when an existing ancestor cannot be resolved safely.
+ */
 static char *pc_canonical_future(const char *path) {
     char *absolute = pc_path_call(path, l2c_fs_absolute_path), *resolved, *parent, *base, *joined;
     if (!absolute)
@@ -251,12 +360,20 @@ static char *pc_canonical_future(const char *path) {
     free(base);
     return joined;
 }
-/** Create directories without traversing substituted children. */
+
+/**
+ * Create directories without traversing substituted children.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @return Nonzero for a verified directory hierarchy; zero for creation failure or an unsafe substituted
+ * child.
+ */
 static int pc_mkdirs(const char *path) {
     int kind = pc_kind(path, 0), ok;
     char *parent;
     if (kind != 0 && kind != 2)
         return 0;
+
     /* Existing descendants can still have substituted ancestors. Walk all of
        them before accepting a path, including coordination directories. */
 #if defined(_WIN32)
@@ -293,6 +410,18 @@ static int pc_mkdirs(const char *path) {
 #endif
     return ok || (errno == EEXIST && pc_kind(path, 0) == 2);
 }
+
+/**
+ * Read a bounded regular file while preserving distinct read failure status.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param limit Maximum accepted input size or count.
+ * @param size Optional output receiving the number of content bytes on success.
+ * @param io_error Optional error output; zero includes absence, otherwise records an I/O, kind, or size
+ *     error.
+ * @return Owned NUL-terminated contents, or NULL for an absent, non-regular, oversized, or unreadable
+ *     file.
+ */
 static char *pc_read_file_checked(const char *path, size_t limit, size_t *size, int *io_error) {
     FILE *f;
     PcBuffer b = {0};
@@ -301,6 +430,7 @@ static char *pc_read_file_checked(const char *path, size_t limit, size_t *size, 
     int bad, kind = pc_kind(path, 1);
     if (io_error)
         *io_error = 0;
+
     /* In particular, never block opening a FIFO masquerading as a memo or
        completion record. Concurrent hostile substitution is outside the contract. */
     if (kind != 1) {
@@ -336,9 +466,28 @@ static char *pc_read_file_checked(const char *path, size_t limit, size_t *size, 
         *size = b.n;
     return pc_take(&b);
 }
+
+/**
+ * Read a bounded regular file without requesting detailed error status.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param limit Maximum accepted input size or count.
+ * @param size Optional output receiving the number of content bytes on success.
+ * @return Owned NUL-terminated contents, or NULL for an absent, non-regular, oversized, or unreadable
+ *     file.
+ */
 static char *pc_read_file(const char *path, size_t limit, size_t *size) {
     return pc_read_file_checked(path, limit, size, NULL);
 }
+
+/**
+ * Write an entire byte span and require the final close and flush to succeed.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param s Borrowed readable content span of n bytes; no terminator is required.
+ * @param n Number of bytes to process.
+ * @return Nonzero only when the complete write and close succeed.
+ */
 static int pc_write_file(const char *path, const char *s, size_t n) {
     FILE *f;
     int ok;
@@ -353,7 +502,15 @@ static int pc_write_file(const char *path, const char *s, size_t n) {
     return ok;
 }
 enum { PC_JSON_OK, PC_JSON_ABSENT, PC_JSON_UNREADABLE, PC_JSON_MALFORMED };
-/** Read JSON once while preserving the reason an optional record was unavailable. */
+
+/**
+ * Read JSON once while preserving the reason an optional record was unavailable.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param status Optional caller-owned status output.
+ * @return Owned parsed JSON record, or NULL with status distinguishing absence, read failure, and
+ * malformed JSON.
+ */
 static PcJson *pc_read_json_status(const char *path, int *status) {
     size_t n;
     int io_error = 0;
@@ -374,6 +531,14 @@ static PcJson *pc_read_json_status(const char *path, int *status) {
     if (status) *status = j ? PC_JSON_OK : PC_JSON_MALFORMED;
     return j;
 }
+
+/**
+ * Serialize canonical JSON and write it to a file.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param j Borrowed JSON node.
+ * @return Nonzero only when serialization output is written and closed successfully.
+ */
 static int pc_write_json(const char *path, const PcJson *j) {
     char *s = pj_encode(j);
     int ok = pc_write_file(path, s, strlen(s));
@@ -382,6 +547,13 @@ static int pc_write_json(const char *path, const PcJson *j) {
 }
 
 #if defined(_WIN32)
+
+/**
+ * Read stable Windows file identity metadata from an open handle.
+ *
+ * @param h Borrowed native file handle.
+ * @return Owned JSON metadata record, or NULL when native metadata cannot be read.
+ */
 static PcJson *pc_meta_handle(HANDLE h) {
     BY_HANDLE_FILE_INFORMATION i;
     FILE_BASIC_INFO basic;
@@ -399,6 +571,13 @@ static PcJson *pc_meta_handle(HANDLE h) {
     pj_set_number(m, "reliable", basic.ChangeTime.QuadPart != 0);
     return m;
 }
+
+/**
+ * Read followed native filesystem metadata for preparation identity checks.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @return Owned JSON metadata record, or NULL when metadata is unavailable.
+ */
 static PcJson *pc_meta(const char *path) {
     HANDLE h = CreateFileA(path, FILE_READ_ATTRIBUTES,
                            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
@@ -410,8 +589,22 @@ static PcJson *pc_meta(const char *path) {
     CloseHandle(h);
     return m;
 }
+
+/**
+ * Read metadata for an already open file stream.
+ *
+ * @param f Open file stream owned by the caller.
+ * @return Owned JSON metadata record, or NULL when native metadata is unavailable.
+ */
 static PcJson *pc_meta_file(FILE *f) { return pc_meta_handle((HANDLE)_get_osfhandle(_fileno(f))); }
 #else
+
+/**
+ * Encode native stat metadata for preparation identity checks.
+ *
+ * @param s Borrowed native stat metadata to encode.
+ * @return Owned JSON metadata record.
+ */
 static PcJson *pc_meta_stat(const struct stat *s) {
     PcJson *m = pj_new(PJ_OBJECT);
     pj_set_number(m, "device", (int64_t)s->st_dev);
@@ -432,12 +625,26 @@ static PcJson *pc_meta_stat(const struct stat *s) {
     pj_set_number(m, "reliable", s->st_ino != 0 && s->st_ctime != 0);
     return m;
 }
+
+/**
+ * Read followed native filesystem metadata for preparation identity checks.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @return Owned JSON metadata record, or NULL when metadata is unavailable.
+ */
 static PcJson *pc_meta(const char *path) {
     struct stat s;
     if (stat(path, &s) != 0)
         return NULL;
     return pc_meta_stat(&s);
 }
+
+/**
+ * Read metadata for an already open file stream.
+ *
+ * @param f Open file stream owned by the caller.
+ * @return Owned JSON metadata record, or NULL when native metadata is unavailable.
+ */
 static PcJson *pc_meta_file(FILE *f) {
     struct stat s;
     if (fstat(fileno(f), &s) != 0)
@@ -445,8 +652,20 @@ static PcJson *pc_meta_file(FILE *f) {
     return pc_meta_stat(&s);
 }
 #endif
+
+/* Read the platform monotonic clock for preparation observations. */
 static double pc_milliseconds(void);
-/** Hash a stable regular file; metadata binds the descriptor and selected path. */
+
+/**
+ * Hash a stable regular file; metadata binds the descriptor and selected path.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param digest Caller-owned 65-byte buffer for a NUL-terminated SHA-256 digest.
+ * @param metadata Optional output receiving owned stable descriptor metadata on success.
+ * @param bytes_read Optional caller-owned byte-count output.
+ * @param elapsed_ms Optional caller-owned elapsed-time output in milliseconds.
+ * @return Nonzero after a stable complete hash; zero on file, metadata, or I/O failure.
+ */
 static int pc_hash_file_measured(const char *path, char digest[65], PcJson **metadata,
                                  int64_t *bytes_read, double *elapsed_ms) {
     FILE *f;
@@ -497,6 +716,13 @@ static int pc_hash_file_measured(const char *path, char digest[65], PcJson **met
     if (elapsed_ms) *elapsed_ms = pc_milliseconds() - started;
     return 1;
 }
+
+/**
+ * Validate a lowercase hexadecimal SHA-256 digest spelling.
+ *
+ * @param s Borrowed NUL-terminated candidate digest, or NULL.
+ * @return Nonzero only for exactly sixty-four lowercase hexadecimal digits.
+ */
 static int pc_hex_digest(const char *s) {
     size_t i;
     if (!s || strlen(s) != 64)
@@ -506,6 +732,13 @@ static int pc_hex_digest(const char *s) {
             return 0;
     return 1;
 }
+
+/**
+ * Hash canonical JSON into an owned SHA-256 digest string.
+ *
+ * @param j Borrowed JSON node.
+ * @return Owned lowercase hexadecimal digest released with free.
+ */
 static char *pc_json_digest(const PcJson *j) {
     char *s = pj_encode(j);
     char hex[65];
@@ -514,7 +747,12 @@ static char *pc_json_digest(const PcJson *j) {
     return pc_string(hex);
 }
 
-/** List only direct names, deterministically, without assuming file kinds. */
+/**
+ * List only direct names, deterministically, without assuming file kinds.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @return Owned JSON object containing sorted direct names, or NULL for directory enumeration failure.
+ */
 static PcJson *pc_list(const char *path) {
     PcJson *names = pj_new(PJ_OBJECT);
 #if defined(_WIN32)
@@ -571,6 +809,13 @@ typedef struct {
     int fd;
 #endif
 } PcLock;
+
+/**
+ * Acquire an exclusive native advisory lock for a profile entry.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @return Owned lock handle, or NULL when opening or locking fails.
+ */
 static PcLock *pc_lock_file(const char *path) {
     PcLock *l = pc_alloc(sizeof(*l));
     if (pc_kind(path, 0) != 0 && pc_kind(path, 0) != 1) {
@@ -607,6 +852,12 @@ static PcLock *pc_lock_file(const char *path) {
 #endif
     return l;
 }
+
+/**
+ * Release a native advisory lock and its owned handle.
+ *
+ * @param l Owned native lock handle to release, or NULL.
+ */
 static void pc_unlock(PcLock *l) {
     if (!l)
         return;
@@ -618,6 +869,10 @@ static void pc_unlock(PcLock *l) {
     free(l);
 }
 
+/**
+ * Read the platform monotonic clock for preparation observations.
+ * @return Clock value in milliseconds, or zero when the clock is unavailable.
+ */
 static double pc_milliseconds(void) {
 #if defined(_WIN32)
     return (double)GetTickCount64();
@@ -632,13 +887,25 @@ typedef struct {
     char *out, *err;
     int status, timed_out;
 } PcProbe;
+
+/**
+ * Release captured output and reset a preparation probe result.
+ *
+ * @param p Borrowed bounded probe result, including captured output and native status.
+ */
 static void pc_probe_free(PcProbe *p) {
     free(p->out);
     free(p->err);
     memset(p, 0, sizeof(*p));
 }
 #if defined(_WIN32)
-/** Quote one native Windows argv word using the CRT backslash convention. */
+
+/**
+ * Quote one native Windows argv word using the CRT backslash convention.
+ *
+ * @param b Mutable growable byte buffer owned by the caller.
+ * @param s Borrowed NUL-terminated native argument to quote.
+ */
 static void pc_windows_word(PcBuffer *b, const char *s) {
     size_t slashes = 0;
     pc_char(b, '"');
@@ -667,7 +934,14 @@ static void pc_windows_word(PcBuffer *b, const char *s) {
     pc_char(b, '"');
 }
 #endif
-/** Run bounded argv probes with captured output and no shell interpolation. */
+
+/**
+ * Run bounded argv probes with captured output and no shell interpolation.
+ *
+ * @param words Borrowed array of native argument words.
+ * @param timeout_ms Maximum probe duration in milliseconds.
+ * @return Owned bounded probe result; release its captured output with pc_probe_free.
+ */
 static PcProbe pc_probe(const PcJson *words, int timeout_ms) {
     PcProbe result = {NULL, NULL, -1, 0};
     PcBuffer out = {0}, err = {0};
@@ -736,6 +1010,7 @@ static PcProbe pc_probe(const PcJson *words, int timeout_ms) {
         DWORD exit_code;
         int active = 0;
         char buffer[8192];
+
         /* Observe exit before the final pipe drain. A child can write and exit
            between an empty PeekNamedPipe and a later exit-status query. */
         if (!GetExitCodeProcess(pi.hProcess, &exit_code)) {
@@ -879,6 +1154,10 @@ static PcProbe pc_probe(const PcJson *words, int timeout_ms) {
     return result;
 }
 
+/**
+ * Resolve the current process executable with the native platform API.
+ * @return Owned absolute executable path, or NULL on query failure.
+ */
 static char *pc_self_executable(void) {
     char buffer[32768];
 #if defined(_WIN32)

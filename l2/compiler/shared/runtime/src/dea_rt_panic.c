@@ -48,10 +48,23 @@ void _rt_panic_fmt(const char* fmt, ...) {
     abort();
 }
 
+/**
+ * Terminate execution with an out-of-bounds index diagnostic.
+ *
+ * @param index Requested element index.
+ * @param length Number of input elements or bytes, as appropriate.
+ */
 void _rt_panic_oob(dea_int index, dea_int length) {
     _rt_panic_fmt("array index %d out of bounds for length %d", (int)index, (int)length);
 }
 
+/**
+ * Require a non-null optional pointer or terminate with an unwrap diagnostic.
+ *
+ * @param opt Optional pointer value to require as non-null.
+ * @param type_name Borrowed type name for an unwrap failure diagnostic.
+ * @return The original non-null pointer.
+ */
 void *_unwrap_ptr(void *opt, const char *type_name) {
     if (opt == NULL) {
         _rt_panic_fmt("unwrap of empty optional: '%s'", type_name);
@@ -77,9 +90,9 @@ void *_unwrap_opt(void *opt_ptr, const char *type_name) {
 /**
  * Abort the program with a panic message.
  *
- * @param message Panic message.
- *
  * L0 signature: `extern func rt_abort(message: string) -> void;`
+ *
+ * @param message Panic message.
  */
 void rt_abort(dea_string message) {
     if (rt_strlen(message) == 0) {

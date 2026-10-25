@@ -32,7 +32,11 @@
 
 typedef uint8_t  l0_bool;
 
-typedef int8_t   l0_tiny; /**< Reserved for future L0 language use. */
+/**
+ * Reserved for future L0 language use.
+ */
+
+typedef int8_t   l0_tiny;
 typedef int16_t  l0_short;
 typedef int32_t  l0_int;
 typedef int64_t  l0_long;
@@ -57,7 +61,9 @@ typedef l0_ulong  dea_ulong;
 typedef l0_float  dea_float;
 typedef l0_double dea_double;
 
-/** Heap-allocated L0 string header. */
+/**
+ * Heap-allocated L0 string header.
+ */
 typedef struct {
     l0_int refcount;
     l0_int len;
@@ -70,7 +76,9 @@ typedef struct {
 #define DEA_STRING_K_STATIC L0_STRING_K_STATIC
 #define DEA_STRING_K_HEAP   L0_STRING_K_HEAP
 
-/** Unified L0 string value: static bytes or one heap string header. */
+/**
+ * Unified L0 string value: static bytes or one heap string header.
+ */
 typedef struct {
     unsigned int kind : 1;
     unsigned int : 0;
@@ -85,14 +93,18 @@ typedef struct {
 
 typedef l0_string dea_string;
 
-/** Typed empty static string value. */
+/**
+ * Typed empty static string value.
+ */
 #define L0_STRING_EMPTY \
     ((l0_string){ \
         .kind = L0_STRING_K_STATIC, \
         .data = { .s_str = { .len = 0, .bytes = NULL } } \
     })
 
-/** Static string initializer for constant byte storage. */
+/**
+ * Static string initializer for constant byte storage.
+ */
 #define L0_STRING_CONST(str_data, str_len) \
     { .kind = L0_STRING_K_STATIC, .data.s_str = { .len = (str_len), .bytes = (str_data) } }
 
@@ -164,7 +176,9 @@ typedef l0_opt_string dea_opt_string;
 #define DEA_OPT_STRING_NULL  L0_OPT_STRING_NULL
 #define DEA_OPT_STRING_EMPTY L0_OPT_STRING_EMPTY
 
-/** Runtime time snapshot returned through the L0 `sys.rt` boundary. */
+/**
+ * Runtime time snapshot returned through the L0 `sys.rt` boundary.
+ */
 #ifndef L0_DEFINED_l0_sys_rt_RtTimeParts
 #define L0_DEFINED_l0_sys_rt_RtTimeParts
 struct l0_sys_rt_RtTimeParts {
@@ -173,7 +187,9 @@ struct l0_sys_rt_RtTimeParts {
 };
 #endif
 
-/** Runtime filesystem metadata returned through the L0 `sys.rt` boundary. */
+/**
+ * Runtime filesystem metadata returned through the L0 `sys.rt` boundary.
+ */
 #ifndef L0_DEFINED_l0_sys_rt_RtFileInfo
 #define L0_DEFINED_l0_sys_rt_RtFileInfo
 struct l0_sys_rt_RtFileInfo {
@@ -190,557 +206,209 @@ struct l0_sys_rt_RtFileInfo {
  * Public runtime function declarations
  * ========================================================================= */
 
-/**
- * Return the length of a string in bytes.
- *
- * @param str String value.
- * @return String length.
- */
+/* Return the length of a string in bytes. */
 dea_int rt_strlen(dea_string str);
 
-/**
- * Return the byte at a string index.
- *
- * @param s String value.
- * @param index Byte index.
- * @return Byte at `index`.
- */
+/* Return the byte at a string index. */
 dea_byte rt_string_get(dea_string s, dea_int index);
 
-/**
- * Return a pointer to the raw byte data of a string.
- *
- * The returned storage is runtime-managed and read-only to checked generated
- * L0 code. It must not be passed to `drop` or `rt_free`.
- *
- * @param s String value.
- * @return Pointer to the first byte.
- */
+/* Return a pointer to the raw byte data of a string. */
 dea_byte *rt_string_bytes_ptr(dea_string s);
 
-/**
- * Return whether two strings contain equal bytes.
- *
- * @param a First string.
- * @param b Second string.
- * @return Nonzero when the strings are equal.
- */
+/* Return whether two strings contain equal bytes. */
 dea_bool rt_string_equals(dea_string a, dea_string b);
 
-/**
- * Compare two strings lexicographically by byte value.
- *
- * @param a First string.
- * @param b Second string.
- * @return Negative when `a < b`, zero when equal, or positive when `a > b`.
- */
+/* Compare two strings lexicographically by byte value. */
 dea_int rt_string_compare(dea_string a, dea_string b);
 
-/**
- * Concatenate two strings.
- *
- * @param a First string.
- * @param b Second string.
- * @return Newly allocated concatenated string.
- */
+/* Concatenate two strings. */
 dea_string rt_string_concat(dea_string a, dea_string b);
 
-/**
- * Return a byte slice of a string.
- *
- * @param s Source string.
- * @param start Inclusive start index.
- * @param end Exclusive end index.
- * @return Newly allocated string slice.
- */
+/* Return a byte slice of a string. */
 dea_string rt_string_slice(dea_string s, dea_int start, dea_int end);
 
-/**
- * Create a string from one byte.
- *
- * @param b Byte value.
- * @return Newly allocated one-byte string.
- */
+/* Create a string from one byte. */
 dea_string rt_string_from_byte(dea_byte b);
 
-/**
- * Create a string from a byte array.
- *
- * @param bytes Pointer to the byte array.
- * @param len Number of bytes.
- * @return Newly allocated string containing the provided bytes.
- */
+/* Create a string from a byte array. */
 dea_string rt_string_from_byte_array(dea_byte *bytes, dea_int len);
 
-/**
- * Increment the reference count of a heap string.
- *
- * This is a no-op for static or non-reference-counted strings.
- *
- * @param s String to retain.
- */
+/* Increment the reference count of a heap string. */
 void rt_string_retain(dea_string s);
 
-/**
- * Decrement the reference count of a heap string and free it at zero.
- *
- * This is a no-op for static or non-reference-counted strings.
- *
- * @param s String to release.
- */
+/* Decrement the reference count of a heap string and free it at zero. */
 void rt_string_release(dea_string s);
 
-/**
- * Execute a system command and return its normalized status.
- *
- * @param cmd Command string.
- * @return Command exit code, `128 + signal` for signal termination, or a
- *         negative value when the shell could not be launched.
- */
+/* Execute a system command and return its normalized status. */
 dea_int rt_system(dea_string cmd);
 
-/**
- * Return the value of an environment variable.
- *
- * @param name Environment variable name.
- * @return Variable value, or an empty optional when it is unset or invalid.
- */
+/* Return the value of an environment variable. */
 dea_opt_string rt_get_env_var(dea_string name);
 
-/**
- * Return the number of process arguments.
- *
- * @return Argument count.
- */
+/* Return the number of process arguments. */
 dea_int rt_get_argc(void);
 
-/**
- * Return the current process identifier.
- *
- * @return Process identifier.
- */
+/* Return the current process identifier. */
 dea_int rt_get_pid(void);
 
-/**
- * Return one process argument.
- *
- * @param i Argument index.
- * @return Static string view of the selected argument.
- */
+/* Return one process argument. */
 dea_string rt_get_argv(dea_int i);
 
-/**
- * Capture current Unix wall time.
- *
- * @param out Time record to populate.
- * @return Nonzero on success.
- */
+/* Capture current Unix wall time. */
 dea_bool rt_time_unix(struct l0_sys_rt_RtTimeParts *out);
 
-/**
- * Capture current monotonic time.
- *
- * @param out Time record to populate.
- * @return Nonzero on success.
- */
+/* Capture current monotonic time. */
 dea_bool rt_time_monotonic(struct l0_sys_rt_RtTimeParts *out);
 
-/**
- * Return whether the runtime supports a monotonic clock.
- *
- * @return Nonzero when supported.
- */
+/* Return whether the runtime supports a monotonic clock. */
 dea_bool rt_time_monotonic_supported(void);
 
-/**
- * Return the local UTC offset for a Unix timestamp.
- *
- * @param unix_sec Unix timestamp in seconds.
- * @return Offset in seconds, or an empty optional on error.
- */
+/* Return the local UTC offset for a Unix timestamp. */
 dea_opt_int rt_time_local_offset_sec(dea_int unix_sec);
 
-/**
- * Return whether local time is in daylight-saving time.
- *
- * @param unix_sec Unix timestamp in seconds.
- * @return DST state, or an empty optional on error.
- */
+/* Return whether local time is in daylight-saving time. */
 dea_opt_bool rt_time_local_is_dst(dea_int unix_sec);
 
-/**
- * Read an entire file into a string.
- *
- * @param path File path.
- * @return File contents, or an empty optional on error.
- */
+/* Read an entire file into a string. */
 dea_opt_string rt_read_file_all(dea_string path);
 
-/**
- * Write a string completely to a file.
- *
- * @param path File path.
- * @param data String contents.
- * @return Nonzero on success.
- */
+/* Write a string completely to a file. */
 dea_bool rt_write_file_all(dea_string path, dea_string data);
 
-/**
- * Return basic metadata for a path.
- *
- * @param path Filesystem path.
- * @return File metadata with optional size and timestamp fields.
- */
+/* Return basic metadata for a path. */
 struct l0_sys_rt_RtFileInfo rt_file_info(dea_string path);
 
-/**
- * Delete a file.
- *
- * @param path File path.
- * @return Nonzero on success.
- */
+/* Delete a file. */
 dea_bool rt_delete_file(dea_string path);
 
-/**
- * Read bytes from standard input.
- *
- * @param buf Destination buffer.
- * @param capacity Maximum number of bytes to read.
- * @return Bytes read, zero on EOF, or `-1` on error.
- */
+/* Read bytes from standard input. */
 dea_int rt_stdin_read(dea_byte *buf, dea_int capacity);
 
-/**
- * Write bytes to standard output.
- *
- * @param buf Source buffer.
- * @param len Maximum number of bytes to write.
- * @return Bytes written, or `-1` on error.
- */
+/* Write bytes to standard output. */
 dea_int rt_stdout_write(dea_byte *buf, dea_int len);
 
-/**
- * Write bytes to standard error.
- *
- * @param buf Source buffer.
- * @param len Maximum number of bytes to write.
- * @return Bytes written, or `-1` on error.
- */
+/* Write bytes to standard error. */
 dea_int rt_stderr_write(dea_byte *buf, dea_int len);
 
-/** Flush the standard output buffer. */
+/* Flush the standard output buffer. */
 void rt_flush_stdout(void);
 
-/** Flush the standard error buffer. */
+/* Flush the standard error buffer. */
 void rt_flush_stderr(void);
 
-/**
- * Print a string to standard output without a newline.
- *
- * @param s String to print.
- */
+/* Print a string to standard output without a newline. */
 void rt_print(dea_string s);
 
-/**
- * Print a string to standard error without a newline.
- *
- * @param s String to print.
- */
+/* Print a string to standard error without a newline. */
 void rt_print_stderr(dea_string s);
 
-/** Print a newline to standard output. */
+/* Print a newline to standard output. */
 void rt_println(void);
 
-/** Print a newline to standard error. */
+/* Print a newline to standard error. */
 void rt_println_stderr(void);
 
-/**
- * Print an integer to standard output.
- *
- * @param x Integer to print.
- */
+/* Print an integer to standard output. */
 void rt_print_int(dea_int x);
 
-/**
- * Print an integer to standard error.
- *
- * @param x Integer to print.
- */
+/* Print an integer to standard error. */
 void rt_print_int_stderr(dea_int x);
 
-/**
- * Print a boolean to standard output.
- *
- * @param x Boolean to print.
- */
+/* Print a boolean to standard output. */
 void rt_print_bool(dea_bool x);
 
-/**
- * Print a boolean to standard error.
- *
- * @param x Boolean to print.
- */
+/* Print a boolean to standard error. */
 void rt_print_bool_stderr(dea_bool x);
 
-/**
- * Read one line from standard input.
- *
- * @return Line without the trailing newline, or an empty optional at EOF.
- */
+/* Read one line from standard input. */
 dea_opt_string rt_read_line(void);
 
-/**
- * Read one byte from standard input.
- *
- * @return Byte value, or `-1` at EOF or on error.
- */
+/* Read one byte from standard input. */
 dea_int rt_read_char(void);
 
-/**
- * Abort execution with a message.
- *
- * @param message Abort message.
- */
+/* Abort execution with a message. */
 void rt_abort(dea_string message);
 
-/**
- * Exit the process with a status code.
- *
- * @param code Exit status.
- */
+/* Exit the process with a status code. */
 void rt_exit(dea_int code);
 
-/**
- * Seed the runtime pseudo-random number generator.
- *
- * @param seed Integer seed.
- */
+/* Seed the runtime pseudo-random number generator. */
 void rt_srand(dea_int seed);
 
-/**
- * Return a pseudo-random integer below an upper bound.
- *
- * @param max Exclusive upper bound.
- * @return Random integer in `[0, max)`.
- */
+/* Return a pseudo-random integer below an upper bound. */
 dea_int rt_rand(dea_int max);
 
-/**
- * Return the current C runtime error number.
- *
- * @return Current `errno` value.
- */
+/* Return the current C runtime error number. */
 dea_int rt_errno(void);
 
-/**
- * Allocate raw memory.
- *
- * @param bytes Number of bytes to allocate; must be positive.
- * @return Allocated pointer, or `NULL` on allocation failure.
- */
+/* Allocate raw memory. */
 void *rt_alloc(dea_int bytes);
 
-/**
- * Resize a raw runtime allocation.
- *
- * If `ptr` is `NULL`, this behaves like `rt_alloc`. Checked builds reject
- * pointers owned by `new`, ARC strings, static strings, or foreign storage.
- *
- * @param ptr Existing raw allocation, or `NULL`.
- * @param new_bytes New positive size in bytes.
- * @return Resized pointer, or `NULL` on allocation failure.
- */
+/* Resize a raw runtime allocation. */
 void *rt_realloc(void *ptr, dea_int new_bytes);
 
-/**
- * Free a raw runtime allocation.
- *
- * @param ptr Pointer returned by `rt_alloc`, `rt_calloc`, or `rt_realloc`.
- */
+/* Free a raw runtime allocation. */
 void rt_free(void *ptr);
 
-/**
- * Allocate zero-initialized raw memory.
- *
- * @param count Positive element count.
- * @param elem_size Positive element size in bytes.
- * @return Allocated pointer, or `NULL` on allocation failure.
- */
+/* Allocate zero-initialized raw memory. */
 void *rt_calloc(dea_int count, dea_int elem_size);
 
-/**
- * Fill a memory region with one byte value.
- *
- * @param dest Destination pointer.
- * @param value Byte value, converted as by C `memset`.
- * @param bytes Number of bytes.
- * @return `dest`.
- */
+/* Fill a memory region with one byte value. */
 void *rt_memset(void *dest, dea_int value, dea_int bytes);
 
-/**
- * Copy bytes between non-overlapping memory regions.
- *
- * @param dest Destination pointer.
- * @param src Source pointer.
- * @param bytes Number of bytes.
- * @return `dest`.
- */
+/* Copy bytes between non-overlapping memory regions. */
 void *rt_memcpy(void *dest, void *src, dea_int bytes);
 
-/**
- * Return a candidate address's offset within a half-open byte span.
- *
- * This implementation-private helper is used by the bundled standard library
- * and is not part of the stable public runtime API.
- *
- * @param base Base address of the byte span.
- * @param span_bytes Positive byte extent of the span.
- * @param candidate Address to classify.
- * @return Byte offset within the span, or `-1` when not contained.
- */
+/* Return a candidate address's offset within a half-open byte span. */
 dea_int _rt_byte_span_offset(void *base, dea_int span_bytes, void *candidate);
 
-/**
- * Return whether two positive half-open byte spans overlap.
- *
- * This implementation-private helper is used by the bundled standard library
- * and is not part of the stable public runtime API.
- *
- * @param first Base address of the first byte span.
- * @param first_bytes Byte extent of the first span.
- * @param second Base address of the second byte span.
- * @param second_bytes Byte extent of the second span.
- * @return Non-zero when the spans overlap.
- */
+/* Return whether two positive half-open byte spans overlap. */
 dea_bool _rt_byte_spans_overlap(void *first, dea_int first_bytes, void *second, dea_int second_bytes);
 
-/**
- * Compare two memory regions.
- *
- * @param a First pointer.
- * @param b Second pointer.
- * @param bytes Number of bytes.
- * @return Negative, zero, or positive according to byte ordering.
- */
+/* Compare two memory regions. */
 dea_int rt_memcmp(void *a, void *b, dea_int bytes);
 
-/**
- * Return a pointer to an array element.
- *
- * @param array_data Array base pointer.
- * @param element_size Positive element size in bytes.
- * @param index Non-negative element index.
- * @return Pointer to the selected element.
- */
+/* Return a pointer to an array element. */
 void *rt_array_element(void *array_data, dea_int element_size, dea_int index);
 
-/**
- * Register externally owned storage with the checked pointer runtime.
- *
- * Repeating an identical live registration is a no-op. Registration does not
- * transfer ownership; unregister the range before its external lifetime ends.
- *
- * @param ptr Exact storage base pointer.
- * @param bytes Positive accessible extent in bytes.
- * @param read_only Whether checked writes must be rejected.
- */
+/* Register externally owned storage with the checked pointer runtime. */
 void rt_register_foreign(void *ptr, dea_int bytes, dea_bool read_only);
 
-/**
- * Remove a foreign-storage registration without freeing its payload.
- *
- * @param ptr Exact base pointer passed to `rt_register_foreign`.
- */
+/* Remove a foreign-storage registration without freeing its payload. */
 void rt_unregister_foreign(void *ptr);
 
-/**
- * Hash a boolean value.
- *
- * @param value Boolean value.
- * @return 32-bit hash.
- */
+/* Hash a boolean value. */
 dea_int rt_hash_bool(dea_bool value);
 
-/**
- * Hash a byte value.
- *
- * @param value Byte value.
- * @return 32-bit hash.
- */
+/* Hash a byte value. */
 dea_int rt_hash_byte(dea_byte value);
 
-/**
- * Hash an integer value.
- *
- * @param value Integer value.
- * @return 32-bit hash.
- */
+/* Hash an integer value. */
 dea_int rt_hash_int(dea_int value);
 
-/**
- * Hash a string value.
- *
- * @param value String value.
- * @return 32-bit hash.
- */
+/* Hash a string value. */
 dea_int rt_hash_string(dea_string value);
 
-/**
- * Hash raw bytes.
- *
- * @param data Data pointer.
- * @param size Number of bytes.
- * @return 32-bit hash.
- */
+/* Hash raw bytes. */
 dea_int rt_hash_data(void *data, dea_int size);
 
-/**
- * Hash an optional boolean value.
- *
- * @param opt Optional boolean.
- * @return 32-bit hash.
- */
+/* Hash an optional boolean value. */
 dea_int rt_hash_opt_bool(dea_opt_bool opt);
 
-/**
- * Hash an optional byte value.
- *
- * @param opt Optional byte.
- * @return 32-bit hash.
- */
+/* Hash an optional byte value. */
 dea_int rt_hash_opt_byte(dea_opt_byte opt);
 
-/**
- * Hash an optional integer value.
- *
- * @param opt Optional integer.
- * @return 32-bit hash.
- */
+/* Hash an optional integer value. */
 dea_int rt_hash_opt_int(dea_opt_int opt);
 
-/**
- * Hash an optional string value with presence-sensitive domain separation.
- *
- * @param opt Optional string.
- * @return 32-bit hash.
- */
+/* Hash an optional string value with presence-sensitive domain separation. */
 dea_int rt_hash_opt_string(dea_opt_string opt);
 
-/**
- * Hash a pointer address.
- *
- * @param ptr Non-null pointer.
- * @return 32-bit hash.
- */
+/* Hash a pointer address. */
 dea_int rt_hash_ptr(void *ptr);
 
-/**
- * Hash an optional pointer address.
- *
- * @param opt Non-null optional pointer representation.
- * @return 32-bit hash.
- */
+/* Hash an optional pointer address. */
 dea_int rt_hash_opt_ptr(void *opt);
 
-#endif /* DEA_RT_H */
+/* DEA_RT_H */
+#endif

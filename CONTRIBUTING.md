@@ -181,9 +181,20 @@ l0c -vvv -Rp examples --check hello   # debug-level
 ### Documentation and styling standards
 
 - **Python:** Use Google Style docstrings (include `Args`, `Returns`, `Raises` sections).
-- **C (.h/.c) & L0 (.l0):**
-  - **Doxygen:** Use Javadoc format (`/** ... */` with `@param`, `@return` tags). Omit the `@brief` tag; rely on the
-    first sentence for the brief description.
+- **C (.h/.c) & Dea sources:**
+  - **Doxygen:** Use Javadoc format (`/** ... */` with `@param`, `@return` tags) and autobrief. The first sentence is
+    the brief description; omit explicit `@brief` and `\brief` commands. Use multiline blocks with `/**` on its own line
+    and ` *` content lines.
+  - **C functions:** Put the complete contract immediately before the definition, including private functions and
+    functions defined in headers. Corresponding header prototypes use only an ordinary single-line `/* ... */` comment
+    reproducing the definition's brief sentence exactly. Keep parameters, return values, ownership, failures, and other
+    guarantees in the full definition comment. Header-only libraries remain header-only.
+  - **Comment spacing:** Leave a blank source line before each ordinary or Doxygen block, except at the beginning of a
+    file. Keep type, field, enum, macro, and file comments with their declarations. Vendored third-party and generated
+    files are excluded from bulk rewrites and retain their existing documentation.
+  - **Validation:** Run `python3 scripts/check_c_docs.py` from the root. Regenerate the affected level's references
+    after changing contracts or source inventories; prototype and definition documentation must remain associated by
+    signature and source identity, including distinct static functions and language bindings.
   - **License Headers:** Keep `SPDX-License-Identifier` and copyright headers in standard C block comments (`/* ... */`)
     at the top of the file, distinct from Doxygen blocks.
   - **Section Separators:**

@@ -17,6 +17,11 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
+# Shared inventory logic is independent of either level's source filters.
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+from docgen_function_inventory import collect_undocumented_functions
+from docgen_doxygen import render_mcss, run_isolated_doxygen
+
 from .l1_docgen_l0_filter import transform_l0_for_doxygen
 from .l1_docgen_latex import normalize_latex_site
 from .l1_docgen_markdown import (
@@ -246,22 +251,9 @@ def _member_has_documentation(memberdef: ET.Element) -> bool:
     return False
 
 
-def _collect_undocumented_functions(xml_dir: Path) -> list[tuple[str, int | None, str]]:
-    entries: set[tuple[str, int | None, str]] = set()
-    for xml_path in sorted(xml_dir.glob("*.xml")):
-        if xml_path.name == "index.xml":
-            continue
-        root = ET.parse(xml_path).getroot()
-        for memberdef in root.findall(".//memberdef[@kind='function']"):
-            location = memberdef.find("location")
-            if location is None:
-                continue
-            source_path = location.attrib.get("file", "").strip()
-            name = memberdef.findtext("name", default="").strip()
-            if not source_path or not name or _member_has_documentation(memberdef):
-                continue
-            entries.add((source_path, _member_line(memberdef), name))
-    return sorted(entries, key=lambda item: (item[0], item[1] if item[1] is not None else 0, item[2]))
+def _collect_undocumented_functions(xml_dir: Path, source_root: Path | None = None) -> list[tuple[str, int | None, str]]:
+    """Return undocumented identities across matching declarations and bodies."""
+    return collect_undocumented_functions(xml_dir, source_root)
 
 
 def _undocumented_function_source_type(source_path: str) -> str:
@@ -423,7 +415,7 @@ def _generate_reference(args: argparse.Namespace) -> int:
         html_output=html_dir.as_posix(),
     )
 
-    _run_command(["doxygen", str(xml_doxygen_path)], cwd=root)
+    run_isolated_doxygen(xml_doxygen_path, cwd=root)
 
     if latex_enabled:
         _write_template("mainpage_latex.md.j2", latex_mainpage_path)
@@ -439,7 +431,7 @@ def _generate_reference(args: argparse.Namespace) -> int:
             generate_xml="NO",
             generate_latex="YES",
         )
-        _run_command(["doxygen", str(latex_doxygen_path)], cwd=root)
+        run_isolated_doxygen(latex_doxygen_path, cwd=root)
 
     markdown_render_root: Path | None = None
     if markdown_enabled or html_enabled:
@@ -447,7 +439,7 @@ def _generate_reference(args: argparse.Namespace) -> int:
         markdown_render_root.mkdir(parents=True, exist_ok=True)
 
     if html_enabled:
-        _run_command([sys.executable, str(mcss_root / "documentation/doxygen.py"), str(mcss_conf_path)], cwd=root)
+        render_mcss(mcss_root / "documentation/doxygen.py", mcss_conf_path, cwd=root)
         _normalize_html_output(doxygen_root, html_dir)
         normalize_search_result_urls(html_dir)
     if markdown_render_root is not None:
@@ -461,7 +453,7 @@ def _generate_reference(args: argparse.Namespace) -> int:
         tagline = (templates_dir / "tagline.txt.j2").read_text(encoding="utf-8").strip()
         normalize_latex_site(xml_dir, doxygen_root / "latex", tagline=tagline)
 
-    undocumented_functions = _collect_undocumented_functions(xml_dir)
+    undocumented_functions = _collect_undocumented_functions(xml_dir, root)
     _write_undocumented_functions_report(undocumented_functions_report, undocumented_functions)
 
     warning_count = _warnings_count(xml_warnings_log) + _warnings_count(latex_warnings_log)

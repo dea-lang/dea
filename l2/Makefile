@@ -262,6 +262,9 @@ help:
 		'                     Installed Linux/Bookworm-compatible L1 prefix for the Docker isolation gate.' \
 		'' \
 		'Default local development flow:' \
+		'  docs               Generate production native C HTML/XML/LaTeX references (no bootstrap).' \
+		'  docs-pdf           Also build the complete native C reference PDF.' \
+		'  test-docgen        Validate native source inventory and Doxygen contracts.' \
 		'  1. `export L2_BOOTSTRAP_L1C=/absolute/installed-l1/bin/l1c`' \
 		'  2. `make use-dev`' \
 		'  3. `source build/dea/bin/l2-env.sh`' \
@@ -332,3 +335,14 @@ clean-runtime:
 
 clean-all:
 	"$(PYTHON)" ../scripts/dea_tooling/cleanup.py clean-all --build-variable L2_BUILD_DIR
+
+# Native C references have no L1 bootstrap/compiler-language generation step.
+.PHONY: docs docs-pdf test-docgen
+docs:
+	"$(PYTHON)" scripts/gen_c_docs.py --strict
+
+docs-pdf:
+	"$(PYTHON)" scripts/gen_c_docs.py --strict --pdf
+
+test-docgen: venv
+	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_docgen_native.py ../scripts/tests/test_docgen_function_inventory.py ../scripts/tests/test_c_docs.py ../scripts/tests/test_docgen_inputs.py

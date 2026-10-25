@@ -3,25 +3,54 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file preparation_libraries_test.c Exercise production PE import reads on every host. */
+/**
+ * @file preparation_libraries_test.c Exercise production PE import reads on every host.
+ */
 #include "../support/preparation_support.c"
 #include "../support/preparation/pe_imports.h"
 
+/**
+ * Require a fixture predicate and terminate with its case name on failure.
+ *
+ * @param condition Predicate required to hold for the fixture.
+ * @param name Borrowed NUL-terminated name.
+ */
 static void require_case(int condition, const char *name) {
     if (!condition) {
         fprintf(stderr, "preparation PE fixture failed: %s\n", name);
         exit(1);
     }
 }
+
+/**
+ * Write a 16-bit test fixture field in little-endian byte order.
+ *
+ * @param p Writable destination span of at least two bytes.
+ * @param value Unsigned field value whose low sixteen bits are written.
+ */
 static void fixture_u16(unsigned char *p, unsigned value) {
     p[0] = (unsigned char)value; p[1] = (unsigned char)(value >> 8);
 }
+
+/**
+ * Write a 32-bit test fixture field in little-endian byte order.
+ *
+ * @param p Writable destination span of at least four bytes.
+ * @param value Unsigned 32-bit field value to encode.
+ */
 static void fixture_u32(unsigned char *p, uint32_t value) {
     unsigned i;
     for (i = 0; i < 4; ++i) p[i] = (unsigned char)(value >> (i * 8));
 }
 
-/** Keep import descriptors and names in separate sections to exercise RVA mapping. */
+/**
+ * Keep import descriptors and names in separate sections to exercise RVA mapping.
+ *
+ * @param plus Nonzero to create the extended fixture image variant.
+ * @param large Nonzero to create the large fixture image variant.
+ * @param size Caller-owned output receiving the allocated image byte length.
+ * @return Owned synthetic executable image bytes released with free.
+ */
 static unsigned char *fixture_image(int plus, int large, size_t *size) {
     unsigned optional_size = plus ? 240 : 224, directories = plus ? 112 : 96;
     unsigned char *bytes, *optional, *section;
@@ -68,7 +97,15 @@ static unsigned char *fixture_image(int plus, int large, size_t *size) {
     return bytes;
 }
 
-/** Each rejection must use the established eligibility diagnostic and release partial names. */
+/**
+ * Each rejection must use the established eligibility diagnostic and release partial names.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param bytes Requested byte count.
+ * @param size Requested storage size in bytes.
+ * @param expected Expected fixture value or classification.
+ * @param name Borrowed NUL-terminated name.
+ */
 static void check_image(const char *path, const unsigned char *bytes, size_t size,
                         int expected, const char *name) {
     PcContext c = {0};
@@ -86,7 +123,11 @@ static void check_image(const char *path, const unsigned char *bytes, size_t siz
     pj_free(imports); pc_clear_error(&c);
 }
 
-/** Malformed offsets, section mappings, import lists and names fail without oversized reads. */
+/**
+ * Malformed offsets, section mappings, import lists and names fail without oversized reads.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ */
 static void check_malformed(const char *path) {
     unsigned char *base, *bytes;
     size_t size;
@@ -130,12 +171,17 @@ static void check_malformed(const char *path) {
     free(bytes); free(base);
 }
 
-/** Descriptor and name limits are independent of unrelated PE data size. */
+/**
+ * Descriptor and name limits are independent of unrelated PE data size.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ */
 static void check_limits(const char *path) {
     size_t size;
     unsigned char *bytes = fixture_image(1, 1, &size);
     unsigned i;
     check_image(path, bytes, size, 2, "large unrelated pdata");
+
     /* Move the import list into the large section; every entry names the same DLL. */
     fixture_u32(bytes + 0x98 + 120, 0x3000);
     fixture_u32(bytes + 0x98 + 124, 258 * 20);
@@ -156,7 +202,12 @@ static void check_limits(const char *path) {
 }
 
 #if defined(_WIN32)
-/** Exercise the actual DLL resolver and closure on this native test executable. */
+
+/**
+ * Exercise the actual DLL resolver and closure on this native test executable.
+ *
+ * @param self Borrowed path of the running fixture executable.
+ */
 static void check_windows_closure(const char *self) {
     PcContext c = {0};
     PcJson *paths = pj_new(PJ_OBJECT), *dependencies = pj_new(PJ_OBJECT);
@@ -170,7 +221,13 @@ static void check_windows_closure(const char *self) {
 }
 #endif
 
-/** Run the same private helper used on Windows, even when validating on another host. */
+/**
+ * Run the same private helper used on Windows, even when validating on another host.
+ *
+ * @param argc Number of process argument words.
+ * @param argv Borrowed NUL-terminated process argument vector.
+ * @return Zero when all requested checks succeed; nonzero for invalid invocation or a fixture failure.
+ */
 int main(int argc, char **argv) {
     char *directory, *path;
     unsigned char *bytes;

@@ -24,24 +24,261 @@ import util.log;
 
 /** Compiler-private context ABI: one owner and one resolved identity per command. */
 extern func l1c_prep_create(data: byte*, length: int) -> void*;
+
+/**
+ * Destroy one command-owned preparation or explicit-profile context.
+ *
+ * Releases context allocations, any coordination lock, and command-private
+ * native support. Explicit-profile cleanup removes only registered owned staging
+ * contents; unexpected contents or cleanup failures can retain recovery evidence.
+ * Published or loaded profiles and caller-owned direct-construction directories
+ * are not removed. Every context alias expires after this call.
+ *
+ * @param context Context returned by a preparation or profile constructor; release exactly once.
+ */
 extern func l1c_prep_free(context: void*);
+
+/**
+ * Resolve and retain one command's Dea and native preparation identities.
+ *
+ * Resolution selects inputs and toolchain state at most once per context.
+ * Failures retain a diagnostic accessible through l1c_prep_error_code and
+ * l1c_prep_get; the context still requires l1c_prep_free.
+ *
+ * @param context Borrowed live context returned by l1c_prep_create.
+ * @return 1 after successful resolution, or 0 for invalid state or resolution failure.
+ */
 extern func l1c_prep_resolve(context: void*) -> int;
+
+/**
+ * Look up and validate the native profile for an already resolved context.
+ *
+ * A hit updates the context's selected path. An unusable completed profile
+ * records recovery detail in the unusable field while allowing private fallback;
+ * lookup neither repairs nor consumes that invalid profile.
+ *
+ * @param context Borrowed live context with a resolved native identity.
+ * @return 1 for a validated hit, 0 for an ordinary miss, 2 for unusable completion, or -1 on invalid state or
+ * lookup error.
+ */
 extern func l1c_prep_find(context: void*) -> int;
+
+/**
+ * Acquire per-profile coordination for native construction.
+ *
+ * Requires resolved, eligible persistent identity and writable cache storage.
+ * The context owns the lock until l1c_prep_unlock or l1c_prep_free; a failure
+ * retains a diagnostic rather than transferring context ownership.
+ *
+ * @param context Borrowed live context with no active coordination lock.
+ * @return 1 after acquiring coordination, or 0 for invalid state or lock failure.
+ */
 extern func l1c_prep_lock(context: void*) -> int;
+
+/**
+ * Allocate fresh command-private support without persistent publication.
+ *
+ * Requires no existing private root or coordination lock. Recoverable storage
+ * or lock failures at an implicit cache destination may be cleared before the
+ * fallback. The context owns this workspace until l1c_prep_free.
+ *
+ * @param context Borrowed live context with resolved native preparation inputs.
+ * @return 1 after establishing private support, or 0 for invalid state or allocation failure.
+ */
 extern func l1c_prep_private(context: void*) -> int;
+
+/**
+ * Release coordination and invalidate active native construction.
+ *
+ * The context remains alive, but an active construction can no longer write or
+ * build until a new construction is begun. This call does not destroy the
+ * context or remove a completed profile.
+ *
+ * @param context Borrowed live preparation context; a context with no lock is allowed.
+ */
 extern func l1c_prep_unlock(context: void*);
+
+/**
+ * Begin native construction under coordinated or command-private ownership.
+ *
+ * Requires resolved native inputs and either a held profile lock or a private
+ * workspace. Establishes the selected output root and invalidates any previous
+ * managed completion marker before constructing payloads.
+ *
+ * @param context Borrowed live preparation context with selected output ownership.
+ * @return 1 after beginning construction, or 0 for invalid state or a recorded construction failure.
+ */
 extern func l1c_prep_begin(context: void*) -> int;
+
+/**
+ * Validate and atomically publish the managed native completion manifest.
+ *
+ * Requires active construction and its retained lock or private workspace.
+ * Rechecks selected inputs and payloads before publishing completion last;
+ * failed work does not become a valid completed profile. The context retains
+ * ownership and any failure diagnostic.
+ *
+ * @param context Borrowed live context whose required outputs have been built.
+ * @return 1 after validated completion publication, or 0 for invalid state or a recorded publication failure.
+ */
 extern func l1c_prep_complete(context: void*) -> int;
+
+/**
+ * Create a direct native-construction context for an already owned destination.
+ *
+ * Copies normalized JSON inputs without resolving toolchain defaults, caches,
+ * reuse identities, locks, or publication. The context owns its descriptions,
+ * never the caller's destination directory. Even a context containing a saved
+ * configuration failure must be released with l1c_prep_free.
+ *
+ * @param data Borrowed normalized construction JSON bytes; no terminator is required.
+ * @param length Nonnegative number of JSON bytes.
+ * @param destination Borrowed NUL-free destination path bytes; no terminator is required.
+ * @param destination_length Nonnegative number of destination bytes.
+ * @return Owned context; inspect its saved diagnostic before using its construction.
+ */
 extern func l1c_prep_construction_create(data: byte*, length: int, destination: byte*, destination_length: int) -> void*;
+
+/**
+ * Validate all direct-construction payloads without publishing managed metadata.
+ *
+ * Requires an active direct construction whose declared outputs have been
+ * built. No managed manifest or publication memo is written. Failures remain
+ * in the context, which still requires its single l1c_prep_free call.
+ *
+ * @param context Borrowed live context returned by l1c_prep_construction_create.
+ * @return 1 after complete payload validation, or 0 for invalid state or a recorded validation failure.
+ */
 extern func l1c_prep_construction_complete(context: void*) -> int;
+
+/**
+ * Read the diagnostic code retained by a preparation or profile context.
+ *
+ * Reading this code neither clears the failure nor releases the context.
+ *
+ * @param context Borrowed live context from a preparation or profile constructor.
+ * @return Saved diagnostic number, 0 when none is saved, or 2150 for a null native context.
+ */
 extern func l1c_prep_error_code(context: void*) -> int;
+
+/**
+ * Copy one context field into caller-owned bytes or query its required length.
+ *
+ * Field names are NUL-free byte spans. A null output queries the size; a
+ * nonnull output must have enough capacity or the call returns -1 without
+ * copying. No terminator is written. Unknown, unavailable, and empty fields
+ * all return zero. Result bytes are independent copies, but available fields
+ * and their sizes can change when the context advances to another state.
+ *
+ * @param context Borrowed live preparation or profile context, including one with a saved failure.
+ * @param field Borrowed field-name bytes; no terminator is required.
+ * @param length Nonnegative number of field-name bytes.
+ * @param output Writable destination, or null for a byte-length query.
+ * @param capacity Nonnegative writable byte capacity when output is nonnull; ignored for a null output.
+ * @return Required byte length including zero, or -1 for invalid input, length overflow, or insufficient
+ * capacity.
+ */
 extern func l1c_prep_get(context: void*, field: byte*, length: int, output: byte*?, capacity: int) -> int;
+
+/**
+ * Start a fresh explicit profile at a new caller-selected destination.
+ *
+ * Copies JSON configuration and the destination spelling, selects the native
+ * toolchain, and begins owned sibling staging without managed-cache interaction.
+ * The returned context must be released with l1c_prep_free even after a saved
+ * creation failure. Publishing requires l1c_profile_publish; freeing the context
+ * does not remove a successfully published profile.
+ *
+ * @param data Borrowed complete profile configuration JSON bytes; no terminator is required.
+ * @param length Nonnegative number of JSON bytes.
+ * @param destination Borrowed nonempty NUL-free path to a new directory.
+ * @param destination_length Positive number of destination bytes, excluding any terminator.
+ * @return Owned profile-construction context, possibly containing a saved diagnostic.
+ */
 extern func l1c_profile_create(data: byte*, length: int, destination: byte*, destination_length: int) -> void*;
+
+/**
+ * Validate and publish a completed explicit profile to its absent destination.
+ *
+ * Rechecks input and payload bytes, writes completion last, removes registered
+ * construction scratch, and renames the staging directory. Success updates the
+ * context's selected profile and include paths. Failure leaves staging owned by
+ * the context for cleanup or recovery and retains its diagnostic.
+ *
+ * @param context Borrowed live explicit-profile construction context.
+ * @return 1 after publication, or 0 for invalid state or a recorded publication failure.
+ */
 extern func l1c_profile_publish(context: void*) -> int;
+
+/**
+ * Load exactly one explicit profile as a read-only selected artifact.
+ *
+ * Canonicalizes the requested root and validates its manifest without resolving
+ * compiler defaults, probing an alternate compiler, or creating managed state.
+ * The context owns copied descriptions rather than the profile directory.
+ * Release it with l1c_prep_free even when loading saved a failure.
+ *
+ * @param path Borrowed nonempty NUL-free native profile path; no terminator is required.
+ * @param length Positive number of path bytes, excluding any terminator.
+ * @return Owned read-only profile context, possibly containing a saved load diagnostic.
+ */
 extern func l1c_profile_load(path: byte*, length: int) -> void*;
+
+/**
+ * Recheck the selected profile payloads required by a consuming mode.
+ *
+ * Checks all declared payload paths and always hashes interfaces and headers;
+ * optional native verification also hashes native payloads. Undeclared tree
+ * entries are rejected. No validation memo is written, and profile ownership
+ * remains external to the context.
+ *
+ * @param context Borrowed live context containing a loaded or published profile.
+ * @param native_payloads Nonzero to verify native payload content in addition to semantic interfaces.
+ * @return 1 for valid required payloads, or 0 for invalid state or a retained verification failure.
+ */
 extern func l1c_profile_verify(context: void*, native_payloads: int) -> int;
+
+/**
+ * Compare explicitly supplied settings with the selected profile configuration.
+ *
+ * Copies and parses the selector JSON for this call. Supplied compiler,
+ * options, variant, and codegen fields are compared using lexical normalization
+ * without alternate compiler probes. A mismatch is retained as a context
+ * diagnostic. No profile bytes are changed.
+ *
+ * @param context Borrowed live context containing a loaded or published profile.
+ * @param data Borrowed selector JSON bytes; no terminator is required.
+ * @param length Nonnegative number of JSON bytes.
+ * @return 1 when the explicit settings match, or 0 for invalid state, malformed input, or mismatch.
+ */
 extern func l1c_profile_match(context: void*, data: byte*, length: int) -> int;
+
+/**
+ * Check that a consumer output cannot overlap its read-only selected profile.
+ *
+ * Canonicalizes the prospective output and rejects paths within the profile
+ * or ancestors containing it, including aliases to those locations. This check
+ * creates no output and transfers no filesystem ownership.
+ *
+ * @param context Borrowed live context containing a loaded or published profile.
+ * @param path Borrowed nonempty NUL-free native output path; no terminator is required.
+ * @param length Positive number of path bytes, excluding any terminator.
+ * @return 1 for an allowed output, or 0 for invalid state, invalid path, or retained overlap failure.
+ */
 extern func l1c_profile_output(context: void*, path: byte*, length: int) -> int;
+
+/**
+ * Check that temporary allocation cannot occur inside the selected profile.
+ *
+ * Canonicalizes an existing temporary parent and rejects the profile root or
+ * its descendants. Ordinary ancestor temporary roots remain allowed. This
+ * check neither allocates scratch storage nor changes directory ownership.
+ *
+ * @param context Borrowed live context containing a loaded or published profile.
+ * @param path Borrowed nonempty NUL-free native parent path; no terminator is required.
+ * @param length Positive number of path bytes, excluding any terminator.
+ * @return 1 for an allowed parent, or 0 for invalid state, invalid path, or retained overlap failure.
+ */
 extern func l1c_profile_temp_parent(context: void*, path: byte*, length: int) -> int;
 
 /** Copy an internal UTF-8 context value into an owned Dea string. */

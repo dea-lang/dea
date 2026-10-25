@@ -68,9 +68,10 @@ Also see: `../CONTRIBUTING.md`, `../SECURITY.md`.
   `<PREFIX>/bin/l0-env.sh` in POSIX/MSYS2 bash or `call <PREFIX>\bin\l0-env.cmd` in `cmd.exe`. For source-tree usage,
   invoke `./scripts/l0c` or `scripts\l0c.cmd` directly; those wrappers derive `L0_HOME` on their own.
 - **Pre-commit hooks:** Install from the monorepo root with
-  `uv run --group dev pre-commit install -c .pre-commit-config.yaml` after `make venv`. Three hooks run on every commit:
-  `mdformat` (auto-reformats `.md` files; config in `pyproject.toml`), `copyright-headers` (validates source file
-  copyright notices), and `adr-impact` (validates active lifecycle documents and staged closure evidence). If mdformat
+  `uv run --group dev pre-commit install -c .pre-commit-config.yaml` after `make venv`. The root configuration defines
+  four hooks: `mdformat` (auto-reformats `.md` files; config in `pyproject.toml`), `copyright-headers` (validates source
+  file copyright notices), `adr-impact` (validates active lifecycle documents and staged closure evidence), and
+  `c-function-docs` (validates maintained C contracts, header briefs, spacing, and Javadoc autobrief). If mdformat
   reformats a file, stage the changes and re-commit.
 
 ## Release And Documentation Publication

@@ -3,11 +3,12 @@
 """Tests for L0 LaTeX normalization."""
 
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 import pytest
 
 from compiler.docgen.l0_docgen import repo_root
-from compiler.docgen.l0_docgen_latex import _normalize_titlepage_front_matter, normalize_latex_site
+from compiler.docgen.l0_docgen_latex import _inject_enum_variants, _normalize_titlepage_front_matter, normalize_latex_site
 
 
 @pytest.mark.parametrize("stage", ["stage1", "stage2"])
@@ -1063,3 +1064,94 @@ def test_normalize_latex_site_leaves_non_l0_pages_unchanged(tmp_path: Path) -> N
     normalize_latex_site(xml_dir, latex_dir)
 
     assert (latex_dir / "demo_8py.tex").read_text(encoding="utf-8") == original
+
+
+@pytest.mark.parametrize('source_order', [
+    ('Alpha', 'Middle', 'Zebra'),
+    ('Zebra', 'Middle', 'Alpha'),
+])
+def test_enum_latex_replaces_multiple_tables_without_shifting_other_members(
+    tmp_path: Path, monkeypatch, source_order: tuple[str, ...]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    source = '\n'.join(f'enum {name} {{ Item(value: int); Empty; }}' for name in source_order)
+    Path('fixture.l0').write_text(source + '\n')
+    compound = ET.Element('compounddef', kind='file')
+    section = ET.SubElement(compound, 'sectiondef', kind='enum')
+    for line, name in enumerate(source_order, 1):
+        member = ET.SubElement(section, 'memberdef', kind='enum')
+        ET.SubElement(member, 'name').text = name
+        for variant in ('Item', 'Empty'):
+            ET.SubElement(ET.SubElement(member, 'enumvalue'), 'name').text = variant
+        ET.SubElement(member, 'location', file='fixture.l0', line=str(line))
+
+    original = ''
+    expected = ''
+    for name in sorted(source_order):
+        heading = rf'\doxysubsubsection{{\texorpdfstring{{{name}}}{{{name}}}}}' + '\n'
+        table = '\n'.join((
+            r'\begin{DoxyEnumFields}[2]{Enumerator}',
+            rf'\raisebox{{\heightof{{T}}}}[0pt][0pt]{{\index{{Item!{name}}}}}',
+            r'Item&\\',
+            r'\hline',
+            rf'\raisebox{{\heightof{{T}}}}[0pt][0pt]{{\index{{Empty!{name}}}}}',
+            r'Empty&\\',
+            r'\hline',
+            r'\end{DoxyEnumFields}',
+            '',
+        ))
+        original += heading + table
+        expected += heading + '\n'.join((
+            r'\textbf{Variants:}\\',
+            r'\begin{DoxyItemize}',
+            r'\item \texttt{Item(value: int)}',
+            r'\item \texttt{Empty}',
+            r'\end{DoxyItemize}',
+            '',
+            '',
+        ))
+
+    following_function = r'''\doxysubsection{Function Documentation}
+\doxysubsubsection{consume()}
+\begin{DoxyParams}{Parameters}
+{\em value} & An owned value. \\
+\hline
+\end{DoxyParams}
+'''
+    assert _inject_enum_variants(original + following_function, compound) == expected + following_function
+
+
+@pytest.mark.parametrize('payload_table_present', [True, False])
+def test_enum_latex_does_not_consume_following_plain_enum_table(
+    tmp_path: Path, monkeypatch, payload_table_present: bool
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    Path('fixture.l0').write_text('enum Payload { Present(value: int); }\nenum Plain { Absent; }\n')
+    compound = ET.fromstring('''<compounddef kind="file"><sectiondef kind="enum">
+<memberdef kind="enum"><name>Payload</name><enumvalue><name>Present</name></enumvalue>
+<location file="fixture.l0" line="1"/></memberdef>
+<memberdef kind="enum"><name>Plain</name><enumvalue><name>Absent</name></enumvalue>
+<location file="fixture.l0" line="2"/></memberdef>
+</sectiondef></compounddef>''')
+    payload_heading = '\\doxysubsubsection{\\texorpdfstring{Payload}{Payload}}\nPayload description.\n'
+    payload_table = r'''\begin{DoxyEnumFields}[2]{Enumerator}
+Present&\\
+\end{DoxyEnumFields}
+'''
+    plain_enum = r'''\doxysubsubsection{\texorpdfstring{Plain}{Plain}}
+Plain description.
+\begin{DoxyEnumFields}[2]{Enumerator}
+Absent&\\
+\end{DoxyEnumFields}
+'''
+    original = payload_heading + (payload_table if payload_table_present else '') + plain_enum
+    payload_variants = r'''\textbf{Variants:}\\
+\begin{DoxyItemize}
+\item \texttt{Present(value: int)}
+\end{DoxyItemize}
+
+'''
+    expected = payload_heading + (payload_variants if payload_table_present else '') + plain_enum
+    first_pass = _inject_enum_variants(original, compound)
+    assert first_pass == expected
+    assert _inject_enum_variants(first_pass, compound) == first_pass

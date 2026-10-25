@@ -81,6 +81,7 @@ dea_int _rt_isub(dea_int a, dea_int b) {
  * @return Product.
  */
 dea_int _rt_imul(dea_int a, dea_int b) {
+
     /* Zero multiplication always succeeds */
     if (a == 0 || b == 0) {
         return 0;
@@ -97,6 +98,7 @@ dea_int _rt_imul(dea_int a, dea_int b) {
             _rt_panic("integer multiplication overflow");
         }
     }
+
     /* Both operands negative: result is positive, overflow if a < INT32_MAX / b
      * Note: We already handled the a=-1,b=INT32_MIN case above, so b != INT32_MIN here
      * and INT32_MAX / b is safe */
@@ -105,17 +107,21 @@ dea_int _rt_imul(dea_int a, dea_int b) {
             _rt_panic("integer multiplication overflow");
         }
     }
+
     /* Mixed signs: result is negative or zero */
     else {
+
         /* We already handled the special cases where b=-1,a=INT32_MIN or a=-1,b=INT32_MIN
          * So all divisions below are safe from overflow */
         if (a > 0) {
+
             /* a > 0, b < 0: underflow if a > INT32_MIN / b
              * Since b != -1 (handled above), INT32_MIN / b is safe */
             if (b != -1 && a > INT32_MIN / b) {
                 _rt_panic("integer multiplication overflow");
             }
         } else {
+
             /* a < 0, b > 0: underflow if a < INT32_MIN / b */
             if (a < INT32_MIN / b) {
                 _rt_panic("integer multiplication overflow");
@@ -129,7 +135,7 @@ dea_int _rt_imul(dea_int a, dea_int b) {
 /**
  * Narrow dea_int to dea_tiny with range check.
  *
- * @param value Integer value to convert after range validation.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented in the destination integer type.
  */
 dea_tiny _rt_narrow_dea_tiny(dea_int value) {
@@ -142,7 +148,7 @@ dea_tiny _rt_narrow_dea_tiny(dea_int value) {
 /**
  * Narrow dea_int to dea_byte with range check.
  *
- * @param value Integer value to convert after range validation.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented in the destination integer type.
  */
 dea_byte _rt_narrow_dea_byte(dea_int value) {
@@ -155,7 +161,7 @@ dea_byte _rt_narrow_dea_byte(dea_int value) {
 /**
  * Narrow dea_int to dea_short with range check.
  *
- * @param value Integer value to convert after range validation.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented in the destination integer type.
  */
 dea_short _rt_narrow_dea_short(dea_int value) {
@@ -168,7 +174,7 @@ dea_short _rt_narrow_dea_short(dea_int value) {
 /**
  * Narrow dea_int to dea_ushort with range check.
  *
- * @param value Integer value to convert after range validation.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented in the destination integer type.
  */
 dea_ushort _rt_narrow_dea_ushort(dea_int value) {
@@ -181,7 +187,7 @@ dea_ushort _rt_narrow_dea_ushort(dea_int value) {
 /**
  * Narrow dea_int to dea_uint with range check.
  *
- * @param value Integer value to convert after range validation.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented in the destination integer type.
  */
 dea_uint _rt_narrow_dea_uint(dea_int value) {
@@ -194,7 +200,7 @@ dea_uint _rt_narrow_dea_uint(dea_int value) {
 /**
  * Narrow dea_int to dea_ulong with range check.
  *
- * @param value Integer value to convert after range validation.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented in the destination integer type.
  */
 dea_ulong _rt_narrow_dea_ulong(dea_int value) {
@@ -451,7 +457,7 @@ dea_ulong _rt_ulmul(dea_ulong a, dea_ulong b) {
 /**
  * Checked cast from signed 64-bit to dea_tiny.
  *
- * @param value Integer value to convert.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented as dea_tiny; an out-of-range input panics.
  */
 dea_tiny _rt_cast_dea_tiny_from_signed(dea_long value) {
@@ -464,7 +470,7 @@ dea_tiny _rt_cast_dea_tiny_from_signed(dea_long value) {
 /**
  * Checked cast from unsigned 64-bit to dea_tiny.
  *
- * @param value Integer value to convert.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented as dea_tiny; an out-of-range input panics.
  */
 dea_tiny _rt_cast_dea_tiny_from_unsigned(dea_ulong value) {
@@ -477,7 +483,7 @@ dea_tiny _rt_cast_dea_tiny_from_unsigned(dea_ulong value) {
 /**
  * Checked cast from signed 64-bit to dea_byte.
  *
- * @param value Integer value to convert.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented as dea_byte; an out-of-range input panics.
  */
 dea_byte _rt_cast_dea_byte_from_signed(dea_long value) {
@@ -490,7 +496,7 @@ dea_byte _rt_cast_dea_byte_from_signed(dea_long value) {
 /**
  * Checked cast from unsigned 64-bit to dea_byte.
  *
- * @param value Integer value to convert.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented as dea_byte; an out-of-range input panics.
  */
 dea_byte _rt_cast_dea_byte_from_unsigned(dea_ulong value) {
@@ -503,7 +509,7 @@ dea_byte _rt_cast_dea_byte_from_unsigned(dea_ulong value) {
 /**
  * Checked cast from signed 64-bit to dea_short.
  *
- * @param value Integer value to convert.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented as dea_short; an out-of-range input panics.
  */
 dea_short _rt_cast_dea_short_from_signed(dea_long value) {
@@ -516,7 +522,7 @@ dea_short _rt_cast_dea_short_from_signed(dea_long value) {
 /**
  * Checked cast from unsigned 64-bit to dea_short.
  *
- * @param value Integer value to convert.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented as dea_short; an out-of-range input panics.
  */
 dea_short _rt_cast_dea_short_from_unsigned(dea_ulong value) {
@@ -529,7 +535,7 @@ dea_short _rt_cast_dea_short_from_unsigned(dea_ulong value) {
 /**
  * Checked cast from signed 64-bit to dea_ushort.
  *
- * @param value Integer value to convert.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented as dea_ushort; an out-of-range input panics.
  */
 dea_ushort _rt_cast_dea_ushort_from_signed(dea_long value) {
@@ -542,7 +548,7 @@ dea_ushort _rt_cast_dea_ushort_from_signed(dea_long value) {
 /**
  * Checked cast from unsigned 64-bit to dea_ushort.
  *
- * @param value Integer value to convert.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented as dea_ushort; an out-of-range input panics.
  */
 dea_ushort _rt_cast_dea_ushort_from_unsigned(dea_ulong value) {
@@ -555,7 +561,7 @@ dea_ushort _rt_cast_dea_ushort_from_unsigned(dea_ulong value) {
 /**
  * Checked cast from signed 64-bit to dea_int.
  *
- * @param value Integer value to convert.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented as dea_int; an out-of-range input panics.
  */
 dea_int _rt_cast_dea_int_from_signed(dea_long value) {
@@ -568,7 +574,7 @@ dea_int _rt_cast_dea_int_from_signed(dea_long value) {
 /**
  * Checked cast from unsigned 64-bit to dea_int.
  *
- * @param value Integer value to convert.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented as dea_int; an out-of-range input panics.
  */
 dea_int _rt_cast_dea_int_from_unsigned(dea_ulong value) {
@@ -581,7 +587,7 @@ dea_int _rt_cast_dea_int_from_unsigned(dea_ulong value) {
 /**
  * Checked cast from signed 64-bit to dea_uint.
  *
- * @param value Integer value to convert.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented as dea_uint; an out-of-range input panics.
  */
 dea_uint _rt_cast_dea_uint_from_signed(dea_long value) {
@@ -594,7 +600,7 @@ dea_uint _rt_cast_dea_uint_from_signed(dea_long value) {
 /**
  * Checked cast from unsigned 64-bit to dea_uint.
  *
- * @param value Integer value to convert.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented as dea_uint; an out-of-range input panics.
  */
 dea_uint _rt_cast_dea_uint_from_unsigned(dea_ulong value) {
@@ -607,7 +613,7 @@ dea_uint _rt_cast_dea_uint_from_unsigned(dea_ulong value) {
 /**
  * Checked cast from signed 64-bit to dea_long.
  *
- * @param value Integer value to convert.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented as dea_long; an out-of-range input panics.
  */
 dea_long _rt_cast_dea_long_from_signed(dea_long value) {
@@ -617,7 +623,7 @@ dea_long _rt_cast_dea_long_from_signed(dea_long value) {
 /**
  * Checked cast from unsigned 64-bit to dea_long.
  *
- * @param value Integer value to convert.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented as dea_long; an out-of-range input panics.
  */
 dea_long _rt_cast_dea_long_from_unsigned(dea_ulong value) {
@@ -630,7 +636,7 @@ dea_long _rt_cast_dea_long_from_unsigned(dea_ulong value) {
 /**
  * Checked cast from signed 64-bit to dea_ulong.
  *
- * @param value Integer value to convert.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented as dea_ulong; an out-of-range input panics.
  */
 dea_ulong _rt_cast_dea_ulong_from_signed(dea_long value) {
@@ -643,7 +649,7 @@ dea_ulong _rt_cast_dea_ulong_from_signed(dea_long value) {
 /**
  * Checked cast from unsigned 64-bit to dea_ulong.
  *
- * @param value Integer value to convert.
+ * @param value Integer value to convert under the checked range rules.
  * @return Value represented as dea_ulong; an out-of-range input panics.
  */
 dea_ulong _rt_cast_dea_ulong_from_unsigned(dea_ulong value) {

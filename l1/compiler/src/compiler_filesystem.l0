@@ -19,23 +19,127 @@ import util.diag;
  * This ABI is compiler-internal. Its implementation lives in the L1
  * compiler-support translation unit, not in the Dea runtime or stdlib.
  */
+
+/**
+ * Create one directory through the compiler-private native filesystem ABI.
+ *
+ * On POSIX, the process umask filters mode; Windows validates but ignores it.
+ * The path is borrowed only for this call and must contain no embedded NUL.
+ *
+ * @param path Nonempty native path bytes; no terminator is required.
+ * @param path_len Positive number of path bytes, excluding any terminator.
+ * @param mode Permission and special bits in the range 0 through 07777.
+ * @return 1 after creation, 0 if the path already exists, or -1 on invalid input or native failure.
+ */
 extern func l1c_fs_mkdir(path: byte*, path_len: int, mode: int) -> int;
+
+/**
+ * Classify one native path after following its final symlink or reparse point.
+ *
+ * The input is borrowed for this call; embedded NUL bytes are invalid.
+ *
+ * @param path Nonempty native path bytes; no terminator is required.
+ * @param path_len Positive number of path bytes, excluding any terminator.
+ * @return 0 for absent or dangling, 1 for a regular file, 2 for a directory, 3 for another object, or -1 on
+ * error.
+ */
 extern func l1c_fs_path_kind_follow(path: byte*, path_len: int) -> int;
+
+/**
+ * Classify one native path without following its final symlink or reparse point.
+ *
+ * The input is borrowed for this call; embedded NUL bytes are invalid.
+ *
+ * @param path Nonempty native path bytes; no terminator is required.
+ * @param path_len Positive number of path bytes, excluding any terminator.
+ * @return 0 for absent, 1 for a regular file, 2 for a directory, 3 for another object including a link, or -1
+ * on error.
+ */
 extern func l1c_fs_path_kind_nofollow(path: byte*, path_len: int) -> int;
+
+/**
+ * Compare the followed native identities of two existing filesystem paths.
+ *
+ * Both byte spans are borrowed for this call and must contain no embedded NUL.
+ * An absent path is an error rather than evidence that the paths differ.
+ *
+ * @param left Nonempty first native path; no terminator is required.
+ * @param left_len Positive number of left path bytes, excluding any terminator.
+ * @param right Nonempty second native path; no terminator is required.
+ * @param right_len Positive number of right path bytes, excluding any terminator.
+ * @return 1 for the same object, 0 for distinct objects, or -1 on invalid input or native failure.
+ */
 extern func l1c_fs_same_file(
     left: byte*,
     left_len: int,
     right: byte*,
     right_len: int
 ) -> int;
+
+/**
+ * Move one regular file to an absent destination on the same filesystem.
+ *
+ * Both paths are borrowed NUL-free native byte spans. Links and non-regular
+ * sources are rejected. POSIX relies on the compiler's trusted-parent and
+ * single-writer assumptions between checking the destination and renaming;
+ * Windows enforces absence in the move operation.
+ *
+ * @param source Nonempty source path; no terminator is required.
+ * @param source_len Positive number of source path bytes.
+ * @param destination Nonempty destination path; no terminator is required.
+ * @param destination_len Positive number of destination path bytes.
+ * @return 1 after moving, 0 if the destination exists, or -1 on invalid input or native failure.
+ */
 extern func l1c_fs_rename_absent(
     source: byte*,
     source_len: int,
     destination: byte*,
     destination_len: int
 ) -> int;
+
+/**
+ * Remove one regular file while rejecting a final symlink or reparse point.
+ *
+ * The borrowed path must contain no embedded NUL. This operation assumes the
+ * compiler's trusted-parent and single-writer workspace ownership.
+ *
+ * @param path Nonempty native path bytes; no terminator is required.
+ * @param path_len Positive number of path bytes, excluding any terminator.
+ * @return 1 after removal, 0 if already absent, or -1 for invalid input, another object type, or native
+ * failure.
+ */
 extern func l1c_fs_remove_regular_file(path: byte*, path_len: int) -> int;
+
+/**
+ * Remove one empty real directory while rejecting a final symlink or reparse point.
+ *
+ * The borrowed path must contain no embedded NUL. This operation assumes the
+ * compiler's trusted-parent and single-writer workspace ownership.
+ *
+ * @param path Nonempty native path bytes; no terminator is required.
+ * @param path_len Positive number of path bytes, excluding any terminator.
+ * @return 1 after removal, 0 if already absent, or -1 for invalid input, another object type, a nonempty
+ * directory, or native failure.
+ */
 extern func l1c_fs_remove_empty_dir(path: byte*, path_len: int) -> int;
+
+/**
+ * Join a native parent path and fixed child name into caller-owned bytes.
+ *
+ * A missing separator is inserted as `/`. POSIX recognizes only trailing `/`;
+ * Windows also recognizes trailing backslash. Both inputs are borrowed,
+ * nonempty NUL-free byte spans. This lexical join does not validate child
+ * containment; callers supply their own fixed child names.
+ *
+ * @param parent Parent bytes; no terminator is required.
+ * @param parent_len Positive number of parent bytes.
+ * @param child Child bytes; no terminator is required.
+ * @param child_len Positive number of child bytes.
+ * @param output Writable result buffer, or null with zero capacity to query its size.
+ * @param output_capacity Nonnegative buffer capacity in bytes.
+ * @return Required positive byte length without a terminator, or -1 for invalid input or overflow; a short
+ * buffer is unchanged.
+ */
 extern func l1c_fs_join_child(
     parent: byte*,
     parent_len: int,
@@ -55,31 +159,114 @@ extern func l1c_fs_temp_parent_field(
 /** Release a native inspection snapshot. */
 extern func l1c_fs_temp_parent_free(report: byte*);
 
+/**
+ * Resolve and validate a compiler temporary parent using actual-host rules.
+ *
+ * POSIX checks every canonical directory component for root or effective-user
+ * ownership and requires the sticky bit on group- or other-writable components.
+ * Windows canonicalizes the directory under the trusted-parent ACL assumption.
+ * Each call repeats inspection; input and output storage remain caller-owned.
+ *
+ * @param path Nonempty NUL-free native directory path; no terminator is required.
+ * @param path_len Positive number of path bytes, excluding any terminator.
+ * @param output Writable canonical bytes, or null for a size query.
+ * @param output_capacity Nonnegative output capacity in bytes.
+ * @return Required positive byte length without a terminator, or -1 on invalid input or validation failure; a
+ * short buffer is unchanged.
+ */
 extern func l1c_fs_resolve_trusted_temp_parent(
     path: byte*,
     path_len: int,
     output: byte*?,
     output_capacity: int
 ) -> int;
+
+/**
+ * Resolve a path against the process current working directory without requiring existence.
+ *
+ * This transport helper establishes no trust or filesystem identity. Both spans
+ * remain caller-owned, and later calls can observe a changed working directory.
+ *
+ * @param path Nonempty NUL-free native path; no terminator is required.
+ * @param path_len Positive number of path bytes, excluding any terminator.
+ * @param output Writable absolute bytes, or null with zero capacity for a size query.
+ * @param output_capacity Nonnegative output capacity in bytes.
+ * @return Required positive byte length without a terminator, or -1 on invalid input or native failure; a
+ * short buffer is unchanged.
+ */
 extern func l1c_fs_absolute_path(
     path: byte*,
     path_len: int,
     output: byte*?,
     output_capacity: int
 ) -> int;
+
+/**
+ * Resolve an existing native path through filesystem aliases.
+ *
+ * The result supports identity classification. Retain the original executable
+ * alias for invocation when its spelling selects driver behavior. Input and
+ * output storage remain caller-owned; each call resolves the path again.
+ *
+ * @param path Nonempty NUL-free native path; no terminator is required.
+ * @param path_len Positive number of path bytes, excluding any terminator.
+ * @param output Writable canonical bytes, or null with zero capacity for a size query.
+ * @param output_capacity Nonnegative output capacity in bytes.
+ * @return Required positive byte length without a terminator, or -1 on invalid input or resolution failure; a
+ * short buffer is unchanged.
+ */
 extern func l1c_fs_canonical_existing_path(
     path: byte*,
     path_len: int,
     output: byte*?,
     output_capacity: int
 ) -> int;
+
+/**
+ * Find one bare executable name under the actual host's executable search rules.
+ *
+ * Empty and relative PATH components retain their invocation-directory meaning.
+ * The returned spelling is absolute while preserving executable aliases. Inputs
+ * and output remain caller-owned; the size query does not freeze later lookup.
+ *
+ * @param name Nonempty NUL-free executable name without native path separators.
+ * @param name_len Positive number of name bytes, excluding any terminator.
+ * @param output Writable executable path bytes, or null with zero capacity for a size query.
+ * @param output_capacity Nonnegative output capacity in bytes.
+ * @return Required positive byte length without a terminator, or -1 on invalid input, lookup failure, or
+ * native failure; a short buffer is unchanged.
+ */
 extern func l1c_fs_resolve_executable(
     name: byte*,
     name_len: int,
     output: byte*?,
     output_capacity: int
 ) -> int;
+
+/**
+ * Test whether the compiler support library was built for Darwin.
+ *
+ * CLI platform test overrides and environment aliases do not affect this result.
+ *
+ * @return 1 on an Apple host build, or 0 otherwise.
+ */
 extern func l1c_fs_host_is_darwin() -> int;
+
+/**
+ * Launch the supplied executable and argument vector directly and wait for completion.
+ *
+ * The executable is words[0]; no shell or PATH search interprets it. Every word
+ * is copied for the native call, and all input arrays remain caller-owned.
+ * A nonzero child exit status is still a successful launch and wait. On POSIX,
+ * a signal termination is reported as 128 plus the signal number.
+ *
+ * @param words Borrowed array of count nonnull NUL-free argument byte spans.
+ * @param lengths Borrowed array of count nonnegative byte lengths, excluding terminators.
+ * @param count Positive argument count; the executable word must be nonempty.
+ * @param status_out Writable child status, updated only when the result is 1.
+ * @return 1 after launch and wait, 0 when the executable cannot be launched, or -1 on invalid input or
+ * process-management failure.
+ */
 extern func l1c_process_run(
     words: byte**,
     lengths: int*,

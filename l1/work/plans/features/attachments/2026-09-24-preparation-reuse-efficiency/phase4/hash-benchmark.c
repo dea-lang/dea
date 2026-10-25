@@ -3,7 +3,9 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file hash-benchmark.c Experiment-local backend and stable-reader measurement harness. */
+/**
+ * @file hash-benchmark.c Experiment-local backend and stable-reader measurement harness.
+ */
 #ifndef _WIN32
 #define _XOPEN_SOURCE 700
 #define _POSIX_C_SOURCE 200809L
@@ -27,19 +29,39 @@
 #include <CommonCrypto/CommonDigest.h>
 typedef CC_SHA256_CTX PcSha;
 #else
-/** OpenSSL's public opaque EVP interface; experiment links its existing shared library. */
+
+/**
+ * OpenSSL's public opaque EVP interface; experiment links its existing shared library.
+ */
 typedef struct evp_md_ctx_st EVP_MD_CTX;
 typedef struct evp_md_st EVP_MD;
 typedef struct engine_st ENGINE;
+
+/* Allocate an OpenSSL digest context. */
 extern EVP_MD_CTX *EVP_MD_CTX_new(void);
+
+/* Release an OpenSSL digest context. */
 extern void EVP_MD_CTX_free(EVP_MD_CTX *ctx);
+
+/* Select the OpenSSL SHA-256 digest implementation. */
 extern const EVP_MD *EVP_sha256(void);
+
+/* Initialize an OpenSSL digest context. */
 extern int EVP_DigestInit_ex(EVP_MD_CTX *ctx, const EVP_MD *type, ENGINE *engine);
+
+/* Append bytes to an OpenSSL digest context. */
 extern int EVP_DigestUpdate(EVP_MD_CTX *ctx, const void *data, size_t count);
+
+/* Finalize an OpenSSL digest into caller-owned output. */
 extern int EVP_DigestFinal_ex(EVP_MD_CTX *ctx, unsigned char *digest, unsigned int *length);
 typedef struct { EVP_MD_CTX *context; } PcSha;
 #endif
-/** Initialize the experiment's platform digest context. */
+
+/**
+ * Initialize the experiment's platform digest context.
+ *
+ * @param s Caller-owned streaming SHA-256 state to update.
+ */
 static void pc_sha_init(PcSha *s) {
 #ifdef __APPLE__
     if (!CC_SHA256_Init(s)) abort();
@@ -48,7 +70,14 @@ static void pc_sha_init(PcSha *s) {
     if (!s->context || !EVP_DigestInit_ex(s->context, EVP_sha256(), NULL)) abort();
 #endif
 }
-/** Feed a complete chunk without changing the production stable reader. */
+
+/**
+ * Feed a complete chunk without changing the production stable reader.
+ *
+ * @param s Caller-owned streaming SHA-256 state to update.
+ * @param data Borrowed readable input byte span.
+ * @param n Number of bytes to process.
+ */
 static void pc_sha_update(PcSha *s, const void *data, size_t n) {
 #ifdef __APPLE__
     if (n > UINT32_MAX || !CC_SHA256_Update(s, data, (CC_LONG)n)) abort();
@@ -56,7 +85,13 @@ static void pc_sha_update(PcSha *s, const void *data, size_t n) {
     if (!EVP_DigestUpdate(s->context, data, n)) abort();
 #endif
 }
-/** Render platform digest bytes using the same lowercase hexadecimal encoding. */
+
+/**
+ * Render platform digest bytes using the same lowercase hexadecimal encoding.
+ *
+ * @param s Caller-owned streaming SHA-256 state to update.
+ * @param hex Caller-owned 65-byte buffer for a NUL-terminated lowercase SHA-256 digest.
+ */
 static void pc_sha_finish(PcSha *s, char hex[65]) {
     static const char digits[] = "0123456789abcdef";
     unsigned char digest[32];
@@ -74,7 +109,14 @@ static void pc_sha_finish(PcSha *s, char hex[65]) {
     }
     hex[64] = 0;
 }
-/** Hash one span through the experiment's platform implementation. */
+
+/**
+ * Hash one span through the experiment's platform implementation.
+ *
+ * @param data Borrowed readable input byte span.
+ * @param n Number of bytes to process.
+ * @param hex Caller-owned 65-byte buffer for a NUL-terminated lowercase SHA-256 digest.
+ */
 static void pc_sha_bytes(const void *data, size_t n, char hex[65]) {
     PcSha sha;
     pc_sha_init(&sha);
@@ -86,7 +128,16 @@ static void pc_sha_bytes(const void *data, size_t n, char hex[65]) {
 static int reader_mode;
 static unsigned reader_calls;
 static const char *reader_path;
-/** Inject clean short reads, an I/O failure, or an in-read content change. */
+
+/**
+ * Inject clean short reads, an I/O failure, or an in-read content change.
+ *
+ * @param data Caller-owned writable destination span for the requested items.
+ * @param size Requested item size in bytes.
+ * @param count Number of elements in the supplied collection.
+ * @param file Open file stream whose position is managed by this operation.
+ * @return Number of complete items actually read under the selected injected behavior.
+ */
 static size_t checked_fread(void *data, size_t size, size_t count, FILE *file) {
     size_t n;
     if (reader_mode == 1 && reader_calls) return 0;
@@ -99,7 +150,13 @@ static size_t checked_fread(void *data, size_t size, size_t count, FILE *file) {
     ++reader_calls;
     return n;
 }
-/** Preserve a deterministic error after the injected partial read. */
+
+/**
+ * Preserve a deterministic error after the injected partial read.
+ *
+ * @param file Open file stream whose position is managed by this operation.
+ * @return Nonzero when a real or injected read failure is active.
+ */
 static int checked_ferror(FILE *file) {
     return (reader_mode == 1 && reader_calls) || ferror(file);
 }
@@ -124,7 +181,12 @@ static const ChunkMode chunk_modes[] = {
     {"irregular", 0},
 };
 
-/** Exit with a diagnostic when an experiment invariant fails. */
+/**
+ * Exit with a diagnostic when an experiment invariant fails.
+ *
+ * @param condition Predicate required to hold for the fixture.
+ * @param message Borrowed diagnostic text.
+ */
 static void require(int condition, const char *message) {
     if (!condition) {
         fprintf(stderr, "sha256 benchmark: %s\n", message);
@@ -132,21 +194,33 @@ static void require(int condition, const char *message) {
     }
 }
 
-/** Return a monotonic wall-clock timestamp in seconds. */
+/**
+ * Return a monotonic wall-clock timestamp in seconds.
+ * @return Monotonic clock value in seconds.
+ */
 static double wall_seconds(void) {
     struct timespec value;
     require(clock_gettime(CLOCK_MONOTONIC, &value) == 0, "cannot read monotonic clock");
     return (double)value.tv_sec + (double)value.tv_nsec / 1000000000.0;
 }
 
-/** Return process CPU time in seconds. */
+/**
+ * Return process CPU time in seconds.
+ * @return Process CPU time in seconds.
+ */
 static double cpu_seconds(void) {
     struct timespec value;
     require(clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &value) == 0, "cannot read process CPU clock");
     return (double)value.tv_sec + (double)value.tv_nsec / 1000000000.0;
 }
 
-/** Load one regular file before timing the in-memory operation. */
+/**
+ * Load one regular file before timing the in-memory operation.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param length Number of input elements or bytes, as appropriate.
+ * @return Owned file bytes, or NULL if file loading fails.
+ */
 static unsigned char *load_file(const char *path, size_t *length) {
     struct stat info;
     FILE *file;
@@ -165,7 +239,14 @@ static unsigned char *load_file(const char *path, size_t *length) {
     return allocation;
 }
 
-/** Feed bytes using one fixed or cyclic irregular division. */
+/**
+ * Feed bytes using one fixed or cyclic irregular division.
+ *
+ * @param sha Caller-owned streaming SHA-256 state to update.
+ * @param data Borrowed readable input byte span.
+ * @param length Number of input elements or bytes, as appropriate.
+ * @param mode Requested access or processing mode.
+ */
 static void hash_stream(PcSha *sha, const unsigned char *data, size_t length, const ChunkMode *mode) {
     static const size_t irregular[] = {4093, 65521, 127, 8191};
     size_t offset = 0, index = 0;
@@ -178,7 +259,9 @@ static void hash_stream(PcSha *sha, const unsigned char *data, size_t length, co
     }
 }
 
-/** Emit standard short known-answer vectors. */
+/**
+ * Emit standard short known-answer vectors.
+ */
 static void emit_standard_vectors(void) {
     static const char *vectors[] = {
         "", "abc", "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"
@@ -191,7 +274,9 @@ static void emit_standard_vectors(void) {
     }
 }
 
-/** Emit deterministic boundary and streaming-vector digests. */
+/**
+ * Emit deterministic boundary and streaming-vector digests.
+ */
 static void emit_vectors(void) {
     static const size_t sizes[] = {0, 3, 55, 56, 63, 64, 65, 129, 1000000};
     static const size_t divisions[] = {1, 7, 31, 64, 65};
@@ -219,7 +304,20 @@ static void emit_vectors(void) {
     free(allocation);
 }
 
-/** Emit one common timing record. */
+/**
+ * Emit one common timing record.
+ *
+ * @param operation Borrowed name of the measured or failed native operation.
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param mode Requested access or processing mode.
+ * @param iteration Repetition index reported with this measurement.
+ * @param bytes Requested byte count.
+ * @param wall Measured elapsed wall time.
+ * @param cpu Measured process CPU time.
+ * @param digest Caller-owned 65-byte buffer for a NUL-terminated SHA-256 digest.
+ * @param checksum Hash checksum retained to make measured work observable.
+ * @param production_ms Measured production-path elapsed time in milliseconds.
+ */
 static void emit_measurement(const char *operation, const char *path, const char *mode, int iteration,
                              size_t bytes, double wall, double cpu, const char *digest,
                              uint64_t checksum, double production_ms) {
@@ -231,7 +329,13 @@ static void emit_measurement(const char *operation, const char *path, const char
            cpu * 1000.0, digest ? digest : "null", checksum, production_ms);
 }
 
-/** Measure SHA-256 after loading the complete file outside the timed span. */
+/**
+ * Measure SHA-256 after loading the complete file outside the timed span.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param mode Requested access or processing mode.
+ * @param repetitions Number of measurement repetitions.
+ */
 static void measure_memory(const char *path, const ChunkMode *mode, int repetitions) {
     size_t length;
     unsigned char *allocation = load_file(path, &length);
@@ -251,7 +355,12 @@ static void measure_memory(const char *path, const ChunkMode *mode, int repetiti
     free(allocation);
 }
 
-/** Measure sequential fread while consuming every byte in a checked FNV-1a checksum. */
+/**
+ * Measure sequential fread while consuming every byte in a checked FNV-1a checksum.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param repetitions Number of measurement repetitions.
+ */
 static void measure_read(const char *path, int repetitions) {
     unsigned char buffer[65536];
     int iteration;
@@ -277,7 +386,12 @@ static void measure_read(const char *path, int repetitions) {
     }
 }
 
-/** Measure the complete production stable-file hash. */
+/**
+ * Measure the complete production stable-file hash.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param repetitions Number of measurement repetitions.
+ */
 static void measure_stable(const char *path, int repetitions) {
     int iteration;
     for (iteration = 0; iteration < repetitions; ++iteration) {
@@ -296,7 +410,12 @@ static void measure_stable(const char *path, int repetitions) {
 }
 
 #ifdef HASH_READER_CHECKS
-/** Verify stable-reader success and conservative rejection independently of backend speed. */
+
+/**
+ * Verify stable-reader success and conservative rejection independently of backend speed.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ */
 static void check_reader(const char *path) {
     unsigned char data[129];
     char expected[65], digest[65];
@@ -332,7 +451,12 @@ static void check_reader(const char *path) {
 
 #endif
 
-/** Parse a positive repetition count. */
+/**
+ * Parse a positive repetition count.
+ *
+ * @param text Borrowed text to parse or caller-owned buffer receiving constructed text.
+ * @return Validated positive repetition count, or the fixture failure sentinel for invalid input.
+ */
 static int repetitions_from(const char *text) {
     char *end = NULL;
     long value;
@@ -342,6 +466,13 @@ static int repetitions_from(const char *text) {
     return (int)value;
 }
 
+/**
+ * Measure supported SHA-256 and stable-read candidates against the production path.
+ *
+ * @param argc Number of process argument words.
+ * @param argv Borrowed NUL-terminated process argument vector.
+ * @return Zero when all requested checks succeed; nonzero on a fixture failure.
+ */
 int main(int argc, char **argv) {
     size_t i;
     if (argc == 2 && !strcmp(argv[1], "vectors")) {

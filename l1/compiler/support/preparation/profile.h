@@ -3,7 +3,9 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file profile.h Versioned caller-owned profiles, independent of managed discovery. */
+/**
+ * @file profile.h Versioned caller-owned profiles, independent of managed discovery.
+ */
 #ifndef L1_PREPARATION_PROFILE_H
 #define L1_PREPARATION_PROFILE_H
 
@@ -16,7 +18,13 @@
 #define PC_PROFILE_MAX_PAYLOADS 16384
 #define PC_PROFILE_MAX_MANIFEST (16 * 1024 * 1024)
 
-/** Require an exact object vocabulary; the JSON reader already rejects duplicate keys. */
+/**
+ * Require an exact object vocabulary; the JSON reader already rejects duplicate keys.
+ *
+ * @param object Borrowed JSON object to validate.
+ * @param names Borrowed NUL-terminated list of permitted field names.
+ * @return Nonzero only when every field belongs to the allowed object vocabulary.
+ */
 static int pc_profile_fields(const PcJson *object, const char *const *names) {
     const PcJson *field;
     if (!object || object->type != PJ_OBJECT) return 0;
@@ -28,7 +36,12 @@ static int pc_profile_fields(const PcJson *object, const char *const *names) {
     return 1;
 }
 
-/** Recognize native absolute paths without testing external files or resolving aliases. */
+/**
+ * Recognize native absolute paths without testing external files or resolving aliases.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @return Nonzero for a native absolute path spelling.
+ */
 static int pc_profile_absolute(const char *path) {
     if (!path || !*path) return 0;
 #if defined(_WIN32)
@@ -39,7 +52,14 @@ static int pc_profile_absolute(const char *path) {
 #endif
 }
 
-/** Bound argv and freeze supported path operands; opaque indirection is deliberately refused. */
+/**
+ * Bound argv and freeze supported path operands; opaque indirection is deliberately refused.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param options Borrowed ordered native option words.
+ * @param frozen Nonzero to require already frozen absolute operands.
+ * @return Owned normalized native option array, or NULL after recording unsupported or unfrozen operands.
+ */
 static PcJson *pc_profile_options(PcContext *c, const PcJson *options, int frozen) {
     static const char *const path_flags[] = {
         "--config-system-dir", "--config-user-dir", "--gcc-toolchain", "-resource-dir",
@@ -48,6 +68,7 @@ static PcJson *pc_profile_options(PcContext *c, const PcJson *options, int froze
     const PcJson *word;
     PcJson *result = pj_new(PJ_ARRAY);
     if (!options || options->type != PJ_ARRAY || pj_count(options) > PC_PROFILE_MAX_WORDS) goto invalid;
+
     /* Drivers expand response words before interpreting option operands. Check
        every original argv word, including values later consumed by paired flags. */
     for (word = options->child; word; word = word->next) {
@@ -108,6 +129,7 @@ static PcJson *pc_profile_options(PcContext *c, const PcJson *options, int froze
             pj_add(result, NULL, pj_string(s));
             continue;
         }
+
         /* Definitions are data. Other unclassified path spellings cannot acquire
            invocation-directory semantics after the profile has moved. */
         if (!strncmp(s, "-i", 2) || *s != '-' || (strncmp(s, "-D", 2) && strncmp(s, "-U", 2) &&
@@ -134,7 +156,12 @@ invalid:
     return NULL;
 }
 
-/** Require the complete five-setting frontend configuration, without ambient defaults. */
+/**
+ * Require the complete five-setting frontend configuration, without ambient defaults.
+ *
+ * @param codegen Borrowed frontend code-generation settings.
+ * @return Nonzero for the complete compatible five-setting code-generation record.
+ */
 static int pc_profile_codegen(const PcJson *codegen) {
     static const char *const fields[] = {
         "no_line_directives", "trace_arc", "trace_memory", "unchecked", "check_basic", NULL};
@@ -151,7 +178,13 @@ static int pc_profile_codegen(const PcJson *codegen) {
     }
 }
 
-/** Runtime support and generated checks must describe one configuration. */
+/**
+ * Runtime support and generated checks must describe one configuration.
+ *
+ * @param codegen Borrowed frontend code-generation settings.
+ * @param variant Borrowed runtime configuration variant name.
+ * @return Nonzero only when the runtime variant agrees with frontend settings.
+ */
 static int pc_profile_variant(const PcJson *codegen, const char *variant) {
     const char *expected = pj_is_number(pj_get(codegen, "trace_arc"), 1) ||
         pj_is_number(pj_get(codegen, "trace_memory"), 1) ? "traced" :
@@ -160,7 +193,13 @@ static int pc_profile_variant(const PcJson *codegen, const char *variant) {
     return variant && !strcmp(expected, variant);
 }
 
-/** Record stable compiler-owned inputs without resolving a managed identity or memo. */
+/**
+ * Record stable compiler-owned inputs without resolving a managed identity or memo.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @return Nonzero after recording stable metadata; zero after retaining an input-inspection failure.
+ */
 static int pc_profile_track(PcContext *c, const char *path) {
     PcJson *record = pj_new(PJ_OBJECT), *metadata = pc_meta(path);
     if (!metadata) { pj_free(record); return pc_fail(c, 2151, "cannot inspect profile construction input", path); }
@@ -170,7 +209,14 @@ static int pc_profile_track(PcContext *c, const char *path) {
     return 1;
 }
 
-/** Keep runtime sources and their local headers stable throughout construction. */
+/**
+ * Keep runtime sources and their local headers stable throughout construction.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param root Borrowed root path.
+ * @param depth Current nesting depth checked against the operation limit.
+ * @return Nonzero for a complete stable runtime tree; zero after recording depth or metadata failure.
+ */
 static int pc_profile_track_tree(PcContext *c, const char *root, int depth) {
     PcJson *names;
     const PcJson *name;
@@ -190,7 +236,15 @@ static int pc_profile_track_tree(PcContext *c, const char *root, int depth) {
     return ok;
 }
 
-/** Collect bundled module names only; no managed identity, roots, or memos are involved. */
+/**
+ * Collect bundled module names only; no managed identity, roots, or memos are involved.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param root Borrowed root path.
+ * @param relative Borrowed path relative to the selected root.
+ * @param depth Current nesting depth checked against the operation limit.
+ * @return Nonzero for a complete bundled module set; zero after recording enumeration failure.
+ */
 static int pc_profile_modules(PcContext *c, const char *root, const char *relative, int depth) {
     char *directory = pc_join(root, relative);
     PcJson *names;
@@ -227,7 +281,13 @@ static int pc_profile_modules(PcContext *c, const char *root, const char *relati
     return ok;
 }
 
-/** Refuse output overlap with all protected trees/files before creating its parent. */
+/**
+ * Refuse output overlap with all protected trees/files before creating its parent.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param destination Borrowed caller-owned construction destination.
+ * @return Nonzero for a nonoverlapping valid destination; zero after recording invalid output ownership.
+ */
 static int pc_profile_destination(PcContext *c, const char *destination) {
     const char *protected_paths[7];
     char *absolute = pc_path_call(destination, l1c_fs_absolute_path);
@@ -248,7 +308,13 @@ static int pc_profile_destination(PcContext *c, const char *destination) {
     return ok;
 }
 
-/** Keep native search/input trees outside the creator-owned output, including resolved aliases. */
+/**
+ * Keep native search/input trees outside the creator-owned output, including resolved aliases.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param options Borrowed ordered native option words.
+ * @return Nonzero when no resolved native input root overlaps the destination; zero after recording resolved overlap.
+ */
 static int pc_profile_option_overlap(PcContext *c, const PcJson *options) {
     const PcJson *word;
     for (word = options ? options->child : NULL; word; word = word->next) {
@@ -267,7 +333,13 @@ static int pc_profile_option_overlap(PcContext *c, const PcJson *options) {
     return 1;
 }
 
-/** Allocate one exclusive registered sibling; the parent is trusted and writers are serialized externally. */
+/**
+ * Allocate one exclusive registered sibling; the parent is trusted and writers are serialized externally.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return Nonzero after allocating the exclusive registered staging directory; zero after recording
+ * failure.
+ */
 static int pc_profile_stage(PcContext *c) {
     char *parent = pc_parent(c->profile_destination), *stage = NULL;
     unsigned i;
@@ -290,7 +362,16 @@ static int pc_profile_stage(PcContext *c) {
     return 1;
 }
 
-/** Copy every ordinary public-header input, retaining no links to mutable installation files. */
+/**
+ * Copy every ordinary public-header input, retaining no links to mutable installation files.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param source_root Borrowed source-tree root.
+ * @param relative Borrowed path relative to the selected root.
+ * @param inventory Mutable artifact inventory receiving generated records.
+ * @param depth Current nesting depth checked against the operation limit.
+ * @return Nonzero after copying and inventorying all regular headers; zero after recording failure.
+ */
 static int pc_profile_headers(PcContext *c, const char *source_root, const char *relative,
                                PcJson *inventory, int depth) {
     char *source = pc_join(source_root, relative);
@@ -328,7 +409,12 @@ static int pc_profile_headers(PcContext *c, const char *source_root, const char 
     return ok;
 }
 
-/** Describe only expected constructor outputs and registered explicit-profile copies. */
+/**
+ * Describe only expected constructor outputs and registered explicit-profile copies.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return Owned expected output inventory released with pj_free.
+ */
 static PcJson *pc_profile_owned(PcContext *c) {
     PcJson *allowed = pj_new(PJ_OBJECT);
     const PcJson *item;
@@ -353,7 +439,15 @@ static PcJson *pc_profile_owned(PcContext *c) {
     return allowed;
 }
 
-/** Inspect the complete owned tree before deleting anything, retaining unexpected evidence intact. */
+/**
+ * Inspect the complete owned tree before deleting anything, retaining unexpected evidence intact.
+ *
+ * @param root Borrowed root path.
+ * @param relative Borrowed path relative to the selected root.
+ * @param allowed Borrowed inventory of allowed tree entries.
+ * @param depth Current nesting depth checked against the operation limit.
+ * @return Nonzero for an entirely known owned tree; zero while retaining unexpected evidence.
+ */
 static int pc_profile_known_tree(const char *root, const char *relative, const PcJson *allowed, int depth) {
     char *path = *relative ? pc_join(root, relative) : pc_string(root);
     int kind = pc_kind(path, 0), ok = 1;
@@ -379,7 +473,11 @@ static int pc_profile_known_tree(const char *root, const char *relative, const P
     return ok;
 }
 
-/** Remove only registered owned contents after recoverable failure; never traverse unexpected aliases. */
+/**
+ * Remove only registered owned contents after recoverable failure; never traverse unexpected aliases.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ */
 static void pc_profile_cleanup(PcContext *c) {
     PcJson *allowed;
     int ok;
@@ -390,7 +488,14 @@ static void pc_profile_cleanup(PcContext *c) {
     if (!ok) fprintf(stderr, "Profile staging retained after unexpected contents or cleanup failure: %s\n", c->profile_stage);
 }
 
-/** Undeclared files, including headers that can shadow native includes, have no consumption authority. */
+/**
+ * Undeclared files, including headers that can shadow native includes, have no consumption authority.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param root Borrowed root path.
+ * @param manifest Borrowed profile manifest to validate.
+ * @return Nonzero when every observed entry is authorized by the manifest; zero on unexpected entries.
+ */
 static int pc_profile_public_tree(PcContext *c, const char *root, const PcJson *manifest) {
     PcJson *allowed = pj_new(PJ_OBJECT);
     const PcJson *item, *payloads = pj_get(manifest, "payloads");
@@ -403,7 +508,16 @@ static int pc_profile_public_tree(PcContext *c, const char *root, const PcJson *
     return ok ? 1 : pc_fail(c, 2183, "profile contains undeclared files, directories, or aliases", root);
 }
 
-/** Validate all declared payload paths and selected bytes without consulting installation/toolchain identity. */
+/**
+ * Validate all declared payload paths and selected bytes without consulting installation/toolchain
+ * identity.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param root Borrowed root path.
+ * @param manifest Borrowed profile manifest to validate.
+ * @param native Nonzero to include native payload requirements.
+ * @return Nonzero for all required declared payloads; zero after recording a payload failure.
+ */
 static int pc_profile_payloads(PcContext *c, const char *root, const PcJson *manifest, int native) {
     static const char *const record_fields[] = {"path", "role", "size", "sha256", NULL};
     const PcJson *configuration = pj_get(manifest, "configuration");
@@ -448,7 +562,13 @@ static int pc_profile_payloads(PcContext *c, const char *root, const PcJson *man
     return ok ? 1 : pc_fail(c, 2183, "invalid, incomplete, escaped, or damaged profile payload inventory", root);
 }
 
-/** Read the bounded exact public schema before following any payload reference. */
+/**
+ * Read the bounded exact public schema before following any payload reference.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param root Borrowed root path.
+ * @return Owned validated public manifest, or NULL after recording a read, bounds, or schema failure.
+ */
 static PcJson *pc_profile_read(PcContext *c, const char *root) {
     static const char *const top_fields[] = {
         "schema", "kind", "contract", "producer", "configuration", "include", "modules", "runtime", "payloads", NULL};
@@ -502,7 +622,15 @@ static PcJson *pc_profile_read(PcContext *c, const char *root) {
     return manifest;
 }
 
-/** Start a fresh explicit profile through the shared constructor, with no cache interaction. */
+/**
+ * Start a fresh explicit profile through the shared constructor, with no cache interaction.
+ *
+ * @param data Borrowed readable input byte span.
+ * @param length Number of input elements or bytes, as appropriate.
+ * @param destination Borrowed native byte span with an explicit length; no terminator is required.
+ * @param destination_length Number of readable destination path bytes.
+ * @return Owned context released with l1c_prep_free, including after a recorded creation failure.
+ */
 void *l1c_profile_create(const uint8_t *data, int32_t length,
                          const uint8_t *destination, int32_t destination_length) {
     PcContext *c = l1c_prep_create(data, length);
@@ -528,6 +656,7 @@ void *l1c_profile_create(const uint8_t *data, int32_t length,
     if (!pc_runtime_archive(variant) || !pc_profile_variant(pj_get(c->config, "codegen"), variant)) {
         pc_fail(c, 2180, "invalid or conflicting profile runtime variant", variant); goto finish;
     }
+
     /* Family, capability isolation, runtime target extraction and archive-tool selection
        are execution prerequisites. No managed observation, memo, key or reuse admission runs. */
     if (!pc_profile_destination(c, target) || !pc_compilation_family(c) ||
@@ -572,7 +701,13 @@ finish:
     return c;
 }
 
-/** Publish completion last to an absent destination; retain failed staging as recovery evidence. */
+/**
+ * Publish completion last to an absent destination; retain failed staging as recovery evidence.
+ *
+ * @param context Borrowed preparation context created by the matching constructor.
+ * @return One after publishing completion; zero after recording publication failure and retaining recovery
+ * evidence.
+ */
 int32_t l1c_profile_publish(void *context) {
     PcContext *c = context;
     PcJson *manifest, *configuration, *producer, *runtime;
@@ -618,6 +753,7 @@ int32_t l1c_profile_publish(void *context) {
         free(encoded);
     }
     free(path);
+
     /* Registered constructor scratch is optional evidence only and is absent from the public artifact. */
     if (ok) {
         PcJson *allowed = pc_profile_owned(c);
@@ -640,7 +776,14 @@ int32_t l1c_profile_publish(void *context) {
     return ok;
 }
 
-/** Load exactly one public artifact read-only, with no defaults, compiler probe, or managed context. */
+/**
+ * Load exactly one public artifact read-only, with no defaults, compiler probe, or managed context.
+ *
+ * @param path Borrowed native byte span with an explicit length; no terminator is required.
+ * @param length Number of input elements or bytes, as appropriate.
+ * @return Owned read-only profile context released with l1c_prep_free, including after a recorded load
+ * failure.
+ */
 void *l1c_profile_load(const uint8_t *path, int32_t length) {
     PcContext *c = pc_alloc(sizeof(*c));
     char *requested = NULL;
@@ -666,7 +809,13 @@ void *l1c_profile_load(const uint8_t *path, int32_t length) {
     return c;
 }
 
-/** Recheck bytes required by the consuming mode before native invocation, without writing a memo. */
+/**
+ * Recheck bytes required by the consuming mode before native invocation, without writing a memo.
+ *
+ * @param context Borrowed preparation context created by the matching constructor.
+ * @param native_payloads Nonzero to verify native payload content in addition to semantic interfaces.
+ * @return One for valid required payloads; zero after retaining a verification failure.
+ */
 int32_t l1c_profile_verify(void *context, int32_t native_payloads) {
     PcContext *c = context;
     return c && !c->error && c->profile &&
@@ -674,7 +823,14 @@ int32_t l1c_profile_verify(void *context, int32_t native_payloads) {
         pc_profile_public_tree(c, c->selected, c->profile);
 }
 
-/** Preserve profile ownership even when caller-selected outputs alias unused payload locations. */
+/**
+ * Preserve profile ownership even when caller-selected outputs alias unused payload locations.
+ *
+ * @param context Borrowed preparation context created by the matching constructor.
+ * @param path Borrowed native byte span with an explicit length; no terminator is required.
+ * @param length Number of input elements or bytes, as appropriate.
+ * @return One for an authorized output path; zero after retaining an ownership failure.
+ */
 int32_t l1c_profile_output(void *context, const uint8_t *path, int32_t length) {
     PcContext *c = context;
     char *requested = NULL, *canonical = NULL;
@@ -690,7 +846,14 @@ int32_t l1c_profile_output(void *context, const uint8_t *path, int32_t length) {
     return ok;
 }
 
-/** Reject scratch allocation under a selected profile while permitting ordinary ancestor temp roots. */
+/**
+ * Reject scratch allocation under a selected profile while permitting ordinary ancestor temp roots.
+ *
+ * @param context Borrowed preparation context created by the matching constructor.
+ * @param path Borrowed native byte span with an explicit length; no terminator is required.
+ * @param length Number of input elements or bytes, as appropriate.
+ * @return One for an allowed temporary parent; zero for selected-profile overlap or invalid input.
+ */
 int32_t l1c_profile_temp_parent(void *context, const uint8_t *path, int32_t length) {
     PcContext *c = context;
     char *requested = NULL, *canonical = NULL;
@@ -706,7 +869,14 @@ int32_t l1c_profile_temp_parent(void *context, const uint8_t *path, int32_t leng
     return ok;
 }
 
-/** Compare only explicitly supplied settings using lexical normalization, never alternate compiler probes. */
+/**
+ * Compare only explicitly supplied settings using lexical normalization, never alternate compiler probes.
+ *
+ * @param context Borrowed preparation context created by the matching constructor.
+ * @param data Borrowed readable input byte span.
+ * @param length Number of input elements or bytes, as appropriate.
+ * @return One for matching explicitly supplied settings; zero after retaining a mismatch failure.
+ */
 int32_t l1c_profile_match(void *context, const uint8_t *data, int32_t length) {
     PcContext *c = context;
     PcJson *supplied, *normalized = NULL;
@@ -740,7 +910,15 @@ int32_t l1c_profile_match(void *context, const uint8_t *data, int32_t length) {
     return ok ? 1 : pc_fail(c, 2184, "explicit settings conflict with selected profile configuration", NULL);
 }
 
-/** Project public configuration for the L0 frontend without exposing private JSON layouts to it. */
+/**
+ * Project public configuration for the L0 frontend without exposing private JSON layouts to it.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param field Borrowed field name or bounded field-name bytes.
+ * @param owned Output receiving any newly allocated field representation.
+ * @return Borrowed context text or newly allocated text returned through owned; NULL for an unavailable
+ * field.
+ */
 static const char *pc_profile_get(PcContext *c, const char *field, char **owned) {
     const PcJson *configuration = pj_get(c->profile, "configuration"), *array, *value;
     const char *key = field + strlen("profile_");

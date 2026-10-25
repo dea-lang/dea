@@ -57,11 +57,21 @@
 #endif
 
 #if defined(_WIN32)
+
+/**
+ * Read peak process resident memory in kibibytes where supported.
+ * @return Peak resident size, or zero when unavailable.
+ */
 static long bench_max_rss_kib(void) {
     return 0;
 }
 #else
 #include <sys/resource.h>
+
+/**
+ * Read peak process resident memory in kibibytes where supported.
+ * @return Peak resident size, or zero when unavailable.
+ */
 static long bench_max_rss_kib(void) {
     struct rusage usage;
     if (getrusage(RUSAGE_SELF, &usage) != 0) {
@@ -75,6 +85,10 @@ static long bench_max_rss_kib(void) {
 }
 #endif
 
+/**
+ * Read the benchmark monotonic clock, terminating when unavailable.
+ * @return Monotonic clock value in nanoseconds.
+ */
 static uint64_t bench_monotonic_ns(void) {
 #if defined(_WIN32)
     LARGE_INTEGER counter;
@@ -101,10 +115,22 @@ static uint64_t bench_monotonic_ns(void) {
 #endif
 }
 
+/**
+ * Measure benchmark elapsed milliseconds from a monotonic start.
+ *
+ * @param start_ns Monotonic benchmark start in nanoseconds.
+ * @return Elapsed time in milliseconds.
+ */
 static double bench_ms_since(uint64_t start_ns) {
     return (double)(bench_monotonic_ns() - start_ns) / 1000000.0;
 }
 
+/**
+ * Advance the reproducible linear-congruential benchmark generator.
+ *
+ * @param rng Caller-owned reproducible generator state to update.
+ * @return Updated generator word.
+ */
 static unsigned bench_rng_next(unsigned *rng) {
     *rng = *rng * 1664525u + 1013904223u;
     return *rng;
@@ -112,10 +138,20 @@ static unsigned bench_rng_next(unsigned *rng) {
 
 static volatile uintptr_t bench_ptr_sink = 0;
 
+/**
+ * Mix a pointer into the volatile benchmark sink to retain observable work.
+ *
+ * @param ptr Pointer whose runtime allocation or access is being handled.
+ */
 static void bench_escape_ptr(const void *ptr) {
     bench_ptr_sink ^= (uintptr_t)ptr;
 }
 
+/**
+ * Print allocation tracker counters for one benchmark scenario.
+ *
+ * @param scenario Borrowed benchmark scenario label.
+ */
 static void bench_print_tracker_stats(const char *scenario) {
 #ifndef DEA_RT_UNCHECKED
     printf("%s.table_cap=%zu\n", scenario, _rt_alloc_table_cap);
@@ -128,6 +164,12 @@ static void bench_print_tracker_stats(const char *scenario) {
 #endif
 }
 
+/**
+ * Measure repeated allocation and release of fixed-size raw blocks.
+ *
+ * @param scale Positive benchmark workload scale.
+ * @return Zero on completion; two when a native allocation fails.
+ */
 static int bench_tight(long scale) {
     long pairs = 1000000L * scale;
     uint64_t start = bench_monotonic_ns();
@@ -143,6 +185,12 @@ static int bench_tight(long scale) {
     return 0;
 }
 
+/**
+ * Measure a rotating live allocation window with periodic large blocks.
+ *
+ * @param scale Positive benchmark workload scale.
+ * @return Zero on completion; two when a native allocation fails.
+ */
 static int bench_window(long scale) {
     enum { WINDOW = 4096 };
     static void *live[WINDOW];
@@ -161,6 +209,7 @@ static int bench_window(long scale) {
         unsigned draw = bench_rng_next(&rng);
         dea_int size = (dea_int)(8 + (draw >> 20 & 1023));
         if (i % 13 == 0) {
+
             /* Periodic large blocks so the quarantine byte cap binds. */
             size = (dea_int)(32768 + (draw & 0xFFFF));
         }
@@ -188,6 +237,12 @@ static int bench_window(long scale) {
     return 0;
 }
 
+/**
+ * Measure growth, release, and churn of a large mixed-size live set.
+ *
+ * @param scale Positive benchmark workload scale.
+ * @return Zero on completion; two when a native allocation fails.
+ */
 static int bench_ramp(long scale) {
     long live_peak = 100000L * scale;
     void **live = (void**)malloc((size_t)live_peak * sizeof(void*));
@@ -235,6 +290,12 @@ static int bench_ramp(long scale) {
     return 0;
 }
 
+/**
+ * Measure cached pointer-validation sweeps over live allocations.
+ *
+ * @param scale Positive benchmark workload scale.
+ * @return Zero on completion; two when a native allocation fails.
+ */
 static int bench_cached(long scale) {
     long live_count = 65536L * scale;
     long sweeps = 64;
@@ -285,6 +346,12 @@ static int bench_cached(long scale) {
     return 0;
 }
 
+/**
+ * Measure owned heap-string allocation and release churn.
+ *
+ * @param scale Positive benchmark workload scale.
+ * @return Zero on completion; two when a native allocation fails.
+ */
 static int bench_strings(long scale) {
     long pairs = 1000000L * scale;
     uint64_t start = bench_monotonic_ns();
@@ -299,6 +366,13 @@ static int bench_strings(long scale) {
     return 0;
 }
 
+/**
+ * Run the selected allocation tracker benchmark scenarios and report counters.
+ *
+ * @param argc Number of process argument words.
+ * @param argv Borrowed NUL-terminated process argument vector.
+ * @return Zero when all requested checks succeed; nonzero on a fixture failure.
+ */
 int main(int argc, char **argv) {
     const char *scenario = BENCH_SCENARIO;
     long scale = BENCH_SCALE;

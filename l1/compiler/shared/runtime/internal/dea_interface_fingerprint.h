@@ -53,4 +53,5 @@ static void _dea_l1_interface_fingerprint_sip13_hex(
     }
 }
 
-#endif /* DEA_INTERFACE_FINGERPRINT_H */
+/* DEA_INTERFACE_FINGERPRINT_H */
+#endif

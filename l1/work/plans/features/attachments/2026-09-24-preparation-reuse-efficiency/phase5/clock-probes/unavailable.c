@@ -3,7 +3,9 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file Frozen production-function extraction for simulated clock correctness evidence. */
+/**
+ * @file Frozen production-function extraction for simulated clock correctness evidence.
+ */
 #include <stdint.h>
 #include <stddef.h>
 #include <inttypes.h>
@@ -11,6 +13,15 @@
 #include <string.h>
 #undef _WIN32
 #undef CLOCK_MONOTONIC
+
+/**
+ * Capture a compiler-private monotonic snapshot as two native int32 values.
+ *
+ * @param output Caller-owned writable output span, or NULL for a length query.
+ * @param capacity Writable output capacity in bytes.
+ * @return One after writing both components; zero for an invalid output or unavailable or unrepresentable
+ * clock.
+ */
 int32_t l1c_timing_monotonic(uint8_t *output, int32_t capacity) {
     int32_t parts[2];
     if (output == NULL || capacity < (int32_t)sizeof(parts)) return 0;
@@ -45,6 +56,14 @@ int32_t l1c_timing_monotonic(uint8_t *output, int32_t capacity) {
     return 1;
 }
 
+/**
+ * Check a simulated monotonic snapshot against its expected status and components.
+ *
+ * @param expected Expected success flag from the selected monotonic clock adapter.
+ * @param sec Whole seconds in the normalized time value.
+ * @param nsec Nanosecond component of the normalized time value.
+ * @return Zero on a match; a distinct nonzero code for an invalid-input, status, data, or bounds mismatch.
+ */
 static int check_snapshot(int expected, int32_t sec, int32_t nsec) {
     uint8_t storage[11], original[11];
     int32_t actual[2];
@@ -59,4 +78,9 @@ static int check_snapshot(int expected, int32_t sec, int32_t nsec) {
     if (actual[0] != sec || actual[1] != nsec || storage[0] != 0xa5 || storage[9] != 0xa5 || storage[10] != 0xa5) return 4;
     return 0;
 }
+
+/**
+ * Exercise the unsupported monotonic-clock adapter.
+ * @return Zero when all requested checks succeed; nonzero on a fixture failure.
+ */
 int main(void) { if (check_snapshot(0,0,0)) return 1; puts("unavailable clock preserves output: PASS"); return 0; }

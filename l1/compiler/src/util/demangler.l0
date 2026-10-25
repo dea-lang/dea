@@ -82,6 +82,20 @@ func demangle_lbi(mangled: string) -> string? {
     }
 }
 
+/**
+ * Append one or more length-prefixed module components separated by dots.
+ *
+ * Begin at the cursor's current position and stop before the first non-digit
+ * after the parsed components. This does not consume a module marker or check
+ * the following symbol section. On failure, consumed input and any appended
+ * components or separator remain; neither cursor nor output is rolled back.
+ *
+ * @param mangled LBI text containing the module section.
+ * @param c Borrowed mutable cursor positioned within the string or at its end.
+ * @param out Borrowed character buffer receiving the formatted module path.
+ * @return `true` if at least one component is parsed and every started component completes, or
+ *     `false` if no component starts here or a length-prefixed name is incomplete.
+ */
 func demangle_module_section(mangled: string, c: Cursor*, out: CharBuffer*) -> bool {
     let first = true;
     while (c.pos < len_s(mangled) && is_digit(char_at_s(mangled, c.pos))) {
@@ -96,6 +110,20 @@ func demangle_module_section(mangled: string, c: Cursor*, out: CharBuffer*) -> b
     return !first;
 }
 
+/**
+ * Append a nonempty name encoded by a decimal length and that many bytes.
+ *
+ * Consume the decimal prefix before checking that its positive length fits the
+ * remaining string. Failure leaves the cursor after any prefix digits and
+ * leaves the output unchanged. The payload's characters are not validated as an
+ * identifier. Prefix accumulation and cursor arithmetic must fit `int`.
+ *
+ * @param mangled LBI text containing the length-prefixed name.
+ * @param c Borrowed mutable cursor positioned within the string or at its end.
+ * @param out Borrowed character buffer receiving the name bytes on success.
+ * @return `true` after consuming and appending the complete name, or `false`
+ *     for a missing, zero, or out-of-bounds length.
+ */
 func demangle_name_with_length(mangled: string, c: Cursor*, out: CharBuffer*) -> bool {
     let len = parse_int_prefix(mangled, c);
     if (len <= 0 || c.pos + len > len_s(mangled)) {
@@ -106,6 +134,21 @@ func demangle_name_with_length(mangled: string, c: Cursor*, out: CharBuffer*) ->
     return true;
 }
 
+/**
+ * Append the parameter and return types encoded by an LBI function component.
+ *
+ * Consume `F`, a decimal arity, that many type components, and one return type,
+ * formatting them as `(parameters) -> result`. An absent arity prefix is treated
+ * as zero, so success is not proof of a canonical encoding or complete input
+ * consumption. Counts must fit `int`. After parsing begins, failure retains any
+ * cursor advances and partial output; the caller owns both mutable objects.
+ *
+ * @param mangled LBI text containing the function type.
+ * @param c Borrowed mutable cursor positioned at `F`, or another position to reject.
+ * @param out Borrowed character buffer receiving the formatted signature.
+ * @return `true` if the declared parameters and return component are parsed,
+ *     or `false` for a missing `F` or an incomplete or unrecognized type component.
+ */
 func demangle_function_signature(mangled: string, c: Cursor*, out: CharBuffer*) -> bool {
     if (c.pos >= len_s(mangled) || char_at_s(mangled, c.pos) != 'F') {
         return false;
@@ -129,6 +172,22 @@ func demangle_function_signature(mangled: string, c: Cursor*, out: CharBuffer*) 
     return true;
 }
 
+/**
+ * Append the human-readable form of one encoded LBI type component.
+ *
+ * Handle builtin, pointer, nullable, variadic, array, nominal, function, unsafe,
+ * and length-named builtin forms recursively. Consume only this component and
+ * retain cursor advances and partial output on failure. This is a formatting
+ * parser, not complete LBI validation: array lengths may be zero or lack digits,
+ * and a nominal type's kind byte is consumed without checking its value. Numeric
+ * prefixes must fit `int`; the caller retains ownership of cursor and output.
+ *
+ * @param mangled LBI text containing the type component.
+ * @param c Borrowed mutable cursor positioned within the string or at its end.
+ * @param out Borrowed character buffer receiving the formatted type.
+ * @return `true` if one supported component is parsed, or `false` for exhausted
+ *     input, an unknown type marker, or an incomplete required subcomponent.
+ */
 func demangle_type_component(mangled: string, c: Cursor*, out: CharBuffer*) -> bool {
     if (c.pos >= len_s(mangled)) {
         return false;
@@ -200,6 +259,18 @@ func demangle_type_component(mangled: string, c: Cursor*, out: CharBuffer*) -> b
     return false;
 }
 
+/**
+ * Consume consecutive ASCII decimal digits and return their integer value.
+ *
+ * Stop at the first non-digit or the string's end, leaving that character
+ * unconsumed. No sign or delimiter is parsed. An absent digit prefix returns
+ * zero without advancing. Accumulation has no explicit overflow check, so the
+ * caller must supply a prefix whose value fits `int`.
+ *
+ * @param s String containing the decimal prefix.
+ * @param c Borrowed mutable cursor positioned within the string or at its end.
+ * @return Parsed nonnegative value, or zero when no digits are present.
+ */
 func parse_int_prefix(s: string, c: Cursor*) -> int {
     let result = 0;
     while (c.pos < len_s(s) && is_digit(char_at_s(s, c.pos))) {

@@ -3,7 +3,9 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file json.h Bounded compiler-private JSON and canonical identity encoding. */
+/**
+ * @file json.h Bounded compiler-private JSON and canonical identity encoding.
+ */
 #ifndef L2_PREPARATION_JSON_H
 #define L2_PREPARATION_JSON_H
 
@@ -15,7 +17,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-/** Fail closed on allocation failure, including during diagnostic construction. */
+/**
+ * Fail closed on allocation failure, including during diagnostic construction.
+ *
+ * @param size Requested storage size in bytes.
+ * @return Owned storage released with free; never NULL.
+ */
 static void *pc_alloc(size_t size) {
     void *p = calloc(size ? size : 1, 1);
     if (!p) {
@@ -24,17 +31,40 @@ static void *pc_alloc(size_t size) {
     }
     return p;
 }
+
+/**
+ * Copy a byte span into a newly allocated NUL-terminated string.
+ *
+ * @param s Readable source span of n bytes.
+ * @param n Number of bytes to process.
+ * @return Owned string released with free.
+ */
 static char *pc_slice(const char *s, size_t n) {
     char *p = pc_alloc(n + 1);
     memcpy(p, s, n);
     return p;
 }
+
+/**
+ * Duplicate a NUL-terminated string into preparation-owned storage.
+ *
+ * @param s Borrowed NUL-terminated string to duplicate.
+ * @return Owned string released with free.
+ */
 static char *pc_string(const char *s) { return pc_slice(s, strlen(s)); }
 
 typedef struct {
     char *s;
     size_t n, cap;
 } PcBuffer;
+
+/**
+ * Append bytes to a growable NUL-terminated preparation buffer.
+ *
+ * @param b Mutable growable byte buffer owned by the caller.
+ * @param s Borrowed source span of n readable bytes.
+ * @param n Number of bytes to process.
+ */
 static void pc_bytes(PcBuffer *b, const char *s, size_t n) {
     if (n > SIZE_MAX - b->n - 1) {
         fputs("preparation input too large\n", stderr);
@@ -53,8 +83,30 @@ static void pc_bytes(PcBuffer *b, const char *s, size_t n) {
     b->n += n;
     b->s[b->n] = 0;
 }
+
+/**
+ * Append a NUL-terminated string to a preparation buffer.
+ *
+ * @param b Mutable growable byte buffer owned by the caller.
+ * @param s Borrowed NUL-terminated text to append.
+ */
 static void pc_text(PcBuffer *b, const char *s) { pc_bytes(b, s, strlen(s)); }
+
+/**
+ * Append one byte to a preparation buffer.
+ *
+ * @param b Mutable growable byte buffer owned by the caller.
+ * @param c Byte value to append.
+ */
 static void pc_char(PcBuffer *b, char c) { pc_bytes(b, &c, 1); }
+
+/**
+ * Expose a buffer allocation or allocate an owned empty string.
+ *
+ * @param b Buffer whose allocation is transferred without resetting its fields; the caller releases it
+ *     once.
+ * @return Owned NUL-terminated storage; the buffer must not be freed separately.
+ */
 static char *pc_take(PcBuffer *b) { return b->s ? b->s : pc_string(""); }
 
 enum { PJ_NULL, PJ_STRING, PJ_NUMBER, PJ_ARRAY, PJ_OBJECT, PJ_BOOL, PJ_RAW_NUMBER };
@@ -67,27 +119,63 @@ typedef struct PcJson {
     size_t count, index_size;
     uint32_t key_hash;
 } PcJson;
+
+/**
+ * Allocate an empty JSON node with the requested type.
+ *
+ * @param type JSON node type tag.
+ * @return Owned node released recursively with pj_free.
+ */
 static PcJson *pj_new(int type) {
     PcJson *j = pc_alloc(sizeof(*j));
     j->type = type;
     return j;
 }
+
+/**
+ * Create a JSON string node with its own copy of the text.
+ *
+ * @param s Borrowed NUL-terminated string copied into the new node.
+ * @return Owned JSON node released with pj_free.
+ */
 static PcJson *pj_string(const char *s) {
     PcJson *j = pj_new(PJ_STRING);
     j->text = pc_string(s);
     return j;
 }
+
+/**
+ * Create a JSON node containing an exact signed integer.
+ *
+ * @param n Exact signed integer payload stored in the new node.
+ * @return Owned JSON node released with pj_free.
+ */
 static PcJson *pj_number(int64_t n) {
     PcJson *j = pj_new(PJ_NUMBER);
     j->number = n;
     return j;
 }
+
+/**
+ * Compute the FNV-1a bucket hash of a JSON object key.
+ *
+ * @param key Borrowed NUL-terminated object or identity key.
+ * @return 32-bit key hash.
+ */
 static uint32_t pj_key_hash(const char *key) {
     uint32_t hash = 2166136261u;
     for (; *key; ++key)
         hash = (hash ^ (unsigned char)*key) * 16777619u;
     return hash;
 }
+
+/**
+ * Find an object member by its exact key bytes.
+ *
+ * @param j Borrowed JSON node.
+ * @param key Borrowed NUL-terminated object or identity key.
+ * @return Borrowed child node, or NULL for an absent key or non-object.
+ */
 static PcJson *pj_get(const PcJson *j, const char *key) {
     PcJson *c;
     if (!j || j->type != PJ_OBJECT)
@@ -104,12 +192,50 @@ static PcJson *pj_get(const PcJson *j, const char *key) {
             return c;
     return NULL;
 }
+
+/**
+ * Read the borrowed string bytes of a JSON string node.
+ *
+ * @param j Borrowed JSON node.
+ * @return Borrowed text, or NULL for a non-string or absent node.
+ */
 static const char *pj_str(const PcJson *j) { return j && j->type == PJ_STRING ? j->text : NULL; }
+
+/**
+ * Read a borrowed string-valued object member.
+ *
+ * @param j Borrowed JSON node.
+ * @param key Borrowed NUL-terminated object or identity key.
+ * @return Borrowed member text, or NULL when missing or not a string.
+ */
 static const char *pj_field(const PcJson *j, const char *key) { return pj_str(pj_get(j, key)); }
+
+/**
+ * Test whether a JSON node contains the specified exact integer.
+ *
+ * @param j Borrowed JSON node.
+ * @param n Expected exact signed integer value.
+ * @return Nonzero only for a matching integer node.
+ */
 static int pj_is_number(const PcJson *j, int64_t n) {
     return j && j->type == PJ_NUMBER && j->number == n;
 }
+
+/**
+ * Read the number of children in a JSON container.
+ *
+ * @param j Borrowed JSON node.
+ * @return Child count, or zero for a null container.
+ */
 static size_t pj_count(const PcJson *j) { return j ? j->count : 0; }
+
+/**
+ * Append an owned JSON child and update object lookup indexing.
+ *
+ * @param j Mutable destination object or array taking ownership of appended nodes.
+ * @param key Borrowed NUL-terminated object or identity key.
+ * @param value Owned child node transferred to the destination container.
+ */
 static void pj_add(PcJson *j, const char *key, PcJson *value) {
     if (key) {
         value->key = pc_string(key);
@@ -121,6 +247,7 @@ static void pj_add(PcJson *j, const char *key, PcJson *value) {
         j->child = value;
     j->last = value;
     ++j->count;
+
     /* Large path inventories need indexed lookup on the warm path. Small
        metadata records retain allocation-free linear lookup. */
     if (j->type == PJ_OBJECT && j->count >= 32) {
@@ -142,10 +269,32 @@ static void pj_add(PcJson *j, const char *key, PcJson *value) {
         }
     }
 }
+
+/**
+ * Append a named JSON string field, copying its text.
+ *
+ * @param j Mutable destination object or array taking ownership of appended nodes.
+ * @param key Borrowed NUL-terminated object or identity key.
+ * @param s Borrowed NUL-terminated string copied into the new field.
+ */
 static void pj_set_string(PcJson *j, const char *key, const char *s) {
     pj_add(j, key, pj_string(s));
 }
+
+/**
+ * Append a named exact-integer JSON field.
+ *
+ * @param j Mutable destination object or array taking ownership of appended nodes.
+ * @param key Borrowed NUL-terminated object or identity key.
+ * @param n Exact signed integer payload assigned to the new field.
+ */
 static void pj_set_number(PcJson *j, const char *key, int64_t n) { pj_add(j, key, pj_number(n)); }
+
+/**
+ * Release a JSON node chain, its owned strings, and all descendants.
+ *
+ * @param j Owned node to release, or NULL.
+ */
 static void pj_free(PcJson *j) {
     while (j) {
         PcJson *next = j->next;
@@ -157,6 +306,13 @@ static void pj_free(PcJson *j) {
         j = next;
     }
 }
+
+/**
+ * Append a JSON-escaped quoted string to a buffer.
+ *
+ * @param b Mutable growable byte buffer owned by the caller.
+ * @param s Borrowed NUL-terminated string to escape.
+ */
 static void pj_quote(PcBuffer *b, const char *s) {
     static const char hex[] = "0123456789abcdef";
     const unsigned char *p = (const unsigned char *)s;
@@ -178,10 +334,24 @@ static void pj_quote(PcBuffer *b, const char *s) {
     }
     pc_char(b, '"');
 }
+
+/**
+ * Compare JSON child pointers by their object key bytes.
+ *
+ * @param a Pointer to the first JSON object-member pointer.
+ * @param b Pointer to the second JSON object-member pointer.
+ * @return Negative, zero, or positive strcmp ordering.
+ */
 static int pj_key_compare(const void *a, const void *b) {
     return strcmp((*(const PcJson *const *)a)->key, (*(const PcJson *const *)b)->key);
 }
-/** Canonical encoding: UTF-8, sorted object keys, integral decimal numbers, no whitespace. */
+
+/**
+ * Canonical encoding: UTF-8, sorted object keys, integral decimal numbers, no whitespace.
+ *
+ * @param b Mutable growable byte buffer owned by the caller.
+ * @param j Borrowed JSON value to serialize.
+ */
 static void pj_write(PcBuffer *b, const PcJson *j) {
     const PcJson *c;
     char number[40];
@@ -233,6 +403,13 @@ static void pj_write(PcBuffer *b, const PcJson *j) {
         break;
     }
 }
+
+/**
+ * Serialize a JSON tree into a newly owned canonical string.
+ *
+ * @param j Borrowed JSON node.
+ * @return Owned NUL-terminated JSON released with free.
+ */
 static char *pj_encode(const PcJson *j) {
     PcBuffer b = {0};
     pj_write(&b, j);
@@ -244,10 +421,23 @@ typedef struct {
     size_t i, n, nodes;
     int failed, general_numbers;
 } PjParser;
+
+/**
+ * Advance a JSON parser past supported ASCII whitespace.
+ *
+ * @param p Mutable bounded JSON parser state.
+ */
 static void pj_space(PjParser *p) {
     while (p->i < p->n && strchr(" \t\r\n", p->s[p->i]))
         ++p->i;
 }
+
+/**
+ * Decode an ASCII hexadecimal digit for JSON escapes.
+ *
+ * @param c ASCII character to decode as a hexadecimal digit.
+ * @return Digit value from zero to fifteen, or -1 for invalid input.
+ */
 static int pj_hex(char c) {
     if (c >= '0' && c <= '9')
         return c - '0';
@@ -257,6 +447,13 @@ static int pj_hex(char c) {
         return c - 'A' + 10;
     return -1;
 }
+
+/**
+ * Consume four hexadecimal digits from a JSON Unicode escape.
+ *
+ * @param p Mutable bounded JSON parser state.
+ * @return Decoded UTF-16 code unit; malformed input sets the parser error flag.
+ */
 static unsigned pj_u16(PjParser *p) {
     unsigned n = 0;
     int i, h;
@@ -269,6 +466,13 @@ static unsigned pj_u16(PjParser *p) {
     }
     return n;
 }
+
+/**
+ * Append a Unicode scalar value in UTF-8 encoding.
+ *
+ * @param b Mutable growable byte buffer owned by the caller.
+ * @param c Unicode scalar value to encode.
+ */
 static void pj_utf8(PcBuffer *b, unsigned c) {
     if (c < 128)
         pc_char(b, (char)c);
@@ -286,6 +490,13 @@ static void pj_utf8(PcBuffer *b, unsigned c) {
         pc_char(b, (char)(128 | (c & 63)));
     }
 }
+
+/**
+ * Parse a quoted JSON string with Unicode and escape validation.
+ *
+ * @param p Mutable bounded JSON parser state.
+ * @return Owned decoded string, or NULL after marking invalid input.
+ */
 static char *pj_parse_string(PjParser *p) {
     PcBuffer b = {0};
     unsigned c, low;
@@ -372,6 +583,14 @@ static char *pj_parse_string(PjParser *p) {
     }
     return pc_take(&b);
 }
+
+/**
+ * Parse a bounded JSON value and its nested children.
+ *
+ * @param p Mutable bounded JSON parser state.
+ * @param depth Current nesting depth checked against the operation limit.
+ * @return Owned node, or NULL for invalid syntax, excessive nesting, or an invalid value.
+ */
 static PcJson *pj_parse_value(PjParser *p, int depth) {
     PcJson *j = NULL, *child;
     char c, close, *key;
@@ -462,6 +681,7 @@ static PcJson *pj_parse_value(PjParser *p, int depth) {
             j = pj_number(value);
             free(num);
         } else if (p->general_numbers) {
+
             /* Preserve non-integral and large values in opaque provenance. Schema
                integers still require PJ_NUMBER, so 1.0 never means schema 1. */
             if (strpbrk(num, ".eE") && !isfinite(strtod(num, NULL))) p->failed = 1;
@@ -489,7 +709,14 @@ static PcJson *pj_parse_value(PjParser *p, int depth) {
     }
     return j;
 }
-/** Reject invalid raw UTF-8 as well as invalid JSON escape sequences. */
+
+/**
+ * Reject invalid raw UTF-8 as well as invalid JSON escape sequences.
+ *
+ * @param text Borrowed text to parse or caller-owned buffer receiving constructed text.
+ * @param n Number of bytes to process.
+ * @return Nonzero only for a complete valid UTF-8 byte span.
+ */
 static int pj_valid_utf8(const char *text, size_t n) {
     const unsigned char *s = (const unsigned char *)text;
     size_t i = 0;
@@ -522,6 +749,15 @@ static int pj_valid_utf8(const char *text, size_t n) {
     }
     return 1;
 }
+
+/**
+ * Parse one complete JSON value using the selected number policy.
+ *
+ * @param s Borrowed readable JSON span of n bytes; no terminator is required.
+ * @param n Number of bytes to process.
+ * @param general_numbers Nonzero to accept general JSON numbers in addition to exact integers.
+ * @return Owned JSON tree, or NULL for malformed, trailing, or unsupported input.
+ */
 static PcJson *pj_parse_mode(const char *s, size_t n, int general_numbers) {
     PjParser p = {s, 0, n, 0, 0, general_numbers};
     PcJson *j;
@@ -535,8 +771,22 @@ static PcJson *pj_parse_mode(const char *s, size_t n, int general_numbers) {
     }
     return j;
 }
-/** Preparation identities retain their integral-only canonical JSON contract. */
+
+/**
+ * Preparation identities retain their integral-only canonical JSON contract.
+ *
+ * @param s Borrowed readable JSON span of n bytes; no terminator is required.
+ * @param n Number of bytes to process.
+ * @return Owned JSON tree, or NULL for malformed or unsupported input.
+ */
 static PcJson *pj_parse(const char *s, size_t n) { return pj_parse_mode(s, n, 0); }
+
+/**
+ * Deep-copy a JSON tree and all its owned strings.
+ *
+ * @param j Borrowed JSON node.
+ * @return Independent owned tree, or NULL for a null input.
+ */
 static PcJson *pj_clone(const PcJson *j) {
     PcJson *copy;
     const PcJson *child;
@@ -550,6 +800,14 @@ static PcJson *pj_clone(const PcJson *j) {
         pj_add(copy, child->key, pj_clone(child));
     return copy;
 }
+
+/**
+ * Compare JSON values recursively without relying on object member order.
+ *
+ * @param a First input operand.
+ * @param b Second input operand.
+ * @return Nonzero for equal values, including two null pointers.
+ */
 static int pj_equal(const PcJson *a, const PcJson *b) {
     const PcJson *left, *right;
     if (!a || !b)

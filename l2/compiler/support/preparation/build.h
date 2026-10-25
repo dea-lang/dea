@@ -3,11 +3,19 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file build.h Payload writes and native commands in an explicitly owned destination. */
+/**
+ * @file build.h Payload writes and native commands in an explicitly owned destination.
+ */
 #ifndef L2_PREPARATION_BUILD_H
 #define L2_PREPARATION_BUILD_H
 
-/** Validate one declared output and detach old files before writing new contents. */
+/**
+ * Validate one declared output and detach old files before writing new contents.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param relative Borrowed path relative to the selected root.
+ * @return Owned authorized output path, or NULL after recording a declaration or ownership failure.
+ */
 static char *pc_output_path(PcContext *c, const char *relative) {
     PcConstruction *p = c->construction;
     char *path, *parent;
@@ -43,6 +51,16 @@ static char *pc_output_path(PcContext *c, const char *relative) {
     free(parent);
     return path;
 }
+
+/**
+ * Write constructor output bytes to a caller-provided file destination.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param relative Borrowed path relative to the selected root.
+ * @param data Borrowed readable input byte span.
+ * @param size Requested storage size in bytes.
+ * @return Nonzero when writing succeeds; zero after recording an output failure.
+ */
 static int pc_output_write(PcContext *c, const char *relative, const char *data, size_t size) {
     char *path = pc_output_path(c, relative);
     int ok;
@@ -54,7 +72,15 @@ static int pc_output_write(PcContext *c, const char *relative, const char *data,
     free(path);
     return ok;
 }
-/** Preserve captured host diagnostics at all verbosity levels, including failed builds. */
+
+/**
+ * Preserve captured host diagnostics at all verbosity levels, including failed builds.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param words Borrowed array of native argument words.
+ * @param purpose Borrowed diagnostic label describing this command or probe.
+ * @return Nonzero after successful native execution; zero after retaining captured build diagnostics.
+ */
 static int pc_build_command(PcContext *c, PcJson *words, const char *purpose) {
     const PcJson *verbosity = pj_get(c->config, "verbosity");
     PcProbe result;
@@ -80,7 +106,13 @@ static int pc_build_command(PcContext *c, PcJson *words, const char *purpose) {
     pc_probe_free(&result);
     return ok;
 }
-/** Require unchanged Dea inputs before publishing outputs for their resolved key. */
+
+/**
+ * Require unchanged Dea inputs before publishing outputs for their resolved key.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return Nonzero for unchanged inputs; zero after recording changed preparation inputs.
+ */
 static int pc_preparation_inputs_current(PcContext *c) {
     const PcJson *file;
     for (file = c->new_files->child; file; file = file->next) {
@@ -92,7 +124,17 @@ static int pc_preparation_inputs_current(PcContext *c) {
     }
     return 1;
 }
-/** Write caller-generated canonical interface or C bytes to a declared output role. */
+
+/**
+ * Write caller-generated canonical interface or C bytes to a declared output role.
+ *
+ * @param context Borrowed preparation context created by the matching constructor.
+ * @param relative Borrowed path relative to the selected root.
+ * @param length Number of input elements or bytes, as appropriate.
+ * @param data Borrowed readable input byte span.
+ * @param size Requested storage size in bytes.
+ * @return One after writing declared output bytes; zero for invalid input or a recorded output failure.
+ */
 int32_t l2c_prep_write(void *context, const uint8_t *relative, int32_t length, const uint8_t *data,
                        int32_t size) {
     PcContext *c = context;
@@ -106,7 +148,13 @@ int32_t l2c_prep_write(void *context, const uint8_t *relative, int32_t length, c
     free(path);
     return ok;
 }
-/** Copy the exact selected toolchain semantic bytes; never re-emit profile interfaces. */
+
+/**
+ * Copy the exact selected toolchain semantic bytes; never re-emit profile interfaces.
+ *
+ * @param context Borrowed preparation context created by the matching constructor.
+ * @return One after copying all selected interfaces; zero for invalid state or a recorded copy failure.
+ */
 int32_t l2c_prep_copy_interfaces(void *context) {
     PcContext *c = context;
     PcConstruction *p = c ? c->construction : NULL;
@@ -126,7 +174,15 @@ int32_t l2c_prep_copy_interfaces(void *context) {
     }
     return 1;
 }
-/** Compile already-emitted module C using the exact options resolved by this context. */
+
+/**
+ * Compile already-emitted module C using the exact options resolved by this context.
+ *
+ * @param context Borrowed preparation context created by the matching constructor.
+ * @param module Borrowed module name byte span.
+ * @param length Number of input elements or bytes, as appropriate.
+ * @return One on successful compilation; zero for invalid state or a recorded native build failure.
+ */
 int32_t l2c_prep_compile(void *context, const uint8_t *module, int32_t length) {
     PcContext *c = context;
     PcConstruction *p = c ? c->construction : NULL;
@@ -169,7 +225,14 @@ int32_t l2c_prep_compile(void *context, const uint8_t *module, int32_t length) {
     free(include);
     return ok;
 }
-/** Build the selected runtime with the same compiler with compiler-owned runtime options and variant. */
+
+/**
+ * Build the selected runtime with the same compiler with compiler-owned runtime options and variant.
+ *
+ * @param context Borrowed preparation context created by the matching constructor.
+ * @return One after building the runtime archive; zero for invalid state or a recorded native build
+ * failure.
+ */
 int32_t l2c_prep_runtime(void *context) {
     PcContext *c = context;
     PcConstruction *p = c ? c->construction : NULL;

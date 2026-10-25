@@ -25,3 +25,4 @@
 | [0021](0021-runtime-hash-semantic-domains-and-stability.md)                       | Runtime Hash Semantic Domains and Stability                         | Accepted               |
 | [0022](0022-single-compiler-level-lineage.md)                                     | Single-Compiler Level Lineage                                       | Accepted               |
 | [0023](0023-l1-release-workflow-policy.md)                                        | L1 Release Workflow Policy                                          | Accepted               |
+| [0024](0024-c-contracts-and-isolated-reference-extraction.md)                     | C Contracts and Isolated Reference Extraction                       | Accepted               |

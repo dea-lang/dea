@@ -24,14 +24,12 @@ void fs_dir_probe_config(int value) { mode = value; named = closes = 0; }
 
 /**
  * Return the expected saved native code.
- *
  * @return The native error code expected for the selected scenario.
  */
 int fs_dir_probe_error(void) { return mode == 2 ? EIO : EACCES; }
 
 /**
  * Expose native close consumption, independent of wrapper aliases.
- *
  * @return Number of native cursors consumed since the last reset.
  */
 int fs_dir_probe_closes(void) { return closes; }

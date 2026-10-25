@@ -48,6 +48,18 @@ func be_unwrap_paren_expr_id(self: Backend*, expr_id: ExprId) -> ExprId {
     return current;
 }
 
+/**
+ * Extract bigint digits through parentheses and unary negation.
+ *
+ * Each unary minus toggles the payload's leading sign. This recognizes syntax
+ * rather than evaluating arbitrary constant expressions, and does not modify
+ * the AST or emit statements.
+ *
+ * @param self Borrowed backend containing the current expression arena.
+ * @param expr_id Valid current-arena expression id, or a negative missing id.
+ * @return ARC-managed digit text with its effective sign, or `null` for a
+ * missing id or an expression outside the supported syntax.
+ */
 func be_bigint_expr_text(self: Backend*, expr_id: ExprId) -> string? {
     if (expr_id < 0) {
         return null;
@@ -73,6 +85,16 @@ func be_bigint_expr_text(self: Backend*, expr_id: ExprId) -> string? {
     return null;
 }
 
+/**
+ * Extract a bigint literal's base through parentheses and unary negation.
+ *
+ * Sign wrappers do not change the stored base. This does not evaluate arbitrary
+ * constant expressions or modify the AST.
+ *
+ * @param self Borrowed backend containing the current expression arena.
+ * @param expr_id Valid current-arena expression id, or a negative missing id.
+ * @return Stored literal base, or `null` for missing or unsupported syntax.
+ */
 func be_bigint_expr_base(self: Backend*, expr_id: ExprId) -> int? {
     if (expr_id < 0) {
         return null;
@@ -87,6 +109,20 @@ func be_bigint_expr_base(self: Backend*, expr_id: ExprId) -> int? {
     return null;
 }
 
+/**
+ * Lower bigint syntax using its inferred type or a fallback type.
+ *
+ * An inferred expression type takes precedence over the fallback; if both are
+ * absent, the literal is emitted without a destination-specific suffix. The
+ * temporary inferred type is released, and the fallback remains borrowed.
+ * Literal validity and representability must already have been checked.
+ *
+ * @param self Backend supplying the current arena and analysis results.
+ * @param expr_id Valid current-arena expression id, or a negative missing id.
+ * @param fallback_ty Optional borrowed destination type.
+ * @return ARC-managed C expression text, or `null` for unsupported bigint
+ * syntax; no statements are emitted.
+ */
 func be_emit_typed_bigint_expr(self: Backend*, expr_id: ExprId, fallback_ty: Type*?) -> string? {
     let text = be_bigint_expr_text(self, expr_id);
     let base = be_bigint_expr_base(self, expr_id);
@@ -727,6 +763,17 @@ func be_emit_case_literal(self: Backend*, expr_id: ExprId, expected_type: Type*)
     }
 }
 
+/**
+ * Extract an `int`-sized constant payload for a case arm.
+ *
+ * Direct integer and byte literals are read from the AST; other expressions
+ * use constant evaluation. Only integer kinds stored in an `int` payload are
+ * accepted, so bigint values are not narrowed. Any evaluated value is freed.
+ *
+ * @param self Backend supplying the current arena and constant-evaluation state.
+ * @param expr_id Valid current-arena expression id for the arm literal.
+ * @return Integer payload, or `null` when evaluation fails or has another kind.
+ */
 func be_case_int_literal_value(self: Backend*, expr_id: ExprId) -> int? {
     let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
     if (ord(expr.kind) == ord(EX_INT)) {
@@ -749,6 +796,18 @@ func be_case_int_literal_value(self: Backend*, expr_id: ExprId) -> int? {
     return null;
 }
 
+/**
+ * Identify case constants represented as bigint syntax or evaluated bigints.
+ *
+ * Parentheses and unary negation are recognized by the syntax path. Otherwise,
+ * constant evaluation supplies the classification and its temporary value is
+ * released. No AST nodes are modified or statements emitted.
+ *
+ * @param self Backend supplying the current arena and constant-evaluation state.
+ * @param expr_id Valid current-arena expression id for the arm literal.
+ * @return `true` for recognized bigint syntax or a `CV_BIGINT` result; `false`
+ * when the value has another kind or cannot be evaluated.
+ */
 func be_case_literal_is_bigint(self: Backend*, expr_id: ExprId) -> bool {
     if (be_bigint_expr_text(self, expr_id) != null && be_bigint_expr_base(self, expr_id) != null) {
         return true;
@@ -763,6 +822,19 @@ func be_case_literal_is_bigint(self: Backend*, expr_id: ExprId) -> bool {
     return result;
 }
 
+/**
+ * Prove that a recognized integer case literal is outside the scrutinee domain.
+ *
+ * Range checks cover bigint syntax and constants with an `int` payload. Other
+ * expressions, including evaluated bigint constants without bigint syntax,
+ * conservatively return `false`; that result does not prove reachability.
+ * Temporary constant values are released without consuming the scrutinee type.
+ *
+ * @param self Backend supplying the current arena and constant-evaluation state.
+ * @param scrutinee_ty Borrowed builtin integer type whose range is tested.
+ * @param expr_id Valid current-arena expression id for the arm literal.
+ * @return `true` when a supported literal cannot equal any scrutinee value.
+ */
 func be_case_literal_is_always_false(self: Backend*, scrutinee_ty: Type*, expr_id: ExprId) -> bool {
     let text = be_bigint_expr_text(self, expr_id);
     let base = be_bigint_expr_base(self, expr_id);
@@ -777,6 +849,19 @@ func be_case_literal_is_always_false(self: Backend*, scrutinee_ty: Type*, expr_i
     return false;
 }
 
+/**
+ * Select comparison-chain lowering when a case cannot use the ordinary switch path.
+ *
+ * Strings, floating-point scrutinees, and narrow integer scrutinees always use
+ * a chain. Other cases require one for floating-point literals, bigint
+ * constants, or integer literals proven outside the scrutinee range. The
+ * borrowed arms and types are unchanged; this emits no statements.
+ *
+ * @param self Backend supplying the current arena and constant-evaluation state.
+ * @param scrutinee_ty Borrowed non-null resolved scrutinee type.
+ * @param arms Borrowed vector of `CaseArm*` with valid literal expression ids.
+ * @return `true` for comparison-chain lowering, or `false` for switch lowering.
+ */
 func be_case_needs_if_else(self: Backend*, scrutinee_ty: Type*, arms: VectorBase*) -> bool {
     if (type_is_builtin(scrutinee_ty, "string") ||
         type_is_builtin(scrutinee_ty, "float") ||

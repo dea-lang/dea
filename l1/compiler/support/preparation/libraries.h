@@ -3,7 +3,9 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file libraries.h Cold discovery of dynamically loaded compiler implementation components. */
+/**
+ * @file libraries.h Cold discovery of dynamically loaded compiler implementation components.
+ */
 #ifndef L1_PREPARATION_LIBRARIES_H
 #define L1_PREPARATION_LIBRARIES_H
 
@@ -12,7 +14,15 @@
 #endif
 
 #if defined(__APPLE__)
-/** Expand the Mach-O loader placeholders whose base is explicit in the image. */
+
+/**
+ * Expand the Mach-O loader placeholders whose base is explicit in the image.
+ *
+ * @param name Borrowed NUL-terminated name.
+ * @param binary Borrowed binary image path.
+ * @param executable Borrowed executable image path.
+ * @return Owned expanded loader path, or NULL for an unsupported or unresolved placeholder.
+ */
 static char *pc_loader_path(const char *name, const char *binary, const char *executable) {
     const char *tail = NULL;
     char *base, *result;
@@ -30,7 +40,13 @@ static char *pc_loader_path(const char *name, const char *binary, const char *ex
 }
 #endif
 
-/** Inspect native images only; scripts are opaque adapters, not shared-library inventories. */
+/**
+ * Inspect native images only; scripts are opaque adapters, not shared-library inventories.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @return Nonzero for a supported native image header; zero for scripts, unsupported images, or unreadable
+ *     input.
+ */
 static int pc_image_kind(const char *path) {
     unsigned char magic[4];
     FILE *file = fopen(path, "rb");
@@ -52,7 +68,16 @@ static int pc_image_kind(const char *path) {
 }
 
 #if !defined(__APPLE__) && !defined(_WIN32)
-/** Record ELF loader search candidates without loading each library in a new context. */
+
+/**
+ * Record ELF loader search candidates without loading each library in a new context.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param image Borrowed executable image path.
+ * @param dependencies Dependency evidence populated by this operation.
+ * @param reader Borrowed native binary inspection tool path.
+ * @return Nonzero when loader search evidence is recorded; zero after recording a discovery failure.
+ */
 static int pc_elf_searches(PcContext *c, const char *image, PcJson *dependencies,
                            const char *reader) {
     PcJson *words = pj_new(PJ_ARRAY);
@@ -107,7 +132,14 @@ static int pc_elf_searches(PcContext *c, const char *image, PcJson *dependencies
 }
 #endif
 
-/** Bound library discovery, then remember its exact files and loader search inputs. */
+/**
+ * Bound library discovery, then remember its exact files and loader search inputs.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param paths Path spellings or mutable path evidence for this operation.
+ * @param dependencies Dependency evidence populated by this operation.
+ * @return Nonzero after bounded library discovery; zero after recording a discovery failure.
+ */
 static int pc_implementation_libraries(PcContext *c, PcJson *paths, PcJson *dependencies) {
     const PcJson *image;
 #if !defined(_WIN32)
@@ -176,6 +208,7 @@ static int pc_implementation_libraries(PcContext *c, PcJson *paths, PcJson *depe
             ok = 0;
             break;
         }
+
         /* ldd gives the complete closure in the executable's loader context.
            Re-running it on children would lose inherited RPATH semantics. */
         if (!pj_get(originals, image->key))
@@ -196,6 +229,7 @@ static int pc_implementation_libraries(PcContext *c, PcJson *paths, PcJson *depe
         pj_add(words, NULL, pj_string(image->key));
         probe = pc_context_probe(c, words, "compiler implementation libraries");
 #if !defined(__APPLE__) && !defined(_WIN32)
+
         /* ldd reports static executables with a nonzero status. */
         if (probe.status != 0 && !probe.timed_out &&
             (strstr(probe.out, "statically linked") ||
@@ -225,6 +259,7 @@ static int pc_implementation_libraries(PcContext *c, PcJson *paths, PcJson *depe
                     continue;
                 }
                 *suffix = 0;
+
                 /* otool includes LC_ID_DYLIB before a dylib's imported images. */
                 if (first_library && pc_ends(image->key, ".dylib")) {
                     first_library = 0;
@@ -278,6 +313,7 @@ static int pc_implementation_libraries(PcContext *c, PcJson *paths, PcJson *depe
                         ok =
                             pc_fail(c, 2154, "unsupported unresolved compiler library rpath", name);
                 }
+
                 /* Modern macOS keeps its OS libraries in the dyld shared cache.
                    The host OS build is a selection input for this boundary. */
                 if (path && pc_kind(path, 1) != 1 &&
@@ -304,6 +340,7 @@ static int pc_implementation_libraries(PcContext *c, PcJson *paths, PcJson *depe
                 }
                 if (!path)
                     path = pc_executable(dll);
+
                 /* API-set names are virtual OS imports. */
                 if (!path && _strnicmp(dll, "api-ms-", 7) && _strnicmp(dll, "ext-ms-", 7))
                     ok = pc_fail(c, 2154, "unresolved compiler implementation DLL", dll);

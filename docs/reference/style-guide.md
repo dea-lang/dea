@@ -1,6 +1,6 @@
 # Dea Code Style Guide
 
-Version: 2026-06-13
+Version: 2026-10-25
 
 Conventions for writing Dea source (`.l0` and `.l1`). This guide records the style that is already used near-universally
 across the Dea source corpus so that it is explicit rather than implicit.
@@ -73,7 +73,9 @@ A source file is ordered:
   apply.
 - Use `//` for inline and single-line comments.
 
-This matches the monorepo-wide rule that C and Dea source files use Doxygen/Javadoc-style block comments.
+Use multiline declaration blocks and leave a blank source line before each opening block, except at the beginning of a
+file. C function contracts follow the definition-owned convention in
+[docs/reference/c-documentation.md](c-documentation.md).
 
 ## Layout
 

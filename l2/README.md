@@ -20,3 +20,18 @@ routine Unified CI reuses explicit predecessor outputs and standalone L2 CI cons
 [l2/AGENTS.md](AGENTS.md), [l2/docs/project-status.md](docs/project-status.md), and
 [l2/docs/roadmap.md](docs/roadmap.md). L2 installation/distribution and hosted release workflows are outside this
 initial split.
+
+Production C support has a bootstrap-independent native reference:
+
+```sh
+make venv
+make test-docgen
+make docs-pdf
+```
+
+This generates HTML, XML, LaTeX, a complete PDF, and an informational `undocumented-functions.txt` report under
+`build/docs/native/`. It includes L2-owned runtime `.c` units, public headers, header-only implementations, and private
+preparation support. It does not generate references for the `.l1` compiler or `.l2` language bindings; L2 has no such
+reference pipeline yet. Tests, benchmark evidence, generated files, and vendored code are outside this production
+inventory. C contracts and prototype briefs follow
+[docs/reference/c-documentation.md](../docs/reference/c-documentation.md).

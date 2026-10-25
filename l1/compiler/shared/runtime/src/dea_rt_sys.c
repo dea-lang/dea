@@ -44,10 +44,10 @@ void _rt_init_args(int argc, char** argv) {
  * Returns the command exit code, `128 + signal` when terminated by a signal,
  * or a negative value on error launching the shell.
  *
+ * Dea signature: `extern func rt_system(cmd: string) -> int;`
+ *
  * @param cmd Command string.
  * @return Normalized status.
- *
- * Dea signature: `extern func rt_system(cmd: string) -> int;`
  */
 dea_int rt_system(dea_string cmd) {
     char *c = _rt_string_bytes(cmd);
@@ -75,10 +75,10 @@ dea_int rt_system(dea_string cmd) {
  * Get an environment variable as a Dea optional string.
  * Returns null (empty optional) if the variable is not set.
  *
+ * Dea signature: `extern func rt_get_env_var(name: string) -> string?;`
+ *
  * @param name Variable name.
  * @return Optional string value.
- *
- * Dea signature: `extern func rt_get_env_var(name: string) -> string?;`
  */
 dea_opt_string rt_get_env_var(dea_string name) {
     if (rt_strlen(name) == 0) {
@@ -121,9 +121,8 @@ dea_bool _rt_pid_to_dea_int(intmax_t value, dea_int *out) {
 /**
  * Get the current process identifier.
  *
- * @return Process identifier.
- *
  * Dea signature: `extern func rt_get_pid() -> int;`
+ * @return Process identifier.
  */
 dea_int rt_get_pid(void) {
     dea_int out = 0;
@@ -142,9 +141,8 @@ dea_int rt_get_pid(void) {
 /**
  * Get the number of command-line arguments.
  *
- * @return Argument count.
- *
  * Dea signature: `extern func rt_get_argc() -> int;`
+ * @return Argument count.
  */
 dea_int rt_get_argc(void) {
     return (dea_int)_rt_argc;
@@ -154,10 +152,10 @@ dea_int rt_get_argc(void) {
  * Get the command-line argument at the given index.
  * Panics if index is out of bounds.
  *
+ * Dea signature: `extern func rt_get_argv(i: int) -> string;`
+ *
  * @param i Index.
  * @return Argument string.
- *
- * Dea signature: `extern func rt_get_argv(i: int) -> string;`
  */
 dea_string rt_get_argv(dea_int i) {
     if (i < 0 || i >= _rt_argc) {
@@ -169,9 +167,9 @@ dea_string rt_get_argv(dea_int i) {
 /**
  * Exit the program with the given exit code.
  *
- * @param code Exit code.
- *
  * Dea signature: `extern func rt_exit(code: int) -> void;`
+ *
+ * @param code Exit code.
  */
 void rt_exit(dea_int code) {
     exit((int)code);
@@ -179,7 +177,6 @@ void rt_exit(dea_int code) {
 
 /**
  * Get the current C standard library `errno` value from `<errno.h>`.
- *
  * @return the current `errno` value.
  */
 dea_int rt_errno(void) {
@@ -281,70 +278,164 @@ struct __deaM3sys2osS9RtOsError rt_os_error_from_errno(dea_int native_code) {
  */
 static dea_int _rt_os_win32_kind(dea_long code) {
     switch (code) {
-    case 2: /* ERROR_FILE_NOT_FOUND */
-    case 3: /* ERROR_PATH_NOT_FOUND */
-    case 15: /* ERROR_INVALID_DRIVE */
-    case 53: /* ERROR_BAD_NETPATH */
-    case 67: /* ERROR_BAD_NET_NAME */
-    case 1168: /* ERROR_NOT_FOUND */
+
+    /* ERROR_FILE_NOT_FOUND */
+    case 2:
+
+    /* ERROR_PATH_NOT_FOUND */
+    case 3:
+
+    /* ERROR_INVALID_DRIVE */
+    case 15:
+
+    /* ERROR_BAD_NETPATH */
+    case 53:
+
+    /* ERROR_BAD_NET_NAME */
+    case 67:
+
+    /* ERROR_NOT_FOUND */
+    case 1168:
         return DEA_OS_ERROR_NOT_FOUND;
-    case 5: /* ERROR_ACCESS_DENIED */
-    case 19: /* ERROR_WRITE_PROTECT */
-    case 65: /* ERROR_NETWORK_ACCESS_DENIED */
+
+    /* ERROR_ACCESS_DENIED */
+    case 5:
+
+    /* ERROR_WRITE_PROTECT */
+    case 19:
+
+    /* ERROR_NETWORK_ACCESS_DENIED */
+    case 65:
         return DEA_OS_ERROR_PERMISSION_DENIED;
-    case 80: /* ERROR_FILE_EXISTS */
-    case 183: /* ERROR_ALREADY_EXISTS */
+
+    /* ERROR_FILE_EXISTS */
+    case 80:
+
+    /* ERROR_ALREADY_EXISTS */
+    case 183:
         return DEA_OS_ERROR_ALREADY_EXISTS;
-    case 87: /* ERROR_INVALID_PARAMETER */
-    case 123: /* ERROR_INVALID_NAME */
-    case 131: /* ERROR_NEGATIVE_SEEK */
-    case 161: /* ERROR_BAD_PATHNAME */
-    case 1113: /* ERROR_NO_UNICODE_TRANSLATION */
-    case 206: /* ERROR_FILENAME_EXCED_RANGE */
+
+    /* ERROR_INVALID_PARAMETER */
+    case 87:
+
+    /* ERROR_INVALID_NAME */
+    case 123:
+
+    /* ERROR_NEGATIVE_SEEK */
+    case 131:
+
+    /* ERROR_BAD_PATHNAME */
+    case 161:
+
+    /* ERROR_NO_UNICODE_TRANSLATION */
+    case 1113:
+
+    /* ERROR_FILENAME_EXCED_RANGE */
+    case 206:
         return DEA_OS_ERROR_INVALID_INPUT;
-    case 6: /* ERROR_INVALID_HANDLE */
+
+    /* ERROR_INVALID_HANDLE */
+    case 6:
         return DEA_OS_ERROR_INVALID_HANDLE;
-    case 995: /* ERROR_OPERATION_ABORTED */
+
+    /* ERROR_OPERATION_ABORTED */
+    case 995:
         return DEA_OS_ERROR_INTERRUPTED;
-    case 231: /* ERROR_PIPE_BUSY */
+
+    /* ERROR_PIPE_BUSY */
+    case 231:
         return DEA_OS_ERROR_WOULD_BLOCK;
-    case 109: /* ERROR_BROKEN_PIPE */
-    case 232: /* ERROR_NO_DATA */
-    case 233: /* ERROR_PIPE_NOT_CONNECTED */
+
+    /* ERROR_BROKEN_PIPE */
+    case 109:
+
+    /* ERROR_NO_DATA */
+    case 232:
+
+    /* ERROR_PIPE_NOT_CONNECTED */
+    case 233:
         return DEA_OS_ERROR_BROKEN_PIPE;
-    case 121: /* ERROR_SEM_TIMEOUT */
-    case 258: /* WAIT_TIMEOUT */
-    case 1460: /* ERROR_TIMEOUT */
+
+    /* ERROR_SEM_TIMEOUT */
+    case 121:
+
+    /* WAIT_TIMEOUT */
+    case 258:
+
+    /* ERROR_TIMEOUT */
+    case 1460:
         return DEA_OS_ERROR_TIMED_OUT;
-    case 1: /* ERROR_INVALID_FUNCTION */
-    case 50: /* ERROR_NOT_SUPPORTED */
-    case 120: /* ERROR_CALL_NOT_IMPLEMENTED */
+
+    /* ERROR_INVALID_FUNCTION */
+    case 1:
+
+    /* ERROR_NOT_SUPPORTED */
+    case 50:
+
+    /* ERROR_CALL_NOT_IMPLEMENTED */
+    case 120:
         return DEA_OS_ERROR_UNSUPPORTED;
-    case 132: /* ERROR_SEEK_ON_DEVICE */
+
+    /* ERROR_SEEK_ON_DEVICE */
+    case 132:
         return DEA_OS_ERROR_NOT_SEEKABLE;
-    case 8: /* ERROR_NOT_ENOUGH_MEMORY */
-    case 14: /* ERROR_OUTOFMEMORY */
+
+    /* ERROR_NOT_ENOUGH_MEMORY */
+    case 8:
+
+    /* ERROR_OUTOFMEMORY */
+    case 14:
         return DEA_OS_ERROR_OUT_OF_MEMORY;
-    case 4: /* ERROR_TOO_MANY_OPEN_FILES */
-    case 32: /* ERROR_SHARING_VIOLATION */
-    case 33: /* ERROR_LOCK_VIOLATION */
-    case 1450: /* ERROR_NO_SYSTEM_RESOURCES */
-    case 1816: /* ERROR_NOT_ENOUGH_QUOTA */
+
+    /* ERROR_TOO_MANY_OPEN_FILES */
+    case 4:
+
+    /* ERROR_SHARING_VIOLATION */
+    case 32:
+
+    /* ERROR_LOCK_VIOLATION */
+    case 33:
+
+    /* ERROR_NO_SYSTEM_RESOURCES */
+    case 1450:
+
+    /* ERROR_NOT_ENOUGH_QUOTA */
+    case 1816:
         return DEA_OS_ERROR_RESOURCE_EXHAUSTED;
-    case 23: /* ERROR_CRC */
-    case 29: /* ERROR_WRITE_FAULT */
-    case 30: /* ERROR_READ_FAULT */
-    case 31: /* ERROR_GEN_FAILURE */
-    case 1117: /* ERROR_IO_DEVICE */
+
+    /* ERROR_CRC */
+    case 23:
+
+    /* ERROR_WRITE_FAULT */
+    case 29:
+
+    /* ERROR_READ_FAULT */
+    case 30:
+
+    /* ERROR_GEN_FAILURE */
+    case 31:
+
+    /* ERROR_IO_DEVICE */
+    case 1117:
         return DEA_OS_ERROR_IO_ERROR;
-    case 267: /* ERROR_DIRECTORY */
+
+    /* ERROR_DIRECTORY */
+    case 267:
         return DEA_OS_ERROR_NOT_DIRECTORY;
-    case 145: /* ERROR_DIR_NOT_EMPTY */
+
+    /* ERROR_DIR_NOT_EMPTY */
+    case 145:
         return DEA_OS_ERROR_DIRECTORY_NOT_EMPTY;
-    case 39: /* ERROR_HANDLE_DISK_FULL */
-    case 112: /* ERROR_DISK_FULL */
+
+    /* ERROR_HANDLE_DISK_FULL */
+    case 39:
+
+    /* ERROR_DISK_FULL */
+    case 112:
         return DEA_OS_ERROR_NO_SPACE;
-    case 223: /* ERROR_FILE_TOO_LARGE */
+
+    /* ERROR_FILE_TOO_LARGE */
+    case 223:
         return DEA_OS_ERROR_FILE_TOO_LARGE;
     default:
         return DEA_OS_ERROR_OTHER;

@@ -12,6 +12,7 @@ typedef struct TSLanguage TSLanguage;
 extern "C" {
 #endif
 
+/* Return the Dea grammar's immutable Tree-sitter language descriptor. */
 const TSLanguage *tree_sitter_dea(void);
 
 #ifdef __cplusplus

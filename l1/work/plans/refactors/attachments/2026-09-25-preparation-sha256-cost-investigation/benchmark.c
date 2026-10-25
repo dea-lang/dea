@@ -3,7 +3,9 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file benchmark.c Experiment-local SHA-256 and stable-reader measurement harness. */
+/**
+ * @file benchmark.c Experiment-local SHA-256 and stable-reader measurement harness.
+ */
 #ifndef _WIN32
 #define _XOPEN_SOURCE 700
 #define _POSIX_C_SOURCE 200809L
@@ -31,7 +33,12 @@ static const ChunkMode chunk_modes[] = {
     {"irregular", 0},
 };
 
-/** Exit with a diagnostic when an experiment invariant fails. */
+/**
+ * Exit with a diagnostic when an experiment invariant fails.
+ *
+ * @param condition Predicate required to hold for the fixture.
+ * @param message Borrowed diagnostic text.
+ */
 static void require(int condition, const char *message) {
     if (!condition) {
         fprintf(stderr, "sha256 benchmark: %s\n", message);
@@ -39,21 +46,33 @@ static void require(int condition, const char *message) {
     }
 }
 
-/** Return a monotonic wall-clock timestamp in seconds. */
+/**
+ * Return a monotonic wall-clock timestamp in seconds.
+ * @return Monotonic clock value in seconds.
+ */
 static double wall_seconds(void) {
     struct timespec value;
     require(clock_gettime(CLOCK_MONOTONIC, &value) == 0, "cannot read monotonic clock");
     return (double)value.tv_sec + (double)value.tv_nsec / 1000000000.0;
 }
 
-/** Return process CPU time in seconds. */
+/**
+ * Return process CPU time in seconds.
+ * @return Process CPU time in seconds.
+ */
 static double cpu_seconds(void) {
     struct timespec value;
     require(clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &value) == 0, "cannot read process CPU clock");
     return (double)value.tv_sec + (double)value.tv_nsec / 1000000000.0;
 }
 
-/** Load one regular file before timing the in-memory operation. */
+/**
+ * Load one regular file before timing the in-memory operation.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param length Number of input elements or bytes, as appropriate.
+ * @return Owned file bytes, or NULL if file loading fails.
+ */
 static unsigned char *load_file(const char *path, size_t *length) {
     struct stat info;
     FILE *file;
@@ -72,7 +91,14 @@ static unsigned char *load_file(const char *path, size_t *length) {
     return allocation;
 }
 
-/** Feed bytes using one fixed or cyclic irregular division. */
+/**
+ * Feed bytes using one fixed or cyclic irregular division.
+ *
+ * @param sha Caller-owned streaming SHA-256 state to update.
+ * @param data Borrowed readable input byte span.
+ * @param length Number of input elements or bytes, as appropriate.
+ * @param mode Requested access or processing mode.
+ */
 static void hash_stream(PcSha *sha, const unsigned char *data, size_t length, const ChunkMode *mode) {
     static const size_t irregular[] = {4093, 65521, 127, 8191};
     size_t offset = 0, index = 0;
@@ -85,7 +111,9 @@ static void hash_stream(PcSha *sha, const unsigned char *data, size_t length, co
     }
 }
 
-/** Emit deterministic boundary and streaming-vector digests. */
+/**
+ * Emit deterministic boundary and streaming-vector digests.
+ */
 static void emit_vectors(void) {
     static const size_t sizes[] = {0, 55, 56, 63, 64, 65, 129};
     static const size_t divisions[] = {1, 7, 31, 64, 65};
@@ -111,7 +139,20 @@ static void emit_vectors(void) {
     }
 }
 
-/** Emit one common timing record. */
+/**
+ * Emit one common timing record.
+ *
+ * @param operation Borrowed name of the measured or failed native operation.
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param mode Requested access or processing mode.
+ * @param iteration Repetition index reported with this measurement.
+ * @param bytes Requested byte count.
+ * @param wall Measured elapsed wall time.
+ * @param cpu Measured process CPU time.
+ * @param digest Caller-owned 65-byte buffer for a NUL-terminated SHA-256 digest.
+ * @param checksum Hash checksum retained to make measured work observable.
+ * @param production_ms Measured production-path elapsed time in milliseconds.
+ */
 static void emit_measurement(const char *operation, const char *path, const char *mode, int iteration,
                              size_t bytes, double wall, double cpu, const char *digest,
                              uint64_t checksum, double production_ms) {
@@ -123,7 +164,13 @@ static void emit_measurement(const char *operation, const char *path, const char
            cpu * 1000.0, digest ? digest : "null", checksum, production_ms);
 }
 
-/** Measure SHA-256 after loading the complete file outside the timed span. */
+/**
+ * Measure SHA-256 after loading the complete file outside the timed span.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param mode Requested access or processing mode.
+ * @param repetitions Number of measurement repetitions.
+ */
 static void measure_memory(const char *path, const ChunkMode *mode, int repetitions) {
     size_t length;
     unsigned char *allocation = load_file(path, &length);
@@ -143,7 +190,12 @@ static void measure_memory(const char *path, const ChunkMode *mode, int repetiti
     free(allocation);
 }
 
-/** Measure sequential fread while consuming every byte in a checked FNV-1a checksum. */
+/**
+ * Measure sequential fread while consuming every byte in a checked FNV-1a checksum.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param repetitions Number of measurement repetitions.
+ */
 static void measure_read(const char *path, int repetitions) {
     unsigned char buffer[65536];
     int iteration;
@@ -169,7 +221,12 @@ static void measure_read(const char *path, int repetitions) {
     }
 }
 
-/** Measure the complete production stable-file hash. */
+/**
+ * Measure the complete production stable-file hash.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param repetitions Number of measurement repetitions.
+ */
 static void measure_stable(const char *path, int repetitions) {
     int iteration;
     for (iteration = 0; iteration < repetitions; ++iteration) {
@@ -187,7 +244,12 @@ static void measure_stable(const char *path, int repetitions) {
     }
 }
 
-/** Parse a positive repetition count. */
+/**
+ * Parse a positive repetition count.
+ *
+ * @param text Borrowed text to parse or caller-owned buffer receiving constructed text.
+ * @return Validated positive repetition count, or the fixture failure sentinel for invalid input.
+ */
 static int repetitions_from(const char *text) {
     char *end = NULL;
     long value;
@@ -197,6 +259,13 @@ static int repetitions_from(const char *text) {
     return (int)value;
 }
 
+/**
+ * Measure preparation SHA-256 and stable-read costs over the selected inputs.
+ *
+ * @param argc Number of process argument words.
+ * @param argv Borrowed NUL-terminated process argument vector.
+ * @return Zero when all requested checks succeed; nonzero on a fixture failure.
+ */
 int main(int argc, char **argv) {
     size_t i;
     if (argc == 2 && !strcmp(argv[1], "vectors")) {

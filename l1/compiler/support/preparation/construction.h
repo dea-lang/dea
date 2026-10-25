@@ -3,11 +3,19 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file construction.h Payload construction in a caller-owned staging directory. */
+/**
+ * @file construction.h Payload construction in a caller-owned staging directory.
+ */
 #ifndef L1_PREPARATION_CONSTRUCTION_H
 #define L1_PREPARATION_CONSTRUCTION_H
 
-/** Freeze resolved construction inputs without importing the caller's admission or storage policy. */
+/**
+ * Freeze resolved construction inputs without importing the caller's admission or storage policy.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param variant Borrowed runtime configuration variant name.
+ * @return Owned normalized construction-input object, or NULL after recording a preparation failure.
+ */
 static PcJson *pc_construction_inputs(PcContext *c, const char *variant) {
     PcJson *inputs = pj_new(PJ_OBJECT);
     pj_set_string(inputs, "compiler", c->compiler);
@@ -27,7 +35,12 @@ static PcJson *pc_construction_inputs(PcContext *c, const char *variant) {
     return inputs;
 }
 
-/** Remove registered scratch without following aliases or ignoring failures. */
+/**
+ * Remove registered scratch without following aliases or ignoring failures.
+ *
+ * @param root Borrowed root path.
+ * @return Nonzero after complete safe removal, or zero if ownership or removal checks fail.
+ */
 static int pc_remove_owned_tree(const char *root) {
     int kind = pc_kind(root, 0), ok = 1;
     PcJson *names;
@@ -45,19 +58,37 @@ static int pc_remove_owned_tree(const char *root) {
     return ok && l1c_fs_remove_empty_dir((const uint8_t *)root, (int32_t)strlen(root)) == 1;
 }
 
-/** Release only the description; the policy caller retains the destination and recovery evidence. */
+/**
+ * Release only the description; the policy caller retains the destination and recovery evidence.
+ *
+ * @param p Borrowed active construction description and its owned input records.
+ */
 static void pc_construction_free(PcConstruction *p) {
     if (!p) return;
     pj_free(p->inputs); pj_free(p->expected); pj_free(p->inventory);
     free(p->root); free(p);
 }
 
-/** Read a required, frozen construction string without consulting command or cache defaults. */
+/**
+ * Read a required, frozen construction string without consulting command or cache defaults.
+ *
+ * @param p Borrowed active construction description and its owned input records.
+ * @param name Borrowed NUL-terminated name.
+ * @return Borrowed string field from the frozen input record, or NULL when missing or not a string.
+ */
 static const char *pc_construction_field(const PcConstruction *p, const char *name) {
     return pj_field(p->inputs, name);
 }
 
-/** Refuse an aliased parent before creating any output directories outside the owned root. */
+/**
+ * Refuse an aliased parent before creating any output directories outside the owned root.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param p Borrowed active construction description and its owned input records.
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @return Nonzero after verifying containment and creating the directory; zero after recording an
+ * ownership or creation failure.
+ */
 static int pc_construction_directory(PcContext *c, const PcConstruction *p, const char *path) {
     char *canonical = pc_canonical_future(path);
     int safe = canonical && pc_within(canonical, p->root);
@@ -67,7 +98,15 @@ static int pc_construction_directory(PcContext *c, const PcConstruction *p, cons
     return 1;
 }
 
-/** Validate explicit inputs before authorizing writes to the supplied owned directory. */
+/**
+ * Validate explicit inputs before authorizing writes to the supplied owned directory.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param inputs Borrowed normalized construction inputs.
+ * @param destination Borrowed caller-owned construction destination.
+ * @return Nonzero after authorizing construction; zero after recording invalid inputs or destination
+ * ownership.
+ */
 static int pc_begin_construction(PcContext *c, const PcJson *inputs, const char *destination) {
     static const char *const strings[] = {
         "compiler", "family", "variant", "home", "semantic_root", "include", NULL};
@@ -130,6 +169,7 @@ static int pc_begin_construction(PcContext *c, const PcJson *inputs, const char 
     p->root = destination ? pc_path_call(destination, l1c_fs_canonical_existing_path) : NULL;
     if (!p->root || pc_kind(p->root, 0) != 2)
         return pc_fail(c, 2150, "construction requires an owned staging directory", destination);
+
     /* These are the only registered scratch trees. Keep generated C as optional
        debugging evidence, including on failure; the owner decides when to remove it. */
     {
@@ -149,7 +189,13 @@ static int pc_begin_construction(PcContext *c, const PcJson *inputs, const char 
     return ok;
 }
 
-/** Produce an owned payload inventory without serializing or publishing managed metadata. */
+/**
+ * Produce an owned payload inventory without serializing or publishing managed metadata.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return Nonzero after validating and retaining payload inventory; zero after recording a construction
+ * failure.
+ */
 static int pc_finish_construction(PcContext *c) {
     PcConstruction *p = c->construction;
     PcJson *inventory;
@@ -183,7 +229,13 @@ static int pc_finish_construction(PcContext *c) {
     return ok;
 }
 
-/** Build exact argv from the immutable invocation inputs, with distinct runtime options. */
+/**
+ * Build exact argv from the immutable invocation inputs, with distinct runtime options.
+ *
+ * @param p Borrowed active construction description and its owned input records.
+ * @param runtime Nonzero to select runtime compilation rather than generated module compilation.
+ * @return Owned compiler argument array released with pj_free.
+ */
 static PcJson *pc_construction_words(const PcConstruction *p, int runtime) {
     PcJson *words = pj_new(PJ_ARRAY);
     const PcJson *option;

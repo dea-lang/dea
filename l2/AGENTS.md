@@ -63,6 +63,12 @@ vendored dependencies. A path audit alone is insufficient; run the isolated buil
 
 ## Validation and Planning
 
+`make test-docgen`, `make docs`, and `make docs-pdf` validate and generate the bootstrap-independent production native C
+reference under `build/docs/native/`. It includes L2-owned runtime and compiler support C/header inputs, including
+header-defined implementations. L2 does not yet have compiler-language or stdlib-binding autodocs. Follow the shared C
+contract convention in [docs/reference/c-documentation.md](../docs/reference/c-documentation.md); reports remain
+informational and preserve unrelated function identities.
+
 `test` is the fast gate; `test-extended` covers the broad normal suite. `test-ci` includes applicable CI-only cases,
 trace sweeps, and child fixtures. Trace slow cases use explicit selectors or `test-compiler-trace-all`. Resolve test
 ownership by the subject, not the filename suffix: `.l1` implementation tests use the installed L1 builder, while `.l2`

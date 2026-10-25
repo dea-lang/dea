@@ -3,10 +3,18 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file discovery-harness.c Measure production native identity resolution without a compiler bootstrap. */
+/**
+ * @file discovery-harness.c Measure production native identity resolution without a compiler bootstrap.
+ */
 #include "preparation_support.c"
 
-/** Keep source, semantic inputs, digest backend and identity coverage equal across discovery variants. */
+/**
+ * Keep source, semantic inputs, digest backend and identity coverage equal across discovery variants.
+ *
+ * @param argc Number of process argument words.
+ * @param argv Borrowed NUL-terminated process argument vector.
+ * @return Zero when all requested checks succeed; nonzero for invalid invocation or a fixture failure.
+ */
 int main(int argc, char **argv) {
     PcJson *config = pj_new(PJ_OBJECT), *options = pj_new(PJ_ARRAY), *record = pj_new(PJ_OBJECT);
     PcContext *context;

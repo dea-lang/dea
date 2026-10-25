@@ -128,6 +128,7 @@ static size_t fs_root_length(const FsChar *path) {
     } else {
         return len && fs_path_sep(path, path[0]) ? 1 : 0;
     }
+
     /* A UNC root has a nonempty server and share. Win32 collapses separator runs. */
     while (start < len && fs_path_sep(path, path[start])) ++start;
     size_t server = start;
@@ -141,6 +142,7 @@ static size_t fs_root_length(const FsChar *path) {
     return start;
 #else
     if (!len || path[0] != '/') return 0;
+
     /* Exactly two leading slashes can name an implementation-defined POSIX root. */
     return len >= 2 && path[1] == '/' && (len == 2 || path[2] != '/') ? 2 : 1;
 #endif

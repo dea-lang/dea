@@ -9,6 +9,13 @@
  * Runtime support for wall clock and monotonic time, and local time metadata.
  * ========================================================================= */
 
+/**
+ * Convert native time seconds to a representable Dea integer.
+ *
+ * @param value Native seconds value to validate and convert.
+ * @param out Non-NULL output receiving seconds only when conversion succeeds.
+ * @return True when the value fits; false without writing output otherwise.
+ */
 dea_bool _rt_time_to_dea_int_sec(time_t value, dea_int *out) {
     long long sec = (long long)value;
     if (sec < INT32_MIN || sec > INT32_MAX) {
@@ -20,6 +27,10 @@ dea_bool _rt_time_to_dea_int_sec(time_t value, dea_int *out) {
 
 /**
  * Internal helper to convert long to dea_int nanoseconds.
+ *
+ * @param value Native nanosecond value to validate and convert.
+ * @param out Non-NULL output receiving nanoseconds only when conversion succeeds.
+ * @return True when nanoseconds are in [0, 1000000000); false without writing output otherwise.
  */
 dea_bool _rt_time_to_dea_int_nsec(long value, dea_int *out) {
     long long nsec = (long long)value;
@@ -32,6 +43,11 @@ dea_bool _rt_time_to_dea_int_nsec(long value, dea_int *out) {
 
 /**
  * Internal helper to write time parts to struct.
+ *
+ * @param out Caller-owned output storage; written only as specified by the contract.
+ * @param sec Whole seconds in the normalized time value.
+ * @param nsec Nanosecond component of the normalized time value.
+ * @return One after storing both fields; a NULL output terminates execution.
  */
 dea_bool _rt_time_write_parts(struct __deaM3sys2rtS11RtTimeParts *out, dea_int sec, dea_int nsec) {
     if (out == NULL) {
@@ -45,10 +61,10 @@ dea_bool _rt_time_write_parts(struct __deaM3sys2rtS11RtTimeParts *out, dea_int s
 /**
  * Capture current unix wall clock into `out`.
  *
+ * Dea signature: `extern func rt_time_unix(out: RtTimeParts*) -> bool;`
+ *
  * @param out Pointer to RtTimeParts.
  * @return 1 on success, 0 on failure.
- *
- * Dea signature: `extern func rt_time_unix(out: RtTimeParts*) -> bool;`
  */
 dea_bool rt_time_unix(struct __deaM3sys2rtS11RtTimeParts *out) {
     if (out == NULL) {
@@ -85,10 +101,10 @@ dea_bool rt_time_unix(struct __deaM3sys2rtS11RtTimeParts *out) {
 /**
  * Capture current monotonic clock into `out`.
  *
+ * Dea signature: `extern func rt_time_monotonic(out: RtTimeParts*) -> bool;`
+ *
  * @param out Pointer to RtTimeParts.
  * @return 1 on success, 0 on failure.
- *
- * Dea signature: `extern func rt_time_monotonic(out: RtTimeParts*) -> bool;`
  */
 dea_bool rt_time_monotonic(struct __deaM3sys2rtS11RtTimeParts *out) {
     if (out == NULL) {
@@ -119,9 +135,8 @@ dea_bool rt_time_monotonic(struct __deaM3sys2rtS11RtTimeParts *out) {
 /**
  * Returns whether a monotonic clock source is available.
  *
- * @return 1 if supported, 0 otherwise.
- *
  * Dea signature: `extern func rt_time_monotonic_supported() -> bool;`
+ * @return 1 if supported, 0 otherwise.
  */
 dea_bool rt_time_monotonic_supported(void) {
 #if defined(CLOCK_MONOTONIC)
@@ -137,10 +152,10 @@ dea_bool rt_time_monotonic_supported(void) {
  * Computes the offset by comparing `gmtime` and `localtime` breakdowns
  * directly, avoiding `mktime` which rejects pre-epoch values on some platforms.
  *
+ * Dea signature: `extern func rt_time_local_offset_sec(unix_sec: int) -> int?;`
+ *
  * @param unix_sec Unix timestamp.
  * @return Optional integer offset.
- *
- * Dea signature: `extern func rt_time_local_offset_sec(unix_sec: int) -> int?;`
  */
 dea_opt_int rt_time_local_offset_sec(dea_int unix_sec) {
     time_t t = (time_t)unix_sec;
@@ -184,10 +199,10 @@ dea_opt_int rt_time_local_offset_sec(dea_int unix_sec) {
 /**
  * Returns whether local time is daylight-saving time for `unix_sec`.
  *
+ * Dea signature: `extern func rt_time_local_is_dst(unix_sec: int) -> bool?;`
+ *
  * @param unix_sec Unix timestamp.
  * @return Optional boolean.
- *
- * Dea signature: `extern func rt_time_local_is_dst(unix_sec: int) -> bool?;`
  */
 dea_opt_bool rt_time_local_is_dst(dea_int unix_sec) {
     time_t t = (time_t)unix_sec;

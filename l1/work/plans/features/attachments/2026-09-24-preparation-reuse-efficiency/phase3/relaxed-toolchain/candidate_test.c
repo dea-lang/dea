@@ -3,21 +3,45 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file candidate_test.c Isolated Linux experiment boundaries and accepted stale-digest limitation. */
+/**
+ * @file candidate_test.c Isolated Linux experiment boundaries and accepted stale-digest limitation.
+ */
 #include "../support/preparation_support.c"
 
-/** Require a named experimental invariant. */
+/**
+ * Require a named experimental invariant.
+ *
+ * @param ok Predicate required to hold for the fixture.
+ * @param name Borrowed NUL-terminated name.
+ */
 static void check(int ok, const char *name) {
     if (!ok) { fprintf(stderr, "candidate fixture: %s\n", name); exit(1); }
 }
-/** Construct a digest record from complete metadata. */
+
+/**
+ * Construct a digest record from complete metadata.
+ *
+ * @param metadata Metadata evidence read or updated by this operation.
+ * @param digest Caller-owned 65-byte buffer for a NUL-terminated SHA-256 digest.
+ * @return Owned digest evidence record released with pj_free.
+ */
 static PcJson *record(const PcJson *metadata, const char *digest) {
     PcJson *r = pj_new(PJ_OBJECT);
     pj_set_string(r, "sha256", digest);
     pj_add(r, "metadata", pj_clone(metadata));
     return r;
 }
-/** Exercise the actual input-digest path with a selected category. */
+
+/**
+ * Exercise the actual input-digest path with a selected category.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param old Borrowed previous metadata or memo evidence.
+ * @param category Borrowed observation category label.
+ * @param force Nonzero to bypass reusable evidence.
+ * @param reads Expected or updated fixture count of input reads.
+ * @param digest Caller-owned 65-byte buffer for a NUL-terminated SHA-256 digest.
+ */
 static void input(const char *path, const PcJson *old, const char *category,
                   int force, int reads, const char *digest) {
     PcContext *c = pc_alloc(sizeof(*c));
@@ -36,7 +60,14 @@ static void input(const char *path, const PcJson *old, const char *category,
           "save current complete metadata on hit or hash");
     pj_free(now); free(actual); l1c_prep_free(c);
 }
-/** Build valid discovery evidence, then prove dependency and selected-file checks stay strict. */
+
+/**
+ * Build valid discovery evidence, then prove dependency and selected-file checks stay strict.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param metadata Metadata evidence read or updated by this operation.
+ * @param digest Caller-owned 65-byte buffer for a NUL-terminated SHA-256 digest.
+ */
 static void discovery(const char *path, const PcJson *metadata, const char *digest) {
     const char *text = "{\"schema\":1,\"version\":\"fixture\",\"dependencies\":{},\"paths\":{},"
                        "\"toolchain\":{\"family\":\"tcc\",\"invocation\":\"tcc\",\"target\":\"fixture\"}}";
@@ -65,6 +96,14 @@ static void discovery(const char *path, const PcJson *metadata, const char *dige
     check(!pc_discovery_current(c, memo), "selected-file inode still rejects discovery");
     pj_free(memo); l1c_prep_free(c);
 }
+
+/**
+ * Run the relaxed-toolchain memo candidate investigation fixture.
+ *
+ * @param argc Number of process argument words.
+ * @param argv Borrowed NUL-terminated process argument vector.
+ * @return Zero when all requested checks succeed; nonzero on a fixture failure.
+ */
 int main(int argc, char **argv) {
     const char *ignored[] = {"device", "inode", "ctime", "ctime_ns"};
     const char *retained[] = {"size", "mode", "mtime", "mtime_ns", "reliable"};

@@ -154,6 +154,17 @@ func cem_emit_binary_bigint_literal(text: string) -> string {
     }
 }
 
+/**
+ * Format a bigint literal without a destination-specific integer suffix.
+ *
+ * Binary payloads are converted to hexadecimal so their output does not require
+ * C binary-literal extensions. Other bases use the shared prefix formatter.
+ * Digit validity and range checking belong to semantic analysis.
+ *
+ * @param text Canonical prefix-free lowercase digits with an optional `-`.
+ * @param base Literal base, expected to be 2, 8, 10, or 16.
+ * @return ARC-managed literal spelling; input strings are not consumed.
+ */
 func cem_emit_bigint_literal(text: string, base: int) -> string {
     if (base == 2) {
         return cem_emit_binary_bigint_literal(text);
@@ -161,6 +172,17 @@ func cem_emit_bigint_literal(text: string, base: int) -> string {
     return bigint_to_string(text, base);
 }
 
+/**
+ * Recognize the canonical bigint payload for the minimum signed 64-bit value.
+ *
+ * Matching uses exact digit spellings rather than numeric normalization;
+ * equivalent payloads with extra leading zeroes do not match. The typed literal
+ * emitter uses this result to choose `INT64_MIN` safely.
+ *
+ * @param text Canonical prefix-free lowercase digits with an optional `-`.
+ * @param base Literal base, expected to be 2, 8, 10, or 16.
+ * @return `true` only for an exact supported spelling of -9223372036854775808.
+ */
 func cem_is_long_min_bigint(text: string, base: int) -> bool {
     if (base == 10) {
         return text == "-9223372036854775808";
@@ -463,6 +485,19 @@ func cem_emit_checked_int_sub(c_left: string, c_right: string) -> string {
     }
 }
 
+/**
+ * Emit the checked division helper for a resolved integer result type.
+ *
+ * The generated call panics on division by zero and, for signed types, minimum
+ * value divided by -1. Unsupported result types cause an internal compiler
+ * error during generation. This constructs expression text without emitting
+ * statements or evaluating operands.
+ *
+ * @param result_ty Borrowed builtin `int`, `uint`, `long`, or `ulong` type.
+ * @param c_left Lowered dividend already converted to `result_ty`.
+ * @param c_right Lowered divisor already converted to `result_ty`.
+ * @return ARC-managed runtime-call expression using each operand once.
+ */
 func cem_emit_checked_int_div_for_type(result_ty: Type*, c_left: string, c_right: string) -> string {
     if (type_is_builtin(result_ty, "int")) {
         return cem_emit_checked_int_div(c_left, c_right);
@@ -479,6 +514,19 @@ func cem_emit_checked_int_div_for_type(result_ty: Type*, c_left: string, c_right
     return cem_ice_string("[ICE-1320] unsupported checked division type '" + type_format(result_ty) + "'");
 }
 
+/**
+ * Emit the checked remainder helper for a resolved integer result type.
+ *
+ * The generated call panics on a zero divisor and, for signed types, minimum
+ * value modulo -1. Unsupported result types cause an internal compiler error
+ * during generation. This constructs expression text without emitting
+ * statements or evaluating operands.
+ *
+ * @param result_ty Borrowed builtin `int`, `uint`, `long`, or `ulong` type.
+ * @param c_left Lowered dividend already converted to `result_ty`.
+ * @param c_right Lowered divisor already converted to `result_ty`.
+ * @return ARC-managed runtime-call expression using each operand once.
+ */
 func cem_emit_checked_int_mod_for_type(result_ty: Type*, c_left: string, c_right: string) -> string {
     if (type_is_builtin(result_ty, "int")) {
         return cem_emit_checked_int_mod(c_left, c_right);
@@ -495,6 +543,19 @@ func cem_emit_checked_int_mod_for_type(result_ty: Type*, c_left: string, c_right
     return cem_ice_string("[ICE-1321] unsupported checked modulo type '" + type_format(result_ty) + "'");
 }
 
+/**
+ * Emit the checked multiplication helper for a resolved integer result type.
+ *
+ * The generated call panics when the product exceeds the result type's range.
+ * Unsupported result types cause an internal compiler error during generation.
+ * This constructs expression text without emitting statements or evaluating
+ * operands.
+ *
+ * @param result_ty Borrowed builtin `int`, `uint`, `long`, or `ulong` type.
+ * @param c_left Lowered left operand already converted to `result_ty`.
+ * @param c_right Lowered right operand already converted to `result_ty`.
+ * @return ARC-managed runtime-call expression using each operand once.
+ */
 func cem_emit_checked_int_mul_for_type(result_ty: Type*, c_left: string, c_right: string) -> string {
     if (type_is_builtin(result_ty, "int")) {
         return cem_emit_checked_int_mul(c_left, c_right);
@@ -511,6 +572,19 @@ func cem_emit_checked_int_mul_for_type(result_ty: Type*, c_left: string, c_right
     return cem_ice_string("[ICE-1322] unsupported checked multiply type '" + type_format(result_ty) + "'");
 }
 
+/**
+ * Emit the checked addition helper for a resolved integer result type.
+ *
+ * The generated call panics when the sum exceeds the result type's range.
+ * Unsupported result types cause an internal compiler error during generation.
+ * This constructs expression text without emitting statements or evaluating
+ * operands.
+ *
+ * @param result_ty Borrowed builtin `int`, `uint`, `long`, or `ulong` type.
+ * @param c_left Lowered left operand already converted to `result_ty`.
+ * @param c_right Lowered right operand already converted to `result_ty`.
+ * @return ARC-managed runtime-call expression using each operand once.
+ */
 func cem_emit_checked_int_add_for_type(result_ty: Type*, c_left: string, c_right: string) -> string {
     if (type_is_builtin(result_ty, "int")) {
         return cem_emit_checked_int_add(c_left, c_right);
@@ -527,6 +601,19 @@ func cem_emit_checked_int_add_for_type(result_ty: Type*, c_left: string, c_right
     return cem_ice_string("[ICE-1323] unsupported checked addition type '" + type_format(result_ty) + "'");
 }
 
+/**
+ * Emit the checked subtraction helper for a resolved integer result type.
+ *
+ * The generated call panics when the difference is outside the result type's
+ * range, including unsigned underflow. Unsupported result types cause an
+ * internal compiler error during generation. This constructs expression text
+ * without emitting statements or evaluating operands.
+ *
+ * @param result_ty Borrowed builtin `int`, `uint`, `long`, or `ulong` type.
+ * @param c_left Lowered left operand already converted to `result_ty`.
+ * @param c_right Lowered right operand already converted to `result_ty`.
+ * @return ARC-managed runtime-call expression using each operand once.
+ */
 func cem_emit_checked_int_sub_for_type(result_ty: Type*, c_left: string, c_right: string) -> string {
     if (type_is_builtin(result_ty, "int")) {
         return cem_emit_checked_int_sub(c_left, c_right);
@@ -697,10 +784,34 @@ func cem_emit_checked_narrow_cast(c_dst_type: string, c_inner: string) -> string
     return "(_rt_narrow_" + c_dst_type + "(" + c_inner + "))";
 }
 
+/**
+ * Emit a destination-range-checked cast from a signed integer source.
+ *
+ * The source is normalized to `dea_long` before calling the destination's
+ * `_from_signed` helper, which panics at runtime for an out-of-range value.
+ * The destination spelling must name a supported runtime integer helper; this
+ * formatter does not validate it or evaluate the source expression.
+ *
+ * @param c_dst_type Runtime C integer type spelling, such as `dea_int`.
+ * @param c_inner Lowered signed source representable in `dea_long`.
+ * @return ARC-managed checked-cast expression using the source once.
+ */
 func cem_emit_checked_signed_cast(c_dst_type: string, c_inner: string) -> string {
     return "(_rt_cast_" + c_dst_type + "_from_signed((dea_long)(" + c_inner + ")))";
 }
 
+/**
+ * Emit a destination-range-checked cast from an unsigned integer source.
+ *
+ * The source is normalized to `dea_ulong` before calling the destination's
+ * `_from_unsigned` helper, which panics at runtime for an out-of-range value.
+ * The destination spelling must name a supported runtime integer helper; this
+ * formatter does not validate it or evaluate the source expression.
+ *
+ * @param c_dst_type Runtime C integer type spelling, such as `dea_int`.
+ * @param c_inner Lowered unsigned source representable in `dea_ulong`.
+ * @return ARC-managed checked-cast expression using the source once.
+ */
 func cem_emit_checked_unsigned_cast(c_dst_type: string, c_inner: string) -> string {
     return "(_rt_cast_" + c_dst_type + "_from_unsigned((dea_ulong)(" + c_inner + ")))";
 }

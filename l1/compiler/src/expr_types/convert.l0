@@ -60,6 +60,18 @@ func etc_nullable_integer_inner(ty: Type*) -> Type*? {
     return inner;
 }
 
+/**
+ * Recover bigint digits through parentheses and unary negation.
+ *
+ * Each unary minus toggles the leading sign without converting the literal's
+ * base or changing the expression tree. A negative id or absent current unit
+ * returns `null` without looking up an expression.
+ *
+ * @param self Expression checker borrowing the current unit's expression arena.
+ * @param expr_id Arena-valid expression id, or a negative id for no expression.
+ * @return Managed digit string with an optional leading minus and no base prefix,
+ *     or `null` when the expression is not a wrapped bigint literal.
+ */
 func etc_bigint_expr_text(self: ExpressionTypeChecker*, expr_id: ExprId) -> string? {
     if (expr_id < 0 || self.current_unit == null) {
         return null;
@@ -85,6 +97,17 @@ func etc_bigint_expr_text(self: ExpressionTypeChecker*, expr_id: ExprId) -> stri
     return null;
 }
 
+/**
+ * Recover a bigint literal's stored base through parentheses and unary negation.
+ *
+ * This lookup changes neither the expression nor its type. A negative id or
+ * absent current unit returns `null` without looking up an expression.
+ *
+ * @param self Expression checker borrowing the current unit's expression arena.
+ * @param expr_id Arena-valid expression id, or a negative id for no expression.
+ * @return The literal's base, normally 2, 8, 10, or 16, or `null` when no wrapped
+ *     bigint literal is found.
+ */
 func etc_bigint_expr_base(self: ExpressionTypeChecker*, expr_id: ExprId) -> int? {
     if (expr_id < 0 || self.current_unit == null) {
         return null;
@@ -99,6 +122,20 @@ func etc_bigint_expr_base(self: ExpressionTypeChecker*, expr_id: ExprId) -> int?
     return null;
 }
 
+/**
+ * Record one contextual type for an expression and its bigint wrappers.
+ *
+ * Record the starting expression, then recurse through parentheses and unary
+ * minus nodes to the underlying expression. Each recorded type is an owned
+ * clone, replacing any previous entry; the AST and `ty` remain unchanged.
+ * Negative ids, an absent current unit, and liveness-only checking leave the
+ * type map unchanged. The caller must identify a valid bigint wrapper chain;
+ * this helper does not check the leaf kind or the literal's range.
+ *
+ * @param self Expression checker whose inferred-type map is updated.
+ * @param expr_id Arena-valid expression id, or a negative id for no expression.
+ * @param ty Borrowed contextual type to clone for each recorded expression.
+ */
 func etc_set_bigint_expr_type(self: ExpressionTypeChecker*, expr_id: ExprId, ty: Type*) {
     if (expr_id < 0 || self.current_unit == null) {
         return;
@@ -110,6 +147,17 @@ func etc_set_bigint_expr_type(self: ExpressionTypeChecker*, expr_id: ExprId, ty:
     }
 }
 
+/**
+ * Report that a bigint literal requires a contextual integer type.
+ *
+ * Emit `TYP-0702` at the outer expression's span, including the signed literal
+ * with its base prefix when recoverable. Diagnostic suppression is respected.
+ * A negative id or absent current unit emits nothing and changes no types.
+ *
+ * @param self Expression checker collecting the diagnostic.
+ * @param expr_id Arena-valid expression id, or a negative id for no expression.
+ * @param filename Source filename associated with the expression's span.
+ */
 func etc_diag_bigint_requires_context(self: ExpressionTypeChecker*, expr_id: ExprId, filename: string) {
     if (self.current_unit == null || expr_id < 0) {
         return;
@@ -127,6 +175,19 @@ func etc_diag_bigint_requires_context(self: ExpressionTypeChecker*, expr_id: Exp
         filename, expr.span);
 }
 
+/**
+ * Report a contextual type that cannot accept a bigint literal.
+ *
+ * Emit `TYP-0703` at the outer expression's span, naming `dst` and including the
+ * signed literal with its base prefix when recoverable. Diagnostic suppression
+ * is respected. A negative id or absent current unit emits nothing; expression
+ * types and the borrowed destination type remain unchanged.
+ *
+ * @param self Expression checker collecting the diagnostic.
+ * @param expr_id Arena-valid expression id, or a negative id for no expression.
+ * @param dst Borrowed contextual type to display in the error.
+ * @param filename Source filename associated with the expression's span.
+ */
 func etc_diag_bigint_context_error(self: ExpressionTypeChecker*, expr_id: ExprId, dst: Type*, filename: string) {
     if (self.current_unit == null || expr_id < 0) {
         return;
@@ -145,6 +206,19 @@ func etc_diag_bigint_context_error(self: ExpressionTypeChecker*, expr_id: ExprId
         filename, expr.span);
 }
 
+/**
+ * Report a bigint literal outside a builtin integer type's range.
+ *
+ * Emit `TYP-0700` at the outer expression's span, naming the destination and its
+ * inclusive range and including the signed literal when recoverable. Diagnostic
+ * suppression is respected. A negative id or absent current unit emits nothing;
+ * expression types and the borrowed destination type remain unchanged.
+ *
+ * @param self Expression checker collecting the diagnostic.
+ * @param expr_id Arena-valid expression id, or a negative id for no expression.
+ * @param dst Borrowed builtin integer type whose range is reported.
+ * @param filename Source filename associated with the expression's span.
+ */
 func etc_diag_bigint_literal_range_error(self: ExpressionTypeChecker*, expr_id: ExprId, dst: Type*, filename: string) {
     if (self.current_unit == null || expr_id < 0) {
         return;
@@ -411,6 +485,24 @@ func etc_can_widen_int(dst: Type*, src: Type*) -> bool {
     return false;
 }
 
+/**
+ * Check and apply a builtin integer context to a wrapped bigint literal.
+ *
+ * Reject expressions whose bigint digits or base cannot be recovered. For a
+ * recovered literal, report `TYP-0703` for a non-integer destination or
+ * `TYP-0700` for a value outside the destination's inclusive signed or unsigned
+ * range. Only acceptance records cloned destination types for the expression
+ * and its parentheses and unary-minus chain, subject to liveness-only mode.
+ * Diagnostic suppression does not change the returned assignment result.
+ *
+ * @param self Expression checker whose type map and diagnostics may be updated.
+ * @param dst Borrowed destination type; ownership remains with the caller.
+ * @param expr_id Arena-valid expression id, or a negative id for no expression.
+ * @param filename Source filename used if a diagnostic is reported.
+ * @return `ASSIGN_ACCEPT` when the literal fits, `ASSIGN_REPORTED` when a
+ *     contextual or range error is selected, or `ASSIGN_REJECT` when the
+ *     expression cannot be interpreted as a bigint literal.
+ */
 func etc_check_assign_bigint_expr(self: ExpressionTypeChecker*, dst: Type*, expr_id: ExprId,
                                   filename: string) -> AssignCheckResult {
     let text = etc_bigint_expr_text(self, expr_id);

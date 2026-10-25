@@ -3,13 +3,17 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file discovery-process-starts.c External Linux loader observer, excluded from timing runs. */
+/**
+ * @file discovery-process-starts.c External Linux loader observer, excluded from timing runs.
+ */
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-/** Record each dynamically loaded process without changing compiler arguments or job configuration. */
+/**
+ * Record each dynamically loaded process without changing compiler arguments or job configuration.
+ */
 __attribute__((constructor)) static void record_start(void) {
     char command[8192];
     const char *label = getenv("DISCOVERY_PROCESS_LABEL");

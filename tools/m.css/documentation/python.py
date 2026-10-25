@@ -43,6 +43,7 @@ import typing
 import urllib.parse
 from enum import Enum
 from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_file_location
 from types import SimpleNamespace as Empty
 from typing import Tuple, Dict, Set, Any, List, Optional, Union
 from urllib.parse import urljoin
@@ -3248,9 +3249,15 @@ if __name__ == '__main__': # pragma: no cover
     # Load configuration from a file, update the defaults with it
     config = copy.deepcopy(default_config)
     name, _ = os.path.splitext(os.path.basename(args.conf))
-    module = SourceFileLoader(name, args.conf).load_module()
-    if module is not None:
-        config.update((k, v) for k, v in inspect.getmembers(module) if k.isupper())
+    spec = spec_from_file_location(name, args.conf, loader=SourceFileLoader(name, args.conf))
+    module = module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        del sys.modules[name]
+        raise
+    config.update((k, v) for k, v in inspect.getmembers(module) if k.isupper())
 
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)

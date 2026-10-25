@@ -3,11 +3,15 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file storage.h Single-root native profiles and disposable validation memos. */
+/**
+ * @file storage.h Single-root native profiles and disposable validation memos.
+ */
 #ifndef L2_PREPARATION_STORAGE_H
 #define L2_PREPARATION_STORAGE_H
 
-/** Construction borrows a caller-owned destination and owns its immutable inputs/result. */
+/**
+ * Construction borrows a caller-owned destination and owns its immutable inputs/result.
+ */
 typedef struct {
     PcJson *inputs, *expected, *inventory;
     char *root;
@@ -30,12 +34,25 @@ typedef struct {
     PcConstruction *construction;
 } PcContext;
 
+/* Read the configured preparation diagnostic verbosity. */
 static int pc_verbosity(PcContext *c);
-/** Avoid observation clock calls outside debug verbosity. */
+
+/**
+ * Avoid observation clock calls outside debug verbosity.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return Monotonic start in milliseconds at debug verbosity; zero when observations are disabled.
+ */
 static double pc_observation_start(PcContext *c) {
     return c && pc_verbosity(c) >= 3 ? pc_milliseconds() : 0;
 }
-/** Emit one machine-readable debug observation without retaining persistent state. */
+
+/**
+ * Emit one machine-readable debug observation without retaining persistent state.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param record Owned observation record consumed and freed even when debug output is disabled.
+ */
 static void pc_observe(PcContext *c, PcJson *record) {
     if (pc_verbosity(c) >= 3) {
         char *encoded;
@@ -46,11 +63,27 @@ static void pc_observe(PcContext *c, PcJson *record) {
     }
     pj_free(record);
 }
+
+/**
+ * Create an owned preparation observation record with an event name.
+ *
+ * @param event Borrowed observation event label.
+ * @return Owned JSON record consumed by pc_observe or released with pj_free.
+ */
 static PcJson *pc_observation(const char *event) {
     PcJson *record = pj_new(PJ_OBJECT);
     pj_set_string(record, "event", event);
     return record;
 }
+
+/**
+ * Emit one inclusive debug timing span when observation verbosity is enabled.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param name Borrowed NUL-terminated name.
+ * @param started Monotonic observation start in milliseconds.
+ * @param success Nonzero when the observed operation succeeded.
+ */
 static void pc_observe_span(PcContext *c, const char *name, double started, int success) {
     if (pc_verbosity(c) < 3) return;
     PcJson *record = pc_observation("span");
@@ -60,6 +93,16 @@ static void pc_observe_span(PcContext *c, const char *name, double started, int 
     pj_set_number(record, "success", success ? 1 : 0);
     pc_observe(c, record);
 }
+
+/**
+ * Emit one debug reuse decision and its optional path when enabled.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param scope Borrowed observation scope label.
+ * @param decision Borrowed reuse decision label.
+ * @param reason Borrowed diagnostic or observation reason.
+ * @param path Borrowed NUL-terminated filesystem path.
+ */
 static void pc_observe_decision(PcContext *c, const char *scope, const char *decision,
                                 const char *reason, const char *path) {
     if (pc_verbosity(c) < 3) return;
@@ -70,6 +113,13 @@ static void pc_observe_decision(PcContext *c, const char *scope, const char *dec
     if (path) pj_set_string(record, "path", path);
     pc_observe(c, record);
 }
+
+/**
+ * Classify recorded native metadata for diagnostic observations.
+ *
+ * @param metadata Metadata evidence read or updated by this operation.
+ * @return Borrowed constant string naming file, directory, or unknown metadata.
+ */
 static const char *pc_metadata_kind(const PcJson *metadata) {
     const PcJson *mode = pj_get(metadata, "mode");
     if (!mode || mode->type != PJ_NUMBER) return "unknown";
@@ -79,10 +129,26 @@ static const char *pc_metadata_kind(const PcJson *metadata) {
     return S_ISDIR((mode_t)mode->number) ? "directory" : "file";
 #endif
 }
+
+/**
+ * Append a copied JSON value or explicit null to a diagnostic record.
+ *
+ * @param record JSON observation or metadata record updated by the operation.
+ * @param key Borrowed NUL-terminated object or identity key.
+ * @param value Borrowed value to clone, or NULL to append explicit JSON null.
+ */
 static void pc_add_optional_value(PcJson *record, const char *key, const PcJson *value) {
     pj_add(record, key, value ? pj_clone(value) : pj_new(PJ_NULL));
 }
-/** Allocate the complete difference map only after finding an unequal field. */
+
+/**
+ * Allocate the complete difference map only after finding an unequal field.
+ *
+ * @param differences Optional owned difference map allocated on the first mismatch.
+ * @param field Borrowed field name or bounded field-name bytes.
+ * @param previous Borrowed previous metadata value.
+ * @param current Borrowed current metadata value.
+ */
 static void pc_add_metadata_difference(PcJson **differences, const char *field,
                                        const PcJson *previous, const PcJson *current) {
     PcJson *values;
@@ -93,7 +159,16 @@ static void pc_add_metadata_difference(PcJson **differences, const char *field,
     if (current) pj_add(values, "current", pj_clone(current));
     pj_add(*differences, field, values);
 }
-/** Report every field difference while retaining the first-field compatibility view. */
+
+/**
+ * Report every field difference while retaining the first-field compatibility view.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param scope Borrowed observation scope label.
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param previous Borrowed previous metadata value.
+ * @param current Borrowed current metadata value.
+ */
 static void pc_observe_metadata_mismatch(PcContext *c, const char *scope, const char *path,
                                          const PcJson *previous, const PcJson *current) {
     static const char *const fields[] = {"device", "inode", "size", "mode", "mtime", "mtime_ns",
@@ -133,6 +208,18 @@ static void pc_observe_metadata_mismatch(PcContext *c, const char *scope, const 
         pc_observe(c, record);
     }
 }
+
+/**
+ * Hash a stable file and optionally emit debug cost observations.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param digest Caller-owned 65-byte buffer for a NUL-terminated SHA-256 digest.
+ * @param metadata Optional output receiving owned stable descriptor metadata on success.
+ * @param category Borrowed observation category label.
+ * @param reason Borrowed diagnostic or observation reason.
+ * @return Nonzero on a stable complete read; zero on file or metadata failure.
+ */
 static int pc_hash_observed(PcContext *c, const char *path, char digest[65], PcJson **metadata,
                             const char *category, const char *reason) {
     if (pc_verbosity(c) < 3)
@@ -151,7 +238,15 @@ static int pc_hash_observed(PcContext *c, const char *path, char digest[65], PcJ
     return ok;
 }
 
-/** Retain the first actionable error; cleanup must not hide its cause. */
+/**
+ * Retain the first actionable error; cleanup must not hide its cause.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param code Diagnostic code to retain.
+ * @param reason Borrowed diagnostic or observation reason.
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @return Always zero, allowing the retained diagnostic to be returned as failure.
+ */
 static int pc_fail(PcContext *c, int code, const char *reason, const char *path) {
     PcBuffer b = {0};
     if (c->error) return 0;
@@ -161,21 +256,54 @@ static int pc_fail(PcContext *c, int code, const char *reason, const char *path)
     c->error_code = code;
     return 0;
 }
+
+/**
+ * Release the saved preparation diagnostic and reset its error code.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ */
 static void pc_clear_error(PcContext *c) {
     free(c->error); c->error = NULL; c->error_code = 0;
 }
+
+/**
+ * Read a borrowed environment value with an empty-string fallback.
+ *
+ * @param key Borrowed NUL-terminated object or identity key.
+ * @return Borrowed environment text, or a constant empty string when unset.
+ */
 static const char *pc_env(const char *key) {
     const char *s = getenv(key);
     return s ? s : "";
 }
+
+/**
+ * Read the configured preparation diagnostic verbosity.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return Configured integer verbosity, or zero when absent or not an integer.
+ */
 static int pc_verbosity(PcContext *c) {
     const PcJson *v = pj_get(c->config, "verbosity");
     return v && v->type == PJ_NUMBER ? (int)v->number : 0;
 }
+
+/**
+ * Read a borrowed string configuration field with an empty fallback.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param key Borrowed NUL-terminated object or identity key.
+ * @return Borrowed string value, or a constant empty string when absent or not a string.
+ */
 static const char *pc_config(PcContext *c, const char *key) {
     const char *s = pj_field(c->config, key);
     return s ? s : "";
 }
+
+/**
+ * Construct the platform-specific default installed preparation cache path.
+ * @return Owned cache path, or NULL when required environment roots are unavailable.
+ */
 static char *pc_user_default(void) {
 #if defined(_WIN32)
     if (*pc_env("LOCALAPPDATA")) return pc_join(pc_env("LOCALAPPDATA"), "Dea/L2/Cache");
@@ -187,7 +315,13 @@ static char *pc_user_default(void) {
     return *pc_env("HOME") ? pc_join(pc_env("HOME"), ".cache/dea/l2") : NULL;
 #endif
 }
-/** Resolve toolchain-owned paths without hashing inputs or touching native storage. */
+
+/**
+ * Resolve toolchain-owned paths without hashing inputs or touching native storage.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return Nonzero after resolving toolchain-owned paths; zero after recording invalid toolchain selection.
+ */
 static int pc_toolchain_paths(PcContext *c) {
     const char *build = pc_config(c, "build_dir");
     char *repo_marker, *derived = NULL, *base;
@@ -212,7 +346,13 @@ static int pc_toolchain_paths(PcContext *c) {
     free(base); free(derived);
     return 1;
 }
-/** Test only the Dea-owned subtree, never treating its caller-selected parent as disposable. */
+
+/**
+ * Test only the Dea-owned subtree, never treating its caller-selected parent as disposable.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return Nonzero when an exclusive write probe in the owned subtree succeeds.
+ */
 static int pc_root_writable(PcContext *c) {
     char *version = c->local ? pc_join(c->local, "v1") : NULL;
     int ok = version && pc_mkdirs(version);
@@ -241,7 +381,14 @@ static int pc_root_writable(PcContext *c) {
     free(version);
     return ok;
 }
-/** Resolve one root and enforce installed-payload ownership before any managed write. */
+
+/**
+ * Resolve one root and enforce installed-payload ownership before any managed write.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return Nonzero after selecting a safe cache policy; zero after recording overlap or explicit-root
+ * failure.
+ */
 static int pc_roots(PcContext *c) {
     const char *value = pc_config(c, "cache");
     char *fallback = NULL, *absolute, *version, *canonical, *payload;
@@ -274,6 +421,16 @@ static int pc_roots(PcContext *c) {
         return pc_fail(c, 2150, "explicit stdlib cache is unusable; choose a writable --stdlib-cache or L2_STDLIB_CACHE directory", c->local);
     return 1;
 }
+
+/**
+ * Construct an optional memo path, creating its directory only when requested.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param kind Requested record or artifact kind.
+ * @param key Borrowed NUL-terminated object or identity key.
+ * @param create Nonzero to create the required memo directory.
+ * @return Owned path, or NULL when memo storage is unavailable or directory creation fails.
+ */
 static char *pc_memo_path(PcContext *c, const char *kind, const char *key, int create) {
     char *base, *directory, *filename, *path;
     PcBuffer b = {0};
@@ -287,16 +444,38 @@ static char *pc_memo_path(PcContext *c, const char *kind, const char *key, int c
     free(directory); free(filename);
     return path;
 }
+
+/**
+ * Check the memo schema and exact record kind.
+ *
+ * @param memo Borrowed optional memo record.
+ * @param kind Requested record or artifact kind.
+ * @return Nonzero only for a compatible memo of the requested kind.
+ */
 static int pc_memo_valid(const PcJson *memo, const char *kind) {
     return memo && pj_is_number(pj_get(memo, "schema"), 1) && pj_field(memo, "kind") &&
         !strcmp(pj_field(memo, "kind"), kind);
 }
+
+/**
+ * Create an owned versioned memo envelope of the requested kind.
+ *
+ * @param kind Requested record or artifact kind.
+ * @return Owned JSON object released with pj_free.
+ */
 static PcJson *pc_memo_create(const char *kind) {
     PcJson *m = pj_new(PJ_OBJECT);
     pj_set_number(m, "schema", 1); pj_set_string(m, "kind", kind);
     return m;
 }
-/** Read at most one optional donor; its discovery is never consulted. */
+
+/**
+ * Read at most one optional donor; its discovery is never consulted.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return Borrowed candidate file evidence owned by the context, or NULL when no usable donor memo is
+ * available.
+ */
 static const PcJson *pc_digest_seed_files(PcContext *c) {
     char *path;
     PcJson *hint;
@@ -331,7 +510,13 @@ static const PcJson *pc_digest_seed_files(PcContext *c) {
     return pj_get(c->digest_donor, "files");
 }
 
-/** An optional record is usable only against current reliable file metadata. */
+/**
+ * An optional record is usable only against current reliable file metadata.
+ *
+ * @param old Borrowed previous metadata or memo evidence.
+ * @param now Borrowed current metadata evidence.
+ * @return Borrowed rejection reason, or NULL when reliable current metadata authorizes reuse.
+ */
 static const char *pc_digest_rejection(const PcJson *old, const PcJson *now) {
     if (!old) return "memo-entry-absent";
     if (!pc_hex_digest(pj_field(old, "sha256"))) return "memo-digest-invalid";
@@ -340,7 +525,14 @@ static const char *pc_digest_rejection(const PcJson *old, const PcJson *now) {
     return NULL;
 }
 
-/** Metadata is local evidence only; missing or invalid records always rehash. */
+/**
+ * Metadata is local evidence only; missing or invalid records always rehash.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param category Borrowed observation category label.
+ * @return Owned lowercase SHA-256 string, or NULL after recording an input failure.
+ */
 static char *pc_input_digest(PcContext *c, const char *path, const char *category) {
     PcJson *now = pc_meta(path), *old = pj_get(c->old_files, path), *record;
     const char *reason;
@@ -379,6 +571,15 @@ static char *pc_input_digest(PcContext *c, const char *path, const char *categor
         pj_free(now);
     return result;
 }
+
+/**
+ * Construct the relative artifact path for a validated dotted module name.
+ *
+ * @param name Borrowed NUL-terminated name.
+ * @param suffix Borrowed exact suffix bytes.
+ * @param top Borrowed artifact root component.
+ * @return Owned artifact path released with free.
+ */
 static char *pc_module_artifact(const char *name, const char *suffix, const char *top) {
     PcBuffer b = {0};
     const char *p;
@@ -389,6 +590,13 @@ static char *pc_module_artifact(const char *name, const char *suffix, const char
     pc_text(&b, suffix);
     return pc_take(&b);
 }
+
+/**
+ * Validate a dotted compiler module name for artifact construction.
+ *
+ * @param name Borrowed NUL-terminated name.
+ * @return Nonzero for a supported nonempty module spelling.
+ */
 static int pc_module_name(const char *name) {
     const unsigned char *p = (const unsigned char *)name;
     int first = 1;
@@ -408,6 +616,13 @@ static int pc_module_name(const char *name) {
     }
     return !first;
 }
+
+/**
+ * Validate a relative artifact path against traversal and absolute spellings.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @return Nonzero only for a permitted nonempty relative path.
+ */
 static int pc_relative(const char *path) {
     const char *p, *start;
     if (!path || !*path || *path == '/' || strchr(path, '\\') || strchr(path, ':'))
@@ -425,6 +640,13 @@ static int pc_relative(const char *path) {
     }
     return 1;
 }
+
+/**
+ * Choose the runtime archive filename for the selected runtime variant.
+ *
+ * @param variant Borrowed runtime configuration variant name.
+ * @return Borrowed constant archive filename, or NULL for an unknown variant.
+ */
 static const char *pc_runtime_archive(const char *variant) {
     if (!strcmp(variant, "traced"))
         return "lib/libdea_rt_traced.a";
@@ -440,7 +662,14 @@ static const char *const pc_runtime_sources[] = {
     "dea_rt_panic", "dea_rt_sys", "dea_rt_math", "dea_rt_rand", "dea_rt_string",
     "dea_rt_alloc", "dea_rt_io",  "dea_rt_hash", "dea_rt_time", NULL};
 
-/** Payload roles depend only on the semantic set and normalized native configuration. */
+/**
+ * Payload roles depend only on the semantic set and normalized native configuration.
+ *
+ * @param modules Module inventory read or populated by this operation.
+ * @param family Borrowed native compiler family name.
+ * @param variant Borrowed runtime configuration variant name.
+ * @return Owned payload-role inventory, or NULL for invalid module or runtime configuration.
+ */
 static PcJson *pc_payload_artifacts(const PcJson *modules, const char *family, const char *variant) {
     const PcJson *m;
     const char *archive;
@@ -470,19 +699,41 @@ static PcJson *pc_payload_artifacts(const PcJson *modules, const char *family, c
 invalid:
     pj_free(expected); return NULL;
 }
-/** Managed validation derives the same roles from its existing identity format. */
+
+/**
+ * Managed validation derives the same roles from its existing identity format.
+ *
+ * @param identity Borrowed exact native identity record.
+ * @return Owned expected payload-role inventory, or NULL for invalid native identity data.
+ */
 static PcJson *pc_expected_artifacts(const PcJson *identity) {
     return pc_payload_artifacts(pj_get(pj_get(identity, "dea_inputs"), "modules"),
         pj_field(pj_get(identity, "toolchain"), "family"),
         pj_field(pj_get(identity, "runtime"), "variant"));
 }
+
+/**
+ * Construct the managed native profile directory for an identity key.
+ *
+ * @param root Borrowed root path.
+ * @param key Borrowed NUL-terminated object or identity key.
+ * @return Owned entry path released with free.
+ */
 static char *pc_entry_path(const char *root, const char *key) {
     char *directory = pc_join(root, "v1/native"), *entry = pc_join(directory, key);
     free(directory); return entry;
 }
+
 /**
  * Validate one completion record. Return 1 for a hit, 0 for unavailable, -1
  * for supported completed corruption. Only successful checks populate memos.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param entry Borrowed profile entry directory.
+ * @param full Nonzero to verify payload contents in addition to manifest structure.
+ * @param manifest_name Borrowed completion-manifest filename.
+ * @return One for valid completion, zero for absence or incomplete state, or -1 for invalid completed
+ * state.
  */
 static int pc_validate_entry_manifest(PcContext *c, const char *entry,
                                       int full, const char *manifest_name) {
@@ -663,12 +914,25 @@ finish:
     return outcome;
 }
 
-/** Readers recognize only the final completion name, never a writer's pending bytes. */
+/**
+ * Readers recognize only the final completion name, never a writer's pending bytes.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param entry Borrowed profile entry directory.
+ * @param full Nonzero to verify payload contents in addition to manifest structure.
+ * @return One for valid completion, zero for absence or incomplete state, or -1 for invalid completed
+ * state.
+ */
 static int pc_validate_entry(PcContext *c, const char *entry, int full) {
     return pc_validate_entry_manifest(c, entry, full, "manifest.json");
 }
 
-/** A detected completed failure is retained as recovery context, never consumed or repaired here. */
+/**
+ * A detected completed failure is retained as recovery context, never consumed or repaired here.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return One for a validated hit, zero for a miss, two for unusable completion, or -1 for error.
+ */
 static int pc_find_profile(PcContext *c) {
     char *entry;
     int result;
@@ -695,7 +959,13 @@ static int pc_find_profile(PcContext *c) {
     free(entry);
     return 0;
 }
-/** Serialize absent/incomplete preparations by native key; OS ownership follows process lifetime. */
+
+/**
+ * Serialize absent/incomplete preparations by native key; OS ownership follows process lifetime.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @return Nonzero after acquiring the exclusive profile lock; zero after recording a coordination failure.
+ */
 static int pc_acquire_profile(PcContext *c) {
     char *directory, *lockpath;
     PcBuffer name = {0};

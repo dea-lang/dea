@@ -143,6 +143,7 @@ int main(int argc, char **argv) {
         REQUIRE(!rt_fs_metadata(dangling, 1).ok);
         REQUIRE(!rt_fs_same_file(dangling, dangling).ok);
         REQUIRE(!rt_fs_remove_dir(link, 0).ok);
+
         /* Replacing a link removes its entry, leaving its followed target untouched. */
         REQUIRE(rt_fs_rename(different, link, 1).ok);
         REQUIRE(rt_fs_metadata(target, 1).ok);
@@ -152,6 +153,7 @@ int main(int argc, char **argv) {
     REQUIRE(cursor(root, 4) == 0);
     REQUIRE(rt_fs_remove_dir(tree, 1).ok);
     REQUIRE(rt_fs_metadata(target, 1).ok);
+
     /* Missing lookup errors survive unrelated successful operations. */
     struct __deaM3sys2fsS12RtFsMetadata missing = rt_fs_metadata(text("/does-not-exist-dea-filesystem"), 1);
     REQUIRE(!missing.ok && missing.error.kind == DEA_OS_ERROR_NOT_FOUND);
@@ -164,6 +166,7 @@ int main(int argc, char **argv) {
     REQUIRE(!rt_fs_create_dir(text(partial), 1).ok);
     REQUIRE(snprintf(partial, cap, "%s/created", argv[1]) > 0);
 #if defined(_WIN32)
+
     /* GetFullPathNameW removes created/.. before prefix creation starts. */
     REQUIRE(!rt_fs_metadata(text(partial), 1).ok);
 #else

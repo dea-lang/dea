@@ -79,7 +79,6 @@ static int trimmed(const FsChar *path, const FsChar *expected) {
 
 /**
  * Exercise rooted, relative, device, UNC, dot, space, and literal-backslash cases.
- *
  * @return Zero when all path-spelling checks pass, otherwise one.
  */
 int main(void) {

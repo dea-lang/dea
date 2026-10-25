@@ -16,6 +16,8 @@ JAVADOC_AUTOBRIEF      = YES
 QT_AUTOBRIEF           = YES
 EXTRACT_ALL            = YES
 EXTRACT_STATIC         = YES
+# Single-header libraries keep canonical contracts with their implementations.
+PREDEFINED             = SIPHASH_IMPLEMENTATION DEA_TRACE_ARC DEA_TRACE_MEMORY
 EXTRACT_LOCAL_METHODS  = YES
 HIDE_UNDOC_MEMBERS     = NO
 HIDE_UNDOC_CLASSES     = NO

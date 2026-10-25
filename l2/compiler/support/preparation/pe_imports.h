@@ -3,7 +3,9 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file pe_imports.h Bounded normal PE import names without unrelated image tables. */
+/**
+ * @file pe_imports.h Bounded normal PE import names without unrelated image tables.
+ */
 #ifndef L2_PREPARATION_PE_IMPORTS_H
 #define L2_PREPARATION_PE_IMPORTS_H
 
@@ -18,12 +20,33 @@ typedef struct {
     PcPeSection sections[96];
 } PcPeReader;
 
+/**
+ * Decode an unaligned little-endian 32-bit PE field.
+ *
+ * @param p Borrowed readable span of at least four little-endian field bytes.
+ * @return Decoded unsigned field value.
+ */
 static uint32_t pc_pe_u32(const unsigned char *p) {
     return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
 }
+
+/**
+ * Decode an unaligned little-endian 16-bit PE field.
+ *
+ * @param p Borrowed readable span of at least two little-endian field bytes.
+ * @return Decoded unsigned field value.
+ */
 static unsigned pc_pe_u16(const unsigned char *p) { return (unsigned)p[0] | (unsigned)p[1] << 8; }
 
-/** Read only an already checked file range, including on Windows with 32-bit long. */
+/**
+ * Read only an already checked file range, including on Windows with 32-bit long.
+ *
+ * @param r PE image reader state owned by the caller.
+ * @param offset Absolute file byte offset to seek before reading.
+ * @param bytes Caller-owned writable destination span of at least size bytes.
+ * @param size Number of bytes to read into the destination span.
+ * @return Nonzero after reading the complete checked range; zero for bounds or I/O failure.
+ */
 static int pc_pe_read(PcPeReader *r, uint64_t offset, void *bytes, size_t size) {
     if (offset > r->size || size > r->size - offset) return 0;
 #if defined(_WIN32)
@@ -34,7 +57,15 @@ static int pc_pe_read(PcPeReader *r, uint64_t offset, void *bytes, size_t size) 
     return fread(bytes, 1, size, r->file) == size && !ferror(r->file);
 }
 
-/** Map an RVA to its file-backed range; virtual-only data cannot hold import records. */
+/**
+ * Map an RVA to its file-backed range; virtual-only data cannot hold import records.
+ *
+ * @param r PE image reader state owned by the caller.
+ * @param address PE virtual address to translate.
+ * @param offset Caller-owned output receiving the translated file byte offset.
+ * @param size Caller-owned output receiving the remaining file-backed range size.
+ * @return Nonzero for a file-backed range after writing offset; zero for an invalid or virtual-only range.
+ */
 static int pc_pe_range(const PcPeReader *r, uint32_t address, uint64_t *offset, uint32_t *size) {
     unsigned i;
     if (address < r->headers) {
@@ -53,7 +84,13 @@ static int pc_pe_range(const PcPeReader *r, uint32_t address, uint64_t *offset, 
     return 0;
 }
 
-/** Return normal imported DLL names, preserving the previous objdump discovery boundary. */
+/**
+ * Return normal imported DLL names, preserving the previous objdump discovery boundary.
+ *
+ * @param c Mutable preparation context owned by the consuming command.
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @return Owned JSON array of normal imported DLL names, or NULL for invalid or unreadable PE data.
+ */
 static PcJson *pc_pe_imports(PcContext *c, const char *path) {
     PcPeReader r = {0};
     PcJson *names = pj_new(PJ_ARRAY);
@@ -114,6 +151,7 @@ static PcJson *pc_pe_imports(PcContext *c, const char *path) {
     if (!import_address && !import_size) { ok = 1; goto finish; }
     if (!import_address || import_size < sizeof(descriptor) ||
         (uint64_t)import_address + import_size > (uint64_t)UINT32_MAX + 1) goto finish;
+
     /* Each image admits at most 256 names of 4095 bytes, independently of its
        code, symbol, resource or unwind-table size. The closure keeps its own cap. */
     for (i = 0; i <= 256 && (uint64_t)i * 20 + 20 <= import_size; ++i) {

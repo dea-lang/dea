@@ -31,3 +31,12 @@ def test_docgen_source_manifest_excludes_tests_docs_and_examples() -> None:
     assert "docs/reference/architecture.md" not in files
     assert "examples/hello.l0" not in files
     assert not any(path.startswith("compiler/docgen/") for path in files)
+
+
+def test_stage2_inventory_reads_native_filesystem_implementation() -> None:
+    repo = Path(__file__).resolve().parents[4]
+    source = Path("compiler/stage2_l0/support/compiler_filesystem.c")
+    assert source in build_source_manifest(repo, "stage2").files
+    assert source not in build_source_manifest(repo, "stage1").files
+    template = (repo / "scripts/docs/templates/doxyfile.in").read_text(encoding="utf-8")
+    assert "*.c" in next(line for line in template.splitlines() if line.startswith("FILE_PATTERNS"))

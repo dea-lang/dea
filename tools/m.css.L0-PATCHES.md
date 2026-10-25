@@ -3,6 +3,12 @@
 - Third-party notice index: `THIRD_PARTY_NOTICES`
 - Upstream snapshot: `0a460a7a`
 - Vendored as a tracked source snapshot for reproducible offline docs builds.
+- Local adjustments in `documentation/doxygen.py` and `documentation/python.py`:
+  - load Python configuration modules with `spec_from_file_location()`, `module_from_spec()`, and `exec_module()` on
+    Python 3.15 and earlier supported interpreters
+  - register each configuration in `sys.modules` before execution, preserving self-imports and dataclass annotations
+  - remove failed configuration modules from `sys.modules` before propagating their exceptions
+  - retain explicit source loaders so the Python renderer continues to accept extensionless configuration files
 - Local adjustments in `documentation/doxygen.py`:
   - allow `Python`, `C`, `Markdown`, and `Objective-C` compounds in addition to `C++`
   - handle nested or empty heading/title text via `itertext()`
@@ -17,3 +23,6 @@
   - `entry-enum.html`: render L0 enum variants with L0 syntax (`Variant(payload);`) by removing C-style `=` before payloads and using `;` separators
 
 The repo docs pipeline uses `tools/m.css/documentation/doxygen.py` directly and does not clone `m.css` at build time.
+The shared documentation dependency group includes Docutils to exercise the companion Python renderer in CLI
+regressions. Both loaders are checked with deprecation warnings treated as errors, relative and absolute configuration
+paths containing spaces, rendered configuration overrides, and propagated configuration exceptions.

@@ -3,13 +3,25 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file preparation_dependencies_test.c Exercise the private production dependency decoder. */
+/**
+ * @file preparation_dependencies_test.c Exercise the private production dependency decoder.
+ */
 #if defined(_WIN32)
 #include <windows.h>
 
 static int probe_exit_race, probe_exit_observed, probe_exit_error;
 
-/** Model output arriving after empty pipe checks but before process exit is observed. */
+/**
+ * Model output arriving after empty pipe checks but before process exit is observed.
+ *
+ * @param pipe Borrowed native pipe handle.
+ * @param buffer Address of the owned growable byte buffer.
+ * @param size Requested storage size in bytes.
+ * @param read Caller-owned output for bytes copied by the pipe query.
+ * @param available Caller-owned output for available pipe bytes.
+ * @param remaining Caller-owned output for bytes remaining in the current message.
+ * @return Native query status under the controlled fixture schedule.
+ */
 static BOOL WINAPI fixture_peek_pipe(HANDLE pipe, LPVOID buffer, DWORD size,
                                      LPDWORD read, LPDWORD available, LPDWORD remaining) {
     if (probe_exit_race && !probe_exit_observed) {
@@ -19,7 +31,13 @@ static BOOL WINAPI fixture_peek_pipe(HANDLE pipe, LPVOID buffer, DWORD size,
     return PeekNamedPipe(pipe, buffer, size, read, available, remaining);
 }
 
-/** Make the competing child completion deterministic without a timing assumption. */
+/**
+ * Make the competing child completion deterministic without a timing assumption.
+ *
+ * @param process Borrowed native process handle.
+ * @param code Diagnostic code to retain.
+ * @return Native success status after writing the controlled child exit code.
+ */
 static BOOL WINAPI fixture_exit_code(HANDLE process, LPDWORD code) {
     BOOL ok;
     if (probe_exit_error) return FALSE;
@@ -36,7 +54,12 @@ static BOOL WINAPI fixture_exit_code(HANDLE process, LPDWORD code) {
 
 #define BS "\\"
 
-/** Fail with a named case without relying on assertion build flags. */
+/**
+ * Fail with a named case without relying on assertion build flags.
+ *
+ * @param condition Predicate required to hold for the fixture.
+ * @param name Borrowed NUL-terminated name.
+ */
 static void require_case(int condition, const char *name) {
     if (!condition) {
         fprintf(stderr, "preparation dependency fixture failed: %s\n", name);
@@ -44,7 +67,9 @@ static void require_case(int condition, const char *name) {
     }
 }
 
-/** Cover compiler Make quoting with explicit expected prerequisite spellings. */
+/**
+ * Cover compiler Make quoting with explicit expected prerequisite spellings.
+ */
 static void check_tokens(void) {
     static const struct {
         const char *name, *text, *expected[8];
@@ -93,7 +118,12 @@ static void check_tokens(void) {
     free(token.s);
 }
 
-/** Quote fixture paths using the documented compiler Make output spelling. */
+/**
+ * Quote fixture paths using the documented compiler Make output spelling.
+ *
+ * @param text Mutable growable byte buffer owned by the caller.
+ * @param path Borrowed NUL-terminated filesystem path.
+ */
 static void fixture_path(PcBuffer *text, const char *path) {
     size_t slashes = 0;
     for (; *path; ++path) {
@@ -107,7 +137,11 @@ static void fixture_path(PcBuffer *text, const char *path) {
     }
 }
 
-/** Preserve malformed-response diagnostics, real-file checks and scratch exclusion. */
+/**
+ * Preserve malformed-response diagnostics, real-file checks and scratch exclusion.
+ *
+ * @param directory Borrowed directory path.
+ */
 static void check_dependencies(const char *directory) {
     static const char *const malformed[] = {"", "target", "D:" BS "path" BS "probe.c"};
     PcContext c = {0};
@@ -149,7 +183,11 @@ static void check_dependencies(const char *directory) {
     free(scratch); free(header); free(source); free(missing); free(absolute_header);
 }
 
-/** Require complete source coverage before accepting any batched dependency evidence. */
+/**
+ * Require complete source coverage before accepting any batched dependency evidence.
+ *
+ * @param directory Borrowed directory path.
+ */
 static void check_dependency_batches(const char *directory) {
     PcContext c = {0};
     PcJson *sources = pj_new(PJ_ARRAY), *paths = pj_new(PJ_OBJECT), *directories = pj_new(PJ_OBJECT);
@@ -171,8 +209,12 @@ static void check_dependency_batches(const char *directory) {
     paths = pj_new(PJ_OBJECT); directories = pj_new(PJ_OBJECT);
     for (i = 0; i < 5; ++i) {
         PcBuffer invalid = {0};
-        if (i == 0) pc_text(&invalid, first.s); /* Missing source rule. */
-        if (i == 1) { pc_text(&invalid, first.s); pc_text(&invalid, first.s); } /* Duplicate source. */
+
+        /* Missing source rule. */
+        if (i == 0) pc_text(&invalid, first.s);
+
+        /* Duplicate source. */
+        if (i == 1) { pc_text(&invalid, first.s); pc_text(&invalid, first.s); }
         if (i == 2) { pc_text(&invalid, combined.s); pc_text(&invalid, "other-target: unknown.h\n"); }
         if (i == 3) pc_text(&invalid, "l1-preparation: unknown-source.c\n");
         if (i == 4) {
@@ -188,11 +230,13 @@ static void check_dependency_batches(const char *directory) {
         PcBuffer spelling_rule = {0};
         char *spelling = pc_string(a);
 #if defined(_WIN32)
+
         /* Exercise native drive paths, spaces, mixed separators and case. */
         for (i = 0; spelling[i]; ++i)
             spelling[i] = spelling[i] == '/' && (i & 1) ? '\\' : (char)toupper((unsigned char)spelling[i]);
         pj_add(spelling_sources, NULL, pj_string(a));
 #else
+
         /* POSIX filename backslashes remain distinct from directory separators. */
         free(spelling); spelling = pc_join(scratch, "literal\\backslash.c");
         pj_add(spelling_sources, NULL, pj_string(spelling));
@@ -216,7 +260,13 @@ static void check_dependency_batches(const char *directory) {
     free(first.s); free(second.s); free(combined.s); free(scratch); free(header); free(a); free(b);
 }
 
-/** Model optional batch rejection and preserve the original individual dependency contract. */
+/**
+ * Model optional batch rejection and preserve the original individual dependency contract.
+ *
+ * @param argc Number of process argument words.
+ * @param argv Borrowed NUL-terminated process argument vector.
+ * @return Zero after serving a fixture command, or the child failure status.
+ */
 static int dependency_probe_fixture(int argc, char **argv) {
     const char *mode = argv[1] + strlen("--dependency-fixture="), *depfile = NULL;
     int i, batch = 0, first = 1;
@@ -254,7 +304,12 @@ static int dependency_probe_fixture(int argc, char **argv) {
     return 0;
 }
 
-/** Exercise unsupported, incomplete, failed, timed-out and oversized optional batches. */
+/**
+ * Exercise unsupported, incomplete, failed, timed-out and oversized optional batches.
+ *
+ * @param self Borrowed path of the running fixture executable.
+ * @param directory Borrowed directory path.
+ */
 static void check_dependency_probe_fallback(const char *self, const char *directory) {
     static const char *const modes[] = {"valid", "unsupported", "incomplete", "timeout", "overflow", "failure"};
     PcContext c = {0};
@@ -287,7 +342,9 @@ static void check_dependency_probe_fallback(const char *self, const char *direct
     free(scratch); free(a); free(b); free(depfile);
 }
 
-/** Keep unmeasured adapters and hosts on their original individual dependency probes. */
+/**
+ * Keep unmeasured adapters and hosts on their original individual dependency probes.
+ */
 static void check_dependency_batch_policy(void) {
     PcContext c = {0};
     c.family = "clang"; c.description = "Apple clang version 17.0.0";
@@ -304,7 +361,13 @@ static void check_dependency_batch_policy(void) {
     require_case(!pc_dependency_batch_supported(&c), "unavailable compiler description retains individual probes");
 }
 
-/** Read failures decline reuse while leaving the existing version probe and family fallback active. */
+/**
+ * Read failures decline reuse while leaving the existing version probe and family fallback active.
+ *
+ * @param path Borrowed NUL-terminated filesystem path.
+ * @param reason Borrowed diagnostic or observation reason.
+ * @param name Borrowed NUL-terminated name.
+ */
 static void check_family(const char *path, const char *reason, const char *name) {
     PcContext *c = pc_alloc(sizeof(*c));
     c->config = pj_new(PJ_OBJECT);
@@ -315,7 +378,11 @@ static void check_family(const char *path, const char *reason, const char *name)
     l1c_prep_free(c);
 }
 
-/** Resolve the archive tool reported by a compiler while preserving a path with spaces. */
+/**
+ * Resolve the archive tool reported by a compiler while preserving a path with spaces.
+ *
+ * @param self Borrowed path of the running fixture executable.
+ */
 static void check_reported_tool(const char *self) {
     PcContext *c = pc_alloc(sizeof(*c));
     c->config = pj_new(PJ_OBJECT);
@@ -328,7 +395,11 @@ static void check_reported_tool(const char *self) {
     l1c_prep_free(c);
 }
 
-/** Retain both output streams and the exit status when a short-lived probe finishes. */
+/**
+ * Retain both output streams and the exit status when a short-lived probe finishes.
+ *
+ * @param self Borrowed path of the running fixture executable.
+ */
 static void check_probe_output(const char *self) {
     PcJson *words = pj_new(PJ_ARRAY);
     PcProbe probe;
@@ -356,7 +427,11 @@ static void check_probe_output(const char *self) {
     pj_free(words);
 }
 
-/** Preserve synthetic POSIX, drive, UNC and mixed-separator config paths through real argv. */
+/**
+ * Preserve synthetic POSIX, drive, UNC and mixed-separator config paths through real argv.
+ *
+ * @param self Borrowed path of the running fixture executable.
+ */
 static void check_runtime_isolation_argv(const char *self) {
     static const char *const paths[] = {
         "/tmp/config directory/empty.cfg",
@@ -390,7 +465,12 @@ static void check_runtime_isolation_argv(const char *self) {
 }
 
 #if defined(_WIN32)
-/** Accept MSYS-style and extensionless tool paths when the compiler is native Windows. */
+
+/**
+ * Accept MSYS-style and extensionless tool paths when the compiler is native Windows.
+ *
+ * @param self Borrowed path of the running fixture executable.
+ */
 static void check_windows_reported_path(const char *self) {
     const char *base = pc_base(self);
     size_t length = strlen(base);
@@ -413,7 +493,12 @@ static void check_windows_reported_path(const char *self) {
 }
 #endif
 
-/** Clean short reads are not I/O failures, and only a complete shebang prefix identifies a wrapper. */
+/**
+ * Clean short reads are not I/O failures, and only a complete shebang prefix identifies a wrapper.
+ *
+ * @param self Borrowed path of the running fixture executable.
+ * @param directory Borrowed directory path.
+ */
 static void check_image_reads(const char *self, const char *directory) {
     static const char *const contents[] = {"", "#", "#!", "ABCD"};
     char *path = pc_join(directory, "gcc");
@@ -431,7 +516,13 @@ static void check_image_reads(const char *self, const char *directory) {
     free(path);
 }
 
-/** Run privately linked production checks in a caller-owned empty directory. */
+/**
+ * Run privately linked production checks in a caller-owned empty directory.
+ *
+ * @param argc Number of process argument words.
+ * @param argv Borrowed NUL-terminated process argument vector.
+ * @return Zero when all requested checks succeed; nonzero for invalid invocation or a fixture failure.
+ */
 int main(int argc, char **argv) {
     char *directory, *self;
     if (argc == 4 && !strcmp(argv[1], "--runtime-isolation-argv") && !strcmp(argv[2], "--config")) {

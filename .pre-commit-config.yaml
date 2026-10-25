@@ -15,6 +15,12 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: c-function-docs
+        name: Check C function documentation
+        entry: python3 scripts/check_c_docs.py
+        language: system
+        pass_filenames: false
+        files: '(\.[ch]$|^scripts/(check_c_docs|c_declarators)\.py$)'
   - repo: https://github.com/executablebooks/mdformat
     rev: 1.0.0
     hooks:

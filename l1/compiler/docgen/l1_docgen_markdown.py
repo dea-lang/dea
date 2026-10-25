@@ -188,9 +188,9 @@ def _inner_text(element: ET.Element | None) -> str:
 def _ref_href(target: LinkTarget, current_page: Path) -> str:
     """Return a markdown href for a reference target."""
     if target.path == current_page:
-        return f"#{target.anchor}"
+        return f"#{target.anchor}" if target.anchor else target.path.name
     rel = os.path.relpath(target.path, start=current_page.parent).replace("\\", "/")
-    return f"{rel}#{target.anchor}"
+    return f"{rel}#{target.anchor}" if target.anchor else rel
 
 
 def _render_inline(
@@ -757,7 +757,7 @@ def _build_scope_label_targets(compounds: dict[str, ET.Element], scope_prefix: s
         if not source_path.startswith(scope_prefix):
             continue
         page_path = _relative_page_path(source_path)
-        target = LinkTarget(page_path, compound_anchor(compounddef))
+        target = LinkTarget(page_path, "" if compounddef.attrib.get("kind") == "file" else compound_anchor(compounddef))
         label = _compound_label(compounddef)
         for key in _label_match_keys(label):
             candidates.setdefault(key, set()).add(target)
@@ -803,7 +803,7 @@ def render_markdown_site(xml_dir: Path, output_dir: Path, templates_dir: Path) -
         source_path = location.attrib.get("file") if location is not None else ""
         if source_path:
             page_path = _relative_page_path(source_path)
-            ref_targets[compounddef.attrib["id"]] = LinkTarget(page_path, compound_anchor(compounddef))
+            ref_targets[compounddef.attrib["id"]] = LinkTarget(page_path, "" if compounddef.attrib.get("kind") == "file" else compound_anchor(compounddef))
             for memberdef in compounddef.findall(".//memberdef"):
                 ref_targets[memberdef.attrib["id"]] = LinkTarget(page_path, member_anchor(memberdef, owner=compounddef))
         if compounddef.attrib["kind"] == "file" and source_path and not source_path.endswith("docs-mainpage.md"):
@@ -1166,7 +1166,12 @@ def render_raw_reference_backlinks(xml_dir: Path, markdown_root: Path, html_root
             continue
 
         href = _relative_href(raw_html_path, curated_html_path)
-        href += f"#{compound_anchor(compounddef)}"
+        fragment_href = f"{href}#{compound_anchor(compounddef)}"
+        # Python source hubs and nested C records may keep their detailed
+        # documentation on the raw page. Link to the actual source overview
+        # when that overview does not contain an inline compound section.
+        if f'id="{compound_anchor(compounddef)}"' in curated_html_path.read_text(encoding="utf-8"):
+            href = fragment_href
         source_name = Path(source_path).name
         module_name = module_name_for_source_path(source_path) or Path(source_path).stem
         backlink = (
@@ -1175,7 +1180,11 @@ def render_raw_reference_backlinks(xml_dir: Path, markdown_root: Path, html_root
         )
 
         original_content = raw_html_path.read_text(encoding="utf-8")
-        content = original_content
+        obsolete_backlink = (
+            f'<p>Defined in module <code>{html.escape(module_name)}</code> '
+            f'(<a href="{html.escape(fragment_href)}">{html.escape(source_name)}</a>).</p>'
+        )
+        content = original_content.replace(obsolete_backlink, backlink)
 
         preferred_scope = _preferred_scope_prefix(Path(source_path).with_suffix(".md"))
         preferred_ids: dict[str, str] | None = None
@@ -1469,7 +1478,7 @@ def render_compat_redirect_pages(xml_dir: Path, markdown_root: Path, html_root: 
             continue
 
         target_href = _relative_href(alias_path, target)
-        if kind == "namespace":
+        if kind == "namespace" and f'id="{compound_anchor(compounddef)}"' in target.read_text(encoding="utf-8"):
             target_href += f"#{compound_anchor(compounddef)}"
 
         alias_path.write_text(

@@ -410,6 +410,9 @@ tiers are distinct from implementation phases within a plan or initiative.
 
 ## Completed standalone plans
 
+- Tool [2026-10-25-compiler-function-contracts-noref][compiler-contracts] documented the remaining 73 compiler helpers
+  and native bindings, with verified full references and zero undocumented findings; CI reporting remains informational.
+
 - Bug Fix
   [l1/work/plans/bug-fixes/closed/2026-09-27-legacy-clang-preparation-compatibility-noref.md][legacy-clang-preparation]
   enables persistent preparation with validated Debian Clang 14/15 through verified configuration isolation and fresh
@@ -536,6 +539,7 @@ update to be promoted to an initiative or plan:
 [cheap-string-slices]: ../work/plans/features/2026-06-21-cheap-string-slices-noref.md
 [compile-foundation]: ../work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md
 [compile-only]: ../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
+[compiler-contracts]: ../work/plans/tools/closed/2026-10-25-compiler-function-contracts-noref.md
 [const-declarations]: ../work/plans/features/closed/2026-04-18-l1-const-declarations-noref.md
 [const-scalar-casts]: ../work/plans/features/closed/2026-06-18-stage1-const-scalar-casts-noref.md
 [contextual-array-literals]: ../work/plans/bug-fixes/closed/2026-06-17-stage1-contextual-array-literals-noref.md
