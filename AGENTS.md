@@ -293,7 +293,10 @@ Example summaries:
   (for example asking whether the project maintainer wants a summary). End after delivering the result unless the
   project maintainer explicitly asks for more.
 - Python uses Google Style docstrings with `Args`, `Returns`, and `Raises` sections.
-- C and Dea source files use Doxygen/Javadoc-style block comments.
+- C and Dea declaration documentation uses multiline Doxygen/Javadoc-style block comments. Put the opening `/**` on its
+  own line, prefix content lines with ` *`, and include `@param` and `@return` sections where applicable. Leave a blank
+  source line before each opening Doxygen block, except at the beginning of a file. Ordinary implementation and section
+  comments may retain their existing non-Doxygen form.
 - Keep code names and comments in English.
 - Update relevant tests in the same change.
 - Update relevant documentation in the same change.

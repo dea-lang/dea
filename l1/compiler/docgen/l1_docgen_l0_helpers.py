@@ -9,6 +9,8 @@ import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from .l1_docgen_l0_filter import _SOURCE_TOKEN_RE, iter_enum_declarations
+
 
 def module_name_for_source_path(source_path: str) -> str | None:
     """Return the declared module name for an L0/Python source path."""
@@ -146,43 +148,54 @@ def extract_l0_member_declaration(memberdef: ET.Element) -> str | None:
     return declaration
 
 
+def _normalize_enum_variant_text(text: str) -> str:
+    """Remove comments and collapse whitespace without changing literals.
+
+    Args:
+        text: Original enum variant text without its terminating semicolon.
+
+    Returns:
+        Variant text with comments removed and external whitespace collapsed.
+    """
+    parts: list[str] = []
+    pending_space = False
+    for match in _SOURCE_TOKEN_RE.finditer(text):
+        token = match.group()
+        if token.isspace() or token.startswith(("//", "/*")):
+            pending_space = bool(parts)
+            continue
+        if pending_space:
+            parts.append(" ")
+        parts.append(token)
+        pending_space = False
+    return "".join(parts)
+
+
 def extract_l0_enum_variants(memberdef: ET.Element) -> list[str]:
-    """Recover L0 enum variants from the original source body."""
-    location = memberdef.find("location")
-    if location is None:
-        return []
-    source_file = location.attrib.get("file", "")
-    start_text = location.attrib.get("bodystart") or location.attrib.get("line")
-    end_text = location.attrib.get("bodyend") or location.attrib.get("line")
-    if not source_file or not start_text or not end_text:
+    """Recover original L0/L1 enum variants, including payload declarations.
+
+    Args:
+        memberdef: Doxygen enum member with its original source location.
+
+    Returns:
+        Normalized source variants, or an empty list when the named enum cannot
+        be found in an available repository-relative source file.
+    """
+    source_file = _member_source_path(memberdef)
+    name = memberdef.findtext("name", default="").strip()
+    if not source_file or not name:
         return []
 
     path = Path(source_file)
     if path.is_absolute() or not path.exists():
         return []
 
-    try:
-        start = int(start_text)
-        end = int(end_text)
-    except ValueError:
-        return []
-
-    if start <= 0 or end < start:
-        return []
-
-    variants: list[str] = []
-    lines = _read_source_lines(str(path.resolve()))
-    for line in lines[start:end]:
-        stripped = line.strip()
-        if not stripped or stripped in {"{", "}"}:
-            continue
-        if stripped.startswith("//"):
-            continue
-        code = line.split("//", 1)[0].strip()
-        if not code or code == "}":
-            continue
-        if code.endswith(";"):
-            code = code[:-1].rstrip()
-        if code:
-            variants.append(code)
-    return variants
+    source = "\n".join(_read_source_lines(str(path.resolve())))
+    for declaration in iter_enum_declarations(source):
+        if declaration.name == name:
+            return [
+                normalized
+                for start, end in declaration.variants
+                if (normalized := _normalize_enum_variant_text(source[start:end]))
+            ]
+    return []

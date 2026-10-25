@@ -2,7 +2,11 @@
  * SPDX-License-Identifier: MIT OR Apache-2.0
  * Copyright (c) 2026 gwz
  */
-/** @file failure_probe.c Saved errno, terminal cursor errors, and partial copy. */
+
+/**
+ * @file failure_probe.c
+ * Saved errno, terminal cursor errors, and partial copy.
+ */
 #define _DARWIN_C_SOURCE 1
 #define _DEFAULT_SOURCE 1
 #define _POSIX_C_SOURCE 200809L
@@ -12,43 +16,96 @@
 #define REQUIRE(x) do { if (!(x)) { fprintf(stderr, "failure line %d: %s\n", __LINE__, #x); return 1; } } while (0)
 static int fail_next, fail_close, read_mode, write_mode, calls, close_file_error;
 
-/** Simulate cross-device renaming: no copy or unlink fallback is allowed. */
+/**
+ * Simulate cross-device renaming: no copy or unlink fallback is allowed.
+ *
+ * @param source Source path supplied by the runtime.
+ * @param destination Destination path supplied by the runtime.
+ * @return -1 with errno set to EXDEV.
+ */
 int fs_probe_rename(const char *source, const char *destination) {
     (void)source; (void)destination;
     errno = EXDEV; return -1;
 }
-/** Close the real descriptor, then inject a deferred storage error. */
+
+/**
+ * Close the real descriptor, then inject a deferred storage error.
+ *
+ * @param fd Live file descriptor consumed by this call.
+ * @return The native close result, or -1 with EIO when failure is enabled.
+ */
 int fs_probe_close(int fd) {
     int result = close(fd);
     if (close_file_error) { errno = EIO; return -1; }
     return result;
 }
-/** Inject a read-directory error, or a clean end with stale errno cleared by runtime. */
+
+/**
+ * Inject a read-directory error, or a clean end with stale errno cleared by runtime.
+ *
+ * @param dir Live native cursor to advance.
+ * @return The next native entry, or NULL for end or an injected EACCES failure.
+ */
 struct dirent *fs_probe_readdir(DIR *dir) {
     if (fail_next) { errno = EACCES; return NULL; }
     return readdir(dir);
 }
-/** Consume the actual cursor before simulating its close error. */
+
+/**
+ * Consume the actual cursor before simulating its close error.
+ *
+ * @param dir Live native cursor consumed by this call.
+ * @return The native close result, or -1 with EIO when failure is enabled.
+ */
 int fs_probe_closedir(DIR *dir) {
     int result = closedir(dir);
     if (fail_close) { errno = EIO; return -1; }
     return result;
 }
-/** Inject interruption without implicit retry. */
+
+/**
+ * Inject interruption without implicit retry.
+ *
+ * @param fd File descriptor to read.
+ * @param buffer Destination buffer for native reads.
+ * @param size Maximum number of bytes to read.
+ * @return Bytes read, or -1 with EINTR when interruption is enabled.
+ */
 ssize_t fs_probe_read(int fd, void *buffer, size_t size) {
     ++calls;
     if (read_mode) { errno = EINTR; return -1; }
     return read(fd, buffer, size);
 }
-/** Simulate positive partial writes, zero progress, or a captured failure. */
+
+/**
+ * Simulate positive partial writes, zero progress, or a captured failure.
+ *
+ * @param fd File descriptor to write.
+ * @param buffer Source bytes for the write.
+ * @param size Number of source bytes available.
+ * @return A partial native write count, zero progress, or -1 with ENOSPC.
+ */
 ssize_t fs_probe_write(int fd, const void *buffer, size_t size) {
     if (write_mode == 1) { errno = ENOSPC; return -1; }
     if (write_mode == 2) return 0;
     return write(fd, buffer, size > 1 ? 1 : size);
 }
-/** Borrow one terminated fixture path. */
+
+/**
+ * Borrow one terminated fixture path.
+ *
+ * @param s NUL-terminated fixture path bytes borrowed for the operation.
+ * @return A non-owning Dea string valid while s remains alive.
+ */
 static dea_string text(const char *s) { return (dea_string)DEA_STRING_CONST((char *)s, (dea_int)strlen(s)); }
-/** Run direct cursor failure and copy partial-progress scenarios. */
+
+/**
+ * Run direct cursor failure and copy partial-progress scenarios.
+ *
+ * @param argc Number of command-line arguments, including the executable name.
+ * @param argv Argument vector containing the Python-owned fixture paths.
+ * @return Zero if every probe passes, otherwise one.
+ */
 int main(int argc, char **argv) {
     REQUIRE(argc == 7);
     struct __deaM3sys2fsS9RtDirOpen opened = rt_dir_open(text(argv[1]));

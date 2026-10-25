@@ -527,7 +527,8 @@ struct __deaM3sys2osS10RtIoResult rt_flush_stderr_result(void) {
  * ========================================================================= */
 
 /**
- * Flush stdout. */
+ * Flush stdout.
+ */
 void rt_flush_stdout(void) {
     fflush(stdout);
 }
@@ -535,7 +536,7 @@ void rt_flush_stdout(void) {
 /**
  * Flush stderr.
  *
-
+ *
  * Dea signature: `extern func rt_flush_stdout() -> void;`
  *
  * Dea signature: `extern func rt_flush_stderr() -> void;`
@@ -581,7 +582,8 @@ void rt_print_stderr(dea_string s) {
 }
 
 /**
- * Print a newline to stdout. */
+ * Print a newline to stdout.
+ */
 void rt_println(void) {
     fputc('\n', stdout);
 }
@@ -589,7 +591,7 @@ void rt_println(void) {
 /**
  * Print a newline to stderr.
  *
-
+ *
  * Dea signature: `extern func rt_println() -> void;`
  *
  * Dea signature: `extern func rt_println_stderr() -> void;`

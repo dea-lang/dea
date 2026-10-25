@@ -27,6 +27,10 @@ Stage 2 references, with `DOC_STAGE=stage1|stage2|all` (default `all`). `--outpu
 stage has its own source manifest, XML database, search index, Markdown, LaTeX, report, and successful preview. Shared
 stdlib and the runtime headers `dea_rt.h`, `dea_siphash.h`, and `l0_runtime.h` appear in both references.
 
+Enum references retain the original named payload declarations for inline and multiline source forms. The source adapter
+preserves declaration line positions when translating enums, structs (including inline and empty declarations), and
+multiline function signatures for Doxygen. Struct fields retain their comments and nullable/pointer type information.
+
 The wrapper and distribution bundle verifier use only the Python standard library. Source inventories and fingerprints
 remain independent of rendering imports. Prepare dependencies with `make venv`; the wrapper launches rendering through
 the shared virtual environment, where Jinja2 and the other documentation dependencies are installed.

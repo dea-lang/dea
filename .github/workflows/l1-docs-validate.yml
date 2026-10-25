@@ -1,0 +1,93 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 gwz
+
+name: L1 Validate Documentation
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-docs:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: l1
+    env:
+      DEA_DIST_VERSION: dev
+    steps:
+      - name: Show inputs
+        shell: bash
+        working-directory: .
+        env:
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+        run: |
+          echo "$INPUTS_JSON"
+
+          {
+            echo '### Workflow inputs'
+            echo '```json'
+            printf '%s\n' "$INPUTS_JSON"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-suffix: l1-docs-validation-py3.14-ws
+
+      - name: Install full documentation toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y doxygen graphviz make texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended
+
+      - name: Show Doxygen version
+        run: doxygen --version
+
+      - name: Sync documentation dependencies
+        working-directory: ${{ github.workspace }}
+        run: uv sync --group docs
+
+      - name: Build strict reference with full PDF and verified bundle
+        run: make docs-artifacts
+
+      - name: Show undocumented functions report
+        if: always()
+        run: |
+          report_path="build/docs/reference/undocumented-functions.txt"
+          if [ -f "$report_path" ]; then cat "$report_path"; fi
+
+      - name: Upload documentation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: l1-docs-validation-diagnostics
+          path: |
+            l1/build/docs/reference/undocumented-functions.txt
+            l1/build/docs/reference/*.log
+            l1/build/docs/reference/doxygen/warnings-*.log
+            l1/build/docs/reference/doxygen/latex/*.log
+            l1/build/docs/reference-failure/
+          if-no-files-found: warn
+
+      - name: Upload full reference bundle
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: l1-docs-validation-autodocs
+          path: l1/build/docs/artifacts/dea_l1_autodocs.tar.gz
+          if-no-files-found: warn

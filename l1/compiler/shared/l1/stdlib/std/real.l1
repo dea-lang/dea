@@ -58,47 +58,262 @@ struct FrexpPartsD {
 }
 
 // Phase 1: Classification
+
+/**
+ * Checks whether a value is NaN.
+ *
+ * @param x The value to classify.
+ * @return True if the value is NaN, false otherwise.
+ */
 func is_nan_f(x: float) -> bool { return rt_real_is_nan_f(x); }
+
+/**
+ * Checks whether a value is NaN.
+ *
+ * @param x The value to classify.
+ * @return True if the value is NaN, false otherwise.
+ */
 func is_nan_d(x: double) -> bool { return rt_real_is_nan_d(x); }
+
+/**
+ * Checks whether a value is positive or negative infinity.
+ *
+ * @param x The value to classify.
+ * @return True if the value is infinite, false otherwise.
+ */
 func is_inf_f(x: float) -> bool { return rt_real_is_inf_f(x); }
+
+/**
+ * Checks whether a value is positive or negative infinity.
+ *
+ * @param x The value to classify.
+ * @return True if the value is infinite, false otherwise.
+ */
 func is_inf_d(x: double) -> bool { return rt_real_is_inf_d(x); }
+
+/**
+ * Checks whether a value is finite.
+ *
+ * @param x The value to classify.
+ * @return True if the value is neither infinite nor NaN.
+ */
 func is_finite_f(x: float) -> bool { return rt_real_is_finite_f(x); }
+
+/**
+ * Checks whether a value is finite.
+ *
+ * @param x The value to classify.
+ * @return True if the value is neither infinite nor NaN.
+ */
 func is_finite_d(x: double) -> bool { return rt_real_is_finite_d(x); }
+
+/**
+ * Checks whether the sign bit is set, including for signed zero and NaN.
+ *
+ * @param x The value to inspect.
+ * @return True if the sign bit is set, false otherwise.
+ */
 func signbit_f(x: float) -> bool { return rt_real_signbit_f(x); }
+
+/**
+ * Checks whether the sign bit is set, including for signed zero and NaN.
+ *
+ * @param x The value to inspect.
+ * @return True if the sign bit is set, false otherwise.
+ */
 func signbit_d(x: double) -> bool { return rt_real_signbit_d(x); }
 
 // Phase 1: Basic ops
+
+/**
+ * Returns the absolute value.
+ *
+ * @param x The input value.
+ * @return The non-negative magnitude of the input.
+ */
 func abs_f(x: float) -> float { return rt_real_abs_f(x); }
+
+/**
+ * Returns the absolute value.
+ *
+ * @param x The input value.
+ * @return The non-negative magnitude of the input.
+ */
 func abs_d(x: double) -> double { return rt_real_abs_d(x); }
+
+/**
+ * Returns the square root.
+ *
+ * @param x The input value.
+ * @return The square root of the input.
+ */
 func sqrt_f(x: float) -> float { return rt_real_sqrt_f(x); }
+
+/**
+ * Returns the square root.
+ *
+ * @param x The input value.
+ * @return The square root of the input.
+ */
 func sqrt_d(x: double) -> double { return rt_real_sqrt_d(x); }
+
+/**
+ * Returns the real cube root.
+ *
+ * @param x The input value.
+ * @return The cube root of the input.
+ */
 func cbrt_f(x: float) -> float { return rt_real_cbrt_f(x); }
+
+/**
+ * Returns the real cube root.
+ *
+ * @param x The input value.
+ * @return The cube root of the input.
+ */
 func cbrt_d(x: double) -> double { return rt_real_cbrt_d(x); }
+
+/**
+ * Returns the Euclidean length of a two-dimensional vector.
+ *
+ * @param x The first component.
+ * @param y The second component.
+ * @return The square root of the sum of the squared components.
+ */
 func hypot_f(x: float, y: float) -> float { return rt_real_hypot_f(x, y); }
+
+/**
+ * Returns the Euclidean length of a two-dimensional vector.
+ *
+ * @param x The first component.
+ * @param y The second component.
+ * @return The square root of the sum of the squared components.
+ */
 func hypot_d(x: double, y: double) -> double { return rt_real_hypot_d(x, y); }
 
 // Phase 1: Rounding
+
+/**
+ * Rounds toward negative infinity.
+ *
+ * @param x The value to round.
+ * @return The greatest integral value not greater than the input.
+ */
 func floor_f(x: float) -> float { return rt_real_floor_f(x); }
+
+/**
+ * Rounds toward negative infinity.
+ *
+ * @param x The value to round.
+ * @return The greatest integral value not greater than the input.
+ */
 func floor_d(x: double) -> double { return rt_real_floor_d(x); }
+
+/**
+ * Rounds toward positive infinity.
+ *
+ * @param x The value to round.
+ * @return The least integral value not less than the input.
+ */
 func ceil_f(x: float) -> float { return rt_real_ceil_f(x); }
+
+/**
+ * Rounds toward positive infinity.
+ *
+ * @param x The value to round.
+ * @return The least integral value not less than the input.
+ */
 func ceil_d(x: double) -> double { return rt_real_ceil_d(x); }
+
+/**
+ * Rounds toward zero.
+ *
+ * @param x The value to round.
+ * @return The integral part of the input.
+ */
 func trunc_f(x: float) -> float { return rt_real_trunc_f(x); }
+
+/**
+ * Rounds toward zero.
+ *
+ * @param x The value to round.
+ * @return The integral part of the input.
+ */
 func trunc_d(x: double) -> double { return rt_real_trunc_d(x); }
+
+/**
+ * Rounds to the nearest integral value, with halfway cases away from zero.
+ *
+ * @param x The value to round.
+ * @return The rounded integral value.
+ */
 func round_f(x: float) -> float { return rt_real_round_f(x); }
+
+/**
+ * Rounds to the nearest integral value, with halfway cases away from zero.
+ *
+ * @param x The value to round.
+ * @return The rounded integral value.
+ */
 func round_d(x: double) -> double { return rt_real_round_d(x); }
 
 // Phase 1: Remainder and decomposition
+
+/**
+ * Returns the remainder after division with the quotient truncated toward zero.
+ *
+ * @param x The dividend.
+ * @param y The divisor.
+ * @return The remainder x - trunc(x / y) * y.
+ */
 func fmod_f(x: float, y: float) -> float { return rt_real_fmod_f(x, y); }
+
+/**
+ * Returns the remainder after division with the quotient truncated toward zero.
+ *
+ * @param x The dividend.
+ * @param y The divisor.
+ * @return The remainder x - trunc(x / y) * y.
+ */
 func fmod_d(x: double, y: double) -> double { return rt_real_fmod_d(x, y); }
+
+/**
+ * Returns the remainder using the nearest integral quotient, with ties to even.
+ *
+ * @param x The dividend.
+ * @param y The divisor.
+ * @return The remainder after subtracting the rounded quotient times the divisor.
+ */
 func remainder_f(x: float, y: float) -> float { return rt_real_remainder_f(x, y); }
+
+/**
+ * Returns the remainder using the nearest integral quotient, with ties to even.
+ *
+ * @param x The dividend.
+ * @param y The divisor.
+ * @return The remainder after subtracting the rounded quotient times the divisor.
+ */
 func remainder_d(x: double, y: double) -> double { return rt_real_remainder_d(x, y); }
 
+/**
+ * Splits a value into integral and fractional parts.
+ *
+ * @param x The value to split.
+ * @return The integral and fractional parts, each with the sign of the input.
+ */
 func modf_f(x: float) -> FracPartsF {
     with (let iptr = new RtFloatOut(0.0f) => drop iptr) {
         let frac = rt_real_modf_f(x, iptr);
         return FracPartsF(iptr.val, frac);
     }
 }
+
+/**
+ * Splits a value into integral and fractional parts.
+ *
+ * @param x The value to split.
+ * @return The integral and fractional parts, each with the sign of the input.
+ */
 func modf_d(x: double) -> FracPartsD {
     with (let iptr = new RtDoubleOut(0.0) => drop iptr) {
         let frac = rt_real_modf_d(x, iptr);
@@ -106,12 +321,29 @@ func modf_d(x: double) -> FracPartsD {
     }
 }
 
+/**
+ * Decomposes a value into a binary significand and exponent.
+ *
+ * @param x The value to decompose.
+ * @return For finite inputs, parts satisfying x = significand * 2^exp; nonzero significands have
+ *         magnitude in [0.5, 1). For NaN or infinity, the significand preserves the input and the
+ *         exponent is unspecified.
+ */
 func frexp_f(x: float) -> FrexpPartsF {
     with (let exp = new RtIntOut(0) => drop exp) {
         let sig = rt_real_frexp_f(x, exp);
         return FrexpPartsF(sig, exp.val);
     }
 }
+
+/**
+ * Decomposes a value into a binary significand and exponent.
+ *
+ * @param x The value to decompose.
+ * @return For finite inputs, parts satisfying x = significand * 2^exp; nonzero significands have
+ *         magnitude in [0.5, 1). For NaN or infinity, the significand preserves the input and the
+ *         exponent is unspecified.
+ */
 func frexp_d(x: double) -> FrexpPartsD {
     with (let exp = new RtIntOut(0) => drop exp) {
         let sig = rt_real_frexp_d(x, exp);
@@ -119,41 +351,274 @@ func frexp_d(x: double) -> FrexpPartsD {
     }
 }
 
+/**
+ * Scales a value by an integral power of two.
+ *
+ * @param x The value to scale.
+ * @param exp The binary exponent.
+ * @return The input multiplied by 2^exp.
+ */
 func ldexp_f(x: float, exp: int) -> float { return rt_real_ldexp_f(x, exp); }
+
+/**
+ * Scales a value by an integral power of two.
+ *
+ * @param x The value to scale.
+ * @param exp The binary exponent.
+ * @return The input multiplied by 2^exp.
+ */
 func ldexp_d(x: double, exp: int) -> double { return rt_real_ldexp_d(x, exp); }
 
 // Phase 1: Sign and neighboring-value helpers
+
+/**
+ * Combines the magnitude of one value with the sign of another.
+ *
+ * @param x The value providing the magnitude.
+ * @param y The value providing the sign.
+ * @return A value with the magnitude of x and the sign of y.
+ */
 func copy_sign_f(x: float, y: float) -> float { return rt_real_copy_sign_f(x, y); }
+
+/**
+ * Combines the magnitude of one value with the sign of another.
+ *
+ * @param x The value providing the magnitude.
+ * @param y The value providing the sign.
+ * @return A value with the magnitude of x and the sign of y.
+ */
 func copy_sign_d(x: double, y: double) -> double { return rt_real_copy_sign_d(x, y); }
+
+/**
+ * Returns the next representable value toward a target.
+ *
+ * @param x The starting value.
+ * @param y The target direction.
+ * @return The adjacent representable value toward y, or y when both compare equal.
+ */
 func next_after_f(x: float, y: float) -> float { return rt_real_next_after_f(x, y); }
+
+/**
+ * Returns the next representable value toward a target.
+ *
+ * @param x The starting value.
+ * @param y The target direction.
+ * @return The adjacent representable value toward y, or y when both compare equal.
+ */
 func next_after_d(x: double, y: double) -> double { return rt_real_next_after_d(x, y); }
 
 // Phase 2: Exponential and logarithmic
+
+/**
+ * Returns the natural exponential.
+ *
+ * @param x The exponent.
+ * @return Euler's number raised to the input power.
+ */
 func exp_f(x: float) -> float { return rt_real_exp_f(x); }
+
+/**
+ * Returns the natural exponential.
+ *
+ * @param x The exponent.
+ * @return Euler's number raised to the input power.
+ */
 func exp_d(x: double) -> double { return rt_real_exp_d(x); }
+
+/**
+ * Returns a power of two.
+ *
+ * @param x The exponent.
+ * @return Two raised to the input power.
+ */
 func exp2_f(x: float) -> float { return rt_real_exp2_f(x); }
+
+/**
+ * Returns a power of two.
+ *
+ * @param x The exponent.
+ * @return Two raised to the input power.
+ */
 func exp2_d(x: double) -> double { return rt_real_exp2_d(x); }
+
+/**
+ * Returns the natural logarithm.
+ *
+ * @param x The input value.
+ * @return The base-e logarithm of the input.
+ */
 func log_f(x: float) -> float { return rt_real_log_f(x); }
+
+/**
+ * Returns the natural logarithm.
+ *
+ * @param x The input value.
+ * @return The base-e logarithm of the input.
+ */
 func log_d(x: double) -> double { return rt_real_log_d(x); }
+
+/**
+ * Returns the common logarithm.
+ *
+ * @param x The input value.
+ * @return The base-10 logarithm of the input.
+ */
 func log10_f(x: float) -> float { return rt_real_log10_f(x); }
+
+/**
+ * Returns the common logarithm.
+ *
+ * @param x The input value.
+ * @return The base-10 logarithm of the input.
+ */
 func log10_d(x: double) -> double { return rt_real_log10_d(x); }
+
+/**
+ * Returns the binary logarithm.
+ *
+ * @param x The input value.
+ * @return The base-2 logarithm of the input.
+ */
 func log2_f(x: float) -> float { return rt_real_log2_f(x); }
+
+/**
+ * Returns the binary logarithm.
+ *
+ * @param x The input value.
+ * @return The base-2 logarithm of the input.
+ */
 func log2_d(x: double) -> double { return rt_real_log2_d(x); }
+
+/**
+ * Raises a value to a power.
+ *
+ * @param x The base.
+ * @param y The exponent.
+ * @return The base raised to the exponent.
+ */
 func pow_f(x: float, y: float) -> float { return rt_real_pow_f(x, y); }
+
+/**
+ * Raises a value to a power.
+ *
+ * @param x The base.
+ * @param y The exponent.
+ * @return The base raised to the exponent.
+ */
 func pow_d(x: double, y: double) -> double { return rt_real_pow_d(x, y); }
 
 // Phase 2: Trigonometric
+
+/**
+ * Returns the sine of an angle.
+ *
+ * @param x The angle in radians.
+ * @return The sine of the angle.
+ */
 func sin_f(x: float) -> float { return rt_real_sin_f(x); }
+
+/**
+ * Returns the sine of an angle.
+ *
+ * @param x The angle in radians.
+ * @return The sine of the angle.
+ */
 func sin_d(x: double) -> double { return rt_real_sin_d(x); }
+
+/**
+ * Returns the cosine of an angle.
+ *
+ * @param x The angle in radians.
+ * @return The cosine of the angle.
+ */
 func cos_f(x: float) -> float { return rt_real_cos_f(x); }
+
+/**
+ * Returns the cosine of an angle.
+ *
+ * @param x The angle in radians.
+ * @return The cosine of the angle.
+ */
 func cos_d(x: double) -> double { return rt_real_cos_d(x); }
+
+/**
+ * Returns the tangent of an angle.
+ *
+ * @param x The angle in radians.
+ * @return The tangent of the angle.
+ */
 func tan_f(x: float) -> float { return rt_real_tan_f(x); }
+
+/**
+ * Returns the tangent of an angle.
+ *
+ * @param x The angle in radians.
+ * @return The tangent of the angle.
+ */
 func tan_d(x: double) -> double { return rt_real_tan_d(x); }
+
+/**
+ * Returns the inverse sine.
+ *
+ * @param x The input value.
+ * @return The angle in radians whose sine is the input.
+ */
 func asin_f(x: float) -> float { return rt_real_asin_f(x); }
+
+/**
+ * Returns the inverse sine.
+ *
+ * @param x The input value.
+ * @return The angle in radians whose sine is the input.
+ */
 func asin_d(x: double) -> double { return rt_real_asin_d(x); }
+
+/**
+ * Returns the inverse cosine.
+ *
+ * @param x The input value.
+ * @return The angle in radians whose cosine is the input.
+ */
 func acos_f(x: float) -> float { return rt_real_acos_f(x); }
+
+/**
+ * Returns the inverse cosine.
+ *
+ * @param x The input value.
+ * @return The angle in radians whose cosine is the input.
+ */
 func acos_d(x: double) -> double { return rt_real_acos_d(x); }
+
+/**
+ * Returns the inverse tangent.
+ *
+ * @param x The input value.
+ * @return The angle in radians whose tangent is the input.
+ */
 func atan_f(x: float) -> float { return rt_real_atan_f(x); }
+
+/**
+ * Returns the inverse tangent.
+ *
+ * @param x The input value.
+ * @return The angle in radians whose tangent is the input.
+ */
 func atan_d(x: double) -> double { return rt_real_atan_d(x); }
+
+/**
+ * Returns the quadrant-aware angle for a ratio.
+ *
+ * @param x The numerator, passed as the first host atan2 argument.
+ * @param y The denominator, passed as the second host atan2 argument.
+ * @return The angle in radians for x / y, using both signs to select the quadrant.
+ */
 func atan2_f(x: float, y: float) -> float { return rt_real_atan2_f(x, y); }
+
+/**
+ * Returns the quadrant-aware angle for a ratio.
+ *
+ * @param x The numerator, passed as the first host atan2 argument.
+ * @param y The denominator, passed as the second host atan2 argument.
+ * @return The angle in radians for x / y, using both signs to select the quadrant.
+ */
 func atan2_d(x: double, y: double) -> double { return rt_real_atan2_d(x, y); }

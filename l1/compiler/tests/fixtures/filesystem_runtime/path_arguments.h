@@ -2,18 +2,32 @@
  * SPDX-License-Identifier: MIT OR Apache-2.0
  * Copyright (c) 2026 gwz
  */
-/** @file path_arguments.h ASCII-only transport for UTF-8/filename bytes in C probes. */
+
+/**
+ * @file path_arguments.h
+ * ASCII-only transport for UTF-8/filename bytes in C probes.
+ */
 #ifndef DEA_FS_TEST_PATH_ARGUMENTS_H
 #define DEA_FS_TEST_PATH_ARGUMENTS_H
 
-/** Decode one ASCII hexadecimal digit, returning -1 for invalid transport data. */
+/**
+ * Decode one ASCII hexadecimal digit, returning -1 for invalid transport data.
+ *
+ * @param c ASCII hexadecimal transport character.
+ * @return The decoded digit, or -1 for an unsupported character.
+ */
 static int fixture_hex_digit(unsigned char c) {
     if (c >= '0' && c <= '9') return c - '0';
     if (c >= 'a' && c <= 'f') return c - 'a' + 10;
     return -1;
 }
 
-/** Free one owned decoded argument vector. */
+/**
+ * Free one owned decoded argument vector.
+ *
+ * @param argc Number of owned argument slots.
+ * @param argv Decoded argument vector to release, or NULL.
+ */
 static void fixture_free_arguments(int argc, char **argv) {
     if (!argv) return;
     for (int i = 0; i < argc; ++i) free(argv[i]);
@@ -23,6 +37,10 @@ static void fixture_free_arguments(int argc, char **argv) {
 /**
  * Copy arguments, decoding hex-prefixed path bytes without depending on the
  * Windows CRT's active code page. Every returned argument is owned by the probe.
+ *
+ * @param argc Number of source argument slots.
+ * @param argv Source arguments containing raw or hex-prefixed path bytes.
+ * @return An owned decoded argument vector, or NULL on invalid transport or allocation failure.
  */
 static char **fixture_path_arguments(int argc, char **argv) {
     char **out = (char **)calloc((size_t)argc + 1, sizeof(char *));

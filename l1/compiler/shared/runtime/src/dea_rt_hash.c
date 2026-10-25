@@ -56,7 +56,13 @@ void l1c_interface_fingerprint_sip13_hex(
     _dea_l1_interface_fingerprint_sip13_hex(data, len, out_hex);
 }
 
-/** Compiler-facing pointer adapter; input bytes remain read-only. */
+/**
+ * Compiler-facing pointer adapter; input bytes remain read-only.
+ *
+ * @param data Read-only canonical interface bytes passed through the pointer ABI.
+ * @param len Non-negative byte length of data.
+ * @param out_hex Exact 16-byte output buffer; no NUL terminator is written.
+ */
 void l1c_interface_fingerprint_sip13_hex_bytes(
     uint8_t *data,
     int32_t len,

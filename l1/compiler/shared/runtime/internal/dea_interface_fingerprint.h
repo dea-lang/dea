@@ -16,7 +16,9 @@
 
 #include "dea_siphash.h"
 
-/** Fixed v1 interface-fingerprint key: the 16 UTF-8 bytes of `DeaL1-fp-v1-key!`. */
+/**
+ * Fixed v1 interface-fingerprint key: the 16 UTF-8 bytes of `DeaL1-fp-v1-key!`.
+ */
 static const uint8_t _dea_l1_interface_fingerprint_key[16] = {
     'D', 'e', 'a', 'L', '1', '-', 'f', 'p',
     '-', 'v', '1', '-', 'k', 'e', 'y', '!'
@@ -28,6 +30,10 @@ static const uint8_t _dea_l1_interface_fingerprint_key[16] = {
  * `out_hex` receives exactly 16 bytes and is not NUL-terminated. The caller
  * guarantees that `len` is non-negative and that `data` is readable for
  * `len` bytes.
+ *
+ * @param data Canonical interface bytes to hash.
+ * @param len Non-negative byte length of data.
+ * @param out_hex Exact 16-byte output buffer; no NUL terminator is written.
  */
 static void _dea_l1_interface_fingerprint_sip13_hex(
     const uint8_t *data,

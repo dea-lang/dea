@@ -3,6 +3,11 @@
 """Tests for XML-to-Markdown rendering."""
 
 from pathlib import Path
+import xml.etree.ElementTree as ET
+
+import pytest
+
+from compiler.docgen.l0_docgen_l0_helpers import extract_l0_enum_variants
 
 from compiler.docgen.l0_docgen_markdown import (
     normalize_search_result_urls,
@@ -524,25 +529,59 @@ def test_render_markdown_site_renders_l0_type_alias_initializer(tmp_path: Path) 
     assert "type ExprId = int" in page
 
 
-def test_render_markdown_site_renders_payload_enum_variants_from_source(tmp_path: Path, monkeypatch) -> None:
+def test_enum_source_variants_handle_inline_and_multiline_payloads(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    source = """/* enum Inline { NotAVariant; } */
+enum Before { Ignore; }
+enum Inline { Some(value: int*?); /* ; } ) */ None; Failed(message: string); }
+enum Multiline
+{
+    Pair(
+        first: store::Value**?,
+        // Ignore punctuation in comments: ; } )
+        second: string
+    );
+    First; Second;
+}
+enum After { AlsoIgnore; }
+"""
+    Path("fixture.l0").write_text(source, encoding="utf-8")
+    inline = ET.fromstring(
+        '<memberdef kind="enum"><name>Inline</name>'
+        '<location file="fixture.l0" line="3" bodystart="3" bodyend="3"/></memberdef>'
+    )
+    multiline = ET.fromstring(
+        '<memberdef kind="enum"><name>Multiline</name>'
+        '<location file="fixture.l0" line="4" bodystart="5" bodyend="12"/></memberdef>'
+    )
+    assert extract_l0_enum_variants(inline) == ["Some(value: int*?)", "None", "Failed(message: string)"]
+    assert extract_l0_enum_variants(multiline) == [
+        "Pair( first: store::Value**?, second: string )", "First", "Second",
+    ]
+    missing = ET.fromstring(
+        '<memberdef kind="enum"><name>Missing</name>'
+        '<location file="fixture.l0" line="4" bodystart="5" bodyend="12"/></memberdef>'
+    )
+    assert extract_l0_enum_variants(missing) == []
+
+
+@pytest.mark.parametrize("body", [
+    "{ TT_EOF; TT_IDENT(text: string); /* ; } */ TT_INT(text: string, value: int); }",
+    "{\n    TT_EOF;\n    TT_IDENT(text: string);\n    TT_INT(text: string, value: int);\n}",
+    "\n{\n    TT_EOF;\n    TT_IDENT(\n        text: string\n    );\n    TT_INT(text: string, value: int);\n}",
+])
+def test_render_markdown_site_renders_payload_enum_variants_from_source(tmp_path: Path, monkeypatch, body: str) -> None:
     xml_dir = tmp_path / "xml"
     xml_dir.mkdir()
     output_dir = tmp_path / "markdown"
     templates_dir = Path(__file__).resolve().parents[4] / "scripts/docs/templates"
     source_path = tmp_path / "compiler/stage2_l0/src/tokens.l0"
     source_path.parent.mkdir(parents=True, exist_ok=True)
-    source_path.write_text(
-        """enum TokenType {
-    TT_EOF;
-    TT_IDENT(text: string);
-    TT_INT(text: string, value: int);
-}
-""",
-        encoding="utf-8",
-    )
+    source = f"enum TokenType {body}\n"
+    source_path.write_text(source, encoding="utf-8")
 
     (xml_dir / "tokens_8l0.xml").write_text(
-        """<?xml version='1.0' encoding='UTF-8' standalone='no'?>
+        f"""<?xml version='1.0' encoding='UTF-8' standalone='no'?>
 <doxygen>
   <compounddef id="tokens_8l0" kind="file" language="C++">
     <compoundname>tokens.l0</compoundname>
@@ -552,7 +591,7 @@ def test_render_markdown_site_renders_payload_enum_variants_from_source(tmp_path
         <name>TokenType</name>
         <enumvalue id="tokens_8l0_1a1" prot="public"><name>TT_EOF</name></enumvalue>
         <briefdescription><para>Defines the TokenType enumeration.</para></briefdescription>
-        <location file="compiler/stage2_l0/src/tokens.l0" line="1" bodystart="1" bodyend="5" />
+        <location file="compiler/stage2_l0/src/tokens.l0" line="1" bodystart="1" bodyend="{len(source.splitlines())}" />
       </memberdef>
     </sectiondef>
     <location file="compiler/stage2_l0/src/tokens.l0" line="1" />
@@ -567,7 +606,8 @@ def test_render_markdown_site_renders_payload_enum_variants_from_source(tmp_path
 
     page = (output_dir / "compiler/stage2_l0/src/tokens.md").read_text(encoding="utf-8")
     assert "- `TT_EOF`" in page
-    assert "- `TT_IDENT(text: string)`" in page
+    identifier = "TT_IDENT( text: string )" if "TT_IDENT(\n" in body else "TT_IDENT(text: string)"
+    assert f"- `{identifier}`" in page
     assert "- `TT_INT(text: string, value: int)`" in page
 
 

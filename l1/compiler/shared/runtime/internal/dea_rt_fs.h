@@ -66,14 +66,23 @@ typedef struct __deaM3sys2fsS12RtFsMetadata FsMetadata;
 typedef struct __deaM3sys2fsS9RtDirOpen FsDirOpen;
 typedef struct __deaM3sys2fsS9RtDirNext FsDirNext;
 
-/** Return a runtime validation error without consulting ambient host state. */
+/**
+ * Return a runtime validation error without consulting ambient host state.
+ *
+ * @param kind Normalized runtime error kind; zero denotes no error.
+ * @return Runtime-domain error record with native code zero.
+ */
 static FsError fs_error(int kind) {
     FsError error = {0};
     error.kind = kind;
     return error;
 }
 
-/** Capture the failing host call immediately. */
+/**
+ * Capture the failing host call immediately.
+ *
+ * @return Captured error from the immediately preceding failing host call.
+ */
 static FsError fs_native_error(void) {
 #if defined(_WIN32)
     return rt_os_error_from_win32((dea_long)GetLastError());
@@ -82,7 +91,12 @@ static FsError fs_native_error(void) {
 #endif
 }
 
-/** Wrap success or a captured failure. */
+/**
+ * Wrap success or a captured failure.
+ *
+ * @param error Captured error, or the all-zero success record.
+ * @return Status with success set only for the all-zero error record.
+ */
 static FsStatus fs_status(FsError error) {
     FsStatus out = {0};
     out.ok = error.kind == 0 && error.domain == 0 && error.native_code == 0;
@@ -93,7 +107,13 @@ static FsStatus fs_status(FsError error) {
 /* Pure spelling helpers are shared with portable Windows path regressions. */
 #include "dea_rt_fs_path.h"
 
-/** Validate bytes, then produce terminated host storage with no fixed path limit. */
+/**
+ * Validate bytes, then produce terminated host storage with no fixed path limit.
+ *
+ * @param path Nonempty Dea path bytes, without embedded NUL.
+ * @param error Receives validation, conversion, or native allocation failures.
+ * @return Owned terminated native path, or NULL on failure.
+ */
 static FsChar *fs_path(dea_string path, FsError *error) {
     dea_int len = rt_strlen(path);
     const char *bytes = _rt_string_bytes(path);
@@ -120,7 +140,13 @@ static FsChar *fs_path(dea_string path, FsError *error) {
     return out;
 }
 
-/** Copy native output to an owned Dea string, reporting unrepresentable lengths. */
+/**
+ * Copy native output to an owned Dea string, reporting unrepresentable lengths.
+ *
+ * @param text Terminated native text to copy.
+ * @param error Receives conversion or representable-length failures.
+ * @return Owned Dea string, or an empty string when conversion fails.
+ */
 static dea_string fs_string(const FsChar *text, FsError *error) {
 #if defined(_WIN32)
     size_t wide_len = wcslen(text);
@@ -144,13 +170,27 @@ static dea_string fs_string(const FsChar *text, FsError *error) {
 }
 
 #if defined(_WIN32)
-/** Open the object itself, optionally following its final reparse point. */
+
+/**
+ * Open the object itself, optionally following its final reparse point.
+ *
+ * @param path Terminated native path to open.
+ * @param follow Whether to follow the final reparse point.
+ * @param access Requested Windows object access rights.
+ * @param share Allowed Windows sharing modes.
+ * @return Native object handle, or INVALID_HANDLE_VALUE on failure.
+ */
 static HANDLE fs_handle(const wchar_t *path, int follow, DWORD access, DWORD share) {
     return CreateFileW(path, access, share, NULL, OPEN_EXISTING,
         FILE_FLAG_BACKUP_SEMANTICS | (follow ? 0 : FILE_FLAG_OPEN_REPARSE_POINT), NULL);
 }
 
-/** Classify all reparse points conservatively as links. */
+/**
+ * Classify all reparse points conservatively as links.
+ *
+ * @param attributes Windows file attribute bits.
+ * @return Regular, directory, link, or other filesystem transport tag.
+ */
 static int fs_attributes_type(DWORD attributes) {
     if (attributes & FILE_ATTRIBUTE_REPARSE_POINT) return 3;
     if (attributes & FILE_ATTRIBUTE_DIRECTORY) return 2;
@@ -159,7 +199,13 @@ static int fs_attributes_type(DWORD attributes) {
 }
 #endif
 
-/** Query metadata without narrowing persistent extents or timestamps. */
+/**
+ * Query metadata without narrowing persistent extents or timestamps.
+ *
+ * @param path Terminated native path to inspect.
+ * @param follow Whether to follow the final symbolic link or reparse point.
+ * @return Metadata with preserved widths, or a captured host failure.
+ */
 static FsMetadata fs_metadata_native(const FsChar *path, int follow) {
     FsMetadata out = {0};
 #if defined(_WIN32)
@@ -197,7 +243,13 @@ static FsMetadata fs_metadata_native(const FsChar *path, int follow) {
     return out;
 }
 
-/** Public metadata transport, with shared input validation. */
+/**
+ * Public metadata transport, with shared input validation.
+ *
+ * @param path Filesystem path to inspect.
+ * @param follow Whether to follow the final symbolic link or reparse point.
+ * @return Metadata with preserved widths, or a captured failure.
+ */
 FsMetadata rt_fs_metadata(dea_string path, dea_bool follow) {
     FsMetadata out = {0};
     FsChar *native = fs_path(path, &out.error);
@@ -205,7 +257,13 @@ FsMetadata rt_fs_metadata(dea_string path, dea_bool follow) {
     return out;
 }
 
-/** Compare followed native identities; a failed lookup is never false success. */
+/**
+ * Compare followed native identities; a failed lookup is never false success.
+ *
+ * @param left First path whose final link is followed.
+ * @param right Second path whose final link is followed.
+ * @return Native identity comparison, or failure if either lookup fails.
+ */
 FsBool rt_fs_same_file(dea_string left, dea_string right) {
     FsBool out = {0};
     FsChar *a = fs_path(left, &out.error), *b;
@@ -237,7 +295,12 @@ FsBool rt_fs_same_file(dea_string left, dea_string right) {
     return out;
 }
 
-/** Obtain current-directory storage, growing when the host reports insufficient space. */
+/**
+ * Obtain current-directory storage, growing when the host reports insufficient space.
+ *
+ * @param error Receives native lookup or allocation failures.
+ * @return Owned current-directory spelling, or NULL on failure.
+ */
 static FsChar *fs_cwd(FsError *error) {
     size_t cap = 256;
     for (;;) {
@@ -257,7 +320,13 @@ static FsChar *fs_cwd(FsError *error) {
     }
 }
 
-/** Convert owned host path storage to its direct result and release it. */
+/**
+ * Convert owned host path storage to its direct result and release it.
+ *
+ * @param native Owned native path to convert and release, or NULL.
+ * @param error Previously captured error, or the all-zero success record.
+ * @return Owned path result, or failure with an empty value.
+ */
 static FsPath fs_path_result(FsChar *native, FsError error) {
     FsPath out = {0};
     out.value = DEA_STRING_EMPTY;
@@ -268,14 +337,23 @@ static FsPath fs_path_result(FsChar *native, FsError error) {
     return out;
 }
 
-/** Return the working-directory spelling as supplied by the host. */
+/**
+ * Return the working-directory spelling as supplied by the host.
+ *
+ * @return Owned host working-directory spelling, or a captured failure.
+ */
 FsPath rt_fs_current_dir(void) {
     FsError error = {0};
     FsChar *native = fs_cwd(&error);
     return fs_path_result(native, error);
 }
 
-/** Anchor at call time. POSIX preserves dots and literal backslashes. */
+/**
+ * Anchor at call time. POSIX preserves dots and literal backslashes.
+ *
+ * @param path Path to anchor without requiring an existing object.
+ * @return Owned absolute spelling, or a captured failure.
+ */
 FsPath rt_fs_absolute(dea_string path) {
     FsError error = {0};
     FsChar *native = fs_path(path, &error), *out = NULL;
@@ -302,7 +380,12 @@ FsPath rt_fs_absolute(dea_string path) {
     return fs_path_result(out, error);
 }
 
-/** Resolve existing aliases without equating canonical spelling with identity. */
+/**
+ * Resolve existing aliases without equating canonical spelling with identity.
+ *
+ * @param path Existing path to resolve through aliases.
+ * @return Owned resolved host spelling, or a captured failure.
+ */
 FsPath rt_fs_canonicalize(dea_string path) {
     FsError error = {0};
     FsChar *native = fs_path(path, &error), *out = NULL;
@@ -331,7 +414,12 @@ FsPath rt_fs_canonicalize(dea_string path) {
     return fs_path_result(out, error);
 }
 
-/** Follow the supplied directory and change the process-global working directory. */
+/**
+ * Follow the supplied directory and change the process-global working directory.
+ *
+ * @param path Directory path to follow and select.
+ * @return Successful status, or a captured failure.
+ */
 FsStatus rt_fs_set_current_dir(dea_string path) {
     FsError error = {0};
     FsChar *native = fs_path(path, &error);
@@ -346,7 +434,13 @@ FsStatus rt_fs_set_current_dir(dea_string path) {
     return fs_status(error);
 }
 
-/** Create one directory, accepting an existing followed directory only for parents. */
+/**
+ * Create one directory, accepting an existing followed directory only for parents.
+ *
+ * @param path Terminated native directory path.
+ * @param allow_existing Whether an existing followed directory counts as success.
+ * @return All-zero error on success, or the captured failure.
+ */
 static FsError fs_mkdir(const FsChar *path, int allow_existing) {
     FsError error = {0};
 #if defined(_WIN32)
@@ -364,7 +458,13 @@ static FsError fs_mkdir(const FsChar *path, int allow_existing) {
     return error;
 }
 
-/** Create missing prefixes in order; on failure keep successful earlier creations. */
+/**
+ * Create missing prefixes in order; on failure keep successful earlier creations.
+ *
+ * @param path Directory path to create.
+ * @param recursive Whether to create missing parents and accept existing directories.
+ * @return Successful status, or the first captured failure.
+ */
 FsStatus rt_fs_create_dir(dea_string path, dea_bool recursive) {
     FsError error = {0};
     FsChar *native = fs_path(path, &error);
@@ -398,7 +498,12 @@ FsStatus rt_fs_create_dir(dea_string path, dea_bool recursive) {
     return fs_status(error);
 }
 
-/** Remove a non-directory entry, including a final symbolic link itself. */
+/**
+ * Remove a non-directory entry, including a final symbolic link itself.
+ *
+ * @param path Non-directory entry to unlink, including a final link itself.
+ * @return Successful status, or a captured failure.
+ */
 FsStatus rt_fs_remove_file(dea_string path) {
     FsError error = {0};
     FsChar *native = fs_path(path, &error);
@@ -418,9 +523,15 @@ FsStatus rt_fs_remove_file(dea_string path) {
 }
 
 #if !defined(_WIN32)
+
 /**
  * Delete relative to an owned parent descriptor. O_NOFOLLOW prevents a raced
  * symbolic link from becoming a traversed directory; unlinkat removes links.
+ *
+ * @param parent Borrowed parent descriptor, or AT_FDCWD for the working directory.
+ * @param name Child entry name relative to the parent descriptor.
+ * @param depth Child levels traversed from the selected root.
+ * @return All-zero error on success, or the first traversal or cleanup failure.
  */
 static FsError fs_remove_tree_at(int parent, const char *name, unsigned depth) {
     FsError error = {0};
@@ -448,11 +559,16 @@ static FsError fs_remove_tree_at(int parent, const char *name, unsigned depth) {
     return error;
 }
 #else
+
 /**
  * Hold every visited directory without FILE_SHARE_DELETE while enumerating it.
  * This blocks replacing the directory entry; callers must exclude in-place
  * reparse-tag and mount changes by other writers.
  * The final entry is opened without following reparse points and deleted by handle.
+ *
+ * @param path Terminated native entry path to remove without following its final link.
+ * @param depth Child levels traversed from the selected root.
+ * @return All-zero error on success, or the first traversal or cleanup failure.
  */
 static FsError fs_remove_tree(const wchar_t *path, unsigned depth) {
     FsError error = {0};
@@ -491,7 +607,13 @@ static FsError fs_remove_tree(const wchar_t *path, unsigned depth) {
 }
 #endif
 
-/** Remove one empty real directory or a tree; recursive final links are unlinked. */
+/**
+ * Remove one empty real directory or a tree; recursive final links are unlinked.
+ *
+ * @param path Directory or, for recursive removal, final link to remove.
+ * @param recursive Whether to remove a tree instead of one empty real directory.
+ * @return Successful status, or the first captured failure.
+ */
 FsStatus rt_fs_remove_dir(dea_string path, dea_bool recursive) {
     FsError error = {0};
     FsChar *native = fs_path(path, &error);
@@ -538,7 +660,14 @@ FsStatus rt_fs_remove_dir(dea_string path, dea_bool recursive) {
     free(native); return fs_status(error);
 }
 
-/** Native rename has no copy fallback. File replacement rejects real directories. */
+/**
+ * Native rename has no copy fallback. File replacement rejects real directories.
+ *
+ * @param source Entry path to move.
+ * @param destination Destination entry path.
+ * @param replace_file Whether to enforce non-directory replacement restrictions.
+ * @return Successful status, or a captured failure; no copying fallback is attempted.
+ */
 FsStatus rt_fs_rename(dea_string source, dea_string destination, dea_bool replace_file) {
     FsError error = {0};
     FsChar *a = fs_path(source, &error), *b;
@@ -562,7 +691,13 @@ FsStatus rt_fs_rename(dea_string source, dea_string destination, dea_bool replac
     free(a); free(b); return fs_status(error);
 }
 
-/** Copy bytes to an exclusively created destination; failures leave partial data. */
+/**
+ * Copy bytes to an exclusively created destination; failures leave partial data.
+ *
+ * @param source Path followed to a regular source file.
+ * @param destination New destination path; existing entries are rejected.
+ * @return Successful status, or failure that may leave a new partial destination.
+ */
 FsStatus rt_fs_copy_file(dea_string source, dea_string destination) {
     FsError error = {0};
     FsChar *a = fs_path(source, &error), *b;
@@ -602,7 +737,9 @@ FsStatus rt_fs_copy_file(dea_string source, dea_string destination) {
     free(a); free(b); return fs_status(error);
 }
 
-/** Native cursor state owns one host iterator and remembers terminal results. */
+/**
+ * Native cursor state owns one host iterator and remembers terminal results.
+ */
 typedef struct FsDir {
     int state;
     FsError error;
@@ -615,7 +752,12 @@ typedef struct FsDir {
 #endif
 } FsDir;
 
-/** Open a cursor without materializing or sorting entries. */
+/**
+ * Open a cursor without materializing or sorting entries.
+ *
+ * @param path Directory path to follow and enumerate incrementally.
+ * @return Owned native cursor, or a captured open failure.
+ */
 FsDirOpen rt_dir_open(dea_string path) {
     FsDirOpen out = {0};
     FsChar *native = fs_path(path, &out.error);
@@ -651,7 +793,12 @@ FsDirOpen rt_dir_open(dea_string path) {
     out.ok = 1; out.handle = dir; return out;
 }
 
-/** Return entry/end/error, copying each name before advancing the host cursor. */
+/**
+ * Return entry/end/error, copying each name before advancing the host cursor.
+ *
+ * @param handle Live cursor returned by rt_dir_open.
+ * @return Owned entry name, clean end, or the saved iteration failure.
+ */
 FsDirNext rt_dir_next(void *handle) {
     FsDirNext out = {0};
     out.name = DEA_STRING_EMPTY;
@@ -693,7 +840,12 @@ FsDirNext rt_dir_next(void *handle) {
     return out;
 }
 
-/** Consume a valid cursor exactly once, including when native close fails. */
+/**
+ * Consume a valid cursor exactly once, including when native close fails.
+ *
+ * @param handle Live native cursor to consume exactly once.
+ * @return Successful status, or the captured native close failure.
+ */
 FsStatus rt_dir_close(void *handle) {
     FsDir *dir = (FsDir *)handle;
     FsError error = {0};

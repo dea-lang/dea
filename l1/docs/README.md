@@ -72,6 +72,11 @@ Graphviz, the shared Python environment, and vendored m.css; `make docs-pdf` add
 toolchain and builds the full indexed `pdf/dea_l1_api_reference.pdf`. Preview PDF builds cannot produce distribution
 evidence.
 
+The source adapter preserves declaration lines for inline, empty, multiline, and split-header structs, including
+comments within fields and after closing braces. It retains L1 callback, array, and nullable type conversion for
+Doxygen; rendered signatures use the original source declarations. Export manifests are removed before declaration
+translation without shifting subsequent source lines.
+
 ```sh
 make docs-artifacts DEA_DIST_VERSION=dev
 ```
@@ -90,6 +95,11 @@ need distinct output parents.
 Direct `make install PREFIX=... DOCS_ARTIFACT=/absolute/bundle.tar.gz` optionally includes the matching bundle under
 `share/doc/dea/l1/autodocs/`. `make dist` requires it and never generates documentation. `make smoke-dist ARCHIVE=...`
 checks the exact archive after extraction. Local generation and packaging do not publish or dispatch workflows.
+
+Unified CI selects a full L1 reference-validation job for relevant source, documentation, and shared-tooling changes. It
+builds the complete PDF and verified offline bundle, then explicitly prints the canonical undocumented-function report.
+Entries are informational and do not fail the job, matching L0. Reports, available build diagnostics, and any completed
+bundle are retained on build failure. Local generation and release workflows retain their existing coverage policy.
 
 [developer-guide]: ../README.md
 [explicit-profiles]: reference/explicit-profiles.md

@@ -176,6 +176,99 @@ def test_unavailable_diff_respects_l2_default(tmp_path, default, missing):
     assert result["run_l0"] == result["run_l1"] == "true"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX routing script exercised on native POSIX runners")
+@pytest.mark.parametrize("event", ["push", "pull_request"])
+@pytest.mark.parametrize("changed", [
+    "l1/compiler/src/parser.l0",
+    "l1/compiler/docgen/l1_docgen.py",
+    "l1/compiler/shared/l1/stdlib/std/unit.l1",
+    "l1/compiler/shared/runtime/include/dea_rt.h",
+    "l1/compiler/support/compiler_support.c",
+    "l1/compiler/tests/parser_test.l0",
+    "l1/docs/README.md",
+    "l1/tests/test_docgen_filters.py",
+    "l1/scripts/docs/templates/doxyfile.in",
+    "l1/scripts/gen_docs.py",
+    "l1/scripts/docs_artifacts.py",
+    "l1/scripts/productization_provenance.py",
+    "l1/scripts/docker_wine.py",
+    "l1/Makefile",
+    "l1/pyproject.toml",
+    "l1/README.md",
+    "l1/README-WINDOWS.md",
+    "l1/AGENTS.md",
+    "l1/CLAUDE.md",
+    "tools/m.css/documentation/doxygen.py",
+    "scripts/dea_tooling/bootstrap.py",
+    "pyproject.toml",
+    "uv.lock",
+    "Makefile",
+    "README.md",
+    "CONTRIBUTING.md",
+    "CLAUDE.md",
+    "THIRD_PARTY_NOTICES",
+    ".github/workflows/l1-docs-validate.yml",
+    ".github/workflows/ci.yml",
+    ".github/actions/l1-ci/action.yml",
+])
+def test_l1_docs_routing_selects_reference_inputs(tmp_path, event, changed):
+    result = route(tmp_path, default="false", event=event, changed=changed)
+    assert result["run_l1_docs"] == "true"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX routing script exercised on native POSIX runners")
+@pytest.mark.parametrize("event", ["push", "pull_request"])
+@pytest.mark.parametrize("changed", [
+    "l0/compiler/stage1_py/l0_ast.py",
+    "l0/compiler/shared/l0/stdlib/std/unit.l0",
+    "l0/docs/README.md",
+    "l2/compiler/src/parser.l1",
+    "l2/compiler/docgen/l2_docgen.py",
+    "l2/docs/README.md",
+    "l1/work/plans/features/example.md",
+    "work/proposals/example.md",
+    "l1/tests/test_parser.py",
+    "editors/vscode/package.json",
+])
+def test_l1_docs_routing_ignores_unrelated_changes(tmp_path, event, changed):
+    result = route(tmp_path, default="true", event=event, changed=changed)
+    assert result["run_l1_docs"] == "false"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX routing script exercised on native POSIX runners")
+@pytest.mark.parametrize("changed,expected", [
+    ("l0/compiler/stage1_py/l0_ast.py", "true"),
+    ("l0/compiler/shared/l0/stdlib/std/unit.l0", "true"),
+    ("l0/docs/README.md", "true"),
+    ("l1/compiler/src/parser.l0", "false"),
+    ("l1/compiler/docgen/l1_docgen.py", "false"),
+    ("l2/compiler/src/parser.l1", "false"),
+    ("tools/m.css/documentation/doxygen.py", "true"),
+    ("scripts/dea_tooling/bootstrap.py", "false"),
+    (".github/workflows/l1-docs-validate.yml", "true"),
+    (".github/actions/l1-ci/action.yml", "false"),
+])
+def test_l1_docs_routing_preserves_l0_docs_selection(tmp_path, changed, expected):
+    result = route(tmp_path, default="false", event="push", changed=changed)
+    assert result["run_docs"] == expected
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX routing script exercised on native POSIX runners")
+@pytest.mark.parametrize("default", ["false", "true"])
+@pytest.mark.parametrize("manual", ["default", "on", "off"])
+def test_manual_runs_select_l1_docs_independently_of_l2(tmp_path, default, manual):
+    result = route(tmp_path, default=default, event="workflow_dispatch", manual=manual)
+    assert result["run_l1_docs"] == result["run_docs"] == "true"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX routing script exercised on native POSIX runners")
+@pytest.mark.parametrize("default", ["false", "true"])
+@pytest.mark.parametrize("missing", ["base", "endpoints"])
+def test_unavailable_diff_selects_l1_docs(tmp_path, default, missing):
+    result = route(tmp_path, default=default, event="push", missing=missing)
+    assert result["run_l1_docs"] == result["run_docs"] == "true"
+
+
 def route(tmp_path, *, default, event, changed="", manual="default", missing=""):
     """Execute the actual workflow routing script with controlled Git answers."""
     document = workflow(".github/workflows/ci.yml")

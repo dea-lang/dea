@@ -2,7 +2,11 @@
  * SPDX-License-Identifier: MIT OR Apache-2.0
  * Copyright (c) 2026 gwz
  */
-/** @file path_probe.c Actual pure path helpers under simulated Windows and POSIX semantics. */
+
+/**
+ * @file path_probe.c
+ * Actual pure path helpers under simulated Windows and POSIX semantics.
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -28,12 +32,24 @@ typedef char FsChar;
 #define DEA_OS_ERROR_FILE_TOO_LARGE 19
 #define DEA_OS_ERROR_OUT_OF_MEMORY 12
 typedef struct FsError { int kind; } FsError;
-/** Supply the scalar error constructor used by production spelling helpers. */
+
+/**
+ * Supply the scalar error constructor used by production spelling helpers.
+ *
+ * @param kind Runtime error-kind tag.
+ * @return The scalar test error carrying the supplied tag.
+ */
 static FsError fs_error(int kind) { FsError out = {kind}; return out; }
 #include "dea_rt_fs_path.h"
 #define REQUIRE(x) do { if (!(x)) { fprintf(stderr, "path probe line %d: %s\n", __LINE__, #x); return 1; } } while (0)
 
-/** Check joining preserves the namespace and root already present in the parent. */
+/**
+ * Check joining preserves the namespace and root already present in the parent.
+ *
+ * @param parent Parent directory spelling to join.
+ * @param expected Required spelling after appending the child name.
+ * @return Zero when joining preserves the expected spelling, otherwise one.
+ */
 static int joined(const FsChar *parent, const FsChar *expected) {
     FsError error = {0};
     FsChar *actual = fs_join(parent, FS_TEXT("child"), &error);
@@ -43,7 +59,13 @@ static int joined(const FsChar *parent, const FsChar *expected) {
     return 0;
 }
 
-/** Check trimming cannot remove the separator that makes a root absolute. */
+/**
+ * Check trimming cannot remove the separator that makes a root absolute.
+ *
+ * @param path Native path spelling copied before trimming.
+ * @param expected Required spelling after trailing-separator trimming.
+ * @return Zero when trimming preserves the expected spelling, otherwise one.
+ */
 static int trimmed(const FsChar *path, const FsChar *expected) {
     size_t bytes = (fs_length(path) + 1) * sizeof(FsChar);
     FsChar *copy = (FsChar *)malloc(bytes);
@@ -55,7 +77,11 @@ static int trimmed(const FsChar *path, const FsChar *expected) {
     return 0;
 }
 
-/** Exercise rooted, relative, device, UNC, dot, space, and literal-backslash cases. */
+/**
+ * Exercise rooted, relative, device, UNC, dot, space, and literal-backslash cases.
+ *
+ * @return Zero when all path-spelling checks pass, otherwise one.
+ */
 int main(void) {
 #if defined(DEA_FS_PATH_TEST_WINDOWS)
     const FsChar *roots[] = {

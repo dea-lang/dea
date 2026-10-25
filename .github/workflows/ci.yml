@@ -201,6 +201,7 @@ jobs:
       run_l1: ${{ steps.route.outputs.run_l1 }}
       run_l2: ${{ steps.route.outputs.run_l2 }}
       run_docs: ${{ steps.route.outputs.run_docs }}
+      run_l1_docs: ${{ steps.route.outputs.run_l1_docs }}
       run_any: ${{ steps.route.outputs.run_any }}
     steps:
       - name: Show inputs
@@ -238,6 +239,7 @@ jobs:
           run_l1=false
           run_l2=false
           run_docs=false
+          run_l1_docs=false
 
           l2_enabled="${L2_CI_DEFAULT_ENABLED:-false}"
           case "$l2_enabled" in
@@ -256,6 +258,7 @@ jobs:
             run_l1=true
             run_l2="$l2_enabled"
             run_docs=true
+            run_l1_docs=true
           else
             if [ "$EVENT_NAME" = "pull_request" ]; then
               base_sha="$PR_BASE_SHA"
@@ -270,6 +273,7 @@ jobs:
               run_l1=true
               run_l2="$l2_enabled"
               run_docs=true
+              run_l1_docs=true
             elif ! git rev-parse --verify "$base_sha^{commit}" >/dev/null 2>&1 || \
                  ! git rev-parse --verify "$head_sha^{commit}" >/dev/null 2>&1; then
               echo "Diff endpoints unavailable; running default validation workloads."
@@ -277,6 +281,7 @@ jobs:
               run_l1=true
               run_l2="$l2_enabled"
               run_docs=true
+              run_l1_docs=true
             else
               changed_files="$(git diff --name-only "$base_sha" "$head_sha")"
               shared=false
@@ -301,6 +306,9 @@ jobs:
               if printf '%s\n' "$changed_files" | grep -Eq '^(\.github/workflows/|README\.md$|CONTRIBUTING\.md$|CLAUDE\.md$|THIRD_PARTY_NOTICES$|tools/|pyproject\.toml$|uv\.lock$|l0/(compiler/(stage1_py|docgen|stage2_l0|shared)/|docs/|README(-WINDOWS)?\.md$|CLAUDE\.md$|pyproject\.toml$|scripts/(docs/|(gen_docs|docs_artifacts|stage_docs_pages|gen_dist_tools|dist_tools_lib)\.py$)))'; then
                 run_docs=true
               fi
+              if printf '%s\n' "$changed_files" | grep -Eq '^(\.github/(workflows|actions)/|README\.md$|CONTRIBUTING\.md$|CLAUDE\.md$|THIRD_PARTY_NOTICES$|Makefile$|tools/|scripts/|pyproject\.toml$|uv\.lock$|l1/(compiler/|scripts/|docs/|tests/test_docgen_[^/]+\.py$|README(-WINDOWS)?\.md$|AGENTS\.md$|CLAUDE\.md$|Makefile$|pyproject\.toml$))'; then
+                run_l1_docs=true
+              fi
             fi
           fi
 
@@ -314,6 +322,7 @@ jobs:
             echo "run_l1=$run_l1"
             echo "run_l2=$run_l2"
             echo "run_docs=$run_docs"
+            echo "run_l1_docs=$run_l1_docs"
             echo "run_any=$run_any"
           } >> "$GITHUB_OUTPUT"
 
@@ -321,6 +330,11 @@ jobs:
     needs: route-levels
     if: needs.route-levels.outputs.run_docs == 'true'
     uses: ./.github/workflows/l0-docs-validate.yml
+
+  l1-docs-validation:
+    needs: route-levels
+    if: needs.route-levels.outputs.run_l1_docs == 'true'
+    uses: ./.github/workflows/l1-docs-validate.yml
 
   select-matrix:
     runs-on: ubuntu-latest

@@ -20,6 +20,10 @@ dea_bool _rt_time_to_dea_int_sec(time_t value, dea_int *out) {
 
 /**
  * Internal helper to convert long to dea_int nanoseconds.
+ *
+ * @param value Nanoseconds to validate and convert.
+ * @param out Receives the value only when it is in range.
+ * @return Nonzero for values from zero through 999999999; otherwise zero.
  */
 dea_bool _rt_time_to_dea_int_nsec(long value, dea_int *out) {
     long long nsec = (long long)value;
@@ -32,6 +36,11 @@ dea_bool _rt_time_to_dea_int_nsec(long value, dea_int *out) {
 
 /**
  * Internal helper to write time parts to struct.
+ *
+ * @param out Non-NULL time-parts record to populate.
+ * @param sec Whole seconds to store.
+ * @param nsec Nanoseconds to store.
+ * @return One after storing both fields; a NULL output panics.
  */
 dea_bool _rt_time_write_parts(struct __deaM3sys2rtS11RtTimeParts *out, dea_int sec, dea_int nsec) {
     if (out == NULL) {

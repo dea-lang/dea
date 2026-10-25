@@ -15,27 +15,54 @@ import path_arguments;
 
 let compare_calls: int = 0;
 
-/** Require successful mutation or retain the captured diagnostic. */
+/**
+ * Require successful mutation or retain the captured diagnostic.
+ *
+ * @param result Mutation or cleanup result required to be successful.
+ */
 func ok(result: FsResult) {
     match (result) { FsOk => {} FsFailed(error) => { assert(false, error_message(error)); } }
 }
 
-/** Count reverse ordering comparisons without negating an arbitrary comparator value. */
+/**
+ * Count reverse ordering comparisons without negating an arbitrary comparator value.
+ *
+ * @param left First entry to compare.
+ * @param right Second entry to compare.
+ * @return Negative, zero, or positive for descending name-byte order.
+ */
 func compare_reverse(left: DirEntry, right: DirEntry) -> int {
     compare_calls = compare_calls + 1;
     return cmp_s(right.name, left.name);
 }
 
-/** Make all names equivalent while checking that permutations preserve their ownership. */
+/**
+ * Make all names equivalent while checking that permutations preserve their ownership.
+ *
+ * @param left First entry, treated as equivalent to every other entry.
+ * @param right Second entry, treated as equivalent to every other entry.
+ * @return Zero for every pair of entries.
+ */
 func compare_equal(left: DirEntry, right: DirEntry) -> int {
     compare_calls = compare_calls + 1;
     return 0;
 }
 
-/** Return a nested successful result without attaching cleanup to a temporary alias. */
+/**
+ * Return a nested successful result without attaching cleanup to a temporary alias.
+ *
+ * @param path Directory whose entries are to be collected.
+ * @return The owned collection sorted by name bytes, or a captured failure.
+ */
 func sorted_entries(path: string) -> EntriesResult { return entries_sort_default(read_all(path)); }
 
-/** Verify every expected name, including the permutation after an all-equal comparison. */
+/**
+ * Verify every expected name, including the permutation after an all-equal comparison.
+ *
+ * @param entries Borrowed materialized fixture collection.
+ * @param count Expected number of numbered fixture entries.
+ * @param descending Whether names must appear in descending order.
+ */
 func check_names(entries: DirEntries*, count: int, descending: bool) {
     assert(entries_size(entries) == count, "materialized count");
     for (let i = 0; i < count; i = i + 1) {
@@ -45,7 +72,12 @@ func check_names(entries: DirEntries*, count: int, descending: bool) {
     }
 }
 
-/** Exercise aliases, custom/default composition, ties, and the comparison bound. */
+/**
+ * Exercise aliases, custom/default composition, ties, and the comparison bound.
+ *
+ * @param path Directory containing numbered fixture entries.
+ * @param count Expected number of entries in the fixture.
+ */
 func check_sorting(path: string, count: int) {
     with (let result = sorted_entries(path) => free_entries_result(result)) {
         match (result) {
@@ -82,7 +114,11 @@ func check_sorting(path: string, count: int) {
     }
 }
 
-/** Keep default ordering explicit for ASCII case and multibyte UTF-8 names. */
+/**
+ * Keep default ordering explicit for ASCII case and multibyte UTF-8 names.
+ *
+ * @param path New directory path used for byte-order fixtures.
+ */
 func check_byte_names(path: string) {
     ok(create_dir(path));
     assert(write_file(path + "/a", "a") != null, "lowercase fixture");
@@ -101,7 +137,12 @@ func check_byte_names(path: string) {
     }
 }
 
-/** Return an independently owned copy through collection cleanup on an early return. */
+/**
+ * Return an independently owned copy through collection cleanup on an early return.
+ *
+ * @param path Directory containing the numbered sorting fixture.
+ * @return An owning entry copy independent of the cleaned-up collection.
+ */
 func retained_entry(path: string) -> DirEntry {
     with (let result = entries_sort_default(read_all(path)) => free_entries_result(result)) {
         match (result) {
@@ -117,7 +158,12 @@ func retained_entry(path: string) -> DirEntry {
     return DirEntry("", Unknown);
 }
 
-/** Release a still-live streaming cursor on return, retaining an owned entry name. */
+/**
+ * Release a still-live streaming cursor on return, retaining an owned entry name.
+ *
+ * @param path Existing nonempty fixture directory.
+ * @return An owned entry name that remains valid after cursor cleanup.
+ */
 func first_name(path: string) -> string {
     with (let result = open(path) => ok(free_open_dir_result(result))) {
         match (result) {
@@ -133,7 +179,11 @@ func first_name(path: string) -> string {
     return "";
 }
 
-/** Pass failures through sorting without calling its comparator or losing error data. */
+/**
+ * Pass failures through sorting without calling its comparator or losing error data.
+ *
+ * @param path Existing directory used to derive a missing fixture path.
+ */
 func check_failures(path: string) {
     let failure = EntriesFailed(OsError(InvalidInput, Runtime, 73 as long));
     compare_calls = 0;
@@ -159,7 +209,11 @@ func check_failures(path: string) {
     }
 }
 
-/** Exercise streaming EOF and successful cleanup without exposing a closed wrapper. */
+/**
+ * Exercise streaming EOF and successful cleanup without exposing a closed wrapper.
+ *
+ * @param path Directory containing the alpha and zeta fixtures.
+ */
 func check_streaming(path: string) {
     let saved = "";
     with (let result = open(path)) {
@@ -202,7 +256,11 @@ func check_streaming(path: string) {
     }
 }
 
-/** Exercise result-scoped directory ownership and composable in-place sorting. */
+/**
+ * Exercise result-scoped directory ownership and composable in-place sorting.
+ *
+ * @return Zero after all directory ownership and sorting checks pass.
+ */
 func main() -> int {
     if (argc() > 1) {
         with (let result = entries_sort_default(read_all(fixture_path_arg(1))) => free_entries_result(result)) {

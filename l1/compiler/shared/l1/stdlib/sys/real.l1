@@ -25,85 +25,577 @@ struct RtDoubleOut { val: double; }
 struct RtIntOut { val: int; }
 
 // Constants
+
+/**
+ * Returns a quiet NaN.
+ *
+ * @return A quiet NaN in the requested floating-point type.
+ */
 extern func rt_real_get_nan_f() -> float;
+
+/**
+ * Returns a quiet NaN.
+ *
+ * @return A quiet NaN in the requested floating-point type.
+ */
 extern func rt_real_get_nan_d() -> double;
+
+/**
+ * Returns positive infinity.
+ *
+ * @return Positive infinity in the requested floating-point type.
+ */
 extern func rt_real_get_inf_f() -> float;
+
+/**
+ * Returns positive infinity.
+ *
+ * @return Positive infinity in the requested floating-point type.
+ */
 extern func rt_real_get_inf_d() -> double;
 
 // Classification
+
+/**
+ * Checks whether a value is NaN.
+ *
+ * @param x The value to classify.
+ * @return True if the value is NaN, false otherwise.
+ */
 extern func rt_real_is_nan_f(x: float) -> bool;
+
+/**
+ * Checks whether a value is NaN.
+ *
+ * @param x The value to classify.
+ * @return True if the value is NaN, false otherwise.
+ */
 extern func rt_real_is_nan_d(x: double) -> bool;
+
+/**
+ * Checks whether a value is positive or negative infinity.
+ *
+ * @param x The value to classify.
+ * @return True if the value is infinite, false otherwise.
+ */
 extern func rt_real_is_inf_f(x: float) -> bool;
+
+/**
+ * Checks whether a value is positive or negative infinity.
+ *
+ * @param x The value to classify.
+ * @return True if the value is infinite, false otherwise.
+ */
 extern func rt_real_is_inf_d(x: double) -> bool;
+
+/**
+ * Checks whether a value is finite.
+ *
+ * @param x The value to classify.
+ * @return True if the value is neither infinite nor NaN.
+ */
 extern func rt_real_is_finite_f(x: float) -> bool;
+
+/**
+ * Checks whether a value is finite.
+ *
+ * @param x The value to classify.
+ * @return True if the value is neither infinite nor NaN.
+ */
 extern func rt_real_is_finite_d(x: double) -> bool;
+
+/**
+ * Checks whether the sign bit is set, including for signed zero and NaN.
+ *
+ * @param x The value to inspect.
+ * @return True if the sign bit is set, false otherwise.
+ */
 extern func rt_real_signbit_f(x: float) -> bool;
+
+/**
+ * Checks whether the sign bit is set, including for signed zero and NaN.
+ *
+ * @param x The value to inspect.
+ * @return True if the sign bit is set, false otherwise.
+ */
 extern func rt_real_signbit_d(x: double) -> bool;
 
 // Basic ops
+
+/**
+ * Returns the absolute value.
+ *
+ * @param x The input value.
+ * @return The non-negative magnitude of the input.
+ */
 extern func rt_real_abs_f(x: float) -> float;
+
+/**
+ * Returns the absolute value.
+ *
+ * @param x The input value.
+ * @return The non-negative magnitude of the input.
+ */
 extern func rt_real_abs_d(x: double) -> double;
+
+/**
+ * Returns the square root.
+ *
+ * @param x The input value.
+ * @return The square root of the input.
+ */
 extern func rt_real_sqrt_f(x: float) -> float;
+
+/**
+ * Returns the square root.
+ *
+ * @param x The input value.
+ * @return The square root of the input.
+ */
 extern func rt_real_sqrt_d(x: double) -> double;
+
+/**
+ * Returns the real cube root.
+ *
+ * @param x The input value.
+ * @return The cube root of the input.
+ */
 extern func rt_real_cbrt_f(x: float) -> float;
+
+/**
+ * Returns the real cube root.
+ *
+ * @param x The input value.
+ * @return The cube root of the input.
+ */
 extern func rt_real_cbrt_d(x: double) -> double;
+
+/**
+ * Returns the Euclidean length of a two-dimensional vector.
+ *
+ * @param x The first component.
+ * @param y The second component.
+ * @return The square root of the sum of the squared components.
+ */
 extern func rt_real_hypot_f(x: float, y: float) -> float;
+
+/**
+ * Returns the Euclidean length of a two-dimensional vector.
+ *
+ * @param x The first component.
+ * @param y The second component.
+ * @return The square root of the sum of the squared components.
+ */
 extern func rt_real_hypot_d(x: double, y: double) -> double;
 
 // Rounding
+
+/**
+ * Rounds toward negative infinity.
+ *
+ * @param x The value to round.
+ * @return The greatest integral value not greater than the input.
+ */
 extern func rt_real_floor_f(x: float) -> float;
+
+/**
+ * Rounds toward negative infinity.
+ *
+ * @param x The value to round.
+ * @return The greatest integral value not greater than the input.
+ */
 extern func rt_real_floor_d(x: double) -> double;
+
+/**
+ * Rounds toward positive infinity.
+ *
+ * @param x The value to round.
+ * @return The least integral value not less than the input.
+ */
 extern func rt_real_ceil_f(x: float) -> float;
+
+/**
+ * Rounds toward positive infinity.
+ *
+ * @param x The value to round.
+ * @return The least integral value not less than the input.
+ */
 extern func rt_real_ceil_d(x: double) -> double;
+
+/**
+ * Rounds toward zero.
+ *
+ * @param x The value to round.
+ * @return The integral part of the input.
+ */
 extern func rt_real_trunc_f(x: float) -> float;
+
+/**
+ * Rounds toward zero.
+ *
+ * @param x The value to round.
+ * @return The integral part of the input.
+ */
 extern func rt_real_trunc_d(x: double) -> double;
+
+/**
+ * Rounds to the nearest integral value, with halfway cases away from zero.
+ *
+ * @param x The value to round.
+ * @return The rounded integral value.
+ */
 extern func rt_real_round_f(x: float) -> float;
+
+/**
+ * Rounds to the nearest integral value, with halfway cases away from zero.
+ *
+ * @param x The value to round.
+ * @return The rounded integral value.
+ */
 extern func rt_real_round_d(x: double) -> double;
 
 // Remainder and decomposition
+
+/**
+ * Returns the remainder after division with the quotient truncated toward zero.
+ *
+ * @param x The dividend.
+ * @param y The divisor.
+ * @return The remainder x - trunc(x / y) * y.
+ */
 extern func rt_real_fmod_f(x: float, y: float) -> float;
+
+/**
+ * Returns the remainder after division with the quotient truncated toward zero.
+ *
+ * @param x The dividend.
+ * @param y The divisor.
+ * @return The remainder x - trunc(x / y) * y.
+ */
 extern func rt_real_fmod_d(x: double, y: double) -> double;
+
+/**
+ * Returns the remainder using the nearest integral quotient, with ties to even.
+ *
+ * @param x The dividend.
+ * @param y The divisor.
+ * @return The remainder after subtracting the rounded quotient times the divisor.
+ */
 extern func rt_real_remainder_f(x: float, y: float) -> float;
+
+/**
+ * Returns the remainder using the nearest integral quotient, with ties to even.
+ *
+ * @param x The dividend.
+ * @param y The divisor.
+ * @return The remainder after subtracting the rounded quotient times the divisor.
+ */
 extern func rt_real_remainder_d(x: double, y: double) -> double;
+
+/**
+ * Splits a value, writing its integral part to an output struct.
+ *
+ * @param x The value to split.
+ * @param iptr A valid output struct receiving the integral part.
+ * @return The fractional part, with the sign of the input.
+ */
 extern func rt_real_modf_f(x: float, iptr: RtFloatOut*) -> float;
+
+/**
+ * Splits a value, writing its integral part to an output struct.
+ *
+ * @param x The value to split.
+ * @param iptr A valid output struct receiving the integral part.
+ * @return The fractional part, with the sign of the input.
+ */
 extern func rt_real_modf_d(x: double, iptr: RtDoubleOut*) -> double;
+
+/**
+ * Decomposes a value, writing its binary exponent to an output struct.
+ *
+ * @param x The value to decompose.
+ * @param exp A valid output struct receiving the binary exponent.
+ * @return The significand; finite nonzero values have magnitude in [0.5, 1).
+ */
 extern func rt_real_frexp_f(x: float, exp: RtIntOut*) -> float;
+
+/**
+ * Decomposes a value, writing its binary exponent to an output struct.
+ *
+ * @param x The value to decompose.
+ * @param exp A valid output struct receiving the binary exponent.
+ * @return The significand; finite nonzero values have magnitude in [0.5, 1).
+ */
 extern func rt_real_frexp_d(x: double, exp: RtIntOut*) -> double;
+
+/**
+ * Scales a value by an integral power of two.
+ *
+ * @param x The value to scale.
+ * @param exp The binary exponent.
+ * @return The input multiplied by 2^exp.
+ */
 extern func rt_real_ldexp_f(x: float, exp: int) -> float;
+
+/**
+ * Scales a value by an integral power of two.
+ *
+ * @param x The value to scale.
+ * @param exp The binary exponent.
+ * @return The input multiplied by 2^exp.
+ */
 extern func rt_real_ldexp_d(x: double, exp: int) -> double;
 
 // Sign and neighboring-value helpers
+
+/**
+ * Combines the magnitude of one value with the sign of another.
+ *
+ * @param x The value providing the magnitude.
+ * @param y The value providing the sign.
+ * @return A value with the magnitude of x and the sign of y.
+ */
 extern func rt_real_copy_sign_f(x: float, y: float) -> float;
+
+/**
+ * Combines the magnitude of one value with the sign of another.
+ *
+ * @param x The value providing the magnitude.
+ * @param y The value providing the sign.
+ * @return A value with the magnitude of x and the sign of y.
+ */
 extern func rt_real_copy_sign_d(x: double, y: double) -> double;
+
+/**
+ * Returns the next representable value toward a target.
+ *
+ * @param x The starting value.
+ * @param y The target direction.
+ * @return The adjacent representable value toward y, or y when both compare equal.
+ */
 extern func rt_real_next_after_f(x: float, y: float) -> float;
+
+/**
+ * Returns the next representable value toward a target.
+ *
+ * @param x The starting value.
+ * @param y The target direction.
+ * @return The adjacent representable value toward y, or y when both compare equal.
+ */
 extern func rt_real_next_after_d(x: double, y: double) -> double;
 
 // Exponential and logarithmic
+
+/**
+ * Returns the natural exponential.
+ *
+ * @param x The exponent.
+ * @return Euler's number raised to the input power.
+ */
 extern func rt_real_exp_f(x: float) -> float;
+
+/**
+ * Returns the natural exponential.
+ *
+ * @param x The exponent.
+ * @return Euler's number raised to the input power.
+ */
 extern func rt_real_exp_d(x: double) -> double;
+
+/**
+ * Returns a power of two.
+ *
+ * @param x The exponent.
+ * @return Two raised to the input power.
+ */
 extern func rt_real_exp2_f(x: float) -> float;
+
+/**
+ * Returns a power of two.
+ *
+ * @param x The exponent.
+ * @return Two raised to the input power.
+ */
 extern func rt_real_exp2_d(x: double) -> double;
+
+/**
+ * Returns the natural logarithm.
+ *
+ * @param x The input value.
+ * @return The base-e logarithm of the input.
+ */
 extern func rt_real_log_f(x: float) -> float;
+
+/**
+ * Returns the natural logarithm.
+ *
+ * @param x The input value.
+ * @return The base-e logarithm of the input.
+ */
 extern func rt_real_log_d(x: double) -> double;
+
+/**
+ * Returns the common logarithm.
+ *
+ * @param x The input value.
+ * @return The base-10 logarithm of the input.
+ */
 extern func rt_real_log10_f(x: float) -> float;
+
+/**
+ * Returns the common logarithm.
+ *
+ * @param x The input value.
+ * @return The base-10 logarithm of the input.
+ */
 extern func rt_real_log10_d(x: double) -> double;
+
+/**
+ * Returns the binary logarithm.
+ *
+ * @param x The input value.
+ * @return The base-2 logarithm of the input.
+ */
 extern func rt_real_log2_f(x: float) -> float;
+
+/**
+ * Returns the binary logarithm.
+ *
+ * @param x The input value.
+ * @return The base-2 logarithm of the input.
+ */
 extern func rt_real_log2_d(x: double) -> double;
+
+/**
+ * Raises a value to a power.
+ *
+ * @param x The base.
+ * @param y The exponent.
+ * @return The base raised to the exponent.
+ */
 extern func rt_real_pow_f(x: float, y: float) -> float;
+
+/**
+ * Raises a value to a power.
+ *
+ * @param x The base.
+ * @param y The exponent.
+ * @return The base raised to the exponent.
+ */
 extern func rt_real_pow_d(x: double, y: double) -> double;
 
 // Trigonometric
+
+/**
+ * Returns the sine of an angle.
+ *
+ * @param x The angle in radians.
+ * @return The sine of the angle.
+ */
 extern func rt_real_sin_f(x: float) -> float;
+
+/**
+ * Returns the sine of an angle.
+ *
+ * @param x The angle in radians.
+ * @return The sine of the angle.
+ */
 extern func rt_real_sin_d(x: double) -> double;
+
+/**
+ * Returns the cosine of an angle.
+ *
+ * @param x The angle in radians.
+ * @return The cosine of the angle.
+ */
 extern func rt_real_cos_f(x: float) -> float;
+
+/**
+ * Returns the cosine of an angle.
+ *
+ * @param x The angle in radians.
+ * @return The cosine of the angle.
+ */
 extern func rt_real_cos_d(x: double) -> double;
+
+/**
+ * Returns the tangent of an angle.
+ *
+ * @param x The angle in radians.
+ * @return The tangent of the angle.
+ */
 extern func rt_real_tan_f(x: float) -> float;
+
+/**
+ * Returns the tangent of an angle.
+ *
+ * @param x The angle in radians.
+ * @return The tangent of the angle.
+ */
 extern func rt_real_tan_d(x: double) -> double;
+
+/**
+ * Returns the inverse sine.
+ *
+ * @param x The input value.
+ * @return The angle in radians whose sine is the input.
+ */
 extern func rt_real_asin_f(x: float) -> float;
+
+/**
+ * Returns the inverse sine.
+ *
+ * @param x The input value.
+ * @return The angle in radians whose sine is the input.
+ */
 extern func rt_real_asin_d(x: double) -> double;
+
+/**
+ * Returns the inverse cosine.
+ *
+ * @param x The input value.
+ * @return The angle in radians whose cosine is the input.
+ */
 extern func rt_real_acos_f(x: float) -> float;
+
+/**
+ * Returns the inverse cosine.
+ *
+ * @param x The input value.
+ * @return The angle in radians whose cosine is the input.
+ */
 extern func rt_real_acos_d(x: double) -> double;
+
+/**
+ * Returns the inverse tangent.
+ *
+ * @param x The input value.
+ * @return The angle in radians whose tangent is the input.
+ */
 extern func rt_real_atan_f(x: float) -> float;
+
+/**
+ * Returns the inverse tangent.
+ *
+ * @param x The input value.
+ * @return The angle in radians whose tangent is the input.
+ */
 extern func rt_real_atan_d(x: double) -> double;
+
+/**
+ * Returns the quadrant-aware angle for a ratio.
+ *
+ * @param x The numerator, passed as the first host atan2 argument.
+ * @param y The denominator, passed as the second host atan2 argument.
+ * @return The angle in radians for x / y, using both signs to select the quadrant.
+ */
 extern func rt_real_atan2_f(x: float, y: float) -> float;
+
+/**
+ * Returns the quadrant-aware angle for a ratio.
+ *
+ * @param x The numerator, passed as the first host atan2 argument.
+ * @param y The denominator, passed as the second host atan2 argument.
+ * @return The angle in radians for x / y, using both signs to select the quadrant.
+ */
 extern func rt_real_atan2_d(x: double, y: double) -> double;

@@ -16,7 +16,9 @@ export ErrorKind, ErrorDomain, OsError, ReadResult, WriteResult, FlushResult, er
 
 import sys.os;
 
-/** Portable categories for branching independently of host error numbers. */
+/**
+ * Portable categories for branching independently of host error numbers.
+ */
 enum ErrorKind {
     Other;
     NotFound;
@@ -40,21 +42,27 @@ enum ErrorKind {
     FileTooLarge;
 }
 
-/** Namespace of a native code; runtime validation has no host error code. */
+/**
+ * Namespace of a native code; runtime validation has no host error code.
+ */
 enum ErrorDomain {
     Runtime;
     Errno;
     Win32;
 }
 
-/** Captured error data, independent of subsequent host operations. */
+/**
+ * Captured error data, independent of subsequent host operations.
+ */
 struct OsError {
     kind: ErrorKind;
     domain: ErrorDomain;
     native_code: long;
 }
 
-/** One read attempt: transferred bytes, EOF, timeout, or failure. */
+/**
+ * One read attempt: transferred bytes, EOF, timeout, or failure.
+ */
 enum ReadResult {
     Read(count: int);
     Eof;
@@ -62,14 +70,18 @@ enum ReadResult {
     ReadFailed(error: OsError);
 }
 
-/** One write attempt; successful bytes may still be buffered by stdio. */
+/**
+ * One write attempt; successful bytes may still be buffered by stdio.
+ */
 enum WriteResult {
     Written(count: int);
     WriteTimedOut(error: OsError);
     WriteFailed(error: OsError);
 }
 
-/** Stdio flush outcome; success does not establish durable storage. */
+/**
+ * Stdio flush outcome; success does not establish durable storage.
+ */
 enum FlushResult {
     Flushed;
     FlushTimedOut(error: OsError);

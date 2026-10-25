@@ -67,6 +67,7 @@ void _rt_trace_flush_pending(void);
 #endif
 
 #ifdef DEA_TRACE_ARC
+
 /**
  * Trace reference counting operations to stderr.
  */
@@ -77,6 +78,7 @@ void _rt_trace_flush_pending(void);
         fprintf(stderr, "\n"); \
         _rt_trace_event_end(); \
     } while (0)
+
 /**
  * Trace reference counting operations with location info.
  */
@@ -94,6 +96,7 @@ void _rt_trace_flush_pending(void);
 #endif
 
 #ifdef DEA_TRACE_MEMORY
+
 /**
  * Trace memory allocation operations to stderr.
  */
@@ -104,6 +107,7 @@ void _rt_trace_flush_pending(void);
         fprintf(stderr, "\n"); \
         _rt_trace_event_end(); \
     } while (0)
+
 /**
  * Trace memory allocation operations with location info.
  */
@@ -155,9 +159,21 @@ typedef double   dea_double;
  * Data is null-terminated for C interoperability, but length is authoritative.
  */
 typedef struct {
-    dea_int refcount;    /**< Reference count for memory management, or INT32_MAX if not reference counted */
-    dea_int len;         /**< Length in bytes (must be >= 0) */
-    char bytes[];        /**< Mutable character data, 0-terminated for C interoperability */
+
+    /**
+     * Reference count for memory management, or INT32_MAX if not reference counted.
+     */
+    dea_int refcount;
+
+    /**
+     * Length in bytes (must be >= 0).
+     */
+    dea_int len;
+
+    /**
+     * Mutable character data, 0-terminated for C interoperability.
+     */
+    char bytes[];
 } _dea_h_string;
 
 #define DEA_STRING_K_STATIC  0
@@ -173,14 +189,39 @@ static const dea_int _RT_MEM_SENTINEL = 0xF00DB10C;
  * Unified L0 string type (static or heap-allocated).
  */
 typedef struct {
-    unsigned int kind : 1;      /**< Kind of string: either DEA_STRING_K_STATIC (0) or DEA_STRING_K_HEAP (1) */
-    unsigned int : 0;           /**< Align to next unsigned int boundary */
+
+    /**
+     * Kind of string: either DEA_STRING_K_STATIC (0) or DEA_STRING_K_HEAP (1).
+     */
+    unsigned int kind : 1;
+
+    /**
+     * Align to next unsigned int boundary.
+     */
+    unsigned int : 0;
     union {
+
+        /**
+         * Static string structure for constant inline strings.
+         */
         struct {
-            dea_int len;         /**< Length in bytes (for constant inline strings) */
-            const char* bytes;  /**< Pointer to character data (may be NULL for empty string) */
-        } s_str;                /**< Static string structure for constant inline strings */
-        _dea_h_string *h_str;    /**< Heap-allocated string structure for dynamic strings */
+
+            /**
+             * Length in bytes (for constant inline strings).
+             */
+            dea_int len;
+
+            /**
+             * Pointer to character data (may be NULL for empty string).
+             */
+            const char* bytes;
+
+        } s_str;
+
+        /**
+         * Heap-allocated string structure for dynamic strings.
+         */
+        _dea_h_string *h_str;
     } data;
 } dea_string;
 
@@ -204,68 +245,113 @@ typedef struct {
 
 #ifndef DEA_OPT_BOOL_DEFINED
 #define DEA_OPT_BOOL_DEFINED
-/** @struct dea_opt_bool Optional boolean wrapper. */
+
+/**
+ * @struct dea_opt_bool
+ * Optional boolean wrapper.
+ */
 typedef struct { dea_bool has_value; dea_bool value; } dea_opt_bool;
 #endif /* DEA_OPT_BOOL_DEFINED */
 
 #ifndef DEA_OPT_TINY_DEFINED
 #define DEA_OPT_TINY_DEFINED
-/** @struct dea_opt_tiny Optional tiny wrapper. */
+
+/**
+ * @struct dea_opt_tiny
+ * Optional tiny wrapper.
+ */
 typedef struct { dea_bool has_value; dea_tiny value; } dea_opt_tiny;
 #endif /* DEA_OPT_TINY_DEFINED */
 
 #ifndef DEA_OPT_BYTE_DEFINED
 #define DEA_OPT_BYTE_DEFINED
-/** @struct dea_opt_byte Optional byte wrapper. */
+
+/**
+ * @struct dea_opt_byte
+ * Optional byte wrapper.
+ */
 typedef struct { dea_bool has_value; dea_byte value; } dea_opt_byte;
 #endif /* DEA_OPT_BYTE_DEFINED */
 
 #ifndef DEA_OPT_SHORT_DEFINED
 #define DEA_OPT_SHORT_DEFINED
-/** @struct dea_opt_short Optional short wrapper. */
+
+/**
+ * @struct dea_opt_short
+ * Optional short wrapper.
+ */
 typedef struct { dea_bool has_value; dea_short value; } dea_opt_short;
 #endif /* DEA_OPT_SHORT_DEFINED */
 
 #ifndef DEA_OPT_INT_DEFINED
 #define DEA_OPT_INT_DEFINED
-/** @struct dea_opt_int Optional integer wrapper. */
+
+/**
+ * @struct dea_opt_int
+ * Optional integer wrapper.
+ */
 typedef struct { dea_bool has_value; dea_int value; } dea_opt_int;
 #endif /* DEA_OPT_INT_DEFINED */
 
 #ifndef DEA_OPT_USHORT_DEFINED
 #define DEA_OPT_USHORT_DEFINED
-/** @struct dea_opt_ushort Optional ushort wrapper. */
+
+/**
+ * @struct dea_opt_ushort
+ * Optional ushort wrapper.
+ */
 typedef struct { dea_bool has_value; dea_ushort value; } dea_opt_ushort;
 #endif /* DEA_OPT_USHORT_DEFINED */
 
 #ifndef DEA_OPT_UINT_DEFINED
 #define DEA_OPT_UINT_DEFINED
-/** @struct dea_opt_uint Optional uint wrapper. */
+
+/**
+ * @struct dea_opt_uint
+ * Optional uint wrapper.
+ */
 typedef struct { dea_bool has_value; dea_uint value; } dea_opt_uint;
 #endif /* DEA_OPT_UINT_DEFINED */
 
 #ifndef DEA_OPT_LONG_DEFINED
 #define DEA_OPT_LONG_DEFINED
-/** @struct dea_opt_long Optional long wrapper. */
+
+/**
+ * @struct dea_opt_long
+ * Optional long wrapper.
+ */
 typedef struct { dea_bool has_value; dea_long value; } dea_opt_long;
 #endif /* DEA_OPT_LONG_DEFINED */
 
 #ifndef DEA_OPT_ULONG_DEFINED
 #define DEA_OPT_ULONG_DEFINED
-/** @struct dea_opt_ulong Optional ulong wrapper. */
+
+/**
+ * @struct dea_opt_ulong
+ * Optional ulong wrapper.
+ */
 typedef struct { dea_bool has_value; dea_ulong value; } dea_opt_ulong;
 #endif /* DEA_OPT_ULONG_DEFINED */
 
 #ifndef DEA_OPT_STRING_DEFINED
 #define DEA_OPT_STRING_DEFINED
-/** @struct dea_opt_string Optional string wrapper. */
+
+/**
+ * @struct dea_opt_string
+ * Optional string wrapper.
+ */
 typedef struct { dea_bool has_value; dea_string value; } dea_opt_string;
 #endif /* DEA_OPT_STRING_DEFINED */
 
-/** @struct _dea_base_opt Base structure for optional types to access has_value. */
+/**
+ * @struct _dea_base_opt
+ * Base structure for optional types to access has_value.
+ */
 typedef struct { dea_bool has_value; } _dea_base_opt;
 
-/** Typed value macro for a null optional string. */
+/**
+ * Typed value macro for a null optional string.
+ */
 #define DEA_OPT_STRING_NULL \
     ((dea_opt_string){ \
         .has_value = 0, \
@@ -274,7 +360,10 @@ typedef struct { dea_bool has_value; } _dea_base_opt;
             .data = { .s_str = { .len = 0, .bytes = NULL } } \
         } \
     })
-/** Typed value macro for an empty optional string. */
+
+/**
+ * Typed value macro for an empty optional string.
+ */
 #define DEA_OPT_STRING_EMPTY \
     ((dea_opt_string){ \
         .has_value = 1, \
@@ -373,6 +462,10 @@ struct __deaM3sys2osS10RtIoResult {
 /* Direct filesystem records; field order matches sys.fs. */
 #ifndef DEA_DEFINED___deaM3sys2fsS10RtFsStatus
 #define DEA_DEFINED___deaM3sys2fsS10RtFsStatus
+
+/**
+ * Direct filesystem mutation status with a captured error.
+ */
 struct __deaM3sys2fsS10RtFsStatus {
     dea_bool ok;
     struct __deaM3sys2osS9RtOsError error;
@@ -381,6 +474,10 @@ struct __deaM3sys2fsS10RtFsStatus {
 
 #ifndef DEA_DEFINED___deaM3sys2fsS8RtFsBool
 #define DEA_DEFINED___deaM3sys2fsS8RtFsBool
+
+/**
+ * Followed identity result with an independent success flag.
+ */
 struct __deaM3sys2fsS8RtFsBool {
     dea_bool ok;
     dea_bool value;
@@ -390,6 +487,10 @@ struct __deaM3sys2fsS8RtFsBool {
 
 #ifndef DEA_DEFINED___deaM3sys2fsS8RtFsPath
 #define DEA_DEFINED___deaM3sys2fsS8RtFsPath
+
+/**
+ * Owned resolved path spelling or a captured failure.
+ */
 struct __deaM3sys2fsS8RtFsPath {
     dea_bool ok;
     dea_string value;
@@ -399,6 +500,10 @@ struct __deaM3sys2fsS8RtFsPath {
 
 #ifndef DEA_DEFINED___deaM3sys2fsS12RtFsMetadata
 #define DEA_DEFINED___deaM3sys2fsS12RtFsMetadata
+
+/**
+ * Filesystem metadata with wide nullable persistent values.
+ */
 struct __deaM3sys2fsS12RtFsMetadata {
     dea_bool ok;
     dea_int file_type;
@@ -411,6 +516,10 @@ struct __deaM3sys2fsS12RtFsMetadata {
 
 #ifndef DEA_DEFINED___deaM3sys2fsS9RtDirOpen
 #define DEA_DEFINED___deaM3sys2fsS9RtDirOpen
+
+/**
+ * Owned native directory cursor or a captured open failure.
+ */
 struct __deaM3sys2fsS9RtDirOpen {
     dea_bool ok;
     void *handle;
@@ -420,6 +529,10 @@ struct __deaM3sys2fsS9RtDirOpen {
 
 #ifndef DEA_DEFINED___deaM3sys2fsS9RtDirNext
 #define DEA_DEFINED___deaM3sys2fsS9RtDirNext
+
+/**
+ * Directory entry, end, or failure with an owned name.
+ */
 struct __deaM3sys2fsS9RtDirNext {
     dea_int state;
     dea_string name;
@@ -428,19 +541,122 @@ struct __deaM3sys2fsS9RtDirNext {
 };
 #endif
 
+/**
+ * Query filesystem metadata with explicit final-link following.
+ *
+ * @param path Filesystem path to inspect.
+ * @param follow Whether to follow the final symbolic link or reparse point.
+ * @return Metadata with preserved widths, or a captured failure.
+ */
 struct __deaM3sys2fsS12RtFsMetadata rt_fs_metadata(dea_string path, dea_bool follow);
+
+/**
+ * Compare followed native identities without comparing path spellings.
+ *
+ * @param left First path whose final link is followed.
+ * @param right Second path whose final link is followed.
+ * @return Native identity comparison, or failure if either lookup fails.
+ */
 struct __deaM3sys2fsS8RtFsBool rt_fs_same_file(dea_string left, dea_string right);
+
+/**
+ * Anchor a path at call time without requiring an existing object.
+ *
+ * @param path Path to anchor without requiring an existing object.
+ * @return Owned absolute spelling, or a captured failure.
+ */
 struct __deaM3sys2fsS8RtFsPath rt_fs_absolute(dea_string path);
+
+/**
+ * Resolve an existing path through aliases.
+ *
+ * @param path Existing path to resolve through aliases.
+ * @return Owned resolved host spelling, or a captured failure.
+ */
 struct __deaM3sys2fsS8RtFsPath rt_fs_canonicalize(dea_string path);
+
+/**
+ * Return the process working-directory spelling.
+ *
+ * @return Owned host working-directory spelling, or a captured failure.
+ */
 struct __deaM3sys2fsS8RtFsPath rt_fs_current_dir(void);
+
+/**
+ * Follow a directory path and change process-global working-directory state.
+ *
+ * @param path Directory path to follow and select.
+ * @return Successful status, or a captured failure.
+ */
 struct __deaM3sys2fsS10RtFsStatus rt_fs_set_current_dir(dea_string path);
+
+/**
+ * Create one directory or missing parent directories.
+ *
+ * @param path Directory path to create.
+ * @param recursive Whether to create missing parents and accept existing directories.
+ * @return Successful status, or the first captured failure.
+ */
 struct __deaM3sys2fsS10RtFsStatus rt_fs_create_dir(dea_string path, dea_bool recursive);
+
+/**
+ * Unlink one non-directory entry, including a final link itself.
+ *
+ * @param path Non-directory entry to unlink, including a final link itself.
+ * @return Successful status, or a captured failure.
+ */
 struct __deaM3sys2fsS10RtFsStatus rt_fs_remove_file(dea_string path);
+
+/**
+ * Remove an empty real directory or a tree without traversing final links.
+ *
+ * @param path Directory or, for recursive removal, final link to remove.
+ * @param recursive Whether to remove a tree instead of one empty real directory.
+ * @return Successful status, or the first captured failure.
+ */
 struct __deaM3sys2fsS10RtFsStatus rt_fs_remove_dir(dea_string path, dea_bool recursive);
+
+/**
+ * Rename an entry with native overwrite rules or non-directory replacement checks.
+ *
+ * @param source Entry path to move.
+ * @param destination Destination entry path.
+ * @param replace_file Whether to enforce non-directory replacement restrictions.
+ * @return Successful status, or a captured failure; no copying fallback is attempted.
+ */
 struct __deaM3sys2fsS10RtFsStatus rt_fs_rename(dea_string source, dea_string destination, dea_bool replace_file);
+
+/**
+ * Copy regular-file bytes exclusively to a new destination.
+ *
+ * @param source Path followed to a regular source file.
+ * @param destination New destination path; existing entries are rejected.
+ * @return Successful status, or failure that may leave a new partial destination.
+ */
 struct __deaM3sys2fsS10RtFsStatus rt_fs_copy_file(dea_string source, dea_string destination);
+
+/**
+ * Open an owned incremental directory cursor.
+ *
+ * @param path Directory path to follow and enumerate incrementally.
+ * @return Owned native cursor, or a captured open failure.
+ */
 struct __deaM3sys2fsS9RtDirOpen rt_dir_open(dea_string path);
+
+/**
+ * Advance a live cursor while distinguishing entry, end, and failure.
+ *
+ * @param handle Live cursor returned by rt_dir_open.
+ * @return Owned entry name, clean end, or the saved iteration failure.
+ */
 struct __deaM3sys2fsS9RtDirNext rt_dir_next(void *handle);
+
+/**
+ * Close and consume one live native cursor, including on native close failure.
+ *
+ * @param handle Live native cursor to consume exactly once.
+ * @return Successful status, or the captured native close failure.
+ */
 struct __deaM3sys2fsS10RtFsStatus rt_dir_close(void *handle);
 
 
@@ -836,9 +1052,11 @@ void *_rt_alloc_obj(dea_int bytes);
 uint32_t _rt_fmix32(uint32_t x);
 uint32_t _rt_fold_u64_to_u32_fmix(uint64_t h);
 void l1c_interface_fingerprint_sip13_hex(const uint8_t *data, int32_t len, uint8_t out_hex[16]);
+
 /**
  * Compiler-private L0/L1 pointer adapter; does not modify input bytes.
  * Pointer parameters match generated extern declarations, including under GCC array-parameter warnings.
+ *
  * @param out_hex Caller-owned storage for exactly 16 output bytes; no NUL terminator is written.
  * @param data Canonical interface bytes.
  * @param len Number of canonical bytes.
@@ -857,7 +1075,13 @@ dea_int rt_hash_data(void *data, dea_int size);
 dea_int rt_hash_opt_bool(dea_opt_bool opt);
 dea_int rt_hash_opt_byte(dea_opt_byte opt);
 dea_int rt_hash_opt_int(dea_opt_int opt);
-/** Hash an optional string value with presence-sensitive domain separation. */
+
+/**
+ * Hash an optional string value with presence-sensitive domain separation.
+ *
+ * @param opt Optional string whose presence is included in its hash domain.
+ * @return Presence-sensitive hash of the optional string value.
+ */
 dea_int rt_hash_opt_string(dea_opt_string opt);
 dea_int rt_hash_ptr(void *ptr);
 dea_int rt_hash_opt_ptr(void *opt);

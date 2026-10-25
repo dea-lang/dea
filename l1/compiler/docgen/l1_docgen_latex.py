@@ -438,8 +438,7 @@ def _simplify_enum_summary_lists(text: str) -> str:
 
 def _inject_enum_variants(text: str, file_compound: ET.Element) -> str:
     lines = text.splitlines()
-    insertions: list[tuple[int, list[str]]] = []
-    removals: list[tuple[int, int]] = []
+    replacements: list[tuple[int, int, list[str]]] = []
 
     for section in file_compound.findall("sectiondef"):
         for memberdef in section.findall("memberdef"):
@@ -467,35 +466,38 @@ def _inject_enum_variants(text: str, file_compound: ET.Element) -> str:
             if header_index is None:
                 continue
 
+            section_end = next(
+                (
+                    idx for idx in range(header_index + 1, len(lines))
+                    if lines[idx].startswith((r"\doxysubsubsection", r"\doxysubsection", r"\doxysection"))
+                ),
+                len(lines),
+            )
             enum_fields_index = next(
-                (idx for idx in range(header_index, len(lines)) if lines[idx].startswith(r"\begin{DoxyEnumFields}")),
+                (idx for idx in range(header_index, section_end) if lines[idx].startswith(r"\begin{DoxyEnumFields}")),
                 None,
             )
             if enum_fields_index is None:
                 continue
 
             enum_fields_end = next(
-                (idx for idx in range(enum_fields_index, len(lines)) if lines[idx].startswith(r"\end{DoxyEnumFields}")),
+                (idx for idx in range(enum_fields_index, section_end) if lines[idx].startswith(r"\end{DoxyEnumFields}")),
                 None,
             )
             if enum_fields_end is None:
                 continue
 
-            removals.append((enum_fields_index, enum_fields_end + 1))
-
-            if any(
+            already_injected = any(
                 line.startswith(r"\paragraph{Variants}") or line.startswith(r"\textbf{Variants:}\\")
                 for line in lines[header_index:enum_fields_index]
-            ):
-                continue
+            )
+            block = [] if already_injected else _variants_block(source_variants)
+            replacements.append((enum_fields_index, enum_fields_end + 1, block))
 
-            insertions.append((enum_fields_index, _variants_block(source_variants)))
-
-    for start, end in reversed(removals):
-        del lines[start:end]
-
-    for insert_index, block in reversed(insertions):
-        lines[insert_index:insert_index] = block
+    # XML declaration order can differ from the alphabetical LaTeX member order.
+    # Replace whole tables from the end so every offset still names its original span.
+    for start, end, block in sorted(replacements, reverse=True):
+        lines[start:end] = block
 
     return "\n".join(lines) + "\n"
 

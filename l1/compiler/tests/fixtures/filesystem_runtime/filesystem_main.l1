@@ -12,28 +12,50 @@ import std.io;
 import std.system;
 import path_arguments;
 
-/** Require mutation success. */
+/**
+ * Require mutation success.
+ *
+ * @param result Mutation or cleanup result required to be successful.
+ */
 func ok(result: FsResult) {
     match (result) {
         FsOk => {}
         FsFailed(error) => { printl_s(error_message(error)); assert(false, "filesystem mutation"); }
     }
 }
-/** Extract an owned path. */
+
+/**
+ * Extract an owned path.
+ *
+ * @param result Path result required to contain a resolved path.
+ * @return The owned path from the successful result.
+ */
 func path(result: PathResult) -> string {
     match (result) {
         ResolvedPath(value) => { return value; }
         PathFailed(error) => { assert(false, error_message(error)); return ""; }
     }
 }
-/** Require an identity result independent of spelling. */
+
+/**
+ * Require an identity result independent of spelling.
+ *
+ * @param a First followed path.
+ * @param b Second followed path.
+ * @param expected Required outcome of the native identity comparison.
+ */
 func identity(a: string, b: string, expected: bool) {
     match (same_file(a, b)) {
         SameFile(value) => { assert(value == expected, "native identity"); }
         SameFileFailed(error) => { assert(false, error_message(error)); }
     }
 }
-/** Exercise public path mutations within one owned tree. */
+
+/**
+ * Exercise public path mutations within one owned tree.
+ *
+ * @return Zero after all selected filesystem checks pass.
+ */
 func main() -> int {
     assert(fixture_decode_path("hex:636166c3a9") == "café", "UTF-8 path transport");
     if (argc() > 1) {

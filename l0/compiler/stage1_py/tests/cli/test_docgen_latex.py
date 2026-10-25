@@ -813,26 +813,23 @@ Body.
     ) in page
 
 
-def test_normalize_latex_site_injects_payload_enum_variants(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize("body", [
+    "{ TT_EOF; TT_IDENT(text: string); /* ; } */ TT_INT(text: string, value: int); }",
+    "{\n    TT_EOF;\n    TT_IDENT(text: string);\n    TT_INT(text: string, value: int);\n}",
+    "\n{\n    TT_EOF;\n    TT_IDENT(\n        text: string\n    );\n    TT_INT(text: string, value: int);\n}",
+])
+def test_normalize_latex_site_injects_payload_enum_variants(tmp_path: Path, monkeypatch, body: str) -> None:
     xml_dir = tmp_path / "xml"
     xml_dir.mkdir()
     latex_dir = tmp_path / "latex"
     latex_dir.mkdir()
     source_path = tmp_path / "compiler/stage2_l0/src/tokens.l0"
     source_path.parent.mkdir(parents=True, exist_ok=True)
-    source_path.write_text(
-        """module tokens;
-enum TokenType {
-    TT_EOF;
-    TT_IDENT(text: string);
-    TT_INT(text: string, value: int);
-}
-""",
-        encoding="utf-8",
-    )
+    source = f"module tokens;\nenum TokenType {body}\n"
+    source_path.write_text(source, encoding="utf-8")
 
     (xml_dir / "tokens_8l0.xml").write_text(
-        """<?xml version='1.0' encoding='UTF-8' standalone='no'?>
+        f"""<?xml version='1.0' encoding='UTF-8' standalone='no'?>
 <doxygen>
   <compounddef id="tokens_8l0" kind="file" language="C++">
     <compoundname>tokens.l0</compoundname>
@@ -842,7 +839,7 @@ enum TokenType {
         <name>TokenType</name>
         <enumvalue id="tokens_8l0_1a1" prot="public"><name>TT_EOF</name></enumvalue>
         <briefdescription><para>Defines the TokenType enumeration.</para></briefdescription>
-        <location file="compiler/stage2_l0/src/tokens.l0" line="2" bodystart="2" bodyend="6" />
+        <location file="compiler/stage2_l0/src/tokens.l0" line="2" bodystart="2" bodyend="{len(source.splitlines())}" />
       </memberdef>
     </sectiondef>
     <location file="compiler/stage2_l0/src/tokens.l0" line="1" />
@@ -880,7 +877,8 @@ Description.
     assert r"=(text: string)" not in page
     assert r"\{ \newline" not in page
     assert r"\textbf{Variants:}\\" in page
-    assert r"\texttt{TT\_IDENT(text: string)}" in page
+    identifier = r"TT\_IDENT( text: string )" if "TT_IDENT(\n" in body else r"TT\_IDENT(text: string)"
+    assert rf"\texttt{{{identifier}}}" in page
     assert r"\texttt{TT\_INT(text: string, value: int)}" in page
     assert r"\begin{DoxyEnumFields}" not in page
 

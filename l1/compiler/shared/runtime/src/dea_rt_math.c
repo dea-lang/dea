@@ -126,7 +126,12 @@ dea_int _rt_imul(dea_int a, dea_int b) {
     return a * b;
 }
 
-/** Narrow dea_int to dea_tiny with range check. */
+/**
+ * Narrow dea_int to dea_tiny with range check.
+ *
+ * @param value Integer value to convert after range validation.
+ * @return Value represented in the destination integer type.
+ */
 dea_tiny _rt_narrow_dea_tiny(dea_int value) {
     if (value < -128 || value > 127) {
         _rt_panic("integer to tiny cast overflow");
@@ -134,7 +139,12 @@ dea_tiny _rt_narrow_dea_tiny(dea_int value) {
     return (dea_tiny)value;
 }
 
-/** Narrow dea_int to dea_byte with range check. */
+/**
+ * Narrow dea_int to dea_byte with range check.
+ *
+ * @param value Integer value to convert after range validation.
+ * @return Value represented in the destination integer type.
+ */
 dea_byte _rt_narrow_dea_byte(dea_int value) {
     if (value < 0 || value > 255) {
         _rt_panic("integer to byte cast overflow");
@@ -142,7 +152,12 @@ dea_byte _rt_narrow_dea_byte(dea_int value) {
     return (dea_byte)value;
 }
 
-/** Narrow dea_int to dea_short with range check. */
+/**
+ * Narrow dea_int to dea_short with range check.
+ *
+ * @param value Integer value to convert after range validation.
+ * @return Value represented in the destination integer type.
+ */
 dea_short _rt_narrow_dea_short(dea_int value) {
     if (value < -32768 || value > 32767) {
         _rt_panic("integer to short cast overflow");
@@ -150,7 +165,12 @@ dea_short _rt_narrow_dea_short(dea_int value) {
     return (dea_short)value;
 }
 
-/** Narrow dea_int to dea_ushort with range check. */
+/**
+ * Narrow dea_int to dea_ushort with range check.
+ *
+ * @param value Integer value to convert after range validation.
+ * @return Value represented in the destination integer type.
+ */
 dea_ushort _rt_narrow_dea_ushort(dea_int value) {
     if (value < 0 || value > 65535) {
         _rt_panic("integer to ushort cast overflow");
@@ -158,7 +178,12 @@ dea_ushort _rt_narrow_dea_ushort(dea_int value) {
     return (dea_ushort)value;
 }
 
-/** Narrow dea_int to dea_uint with range check. */
+/**
+ * Narrow dea_int to dea_uint with range check.
+ *
+ * @param value Integer value to convert after range validation.
+ * @return Value represented in the destination integer type.
+ */
 dea_uint _rt_narrow_dea_uint(dea_int value) {
     if (value < 0) {
         _rt_panic("integer to uint cast overflow");
@@ -166,7 +191,12 @@ dea_uint _rt_narrow_dea_uint(dea_int value) {
     return (dea_uint)value;
 }
 
-/** Narrow dea_int to dea_ulong with range check. */
+/**
+ * Narrow dea_int to dea_ulong with range check.
+ *
+ * @param value Integer value to convert after range validation.
+ * @return Value represented in the destination integer type.
+ */
 dea_ulong _rt_narrow_dea_ulong(dea_int value) {
     if (value < 0) {
         _rt_panic("integer to ulong cast overflow");
@@ -202,7 +232,13 @@ dea_uint _rt_umod(dea_uint a, dea_uint b) {
     return a % b;
 }
 
-/** Safe unsigned integer addition with overflow check. */
+/**
+ * Safe unsigned integer addition with overflow check.
+ *
+ * @param a First operand.
+ * @param b Second operand.
+ * @return Sum.
+ */
 dea_uint _rt_uadd(dea_uint a, dea_uint b) {
     if (UINT32_MAX - a < b) {
         _rt_panic("uint addition overflow");
@@ -210,7 +246,13 @@ dea_uint _rt_uadd(dea_uint a, dea_uint b) {
     return a + b;
 }
 
-/** Safe unsigned integer subtraction with underflow check. */
+/**
+ * Safe unsigned integer subtraction with underflow check.
+ *
+ * @param a First operand.
+ * @param b Second operand.
+ * @return Difference.
+ */
 dea_uint _rt_usub(dea_uint a, dea_uint b) {
     if (a < b) {
         _rt_panic("uint subtraction underflow");
@@ -218,7 +260,13 @@ dea_uint _rt_usub(dea_uint a, dea_uint b) {
     return a - b;
 }
 
-/** Safe unsigned integer multiplication with overflow check. */
+/**
+ * Safe unsigned integer multiplication with overflow check.
+ *
+ * @param a First operand.
+ * @param b Second operand.
+ * @return Product.
+ */
 dea_uint _rt_umul(dea_uint a, dea_uint b) {
     if (a == 0 || b == 0) {
         return 0;
@@ -229,7 +277,13 @@ dea_uint _rt_umul(dea_uint a, dea_uint b) {
     return a * b;
 }
 
-/** Safe 64-bit signed integer division. */
+/**
+ * Safe 64-bit signed integer division.
+ *
+ * @param a Dividend.
+ * @param b Divisor.
+ * @return Quotient.
+ */
 dea_long _rt_ldiv(dea_long a, dea_long b) {
     if (b == 0) {
         _rt_panic("division by zero");
@@ -240,7 +294,13 @@ dea_long _rt_ldiv(dea_long a, dea_long b) {
     return a / b;
 }
 
-/** Safe 64-bit signed integer modulo. */
+/**
+ * Safe 64-bit signed integer modulo.
+ *
+ * @param a Dividend.
+ * @param b Divisor.
+ * @return Remainder.
+ */
 dea_long _rt_lmod(dea_long a, dea_long b) {
     if (b == 0) {
         _rt_panic("modulo by zero");
@@ -251,7 +311,13 @@ dea_long _rt_lmod(dea_long a, dea_long b) {
     return a % b;
 }
 
-/** Safe 64-bit signed integer addition with overflow check. */
+/**
+ * Safe 64-bit signed integer addition with overflow check.
+ *
+ * @param a First operand.
+ * @param b Second operand.
+ * @return Sum.
+ */
 dea_long _rt_ladd(dea_long a, dea_long b) {
     if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b)) {
         _rt_panic("long addition overflow");
@@ -259,7 +325,13 @@ dea_long _rt_ladd(dea_long a, dea_long b) {
     return a + b;
 }
 
-/** Safe 64-bit signed integer subtraction with overflow check. */
+/**
+ * Safe 64-bit signed integer subtraction with overflow check.
+ *
+ * @param a First operand.
+ * @param b Second operand.
+ * @return Difference.
+ */
 dea_long _rt_lsub(dea_long a, dea_long b) {
     if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b)) {
         _rt_panic("long subtraction overflow");
@@ -267,7 +339,13 @@ dea_long _rt_lsub(dea_long a, dea_long b) {
     return a - b;
 }
 
-/** Safe 64-bit signed integer multiplication with overflow check. */
+/**
+ * Safe 64-bit signed integer multiplication with overflow check.
+ *
+ * @param a First operand.
+ * @param b Second operand.
+ * @return Product.
+ */
 dea_long _rt_lmul(dea_long a, dea_long b) {
     if (a == 0 || b == 0) {
         return 0;
@@ -297,7 +375,13 @@ dea_long _rt_lmul(dea_long a, dea_long b) {
     return a * b;
 }
 
-/** Safe 64-bit unsigned integer division. */
+/**
+ * Safe 64-bit unsigned integer division.
+ *
+ * @param a Dividend.
+ * @param b Divisor.
+ * @return Quotient.
+ */
 dea_ulong _rt_uldiv(dea_ulong a, dea_ulong b) {
     if (b == 0) {
         _rt_panic("division by zero");
@@ -305,7 +389,13 @@ dea_ulong _rt_uldiv(dea_ulong a, dea_ulong b) {
     return a / b;
 }
 
-/** Safe 64-bit unsigned integer modulo. */
+/**
+ * Safe 64-bit unsigned integer modulo.
+ *
+ * @param a Dividend.
+ * @param b Divisor.
+ * @return Remainder.
+ */
 dea_ulong _rt_ulmod(dea_ulong a, dea_ulong b) {
     if (b == 0) {
         _rt_panic("modulo by zero");
@@ -313,7 +403,13 @@ dea_ulong _rt_ulmod(dea_ulong a, dea_ulong b) {
     return a % b;
 }
 
-/** Safe 64-bit unsigned integer addition with overflow check. */
+/**
+ * Safe 64-bit unsigned integer addition with overflow check.
+ *
+ * @param a First operand.
+ * @param b Second operand.
+ * @return Sum.
+ */
 dea_ulong _rt_uladd(dea_ulong a, dea_ulong b) {
     if (UINT64_MAX - a < b) {
         _rt_panic("ulong addition overflow");
@@ -321,7 +417,13 @@ dea_ulong _rt_uladd(dea_ulong a, dea_ulong b) {
     return a + b;
 }
 
-/** Safe 64-bit unsigned integer subtraction with underflow check. */
+/**
+ * Safe 64-bit unsigned integer subtraction with underflow check.
+ *
+ * @param a First operand.
+ * @param b Second operand.
+ * @return Difference.
+ */
 dea_ulong _rt_ulsub(dea_ulong a, dea_ulong b) {
     if (a < b) {
         _rt_panic("ulong subtraction underflow");
@@ -329,7 +431,13 @@ dea_ulong _rt_ulsub(dea_ulong a, dea_ulong b) {
     return a - b;
 }
 
-/** Safe 64-bit unsigned integer multiplication with overflow check. */
+/**
+ * Safe 64-bit unsigned integer multiplication with overflow check.
+ *
+ * @param a First operand.
+ * @param b Second operand.
+ * @return Product.
+ */
 dea_ulong _rt_ulmul(dea_ulong a, dea_ulong b) {
     if (a == 0 || b == 0) {
         return 0;
@@ -340,7 +448,12 @@ dea_ulong _rt_ulmul(dea_ulong a, dea_ulong b) {
     return a * b;
 }
 
-/** Checked cast from signed 64-bit to dea_tiny. */
+/**
+ * Checked cast from signed 64-bit to dea_tiny.
+ *
+ * @param value Integer value to convert.
+ * @return Value represented as dea_tiny; an out-of-range input panics.
+ */
 dea_tiny _rt_cast_dea_tiny_from_signed(dea_long value) {
     if (value < INT8_MIN || value > INT8_MAX) {
         _rt_panic("integer to tiny cast overflow");
@@ -348,7 +461,12 @@ dea_tiny _rt_cast_dea_tiny_from_signed(dea_long value) {
     return (dea_tiny)value;
 }
 
-/** Checked cast from unsigned 64-bit to dea_tiny. */
+/**
+ * Checked cast from unsigned 64-bit to dea_tiny.
+ *
+ * @param value Integer value to convert.
+ * @return Value represented as dea_tiny; an out-of-range input panics.
+ */
 dea_tiny _rt_cast_dea_tiny_from_unsigned(dea_ulong value) {
     if (value > (dea_ulong)INT8_MAX) {
         _rt_panic("integer to tiny cast overflow");
@@ -356,7 +474,12 @@ dea_tiny _rt_cast_dea_tiny_from_unsigned(dea_ulong value) {
     return (dea_tiny)value;
 }
 
-/** Checked cast from signed 64-bit to dea_byte. */
+/**
+ * Checked cast from signed 64-bit to dea_byte.
+ *
+ * @param value Integer value to convert.
+ * @return Value represented as dea_byte; an out-of-range input panics.
+ */
 dea_byte _rt_cast_dea_byte_from_signed(dea_long value) {
     if (value < 0 || value > UINT8_MAX) {
         _rt_panic("integer to byte cast overflow");
@@ -364,7 +487,12 @@ dea_byte _rt_cast_dea_byte_from_signed(dea_long value) {
     return (dea_byte)value;
 }
 
-/** Checked cast from unsigned 64-bit to dea_byte. */
+/**
+ * Checked cast from unsigned 64-bit to dea_byte.
+ *
+ * @param value Integer value to convert.
+ * @return Value represented as dea_byte; an out-of-range input panics.
+ */
 dea_byte _rt_cast_dea_byte_from_unsigned(dea_ulong value) {
     if (value > UINT8_MAX) {
         _rt_panic("integer to byte cast overflow");
@@ -372,7 +500,12 @@ dea_byte _rt_cast_dea_byte_from_unsigned(dea_ulong value) {
     return (dea_byte)value;
 }
 
-/** Checked cast from signed 64-bit to dea_short. */
+/**
+ * Checked cast from signed 64-bit to dea_short.
+ *
+ * @param value Integer value to convert.
+ * @return Value represented as dea_short; an out-of-range input panics.
+ */
 dea_short _rt_cast_dea_short_from_signed(dea_long value) {
     if (value < INT16_MIN || value > INT16_MAX) {
         _rt_panic("integer to short cast overflow");
@@ -380,7 +513,12 @@ dea_short _rt_cast_dea_short_from_signed(dea_long value) {
     return (dea_short)value;
 }
 
-/** Checked cast from unsigned 64-bit to dea_short. */
+/**
+ * Checked cast from unsigned 64-bit to dea_short.
+ *
+ * @param value Integer value to convert.
+ * @return Value represented as dea_short; an out-of-range input panics.
+ */
 dea_short _rt_cast_dea_short_from_unsigned(dea_ulong value) {
     if (value > (dea_ulong)INT16_MAX) {
         _rt_panic("integer to short cast overflow");
@@ -388,7 +526,12 @@ dea_short _rt_cast_dea_short_from_unsigned(dea_ulong value) {
     return (dea_short)value;
 }
 
-/** Checked cast from signed 64-bit to dea_ushort. */
+/**
+ * Checked cast from signed 64-bit to dea_ushort.
+ *
+ * @param value Integer value to convert.
+ * @return Value represented as dea_ushort; an out-of-range input panics.
+ */
 dea_ushort _rt_cast_dea_ushort_from_signed(dea_long value) {
     if (value < 0 || value > UINT16_MAX) {
         _rt_panic("integer to ushort cast overflow");
@@ -396,7 +539,12 @@ dea_ushort _rt_cast_dea_ushort_from_signed(dea_long value) {
     return (dea_ushort)value;
 }
 
-/** Checked cast from unsigned 64-bit to dea_ushort. */
+/**
+ * Checked cast from unsigned 64-bit to dea_ushort.
+ *
+ * @param value Integer value to convert.
+ * @return Value represented as dea_ushort; an out-of-range input panics.
+ */
 dea_ushort _rt_cast_dea_ushort_from_unsigned(dea_ulong value) {
     if (value > UINT16_MAX) {
         _rt_panic("integer to ushort cast overflow");
@@ -404,7 +552,12 @@ dea_ushort _rt_cast_dea_ushort_from_unsigned(dea_ulong value) {
     return (dea_ushort)value;
 }
 
-/** Checked cast from signed 64-bit to dea_int. */
+/**
+ * Checked cast from signed 64-bit to dea_int.
+ *
+ * @param value Integer value to convert.
+ * @return Value represented as dea_int; an out-of-range input panics.
+ */
 dea_int _rt_cast_dea_int_from_signed(dea_long value) {
     if (value < INT32_MIN || value > INT32_MAX) {
         _rt_panic("integer to int cast overflow");
@@ -412,7 +565,12 @@ dea_int _rt_cast_dea_int_from_signed(dea_long value) {
     return (dea_int)value;
 }
 
-/** Checked cast from unsigned 64-bit to dea_int. */
+/**
+ * Checked cast from unsigned 64-bit to dea_int.
+ *
+ * @param value Integer value to convert.
+ * @return Value represented as dea_int; an out-of-range input panics.
+ */
 dea_int _rt_cast_dea_int_from_unsigned(dea_ulong value) {
     if (value > (dea_ulong)INT32_MAX) {
         _rt_panic("integer to int cast overflow");
@@ -420,7 +578,12 @@ dea_int _rt_cast_dea_int_from_unsigned(dea_ulong value) {
     return (dea_int)value;
 }
 
-/** Checked cast from signed 64-bit to dea_uint. */
+/**
+ * Checked cast from signed 64-bit to dea_uint.
+ *
+ * @param value Integer value to convert.
+ * @return Value represented as dea_uint; an out-of-range input panics.
+ */
 dea_uint _rt_cast_dea_uint_from_signed(dea_long value) {
     if (value < 0 || value > UINT32_MAX) {
         _rt_panic("integer to uint cast overflow");
@@ -428,7 +591,12 @@ dea_uint _rt_cast_dea_uint_from_signed(dea_long value) {
     return (dea_uint)value;
 }
 
-/** Checked cast from unsigned 64-bit to dea_uint. */
+/**
+ * Checked cast from unsigned 64-bit to dea_uint.
+ *
+ * @param value Integer value to convert.
+ * @return Value represented as dea_uint; an out-of-range input panics.
+ */
 dea_uint _rt_cast_dea_uint_from_unsigned(dea_ulong value) {
     if (value > UINT32_MAX) {
         _rt_panic("integer to uint cast overflow");
@@ -436,12 +604,22 @@ dea_uint _rt_cast_dea_uint_from_unsigned(dea_ulong value) {
     return (dea_uint)value;
 }
 
-/** Checked cast from signed 64-bit to dea_long. */
+/**
+ * Checked cast from signed 64-bit to dea_long.
+ *
+ * @param value Integer value to convert.
+ * @return Value represented as dea_long; an out-of-range input panics.
+ */
 dea_long _rt_cast_dea_long_from_signed(dea_long value) {
     return value;
 }
 
-/** Checked cast from unsigned 64-bit to dea_long. */
+/**
+ * Checked cast from unsigned 64-bit to dea_long.
+ *
+ * @param value Integer value to convert.
+ * @return Value represented as dea_long; an out-of-range input panics.
+ */
 dea_long _rt_cast_dea_long_from_unsigned(dea_ulong value) {
     if (value > (dea_ulong)INT64_MAX) {
         _rt_panic("integer to long cast overflow");
@@ -449,7 +627,12 @@ dea_long _rt_cast_dea_long_from_unsigned(dea_ulong value) {
     return (dea_long)value;
 }
 
-/** Checked cast from signed 64-bit to dea_ulong. */
+/**
+ * Checked cast from signed 64-bit to dea_ulong.
+ *
+ * @param value Integer value to convert.
+ * @return Value represented as dea_ulong; an out-of-range input panics.
+ */
 dea_ulong _rt_cast_dea_ulong_from_signed(dea_long value) {
     if (value < 0) {
         _rt_panic("integer to ulong cast overflow");
@@ -457,7 +640,12 @@ dea_ulong _rt_cast_dea_ulong_from_signed(dea_long value) {
     return (dea_ulong)value;
 }
 
-/** Checked cast from unsigned 64-bit to dea_ulong. */
+/**
+ * Checked cast from unsigned 64-bit to dea_ulong.
+ *
+ * @param value Integer value to convert.
+ * @return Value represented as dea_ulong; an out-of-range input panics.
+ */
 dea_ulong _rt_cast_dea_ulong_from_unsigned(dea_ulong value) {
     return value;
 }

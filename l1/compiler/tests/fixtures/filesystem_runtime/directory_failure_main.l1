@@ -11,25 +11,52 @@ import std.io;
 import std.text;
 import std.system;
 
-/** Select test-only native cursor faults. */
+/**
+ * Select test-only native cursor faults.
+ *
+ * @param mode Fault scenario selected for the following native calls.
+ */
 extern func fs_dir_probe_config(mode: int);
-/** Read the expected native error code. */
+
+/**
+ * Read the expected native error code.
+ *
+ * @return The native error code expected for the selected scenario.
+ */
 extern func fs_dir_probe_error() -> int;
-/** Read the number of consumed native cursors. */
+
+/**
+ * Read the number of consumed native cursors.
+ *
+ * @return Number of native cursors consumed since the last configuration reset.
+ */
 extern func fs_dir_probe_closes() -> int;
 
-/** Require cleanup success without collapsing its captured error. */
+/**
+ * Require cleanup success without collapsing its captured error.
+ *
+ * @param result Mutation or cleanup result required to be successful.
+ */
 func ok(result: FsResult) {
     match (result) { FsOk => {} FsFailed(error) => { assert(false, error_message(error)); } }
 }
 
-/** Check a recorded native failure instead of reading the current ambient errno. */
+/**
+ * Check a recorded native failure instead of reading the current ambient errno.
+ *
+ * @param error Captured failure required to match the configured native error.
+ */
 func expected_error(error: OsError) {
     assert(error.native_code == (fs_dir_probe_error() as long), "saved first error");
     assert(_os_error_to_rt(error).domain == 1, "native errno domain");
 }
 
-/** Return through scoped cleanup while keeping an independently owned name alive. */
+/**
+ * Return through scoped cleanup while keeping an independently owned name alive.
+ *
+ * @param path Existing nonempty fixture directory.
+ * @return An owned entry name that remains valid after cursor cleanup.
+ */
 func first_name(path: string) -> string {
     with (let result = open(path) => ok(free_open_dir_result(result))) {
         match (result) {
@@ -42,7 +69,11 @@ func first_name(path: string) -> string {
     return "";
 }
 
-/** Validate partial-result cleanup, cursor destruction, and first-error precedence. */
+/**
+ * Validate partial-result cleanup, cursor destruction, and first-error precedence.
+ *
+ * @return Zero after all ownership and error checks pass.
+ */
 func main() -> int {
     let root = "build/l1-directory-errors-" + int_to_string(get_pid());
     ok(create_dir(root));

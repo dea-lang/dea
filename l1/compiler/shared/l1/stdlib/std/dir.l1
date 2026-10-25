@@ -3,7 +3,9 @@
  * Copyright (c) 2026 gwz
  */
 
-/** Incremental host-order directory traversal with explicit owned lifetime. */
+/**
+ * Incremental host-order directory traversal with explicit owned lifetime.
+ */
 module std.dir;
 
 export Dir, DirEntry, OpenDirResult, NextResult, DirEntries, EntriesResult,
@@ -18,27 +20,58 @@ import std.vector;
 import std.assert;
 import std.string;
 
-/** Cursor borrowed from an owning OpenDirResult; do not copy its fields. */
+/**
+ * Cursor borrowed from an owning OpenDirResult; do not copy its fields.
+ */
 struct Dir { _handle: void*?; }
-/** Owned name and a cheap hint, independent of subsequent cursor operations. */
+
+/**
+ * Owned name and a cheap hint, independent of subsequent cursor operations.
+ */
 struct DirEntry { name: string; file_type: FileType; }
-/** Owns a successful cursor; release exactly once with free_open_dir_result. */
+
+/**
+ * Owns a successful cursor; release exactly once with free_open_dir_result.
+ */
 enum OpenDirResult { OpenedDir(dir: Dir*); OpenDirFailed(error: OsError); }
-/** A single next operation distinguishes an entry, clean end, and failure. */
+
+/**
+ * A single next operation distinguishes an entry, clean end, and failure.
+ */
 enum NextResult { Entry(entry: DirEntry); End; NextFailed(error: OsError); }
-/** Collection borrowed from an owning EntriesResult. */
+
+/**
+ * Collection borrowed from an owning EntriesResult.
+ */
 struct DirEntries { _storage: VectorBase*; }
-/** Owns all-or-error materialization; release exactly once with free_entries_result. */
+
+/**
+ * Owns all-or-error materialization; release exactly once with free_entries_result.
+ */
 enum EntriesResult { Entries(entries: DirEntries*); EntriesFailed(error: OsError); }
 
-/** Open a followed directory without sorting or materializing entries. */
+/**
+ * Open a followed directory without sorting or materializing entries.
+ *
+ * Release a successful result exactly once with free_open_dir_result.
+ *
+ * @param path Directory path to open.
+ * @return An owned cursor, or a captured open failure.
+ */
 func open(path: string) -> OpenDirResult {
     let result = rt_dir_open(path);
     if (!result.ok) { return OpenDirFailed(_os_error_from_rt(result.error)); }
     return OpenedDir(new Dir(result.handle));
 }
 
-/** Advance; terminal end/error repeats until close. Dot entries are excluded. */
+/**
+ * Advance a live cursor in host order, excluding dot entries.
+ *
+ * Terminal end and error outcomes repeat until cursor cleanup.
+ *
+ * @param dir Live cursor borrowed from an owning OpenDirResult.
+ * @return An owned entry, clean end, or captured failure.
+ */
 func next(dir: Dir*) -> NextResult {
     if (dir._handle == null) { return NextFailed(OsError(InvalidHandle, Runtime, 0 as long)); }
     let result = rt_dir_next(dir._handle as void*);
@@ -47,7 +80,14 @@ func next(dir: Dir*) -> NextResult {
     return NextFailed(_os_error_from_rt(result.error));
 }
 
-/** Consume the native cursor even on failure. Repeated close succeeds. */
+/**
+ * Consume the native cursor even when closing fails.
+ *
+ * The wrapper remains alive. Repeated close calls succeed.
+ *
+ * @param dir Live wrapper whose native cursor is to be closed.
+ * @return FsOk when closed or already closed, otherwise the captured close failure.
+ */
 func close(dir: Dir*) -> FsResult {
     if (dir._handle == null) { return FsOk; }
     let handle = dir._handle as void*;
@@ -55,7 +95,14 @@ func close(dir: Dir*) -> FsResult {
     return _fs_status(rt_dir_close(handle));
 }
 
-/** Destroy the cursor even on close failure, preserving its captured result. */
+/**
+ * Close and destroy a cursor, preserving the captured close result.
+ *
+ * All aliases expire even when native closing fails.
+ *
+ * @param dir Cursor wrapper to consume exactly once.
+ * @return The close outcome, including any captured failure.
+ */
 func free_dir(dir: Dir*) -> FsResult {
     let result = close(dir);
     drop dir;
@@ -64,7 +111,12 @@ func free_dir(dir: Dir*) -> FsResult {
 
 /**
  * Consume successful cursor ownership exactly once, including on close failure.
- * Failure variants need no cleanup and return FsOk; all successful aliases expire.
+ *
+ * Successful cursor aliases expire even when closing fails.
+ * Failure variants require no cleanup.
+ *
+ * @param result Owning open result to release.
+ * @return The captured close outcome, or FsOk for a failed-open variant.
  */
 func free_open_dir_result(result: OpenDirResult) -> FsResult {
     match (result) {
@@ -73,15 +125,32 @@ func free_open_dir_result(result: OpenDirResult) -> FsResult {
     }
 }
 
-/** Return the logical entry count. */
+/**
+ * Return the logical entry count.
+ *
+ * @param entries Live collection borrowed from an owning EntriesResult.
+ * @return The number of materialized entries.
+ */
 func entries_size(entries: DirEntries*) -> int { return vec_size(entries._storage); }
 
-/** Return an owning copy of one entry, asserting the logical index range. */
+/**
+ * Return an owning copy of one entry, asserting the logical index range.
+ *
+ * @param entries Live collection borrowed from an owning EntriesResult.
+ * @param index Entry index, from zero up to but excluding entries_size(entries).
+ * @return An entry copy whose name remains valid after collection cleanup.
+ */
 func entries_get(entries: DirEntries*, index: int) -> DirEntry {
     return *(vec_get(entries._storage, index) as DirEntry*);
 }
 
-/** Release all owned names and the materialized container. */
+/**
+ * Release all owned names and the materialized container.
+ *
+ * All collection aliases expire; independently owned entry copies remain valid.
+ *
+ * @param entries Collection to consume exactly once.
+ */
 func free_entries(entries: DirEntries*) {
     for (let i = 0; i < entries_size(entries); i = i + 1) {
         let entry = vec_get(entries._storage, i) as DirEntry*;
@@ -91,7 +160,14 @@ func free_entries(entries: DirEntries*) {
     drop entries;
 }
 
-/** Consume successful collection ownership exactly once; failed results are no-ops. */
+/**
+ * Consume successful collection ownership exactly once.
+ *
+ * Failed results require no cleanup. Successful collection aliases expire;
+ * independently owned entry copies remain valid.
+ *
+ * @param result Owning entries result to release.
+ */
 func free_entries_result(result: EntriesResult) {
     match (result) {
         Entries(entries) => { free_entries(entries); }
@@ -99,7 +175,15 @@ func free_entries_result(result: EntriesResult) {
     }
 }
 
-/** Read all names in host order; discard partial output on next/close failure. */
+/**
+ * Read all names in host order and close the cursor before returning.
+ *
+ * Discard partial output on iteration or close failure.
+ * Release a successful result exactly once with free_entries_result.
+ *
+ * @param path Directory path to read, following links.
+ * @return An owned collection, or a captured failure.
+ */
 func read_all(path: string) -> EntriesResult {
     match (open(path)) {
         OpenDirFailed(error) => { return EntriesFailed(error); }
@@ -134,7 +218,13 @@ func read_all(path: string) -> EntriesResult {
     }
 }
 
-/** Swap typed owning values so ARC preserves names before either slot is overwritten. */
+/**
+ * Swap typed owning values so ARC preserves names before overwriting either slot.
+ *
+ * @param entries Live collection to modify.
+ * @param left Index of the first entry.
+ * @param right Index of the second entry.
+ */
 func _entries_swap(entries: DirEntries*, left: int, right: int) {
     if (left == right) { return; }
     let left_slot = vec_get(entries._storage, left) as DirEntry*;
@@ -144,7 +234,14 @@ func _entries_swap(entries: DirEntries*, left: int, right: int) {
     *right_slot = saved;
 }
 
-/** Restore the max heap rooted at root within the half-open range [0, count). */
+/**
+ * Restore the max heap rooted at root within the half-open range [0, count).
+ *
+ * @param entries Live collection containing the heap.
+ * @param root Index of the root to restore.
+ * @param count Exclusive upper bound of the heap.
+ * @param compare Consistent negative/zero/positive entry comparator.
+ */
 func _entries_sift_down(entries: DirEntries*, root: int, count: int, compare: func(DirEntry, DirEntry) -> int) {
     // A child exists only below count / 2; checking first also bounds multiplication.
     while (root < count / 2) {
@@ -158,7 +255,15 @@ func _entries_sift_down(entries: DirEntries*, root: int, count: int, compare: fu
     }
 }
 
-/** Iterative in-place heapsort: O(n log n) comparisons and constant auxiliary storage. */
+/**
+ * Sort entries in place with an iterative heapsort.
+ *
+ * Use O(n log n) comparisons and constant auxiliary storage.
+ * Equal-key order is unspecified.
+ *
+ * @param entries Live collection to modify.
+ * @param compare Consistent comparator that must not mutate or free the collection.
+ */
 func _entries_sort(entries: DirEntries*, compare: func(DirEntry, DirEntry) -> int) {
     let count = entries_size(entries);
     let root = count / 2;
@@ -175,9 +280,15 @@ func _entries_sort(entries: DirEntries*, compare: func(DirEntry, DirEntry) -> in
 }
 
 /**
- * Sort the same successful collection and return its alias; failures pass through.
- * The comparator returns negative/zero/positive and must not mutate/free the collection.
- * Equal-key order is unspecified. Neither this call nor its return adds a cleanup owner.
+ * Sort the successful collection in place and return an alias to the same result.
+ *
+ * The comparator must not mutate or free the collection. Equal-key order is
+ * unspecified. Failed results pass through without invoking the comparator.
+ * Neither this call nor its return adds a cleanup owner.
+ *
+ * @param result Entries result to sort in place, or pass through on failure.
+ * @param compare Consistent negative/zero/positive entry comparator.
+ * @return An alias sharing the input result's single cleanup obligation.
  */
 func entries_sort(result: EntriesResult, compare: func(DirEntry, DirEntry) -> int) -> EntriesResult {
     match (result) {
@@ -187,12 +298,25 @@ func entries_sort(result: EntriesResult, compare: func(DirEntry, DirEntry) -> in
     return result;
 }
 
-/** Compare entry names by unsigned bytes using the public string comparator. */
+/**
+ * Compare entry names by unsigned bytes using the public string comparator.
+ *
+ * @param left First entry.
+ * @param right Second entry.
+ * @return A negative value, zero, or a positive value according to name order.
+ */
 func _entries_compare_name(left: DirEntry, right: DirEntry) -> int {
     return cmp_s(left.name, right.name);
 }
 
-/** Sort successful entries by name bytes; the returned alias shares one cleanup owner. */
+/**
+ * Sort successful entries by name bytes using cmp_s.
+ *
+ * Equal-key order is unspecified. Failed results pass through unchanged.
+ *
+ * @param result Entries result to sort in place, or pass through on failure.
+ * @return An alias sharing the input result's single cleanup obligation.
+ */
 func entries_sort_default(result: EntriesResult) -> EntriesResult {
     return entries_sort(result, _entries_compare_name);
 }

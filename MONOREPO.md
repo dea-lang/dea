@@ -54,6 +54,18 @@ construction environment and a second operation environment without L1. Run it w
 change; earlier isolation evidence applies to its tested inputs. Compiler CI remains separate from L1 artifact
 acceptance and release workflows.
 
+## Documentation CI
+
+Unified CI routes full reference validation independently for L0 and L1. The L0 workflow builds both stage references;
+the L1 workflow builds the canonical XML, HTML, Markdown, LaTeX, full indexed PDF, and verified offline bundle. L1
+compiler, documentation, and relevant shared-tooling changes select its reference job. Manual runs and unavailable diff
+endpoints select both documentation jobs.
+
+Like L0, the L1 reference job explicitly prints its generated `undocumented-functions.txt` report. Undocumented entries
+are informational and do not fail the job. L1 has one canonical report; L0 prints both stage reports. Completed bundles
+and available build/report diagnostics are retained on build failure. These validation jobs have read-only repository
+permissions and perform no publication.
+
 ## AddressSanitizer capability checks
 
 Sanitizer tests use `scripts/asan_test_support.py` to verify both normal executable startup and an actual ASan

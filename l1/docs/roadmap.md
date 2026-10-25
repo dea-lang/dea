@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-10-24
+Version: 2026-10-25
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -92,6 +92,9 @@ split dependency or implementing that work now.
 <details>
 <summary>These are the major completed milestones that shape the current L1 baseline (click to expand).
 </summary>
+
+- Tool [2026-10-25-full-reference-ci-noref][reference-ci] added full routine reference generation and informational
+  undocumented-function report printing, with retained diagnostic and bundle artifacts.
 
 - Feature [2026-04-03-dea-virtual-module-noref][virtual-module] introduced the compiler-synthesized `dea` prelude module
   that contains `sizeof` and `ord` intrinsics.
@@ -588,6 +591,7 @@ update to be promoted to an initiative or plan:
 [profile-boundary]: ../work/plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md
 [profile-review]: ../work/plans/bug-fixes/closed/2026-10-19-explicit-profile-review-gaps-noref.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md
+[reference-ci]: ../work/plans/tools/closed/2026-10-25-full-reference-ci-noref.md
 [release-policy]: ../../docs/decisions/0023-l1-release-workflow-policy.md
 [release-workflows]: ../../work/plans/tools/closed/2026-05-12-l1-gha-release-snapshot-workflows-noref.md
 [reuse-report]: ../work/plans/tools/closed/2026-09-13-native-reuse-capability-report-noref.md

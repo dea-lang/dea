@@ -3,7 +3,10 @@
  * Copyright (c) 2026 gwz
  */
 
-/** @file native_probe.c Direct runtime path and directory boundary regressions. */
+/**
+ * @file native_probe.c
+ * Direct runtime path and directory boundary regressions.
+ */
 #ifndef _WIN32
 #define _DARWIN_C_SOURCE 1
 #define _DEFAULT_SOURCE 1
@@ -23,10 +26,21 @@ typedef struct __deaM3sys2fsS10RtFsStatus Status;
 typedef struct __deaM3sys2fsS8RtFsPath PathResult;
 typedef struct __deaM3sys2fsS9RtDirNext Next;
 
-/** Borrow argv bytes for the duration of one runtime call. */
+/**
+ * Borrow argv bytes for the duration of one runtime call.
+ *
+ * @param s NUL-terminated fixture path bytes borrowed for the operation.
+ * @return A non-owning Dea string valid while s remains alive.
+ */
 static dea_string text(const char *s) { return (dea_string)DEA_STRING_CONST((char *)s, (dea_int)strlen(s)); }
 
-/** Exercise every path boundary with an embedded NUL and with empty input. */
+/**
+ * Exercise every path boundary with an embedded NUL and with empty input.
+ *
+ * @param path Empty or embedded-NUL input required to fail validation.
+ * @param valid Valid comparison path used for multi-path operations.
+ * @return Zero when every invalid-input check passes, otherwise one.
+ */
 static int invalid_paths(dea_string path, dea_string valid) {
     REQUIRE(!rt_fs_metadata(path, 0).ok);
     REQUIRE(!rt_fs_metadata(path, 1).ok);
@@ -52,7 +66,13 @@ static int invalid_paths(dea_string path, dea_string valid) {
     return 0;
 }
 
-/** Check names are copied, EOF repeats, and the valid cursor is consumed on close. */
+/**
+ * Check names are copied, EOF repeats, and the valid cursor is consumed on close.
+ *
+ * @param path Directory to enumerate through a native runtime cursor.
+ * @param expected Required number of entries excluding dot entries.
+ * @return Zero when all cursor lifetime checks pass, otherwise one.
+ */
 static int cursor(dea_string path, int expected) {
     struct __deaM3sys2fsS9RtDirOpen opened = rt_dir_open(path);
     REQUIRE(opened.ok);
@@ -76,7 +96,13 @@ static int cursor(dea_string path, int expected) {
     return 0;
 }
 
-/** Run against Python-owned fixtures; paths include Unicode, spaces, and links. */
+/**
+ * Run against Python-owned fixtures; paths include Unicode, spaces, and links.
+ *
+ * @param argc Number of command-line arguments, including the executable name.
+ * @param argv Argument vector containing the Python-owned fixture paths.
+ * @return Zero if every probe passes, otherwise one.
+ */
 int main(int argc, char **argv) {
     REQUIRE(argc == 8);
     argv = fixture_path_arguments(argc, argv);

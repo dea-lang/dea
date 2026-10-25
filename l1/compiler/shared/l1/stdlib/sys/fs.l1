@@ -3,18 +3,31 @@
  * Copyright (c) 2026 gwz
  */
 
-/** Direct filesystem transport; handles are owned by std.dir. */
+/**
+ * Direct filesystem transport; handles are owned by std.dir.
+ */
 module sys.fs;
 
 import sys.os;
 
-/** Successful operation or captured failure. */
+/**
+ * Successful operation or captured failure.
+ */
 struct RtFsStatus { ok: bool; error: RtOsError; }
-/** Followed identity comparison with an independent success flag. */
+
+/**
+ * Followed identity comparison with an independent success flag.
+ */
 struct RtFsBool { ok: bool; value: bool; error: RtOsError; }
-/** Owned path spelling, empty only on failure. */
+
+/**
+ * Owned path spelling, empty only on failure.
+ */
 struct RtFsPath { ok: bool; value: string; error: RtOsError; }
-/** Metadata tags: unknown, regular, directory, symbolic link, other. */
+
+/**
+ * Metadata tags: unknown, regular, directory, symbolic link, other.
+ */
 struct RtFsMetadata {
     ok: bool;
     file_type: int;
@@ -23,36 +36,145 @@ struct RtFsMetadata {
     mtime_nsec: int?;
     error: RtOsError;
 }
-/** A native directory cursor, or captured open failure. */
+
+/**
+ * A native directory cursor, or captured open failure.
+ */
 struct RtDirOpen { ok: bool; handle: void*?; error: RtOsError; }
-/** Next states: entry (0), end (1), failure (2). Names are owned bytes. */
+
+/**
+ * Next states: entry (0), end (1), failure (2). Names are owned bytes.
+ */
 struct RtDirNext { state: int; name: string; file_type: int; error: RtOsError; }
 
-/** Query metadata, optionally following the final link. */
+/**
+ * Query metadata, optionally following the final link.
+ *
+ * @param path Filesystem path to inspect.
+ * @param follow Whether to follow the final symbolic link.
+ * @return Direct metadata, or a captured lookup failure.
+ */
 extern func rt_fs_metadata(path: string, follow: bool) -> RtFsMetadata;
-/** Compare native identities after following both paths. */
+
+/**
+ * Compare native identities after following both paths.
+ *
+ * @param left First filesystem path.
+ * @param right Second filesystem path.
+ * @return The identity comparison, or a captured failure from either lookup.
+ */
 extern func rt_fs_same_file(left: string, right: string) -> RtFsBool;
-/** Anchor a spelling at call time without resolving aliases. */
+
+/**
+ * Anchor a spelling at call time without resolving aliases.
+ *
+ * @param path Filesystem path; existence is not required.
+ * @return An owned absolute path spelling, or a captured failure.
+ */
 extern func rt_fs_absolute(path: string) -> RtFsPath;
-/** Resolve an existing path through aliases. */
+
+/**
+ * Resolve an existing path through aliases.
+ *
+ * @param path Existing filesystem path to resolve.
+ * @return An owned resolved path spelling, or a captured failure.
+ */
 extern func rt_fs_canonicalize(path: string) -> RtFsPath;
-/** Return the process working directory. */
+
+/**
+ * Return the process working directory.
+ *
+ * @return An owned current-directory spelling, or a captured failure.
+ */
 extern func rt_fs_current_dir() -> RtFsPath;
-/** Change process working directory, following links. */
+
+/**
+ * Change the process working directory, following links.
+ *
+ * @param path Directory path to enter.
+ * @return Success, or a captured failure.
+ */
 extern func rt_fs_set_current_dir(path: string) -> RtFsStatus;
-/** Create a directory, optionally including missing parents. */
+
+/**
+ * Create a directory, optionally including missing parents.
+ *
+ * Recursive creation does not roll back directories on failure.
+ *
+ * @param path Directory path to create.
+ * @param recursive Whether to create missing parents and accept existing directories.
+ * @return Success, or the first captured creation failure.
+ */
 extern func rt_fs_create_dir(path: string, recursive: bool) -> RtFsStatus;
-/** Remove one non-directory object or symbolic link. */
+
+/**
+ * Remove one non-directory object or symbolic link.
+ *
+ * @param path Filesystem entry to remove without following its final link.
+ * @return Success, or a captured removal failure.
+ */
 extern func rt_fs_remove_file(path: string) -> RtFsStatus;
-/** Remove an empty directory or, recursively, a tree without following links. */
+
+/**
+ * Remove an empty directory or recursively remove a tree without following links.
+ *
+ * Recursive removal rejects filesystem roots and final dot or dot-dot components.
+ *
+ * @param path Directory path, or a final link for recursive removal.
+ * @param recursive Whether to remove the tree instead of one empty real directory.
+ * @return Success, or the first captured removal failure.
+ */
 extern func rt_fs_remove_dir(path: string, recursive: bool) -> RtFsStatus;
-/** Rename with native overwrite semantics or explicit file replacement. */
+
+/**
+ * Rename with native overwrite semantics or explicit file replacement.
+ *
+ * No copy fallback is performed.
+ *
+ * @param source Existing source entry.
+ * @param destination Destination name.
+ * @param replace_file Whether to reject real directories at the source or destination.
+ * @return Success, or a captured rename failure.
+ */
 extern func rt_fs_rename(source: string, destination: string, replace_file: bool) -> RtFsStatus;
-/** Copy regular-file bytes exclusively to a new destination; never overwrite. */
+
+/**
+ * Copy regular-file bytes exclusively to a new destination.
+ *
+ * A failure may leave a partially written destination.
+ *
+ * @param source Source path, followed to a regular file.
+ * @param destination New destination path; existing entries must not be overwritten.
+ * @return Success, or a captured copy failure.
+ */
 extern func rt_fs_copy_file(source: string, destination: string) -> RtFsStatus;
-/** Open an incremental directory cursor, following the path. */
+
+/**
+ * Open an incremental directory cursor, following the path.
+ *
+ * Consume a successful cursor exactly once with rt_dir_close.
+ *
+ * @param path Directory path to open.
+ * @return An owned native cursor, or a captured open failure.
+ */
 extern func rt_dir_open(path: string) -> RtDirOpen;
-/** Advance one valid cursor; no implicit full metadata lookup. */
+
+/**
+ * Advance one valid cursor without an implicit full metadata lookup.
+ *
+ * Skip dot entries and preserve host order. End and error states repeat.
+ *
+ * @param handle Valid live native cursor borrowed from rt_dir_open.
+ * @return An owned entry name, end state, or captured failure.
+ */
 unsafe extern func rt_dir_next(handle: void*) -> RtDirNext;
-/** Close and consume one valid native cursor, including on failure. */
+
+/**
+ * Close and consume one valid native cursor, including on failure.
+ *
+ * All handle aliases expire even when native closing fails.
+ *
+ * @param handle Native cursor to consume exactly once.
+ * @return Success, or the captured native close failure.
+ */
 unsafe extern func rt_dir_close(handle: void*) -> RtFsStatus;

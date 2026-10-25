@@ -3,6 +3,7 @@
 """Independent output transactions and stage navigation."""
 from pathlib import Path
 import sys
+import xml.etree.ElementTree as ET
 import pytest
 from jinja2 import Environment, FileSystemLoader
 
@@ -10,7 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'scripts'))
 from compiler.docgen import l1_docgen
-from compiler.docgen.l1_docgen_latex import _normalize_titlepage_front_matter
+from compiler.docgen.l1_docgen_l0_helpers import extract_l0_enum_variants
+from compiler.docgen.l1_docgen_latex import _inject_enum_variants, _normalize_titlepage_front_matter
+from compiler.docgen.l1_docgen_markdown import _render_member
 import gen_docs
 
 
@@ -145,3 +148,170 @@ def test_wrapper_publishes_matching_preview_and_artifact(tmp_path, monkeypatch):
     assert gen_docs.main(['--strict','--pdf','--artifacts']) == 0
     assert (repo / 'build/preview/reference/markdown/index.md').read_text() == 'reference'
     assert (repo / 'build/docs/artifacts/dea_l1_autodocs.tar.gz').is_file()
+
+
+@pytest.mark.parametrize('suffix', ['l0', 'l1'])
+def test_enum_source_variants_handle_inline_and_multiline_payloads(tmp_path, monkeypatch, suffix):
+    monkeypatch.chdir(tmp_path)
+    source = '''/* enum Inline { NotAVariant; } */
+enum Before { Ignore; }
+enum Inline { Opened(dir: Dir*); /* ; } */ End; Failed(error: OsError); }
+enum Multiline
+{
+    Callback(
+        callback: (func(int, int) -> bool)?,
+        // Ignore punctuation in comments: ; } )
+        values: byte[]
+    );
+    First; Second;
+}
+enum After { AlsoIgnore; }
+'''
+    filename = f'fixture.{suffix}'
+    Path(filename).write_text(source)
+    inline = ET.fromstring(
+        f'<memberdef kind="enum"><name>Inline</name><location file="{filename}" line="3" bodystart="3" bodyend="3"/></memberdef>'
+    )
+    multiline = ET.fromstring(
+        f'<memberdef kind="enum"><name>Multiline</name><location file="{filename}" line="4" bodystart="5" bodyend="12"/></memberdef>'
+    )
+    assert extract_l0_enum_variants(inline) == ['Opened(dir: Dir*)', 'End', 'Failed(error: OsError)']
+    assert extract_l0_enum_variants(multiline) == [
+        'Callback( callback: (func(int, int) -> bool)?, values: byte[] )',
+        'First',
+        'Second',
+    ]
+
+
+def test_enum_source_variants_preserve_literal_contents(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    Path('fixture.l1').write_text('''enum Literal {
+    Text = "a  // ; }  b"; /* skipped */
+    Char = ';';
+    Escaped = "a\\\" /* ; }  b";
+}
+''')
+    member = ET.fromstring(
+        '<memberdef kind="enum"><name>Literal</name><location file="fixture.l1" line="1" bodystart="1" bodyend="5"/></memberdef>'
+    )
+    assert extract_l0_enum_variants(member) == [
+        'Text = "a  // ; }  b"',
+        "Char = ';'",
+        'Escaped = "a\\\" /* ; }  b"',
+    ]
+
+
+@pytest.mark.parametrize('body', [
+    '{ OpenedDir(dir: Dir*); OpenDirFailed(error: OsError); }',
+    '{\n    OpenedDir(dir: Dir*);\n    OpenDirFailed(error: OsError);\n}',
+])
+def test_enum_outputs_restore_original_payload_declarations(tmp_path, monkeypatch, body):
+    monkeypatch.chdir(tmp_path)
+    Path('fixture.l1').write_text(f'enum OpenDirResult {body}\n')
+    compound = ET.fromstring('''<compounddef kind="file"><sectiondef kind="enum">
+<memberdef kind="enum" id="result"><name>OpenDirResult</name>
+<enumvalue><name>OpenedDir</name></enumvalue>
+<enumvalue><name>OpenDirFailed</name></enumvalue>
+<location file="fixture.l1" line="1"/></memberdef>
+</sectiondef></compounddef>''')
+    member = compound.find('sectiondef/memberdef')
+    assert member is not None
+    markdown = _render_member(member, 2, {}, Path('fixture.md'))
+    assert '- `OpenedDir(dir: Dir*)`' in markdown
+    assert '- `OpenDirFailed(error: OsError)`' in markdown
+
+    latex = _inject_enum_variants(r'''\doxysubsubsection{OpenDirResult}{OpenDirResult}
+\begin{DoxyEnumFields}[2]{Enumerator}
+OpenedDir & OpenDirFailed \\
+\end{DoxyEnumFields}
+''', compound)
+    assert r'\item \texttt{OpenedDir(dir: Dir*)}' in latex
+    assert r'\item \texttt{OpenDirFailed(error: OsError)}' in latex
+    assert r'\begin{DoxyEnumFields}' not in latex
+
+
+@pytest.mark.parametrize('source_order', [
+    ('Alpha', 'Middle', 'Zebra'),
+    ('Zebra', 'Middle', 'Alpha'),
+])
+def test_enum_latex_replaces_multiple_tables_without_shifting_other_members(tmp_path, monkeypatch, source_order):
+    monkeypatch.chdir(tmp_path)
+    source = '\n'.join(f'enum {name} {{ Item(value: int); Empty; }}' for name in source_order)
+    Path('fixture.l1').write_text(source + '\n')
+    compound = ET.Element('compounddef', kind='file')
+    section = ET.SubElement(compound, 'sectiondef', kind='enum')
+    for line, name in enumerate(source_order, 1):
+        member = ET.SubElement(section, 'memberdef', kind='enum')
+        ET.SubElement(member, 'name').text = name
+        for variant in ('Item', 'Empty'):
+            ET.SubElement(ET.SubElement(member, 'enumvalue'), 'name').text = variant
+        ET.SubElement(member, 'location', file='fixture.l1', line=str(line))
+
+    original = ''
+    expected = ''
+    for name in sorted(source_order):
+        heading = rf'\doxysubsubsection{{\texorpdfstring{{{name}}}{{{name}}}}}' + '\n'
+        table = '\n'.join((
+            r'\begin{DoxyEnumFields}[2]{Enumerator}',
+            rf'\raisebox{{\heightof{{T}}}}[0pt][0pt]{{\index{{Item!{name}}}}}',
+            r'Item&\\',
+            r'\hline',
+            rf'\raisebox{{\heightof{{T}}}}[0pt][0pt]{{\index{{Empty!{name}}}}}',
+            r'Empty&\\',
+            r'\hline',
+            r'\end{DoxyEnumFields}',
+            '',
+        ))
+        original += heading + table
+        expected += heading + '\n'.join((
+            r'\textbf{Variants:}\\',
+            r'\begin{DoxyItemize}',
+            r'\item \texttt{Item(value: int)}',
+            r'\item \texttt{Empty}',
+            r'\end{DoxyItemize}',
+            '',
+            '',
+        ))
+
+    following_function = r'''\doxysubsection{Function Documentation}
+\doxysubsubsection{consume()}
+\begin{DoxyParams}{Parameters}
+{\em value} & An owned value. \\
+\hline
+\end{DoxyParams}
+'''
+    assert _inject_enum_variants(original + following_function, compound) == expected + following_function
+
+
+@pytest.mark.parametrize('payload_table_present', [True, False])
+def test_enum_latex_does_not_consume_following_plain_enum_table(tmp_path, monkeypatch, payload_table_present):
+    monkeypatch.chdir(tmp_path)
+    Path('fixture.l1').write_text('enum Payload { Present(value: int); }\nenum Plain { Absent; }\n')
+    compound = ET.fromstring('''<compounddef kind="file"><sectiondef kind="enum">
+<memberdef kind="enum"><name>Payload</name><enumvalue><name>Present</name></enumvalue>
+<location file="fixture.l1" line="1"/></memberdef>
+<memberdef kind="enum"><name>Plain</name><enumvalue><name>Absent</name></enumvalue>
+<location file="fixture.l1" line="2"/></memberdef>
+</sectiondef></compounddef>''')
+    payload_heading = '\\doxysubsubsection{\\texorpdfstring{Payload}{Payload}}\nPayload description.\n'
+    payload_table = r'''\begin{DoxyEnumFields}[2]{Enumerator}
+Present&\\
+\end{DoxyEnumFields}
+'''
+    plain_enum = r'''\doxysubsubsection{\texorpdfstring{Plain}{Plain}}
+Plain description.
+\begin{DoxyEnumFields}[2]{Enumerator}
+Absent&\\
+\end{DoxyEnumFields}
+'''
+    original = payload_heading + (payload_table if payload_table_present else '') + plain_enum
+    payload_variants = r'''\textbf{Variants:}\\
+\begin{DoxyItemize}
+\item \texttt{Present(value: int)}
+\end{DoxyItemize}
+
+'''
+    expected = payload_heading + (payload_variants if payload_table_present else '') + plain_enum
+    first_pass = _inject_enum_variants(original, compound)
+    assert first_pass == expected
+    assert _inject_enum_variants(first_pass, compound) == first_pass

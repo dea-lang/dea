@@ -144,25 +144,47 @@ func write_file(path: string, data: string) -> Unit? {
 }
 
 
-/** Cheap entry type; Unknown means the host supplied no type hint. */
+/**
+ * Cheap entry type; Unknown means the host supplied no type hint.
+ */
 enum FileType { Unknown; RegularFile; Directory; Symlink; OtherFile; }
-/** Direct metadata from an existing object. */
+
+/**
+ * Direct metadata from an existing object.
+ */
 struct Metadata {
     file_type: FileType;
     size: long?;
     mtime_sec: long?;
     mtime_nsec: int?;
 }
-/** One path mutation outcome. */
+
+/**
+ * One path mutation outcome.
+ */
 enum FsResult { FsOk; FsFailed(error: OsError); }
-/** Metadata never conflates absence with success. */
+
+/**
+ * Metadata never conflates absence with success.
+ */
 enum MetadataResult { FoundMetadata(info: Metadata); MetadataFailed(error: OsError); }
-/** A followed identity comparison or failed lookup. */
+
+/**
+ * A followed identity comparison or failed lookup.
+ */
 enum SameFileResult { SameFile(value: bool); SameFileFailed(error: OsError); }
-/** An owned resolved path spelling or captured failure. */
+
+/**
+ * An owned resolved path spelling or captured failure.
+ */
 enum PathResult { ResolvedPath(path: string); PathFailed(error: OsError); }
 
-/** Convert the runtime's independent type tag. */
+/**
+ * Convert the runtime's independent type tag.
+ *
+ * @param code Runtime file-type tag.
+ * @return The public file type, or Unknown for an unrecognized tag.
+ */
 func _fs_type(code: int) -> FileType {
     if (code == 1) { return RegularFile; }
     if (code == 2) { return Directory; }
@@ -170,60 +192,184 @@ func _fs_type(code: int) -> FileType {
     if (code == 4) { return OtherFile; }
     return Unknown;
 }
-/** Convert a direct mutation result. */
+
+/**
+ * Convert a direct mutation result.
+ *
+ * @param result Runtime mutation outcome.
+ * @return FsOk, or FsFailed with the captured runtime error.
+ */
 func _fs_status(result: RtFsStatus) -> FsResult {
     if (result.ok) { return FsOk; }
     return FsFailed(_os_error_from_rt(result.error));
 }
-/** Convert owned runtime path data. */
+
+/**
+ * Convert owned runtime path data.
+ *
+ * @param result Runtime path outcome.
+ * @return The owned path spelling, or its captured failure.
+ */
 func _fs_path_result(result: RtFsPath) -> PathResult {
     if (result.ok) { return ResolvedPath(result.value); }
     return PathFailed(_os_error_from_rt(result.error));
 }
-/** Convert direct metadata without narrowing persistent values. */
+
+/**
+ * Convert direct metadata without narrowing persistent values.
+ *
+ * @param result Runtime metadata outcome.
+ * @return Public metadata, or its captured failure.
+ */
 func _fs_metadata_result(result: RtFsMetadata) -> MetadataResult {
     if (result.ok) {
         return FoundMetadata(Metadata(_fs_type(result.file_type), result.size, result.mtime_sec, result.mtime_nsec));
     }
     return MetadataFailed(_os_error_from_rt(result.error));
 }
-/** Query an existing object, following its final symbolic link. */
+
+/**
+ * Query an existing object, following its final symbolic link.
+ *
+ * @param path Filesystem path to inspect.
+ * @return Metadata, or a captured lookup failure.
+ */
 func metadata(path: string) -> MetadataResult { return _fs_metadata_result(rt_fs_metadata(path, true)); }
-/** Query the final entry itself; parent components still follow links. */
+
+/**
+ * Query the final entry itself; parent components still follow links.
+ *
+ * @param path Filesystem entry to inspect without following its final link.
+ * @return Entry metadata, or a captured lookup failure.
+ */
 func symlink_metadata(path: string) -> MetadataResult { return _fs_metadata_result(rt_fs_metadata(path, false)); }
-/** Compare followed native identities, returning failure for either failed lookup. */
+
+/**
+ * Compare followed native identities.
+ *
+ * @param left First filesystem path.
+ * @param right Second filesystem path.
+ * @return The identity comparison, or a failure if either lookup fails.
+ */
 func same_file(left: string, right: string) -> SameFileResult {
     let result = rt_fs_same_file(left, right);
     if (result.ok) { return SameFile(result.value); }
     return SameFileFailed(_os_error_from_rt(result.error));
 }
-/** Anchor at the current directory at call time; existence is not required. */
+
+/**
+ * Anchor a path at the current directory at call time.
+ *
+ * Existence is not required; this operation does not resolve symbolic links.
+ *
+ * @param path Filesystem path whose absolute spelling is needed.
+ * @return An owned absolute spelling, or a captured failure.
+ */
 func absolute(path: string) -> PathResult { return _fs_path_result(rt_fs_absolute(path)); }
-/** Resolve an existing path through aliases; this is not a containment check. */
+
+/**
+ * Resolve an existing path through aliases.
+ *
+ * Canonicalization is not a containment check.
+ *
+ * @param path Existing filesystem path to resolve.
+ * @return An owned resolved spelling, or a captured failure.
+ */
 func canonicalize(path: string) -> PathResult { return _fs_path_result(rt_fs_canonicalize(path)); }
-/** Return the process-global current working directory. */
+
+/**
+ * Return the process-global current working directory.
+ *
+ * @return An owned current-directory spelling, or a captured failure.
+ */
 func current_dir() -> PathResult { return _fs_path_result(rt_fs_current_dir()); }
-/** Follow the directory and change process-global state. */
+
+/**
+ * Follow a directory and change the process-global working directory.
+ *
+ * @param path Directory path to enter.
+ * @return FsOk, or a captured failure.
+ */
 func set_current_dir(path: string) -> FsResult { return _fs_status(rt_fs_set_current_dir(path)); }
-/** Create one directory; an existing entry is an error. */
+
+/**
+ * Create one directory; an existing entry is an error.
+ *
+ * @param path New directory path.
+ * @return FsOk, or a captured creation failure.
+ */
 func create_dir(path: string) -> FsResult { return _fs_status(rt_fs_create_dir(path, false)); }
-/** Create missing parents, accepting existing followed directories; no rollback. */
+
+/**
+ * Create missing parents, accepting existing followed directories.
+ *
+ * Directories already created are not rolled back on failure.
+ *
+ * @param path Directory path whose missing components are to be created.
+ * @return FsOk, or the first captured creation failure.
+ */
 func create_dir_all(path: string) -> FsResult { return _fs_status(rt_fs_create_dir(path, true)); }
-/** Unlink the final non-directory entry, including a symbolic link itself. */
+
+/**
+ * Unlink the final non-directory entry, including a symbolic link itself.
+ *
+ * @param path Non-directory entry to remove.
+ * @return FsOk, or a captured removal failure.
+ */
 func remove_file(path: string) -> FsResult { return _fs_status(rt_fs_remove_file(path)); }
-/** Remove one empty real directory; reject a final symbolic link. */
+
+/**
+ * Remove one empty real directory; reject a final symbolic link.
+ *
+ * @param path Empty directory to remove.
+ * @return FsOk, or a captured removal failure.
+ */
 func remove_dir(path: string) -> FsResult { return _fs_status(rt_fs_remove_dir(path, false)); }
-/** Remove a tree without traversing final or descendant links; stop on first failure. */
+
+/**
+ * Remove a tree without traversing final or descendant links.
+ *
+ * Reject filesystem roots and final dot or dot-dot components.
+ * Stop on the first failure; completed removals are not rolled back.
+ *
+ * @param path Directory tree or final symbolic link to remove.
+ * @return FsOk, or the first captured removal failure.
+ */
 func remove_dir_all(path: string) -> FsResult { return _fs_status(rt_fs_remove_dir(path, true)); }
-/** Rename an entry with native overwrite rules; never fall back to copying. */
+
+/**
+ * Rename an entry with native overwrite rules.
+ *
+ * Never fall back to copying when the native rename fails.
+ *
+ * @param source Existing entry to rename.
+ * @param destination Destination name.
+ * @return FsOk, or a captured rename failure.
+ */
 func rename(source: string, destination: string) -> FsResult {
     return _fs_status(rt_fs_rename(source, destination, false));
 }
-/** Rename a non-directory entry over a non-directory destination, or into an absent name. */
+
+/**
+ * Rename a non-directory entry over a non-directory destination or absent name.
+ *
+ * @param source Existing non-directory entry to rename.
+ * @param destination Non-directory destination or absent name.
+ * @return FsOk, or a captured replacement failure.
+ */
 func replace(source: string, destination: string) -> FsResult {
     return _fs_status(rt_fs_rename(source, destination, true));
 }
-/** Copy regular-file bytes to a new name; existing destinations fail, including aliases. */
+
+/**
+ * Copy regular-file bytes exclusively to a new destination.
+ *
+ * A failure may leave a partially written destination.
+ *
+ * @param source Source path, followed to a regular file.
+ * @param destination New destination path; existing entries, including aliases, fail.
+ * @return FsOk, or a captured copy failure.
+ */
 func copy_file(source: string, destination: string) -> FsResult {
     return _fs_status(rt_fs_copy_file(source, destination));
 }

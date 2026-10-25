@@ -529,6 +529,9 @@ static void _rt_tracker_config_init(void) {
  * Take one record from the pool, refilling it chunk-wise. Pool memory is
  * never returned to the C allocator, so stale record pointers held by
  * call-site caches remain safe to dereference.
+ *
+ * @param cold_out Optional output receiving the corresponding cold record.
+ * @return Pool record reserved for the caller; allocation failure panics.
  */
 static _rt_alloc_record *_rt_rec_new(_rt_alloc_record_cold **cold_out) {
     if (_rt_rec_free_list == NULL) {
@@ -801,7 +804,13 @@ static _rt_alloc_record *_rt_tree_insert_at(_rt_alloc_record *node, _rt_alloc_re
     return node;
 }
 
-/** Merge two treaps where every base in `a` is below every base in `b`. */
+/**
+ * Merge two treaps where every base in `a` is below every base in `b`.
+ *
+ * @param a Treap whose record bases precede every record base in b.
+ * @param b Treap whose record bases follow every record base in a.
+ * @return Root of the merged treap, or NULL when both inputs are empty.
+ */
 static _rt_alloc_record *_rt_tree_merge(_rt_alloc_record *a, _rt_alloc_record *b) {
     if (a == NULL) return b;
     if (b == NULL) return a;
@@ -834,7 +843,12 @@ static void _rt_alloc_tree_remove(_rt_alloc_record *rec) {
     _rt_alloc_tree_root = _rt_tree_remove_at(_rt_alloc_tree_root, rec->base);
 }
 
-/** Return the tracked record with the greatest base at or below `ptr`. */
+/**
+ * Return the tracked record with the greatest base at or below `ptr`.
+ *
+ * @param ptr Address used as the inclusive upper bound.
+ * @return Tracked record with the greatest eligible base, or NULL.
+ */
 static _rt_alloc_record *_rt_alloc_tree_glb(void *ptr) {
     _rt_alloc_record *node = _rt_alloc_tree_root;
     _rt_alloc_record *best = NULL;
@@ -850,7 +864,12 @@ static _rt_alloc_record *_rt_alloc_tree_glb(void *ptr) {
     return best;
 }
 
-/** Return the tracked record with the lowest base at or above `ptr`. */
+/**
+ * Return the tracked record with the lowest base at or above `ptr`.
+ *
+ * @param ptr Address used as the inclusive lower bound.
+ * @return Tracked record with the lowest eligible base, or NULL.
+ */
 static _rt_alloc_record *_rt_alloc_tree_lub(void *ptr) {
     _rt_alloc_record *node = _rt_alloc_tree_root;
     _rt_alloc_record *best = NULL;
@@ -1036,6 +1055,9 @@ static void _rt_promote_new_alloc(void *ptr) {
  * Lazily register ARC-managed string storage as a read-only tracked record.
  * Idempotent: repeated exposure of the same live block is a no-op, so
  * `rt_string_bytes_ptr` may call this on every invocation.
+ *
+ * @param ptr Base of the live ARC-managed byte storage.
+ * @param size Storage extent in bytes.
  */
 void _rt_track_arc_bytes(void *ptr, size_t size) {
     if (ptr == NULL) return;
@@ -1067,7 +1089,13 @@ void _rt_track_static_bytes(const void *ptr, size_t size) {
     _rt_track_alloc_record_kind((void*)ptr, size, 0, 0, _RT_MEM_STATIC, 1, "<static>", 0);
 }
 
-/** Register externally owned storage for checked generated pointer accesses. */
+/**
+ * Register externally owned storage for checked generated pointer accesses.
+ *
+ * @param ptr Non-NULL base of externally owned storage.
+ * @param bytes Positive storage extent in bytes.
+ * @param read_only Whether checked generated writes must be rejected.
+ */
 void rt_register_foreign(void *ptr, dea_int bytes, dea_bool read_only) {
     if (ptr == NULL) {
         _rt_panic("rt_register_foreign: null pointer");
@@ -1107,7 +1135,11 @@ void rt_register_foreign(void *ptr, dea_int bytes, dea_bool read_only) {
     _rt_track_alloc_record_kind(ptr, size, 0, 0, _RT_MEM_FOREIGN, read_only, "<foreign>", 0);
 }
 
-/** Unregister externally owned storage without releasing its payload. */
+/**
+ * Unregister externally owned storage without releasing its payload.
+ *
+ * @param ptr Base of a live registered foreign allocation.
+ */
 void rt_unregister_foreign(void *ptr) {
     if (ptr == NULL) {
         _rt_panic("rt_unregister_foreign: null pointer");

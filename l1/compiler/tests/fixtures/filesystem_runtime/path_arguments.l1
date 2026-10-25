@@ -2,14 +2,22 @@
  * SPDX-License-Identifier: MIT OR Apache-2.0
  * Copyright (c) 2026 gwz
  */
-/** ASCII-only transport keeps filesystem tests independent of Windows argv encoding. */
+
+/**
+ * ASCII-only transport keeps filesystem tests independent of Windows argv encoding.
+ */
 module path_arguments;
 import std.assert;
 import std.string;
 import std.text;
 import std.system;
 
-/** Decode one ASCII transport digit. */
+/**
+ * Decode one ASCII transport digit.
+ *
+ * @param c ASCII hexadecimal transport character.
+ * @return The decoded value of a valid transport digit.
+ */
 func _fixture_hex(c: byte) -> int {
     if (c >= '0' && c <= '9') { return (c - '0') as int; }
     if (c >= 'a' && c <= 'f') { return ((c - 'a') as int) + 10; }
@@ -17,7 +25,12 @@ func _fixture_hex(c: byte) -> int {
     return 0;
 }
 
-/** Decode one owned path string without interpreting its filesystem bytes. */
+/**
+ * Decode one owned path string without interpreting its filesystem bytes.
+ *
+ * @param raw Raw path or ASCII hex-prefixed transport string.
+ * @return Decoded path bytes, or the unchanged string when no transport prefix is present.
+ */
 func fixture_decode_path(raw: string) -> string {
     if (!starts_with_s(raw, "hex:")) { return raw; }
     assert((len_s(raw) - 4) % 2 == 0, "hexadecimal path transport length");
@@ -30,5 +43,10 @@ func fixture_decode_path(raw: string) -> string {
     }
 }
 
-/** Decode a command-line path argument before passing it to the UTF-8 runtime API. */
+/**
+ * Decode a command-line path argument before passing it to the UTF-8 runtime API.
+ *
+ * @param index Command-line argument index to decode.
+ * @return The decoded command-line path bytes.
+ */
 func fixture_path_arg(index: int) -> string { return fixture_decode_path(argv(index)); }

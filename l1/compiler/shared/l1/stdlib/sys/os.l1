@@ -10,43 +10,95 @@
  */
 module sys.os;
 
-/** Normalized error kind, native namespace, and unmodified native code. */
+/**
+ * Normalized error kind, native namespace, and unmodified native code.
+ */
 struct RtOsError {
     kind: int;
     domain: int;
     native_code: long;
 }
 
-/** Direct operation outcome: success, EOF, failure, or native timeout. */
+/**
+ * Direct operation outcome: success, EOF, failure, or native timeout.
+ */
 struct RtIoResult {
     state: int;
     count: int;
     error: RtOsError;
 }
 
-/** Normalize a saved C runtime error code without querying ambient errno. */
+/**
+ * Normalize a saved C runtime error code without querying ambient errno.
+ *
+ * @param native_code Saved C runtime error code.
+ * @return A normalized error record retaining the supplied native code.
+ */
 extern func rt_os_error_from_errno(native_code: int) -> RtOsError;
 
-/** Normalize a saved Win32 error code without querying ambient last-error state. */
+/**
+ * Normalize a saved Win32 error code without querying ambient last-error state.
+ *
+ * @param native_code Saved Win32 error code.
+ * @return A normalized error record retaining the supplied native code.
+ */
 extern func rt_os_error_from_win32(native_code: long) -> RtOsError;
 
-/** Return an owned diagnostic message for the supplied error record. */
+/**
+ * Return an owned diagnostic message for a supplied error record.
+ *
+ * @param error Captured runtime error to describe.
+ * @return Host diagnostic text, or a category/domain/code fallback.
+ */
 extern func rt_os_error_message(error: RtOsError) -> string;
 
 /**
- * Read bytes from stdin; positive capacity requires valid writable storage.
+ * Read bytes from stdin into caller-provided storage.
+ *
  * Zero capacity does not inspect the buffer or stream.
+ *
+ * @param buf Writable storage, required when capacity is positive.
+ * @param capacity Maximum number of bytes to read.
+ * @return Bytes read, EOF, native timeout, or captured failure.
  */
 unsafe extern func rt_stdin_read_result(buf: byte*?, capacity: int) -> RtIoResult;
 
-/** Write bytes to stdout; positive length requires valid readable storage. */
+/**
+ * Write bytes to stdout from caller-provided storage.
+ *
+ * Successful bytes may remain buffered by stdio.
+ *
+ * @param buf Readable storage, required when count is positive.
+ * @param count Number of bytes to write.
+ * @return Bytes accepted, native timeout, or captured failure.
+ */
 unsafe extern func rt_stdout_write_result(buf: byte*?, count: int) -> RtIoResult;
 
-/** Write bytes to stderr; positive length requires valid readable storage. */
+/**
+ * Write bytes to stderr from caller-provided storage.
+ *
+ * Successful bytes may remain buffered by stdio.
+ *
+ * @param buf Readable storage, required when count is positive.
+ * @param count Number of bytes to write.
+ * @return Bytes accepted, native timeout, or captured failure.
+ */
 unsafe extern func rt_stderr_write_result(buf: byte*?, count: int) -> RtIoResult;
 
-/** Flush buffered stdout bytes and return any captured failure directly. */
+/**
+ * Flush buffered stdout bytes.
+ *
+ * Success does not establish durable storage.
+ *
+ * @return Stdio flush success, native timeout, or captured failure.
+ */
 extern func rt_flush_stdout_result() -> RtIoResult;
 
-/** Flush buffered stderr bytes and return any captured failure directly. */
+/**
+ * Flush buffered stderr bytes.
+ *
+ * Success does not establish durable storage.
+ *
+ * @return Stdio flush success, native timeout, or captured failure.
+ */
 extern func rt_flush_stderr_result() -> RtIoResult;

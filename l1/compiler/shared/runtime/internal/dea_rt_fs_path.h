@@ -11,7 +11,12 @@
 #ifndef DEA_RT_FS_PATH_H
 #define DEA_RT_FS_PATH_H
 
-/** Native string length in code units. */
+/**
+ * Native string length in code units.
+ *
+ * @param s Terminated native text.
+ * @return Native code-unit length excluding the terminator.
+ */
 static size_t fs_length(const FsChar *s) {
 #if defined(_WIN32)
     return wcslen(s);
@@ -21,31 +26,59 @@ static size_t fs_length(const FsChar *s) {
 }
 
 #if defined(_WIN32)
-/** Recognize DOS device namespace syntax before host normalization. */
+
+/**
+ * Recognize DOS device namespace syntax before host normalization.
+ *
+ * @param path Terminated Windows path spelling.
+ * @return Nonzero when the spelling starts with DOS device namespace syntax.
+ */
 static int fs_device_path(const FsChar *path) {
     return (path[0] == '\\' || path[0] == '/') && (path[1] == '\\' || path[1] == '/') &&
         (path[2] == '?' || path[2] == '.') && (path[3] == '\\' || path[3] == '/');
 }
 
-/** Only the canonical question-mark prefix disables Win32 normalization. */
+/**
+ * Only the canonical question-mark prefix disables Win32 normalization.
+ *
+ * @param path Terminated Windows path spelling.
+ * @return Nonzero only for the canonical question-mark device prefix.
+ */
 static int fs_verbatim_path(const FsChar *path) {
     return path[0] == '\\' && path[1] == '\\' && path[2] == '?' && path[3] == '\\';
 }
 
-/** Compare one ASCII namespace character independently of locale. */
+/**
+ * Compare one ASCII namespace character independently of locale.
+ *
+ * @param a First ASCII namespace character.
+ * @param b Second ASCII namespace character.
+ * @return Nonzero when the characters agree after ASCII case folding.
+ */
 static int fs_ascii_equal(FsChar a, FsChar b) {
     if (a >= 'A' && a <= 'Z') a += 'a' - 'A';
     if (b >= 'A' && b <= 'Z') b += 'a' - 'A';
     return a == b;
 }
 
-/** Recognize a DOS drive letter, excluding arbitrary colon-bearing components. */
+/**
+ * Recognize a DOS drive letter, excluding arbitrary colon-bearing components.
+ *
+ * @param c Native character to classify.
+ * @return Nonzero for an ASCII upper- or lowercase drive letter.
+ */
 static int fs_drive_letter(FsChar c) {
     return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
 }
 #endif
 
-/** Recognize separators in this namespace; POSIX backslash stays a filename byte. */
+/**
+ * Recognize separators in this namespace; POSIX backslash stays a filename byte.
+ *
+ * @param path Path spelling that selects ordinary or verbatim namespace semantics.
+ * @param c Native character to classify.
+ * @return Nonzero when the character is a separator in that namespace.
+ */
 static int fs_path_sep(const FsChar *path, FsChar c) {
 #if defined(_WIN32)
     return c == '\\' || (!fs_verbatim_path(path) && c == '/');
@@ -58,6 +91,9 @@ static int fs_path_sep(const FsChar *path, FsChar c) {
 /**
  * Return the complete native root prefix, or SIZE_MAX for unsupported Windows
  * device namespaces/malformed UNC roots. Count components rather than separators.
+ *
+ * @param path Terminated native path spelling.
+ * @return Root/drive prefix length, or SIZE_MAX for unsupported Windows roots.
  */
 static size_t fs_root_length(const FsChar *path) {
     size_t len = fs_length(path);
@@ -110,7 +146,11 @@ static size_t fs_root_length(const FsChar *path) {
 #endif
 }
 
-/** Strip final separators without converting a root or bare drive into another path. */
+/**
+ * Strip final separators without converting a root or bare drive into another path.
+ *
+ * @param path Writable native path whose final separators may be removed.
+ */
 static void fs_trim_entry(FsChar *path) {
     size_t len = fs_length(path), root = fs_root_length(path);
     if (root == SIZE_MAX) return;
@@ -118,7 +158,14 @@ static void fs_trim_entry(FsChar *path) {
     while (len > floor && fs_path_sep(path, path[len - 1])) path[--len] = 0;
 }
 
-/** Join a directory and one child without changing rooted/drive-relative semantics. */
+/**
+ * Join a directory and one child without changing rooted/drive-relative semantics.
+ *
+ * @param parent Terminated native directory spelling.
+ * @param name Terminated native child name or search pattern.
+ * @param error Receives allocation or representable-length failures.
+ * @return Owned joined spelling, or NULL on failure.
+ */
 static FsChar *fs_join(const FsChar *parent, const FsChar *name, FsError *error) {
     size_t a = fs_length(parent), b = fs_length(name);
     size_t separator = a && !fs_path_sep(parent, parent[a - 1]) ? 1 : 0;
@@ -137,7 +184,12 @@ static FsChar *fs_join(const FsChar *parent, const FsChar *name, FsError *error)
     return out;
 }
 
-/** Reject host roots, final dot/dot-dot, and ambiguous Windows dot/space aliases. */
+/**
+ * Reject host roots, final dot/dot-dot, and ambiguous Windows dot/space aliases.
+ *
+ * @param path Terminated native path to validate for recursive removal.
+ * @return Nonzero for a host root, forbidden final component, or unsupported Windows root.
+ */
 static int fs_delete_root(const FsChar *path) {
     size_t len = fs_length(path), root = fs_root_length(path);
     if (root == SIZE_MAX || len <= root) return 1;
