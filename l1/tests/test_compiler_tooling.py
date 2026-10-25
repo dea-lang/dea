@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # Copyright (c) 2026 gwz
 """Canonical compiler construction and validation-routing regressions."""
+import importlib.util
 import io
 import os
 import subprocess
@@ -234,6 +235,80 @@ class CompilerToolingTests(unittest.TestCase):
             layout = L1BuildLayout(root, root, root, ".", ".")
             recorded = compiler_build_options(layout)
             self.assertEqual(command[1:], recorded)
+
+
+class StdinForwardingToolingTests(unittest.TestCase):
+    """Exercise the real stdin probe without constructing a native compiler."""
+
+    stdout = "\nalpha\nbeta\ngamma\n"
+    preparing = "Preparing stdlib and runtime with test-cc\n"
+    prepared = "Prepared stdlib and runtime with test-cc\n"
+
+    @classmethod
+    def setUpClass(cls):
+        """Import the integration probe with its own scoped support package."""
+        tests_root = L1_ROOT / "compiler/tests"
+        spec = importlib.util.spec_from_file_location("l1_io_runtime_probe", tests_root / "io_runtime_test.py")
+        assert spec is not None and spec.loader is not None
+        cls.probe = importlib.util.module_from_spec(spec)
+        with patch.object(sys, "path", [str(tests_root), *sys.path]), patch.dict(sys.modules):
+            for name in ("support", "support.compiler_subject"):
+                sys.modules.pop(name, None)
+            spec.loader.exec_module(cls.probe)
+
+    def run_probe(self, cold, warm=None):
+        """Run the actual assertion helper with controlled subprocess results.
+
+        Args:
+            cold: Result for the invocation that prepares native artifacts.
+            warm: Result for the invocation that reuses native artifacts.
+
+        Returns:
+            The subprocess mock, including both argument vectors and inputs.
+        """
+        if warm is None:
+            warm = subprocess.CompletedProcess([], 0, self.stdout, "")
+        with patch.object(self.probe, "compiler_path", return_value=Path("compiler with spaces/l1c")), \
+                patch.object(self.probe, "runtime_c_compiler", return_value="test-cc"), \
+                patch.object(self.probe.subprocess, "run", side_effect=[cold, warm]) as run:
+            self.probe.require_run_stdin_forwarding()
+        return run
+
+    def test_cold_preparation_accepts_intervening_diagnostics(self):
+        """Cold warnings preserve stdin; the warm invocation bypasses preparation."""
+        for diagnostics in ("", "runtime.c: warning: compiler diagnostic\n  source excerpt\n"):
+            with self.subTest(diagnostics=diagnostics):
+                cold = subprocess.CompletedProcess([], 0, self.stdout, self.preparing + diagnostics + self.prepared)
+                run = self.run_probe(cold)
+                self.assertEqual(run.call_count, 2)
+                cold_call, warm_call = run.call_args_list
+                self.assertNotIn("--no-auto-prepare", cold_call.args[0])
+                self.assertIn("--no-auto-prepare", warm_call.args[0])
+                for invocation in (cold_call, warm_call):
+                    self.assertEqual(invocation.kwargs["input"], ",alpha beta;gamma")
+
+    def test_forwarding_rejects_program_and_preparation_failures(self):
+        """Warnings do not relax program outcomes or progress-message boundaries."""
+        valid_cold = subprocess.CompletedProcess([], 0, self.stdout, self.preparing + self.prepared)
+        invalid_cold = [
+            subprocess.CompletedProcess([], 1, self.stdout, self.preparing + self.prepared),
+            subprocess.CompletedProcess([], 0, "wrong stdout\n", self.preparing + self.prepared),
+            *[subprocess.CompletedProcess([], 0, self.stdout, stderr) for stderr in (
+                "", self.preparing, self.prepared, self.prepared + self.preparing,
+                "warning before preparation\n" + self.preparing + self.prepared,
+                self.preparing + self.prepared + "warning after preparation\n",
+            )],
+        ]
+        for cold in invalid_cold:
+            with self.subTest(cold=cold), self.assertRaises(AssertionError):
+                self.run_probe(cold)
+        for warm in (
+            subprocess.CompletedProcess([], 1, self.stdout, ""),
+            subprocess.CompletedProcess([], 0, "wrong stdout\n", ""),
+            subprocess.CompletedProcess([], 0, self.stdout, "warm diagnostic\n"),
+        ):
+            with self.subTest(warm=warm), self.assertRaises(AssertionError):
+                self.run_probe(valid_cold, warm)
 
 
 if __name__ == "__main__":

@@ -256,9 +256,10 @@ def require_run_stdin_forwarding() -> None:
                 assert completed.stderr == "", completed.stderr
             else:
                 lines = completed.stderr.splitlines()
-                assert len(lines) == 2, completed.stderr
+                # Native toolchain diagnostics may appear between preparation messages.
+                assert len(lines) >= 2, completed.stderr
                 assert lines[0].startswith("Preparing stdlib and runtime with "), completed.stderr
-                assert lines[1].startswith("Prepared stdlib and runtime with "), completed.stderr
+                assert lines[-1].startswith("Prepared stdlib and runtime with "), completed.stderr
 
 
 def require_wide_filesystem_metadata() -> None:

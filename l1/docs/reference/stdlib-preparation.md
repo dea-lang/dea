@@ -1,6 +1,6 @@
 # L1 Bundled Interfaces and Native Preparation
 
-Version: 2026-10-21
+Version: 2026-10-25
 
 L1 supplies bundled semantic interfaces with the toolchain and derives native stdlib/runtime support when a command
 needs it. Preparation covers only compiler-owned `std.*` and `sys.*` modules and runtime implementation sources.
@@ -71,7 +71,8 @@ l1c --build --c-compiler clang --no-auto-prepare app.l1 -o app
 
 Build/run/link automatically reuse or prepare matching support. Cache hits are quiet. Actual preparation and corruption
 recovery go to stderr; increasing `-v` exposes selection, commands, identity observations, memo decisions, and artifact
-validation. Native compiler errors remain visible.
+validation. Native compiler warnings and errors remain visible, including warnings from successful preparation between
+its start and finish messages.
 
 | Control               | Scope and meaning                                                                                                   |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------- |
