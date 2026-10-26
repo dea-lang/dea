@@ -56,6 +56,38 @@ acceptance and release workflows.
 
 ## Documentation CI
 
+Ubuntu documentation producers explicitly select `ubuntu-26.04`, whose packaged TeX Live 2025 includes the modern
+tabularray implementation needed by Doxygen 1.18. They use
+[.github/actions/setup-docs-toolchain/action.yml](.github/actions/setup-docs-toolchain/action.yml) for Graphviz, Make,
+EPS conversion (`texlive-font-utils` and Ghostscript), and optional full TeX installation. Doxygen converts its EPS
+diagrams while generating LaTeX, including when PDF compilation is disabled. Setup verifies `dot`, `make`, `epstopdf`,
+and `gs`, plus `pdflatex` and `makeindex` for PDF builds, before reference generation starts. It replaces Azure Ubuntu
+archive URLs with `https://archive.ubuntu.com/ubuntu` in legacy sources, deb822 sources, and the runner's
+`apt-mirrors.txt`, retaining other repositories and signing configuration. Index refresh and installation allow three
+retries per failed download and use 30-second HTTP/HTTPS connection and data timeouts. Index fetch errors fail the step.
+Each caller caps the whole installation at 15 minutes, including retries and package configuration; a timeout fails the
+job. L0's reusable builder retains its `build_pdf` option. Full installation and reference validation run in CI; focused
+local tests mock APT. Setup reports installed package versions, active EPS/PDF executable paths, and the tabularray
+release selected by `kpsewhich` for PDF builds. The runner release is pinned; Ubuntu package updates remain enabled.
+
+L0 and L1 reference generation prints live phase start/end timings and 30-second elapsed-time heartbeats, including in
+quiet mode. Extraction reports each language binding and output format; rendering, normalization, strict checks, PDF
+compilation, and bundle verification report separate phases. PDF logs also announce each pdfLaTeX pass and makeindex
+invocation. Full subprocess output is flushed continuously to `docgen.log` and `latex.log`, retained with successful
+references or failure diagnostics. Verbose mode additionally streams every subprocess line. Measure complete reference
+performance in CI after runner or package changes; toolchain compatibility alone does not establish build duration.
+
+Native compiler CI and all documentation producers use upstream Doxygen 1.18.0 through
+[.github/actions/setup-doxygen/action.yml](.github/actions/setup-doxygen/action.yml). The action selects the native
+Linux x64, macOS Intel/ARM64, or Windows x64 archive, verifies its upstream SHA-256 checksum and CLI version, and
+prepends its binary directory through `GITHUB_PATH`. Unsupported runners fail explicitly. Windows compiler jobs also
+verify the resolved version inside MSYS2; their Python interpreter selection is independent and unchanged. Release,
+snapshot, and publication consumers inherit the pin through the reusable documentation build workflows. To upgrade,
+update the version, archive layouts, and upstream checksums in
+[.github/actions/setup-doxygen/setup.cjs](.github/actions/setup-doxygen/setup.cjs), then validate the setup tests and
+strict reference builds with full PDFs and offline bundles. Local documentation builds continue to use `doxygen` from
+`PATH`.
+
 Unified CI routes full reference validation independently for L0 and L1. The L0 workflow builds both stage references;
 the L1 workflow builds the canonical XML, HTML, Markdown, LaTeX, full indexed PDF, and verified offline bundle. L1
 compiler, documentation, and relevant shared-tooling changes select its reference job. Manual runs and unavailable diff

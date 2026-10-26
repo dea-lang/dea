@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   validate-docs:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     defaults:
       run:
         working-directory: l1
@@ -51,12 +51,11 @@ jobs:
           cache-suffix: l1-docs-validation-py3.14-ws
 
       - name: Install full documentation toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y doxygen graphviz make texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended
+        uses: ./.github/actions/setup-docs-toolchain
+        timeout-minutes: 15
 
-      - name: Show Doxygen version
-        run: doxygen --version
+      - name: Set up Doxygen
+        uses: ./.github/actions/setup-doxygen
 
       - name: Sync documentation dependencies
         working-directory: ${{ github.workspace }}

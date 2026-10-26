@@ -66,7 +66,7 @@ def source_identity(root: Path, stage: str) -> dict[str, object]:
                       if p.is_file() and "__pycache__" not in p.parts and p.suffix in {".py", ".j2", ".in"})
     inputs.update((Path("scripts/gen_docs.py"), Path("scripts/docs_artifacts.py")))
     inputs.update(Path("../scripts") / name for name in
-                  ("c_declarators.py", "docgen_c_contracts.py", "docgen_doxygen.py", "docgen_function_inventory.py"))
+                  ("c_declarators.py", "docgen_c_contracts.py", "docgen_doxygen.py", "docgen_function_inventory.py", "docgen_progress.py"))
     digest = hashlib.sha256()
     for path in sorted(inputs):
         digest.update(path.as_posix().encode() + b"\0")

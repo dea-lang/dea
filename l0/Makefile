@@ -261,7 +261,7 @@ test-cleanup: | venv
 
 .PHONY: test-ci-bootstrap
 test-ci-bootstrap: | venv
-	"$(VENV_PYTHON)" -m pytest -q -n 0 ../scripts/tests/test_ci_bootstrap.py
+	"$(VENV_PYTHON)" -m pytest -q -n 0 ../scripts/tests/test_ci_bootstrap.py ../scripts/tests/test_ci_docs_toolchain.py ../scripts/tests/test_docgen_progress.py
 
 .PHONY: test-docgen
 test-docgen: | venv

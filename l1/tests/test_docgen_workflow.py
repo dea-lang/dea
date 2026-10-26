@@ -65,7 +65,7 @@ def test_full_reference_workflow_is_read_only_and_bootstrap_independent():
     assert set(document["on"]) == {"workflow_call", "workflow_dispatch"}
     assert document["permissions"] == {"contents": "read"}
     job, steps = validation_job()
-    assert job["runs-on"] == "ubuntu-latest"
+    assert job["runs-on"] == "ubuntu-26.04"
     assert job["defaults"]["run"]["working-directory"] == "l1"
     build = next(item for item in steps if "make docs-artifacts" in item.get("run", ""))
     env = {**document.get("env", {}), **job.get("env", {}), **build.get("env", {})}
@@ -75,9 +75,12 @@ def test_full_reference_workflow_is_read_only_and_bootstrap_independent():
     assert setup_python["with"]["python-version"] == "3.14"
     assert any(item.get("uses", "").startswith("astral-sh/setup-uv@") for item in steps)
     commands = "\n".join(item.get("run", "") for item in steps)
-    for package in ("doxygen", "graphviz", "texlive-latex-recommended", "texlive-latex-extra",
-                    "texlive-fonts-recommended"):
-        assert package in commands
+    setup_doxygen = next(item for item in steps if item.get("uses") == "./.github/actions/setup-doxygen")
+    assert steps.index(setup_doxygen) < steps.index(build)
+    setup_docs = next(item for item in steps if item.get("uses") == "./.github/actions/setup-docs-toolchain")
+    assert steps.index(setup_docs) < steps.index(setup_doxygen)
+    assert setup_docs["timeout-minutes"] == "15"
+    assert setup_docs.get("with", {}).get("build_pdf", "true") == "true"
     assert "uv sync --group docs" in commands
     for forbidden in ("L1_BOOTSTRAP_L0C", "L1_DOCS_RELEASE_TAG", "gh release", "gh workflow run",
                       "git push", "actions/deploy-pages", "actions/upload-pages-artifact"):

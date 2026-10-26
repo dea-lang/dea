@@ -14,6 +14,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 from docgen_c_contracts import normalize_fresh_xml_parameter_docs
+from docgen_progress import phase
 
 
 _BEGIN = '%--- Begin generated contents ---'
@@ -179,8 +180,10 @@ def run_isolated_doxygen(config_path: Path, cwd: Path) -> None:
     warnings_path = Path(shlex.split(_setting(config, 'WARN_LOGFILE'))[0])
     xml_enabled = _setting(config, 'GENERATE_XML') == 'YES'
     latex_enabled = _setting(config, 'GENERATE_LATEX') == 'YES'
+    output_kind = '/'.join(name for name, enabled in [('XML', xml_enabled), ('LaTeX', latex_enabled)] if enabled)
     if len(groups) <= 1:
-        subprocess.run(['doxygen', str(config_path)], cwd=cwd, check=True)
+        with phase(f'Doxygen {output_kind} extraction'):
+            subprocess.run(['doxygen', str(config_path)], cwd=cwd, check=True)
         if xml_enabled:
             normalize_fresh_xml_parameter_docs(output / 'xml')
         return
@@ -201,13 +204,15 @@ def run_isolated_doxygen(config_path: Path, cwd: Path) -> None:
                 group_path = work / (name + '.doxyfile')
                 group_path.write_text(group_config, encoding='utf-8')
                 attempts.append((name, group_output, group_warning, group_path))
-                subprocess.run(['doxygen', str(group_path)], cwd=cwd, check=True)
+                with phase(f'Doxygen {output_kind} extraction ({name})'):
+                    subprocess.run(['doxygen', str(group_path)], cwd=cwd, check=True)
                 parts.append(('' if index == 0 else name + '_', group_output))
-            if xml_enabled:
-                _merge_xml(parts, output / 'xml')
-                normalize_fresh_xml_parameter_docs(output / 'xml')
-            if latex_enabled:
-                _merge_latex(parts, output / 'latex')
+            with phase(f'Combine Doxygen {output_kind} bindings'):
+                if xml_enabled:
+                    _merge_xml(parts, output / 'xml')
+                    normalize_fresh_xml_parameter_docs(output / 'xml')
+                if latex_enabled:
+                    _merge_latex(parts, output / 'latex')
         except Exception:
             # The level wrapper preserves this output on failure. Do not lose
             # failed extraction evidence when the private work tree disappears.
@@ -237,4 +242,5 @@ def render_mcss(renderer: Path, config: Path, cwd: Path) -> None:
     Raises:
         subprocess.CalledProcessError: Rendering failed.
     """
-    subprocess.run([sys.executable, str(renderer), str(config), '--no-doxygen'], cwd=cwd, check=True)
+    with phase('Render m.css HTML'):
+        subprocess.run([sys.executable, str(renderer), str(config), '--no-doxygen'], cwd=cwd, check=True)

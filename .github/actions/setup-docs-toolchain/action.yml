@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 gwz
+
+name: Set up Ubuntu documentation toolchain
+description: Install documentation packages using the primary Ubuntu archive and bounded APT downloads.
+
+inputs:
+  build_pdf:
+    description: Install TeX packages for full PDF generation
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Install documentation packages
+      shell: bash
+      env:
+        BUILD_PDF: ${{ inputs.build_pdf }}
+      run: python3 "$GITHUB_ACTION_PATH/install.py" --build-pdf "$BUILD_PDF"
+    - name: Report documentation toolchain versions
+      shell: bash
+      env:
+        BUILD_PDF: ${{ inputs.build_pdf }}
+      run: python3 "$GITHUB_ACTION_PATH/install.py" --report-versions --build-pdf "$BUILD_PDF"

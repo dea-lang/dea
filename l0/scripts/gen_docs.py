@@ -20,6 +20,9 @@ from pathlib import Path
 from docs_artifacts import create_bundle, package_version, pdf_name, source_identity
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT.parent / "scripts"))
+
+from docgen_progress import phase, run_logged as run_progress_logged
 
 
 @dataclass(frozen=True)
@@ -166,30 +169,24 @@ def run_logged(
         verbose: bool,
         cwd: Path = REPO_ROOT,
         env: dict[str, str] | None = None,
+        phase_name: str = "Documentation command",
 ) -> None:
-    """Run one command, logging output on quiet failure."""
+    """Run one command with live timings and a continuously flushed log.
 
-    if verbose:
-        subprocess.run(command, cwd=cwd, env=env, check=True)
-        return
+    Args:
+        command: Subprocess argument vector.
+        log_file: Destination for complete command output.
+        verbose: Whether to stream all output to the console.
+        cwd: Subprocess working directory.
+        env: Optional replacement subprocess environment.
+        phase_name: Human-readable timing label.
 
-    completed = subprocess.run(
-        command,
-        cwd=cwd,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
-    log_file.write_text(completed.stdout, encoding="utf-8")
-    if completed.returncode != 0:
-        print(f"Error: command failed: {' '.join(command)}", file=sys.stderr)
-        print(f"Log saved to: {log_file}", file=sys.stderr)
-        print(completed.stdout, file=sys.stderr, end="" if completed.stdout.endswith("\n") else "\n")
-        raise SystemExit(1)
+    Raises:
+        OSError: The log or subprocess cannot be opened.
+        SystemExit: The command fails after preserving and displaying its log.
+    """
+
+    run_progress_logged(command, log_file, verbose=verbose, cwd=cwd, env=env, phase_name=phase_name)
 
 
 def sync_preview_dir(src_dir: Path, dst_dir: Path) -> None:
@@ -252,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
                 run_logged(
                     [venv_python(), "-m", "compiler.docgen.l0_docgen", "--stage", stage,
                      "--output-dir", str(work_root), *args.docgen_args],
-                    work_root / "docgen.log", verbose=args.verbose,
+                    work_root / "docgen.log", verbose=args.verbose, phase_name=f"L0 {stage}: reference generation",
                 )
                 stage_root = work_root / stage
                 if args.build_pdf or args.build_pdf_fast:
@@ -261,10 +258,12 @@ def main(argv: list[str] | None = None) -> int:
                     pdf_dir.mkdir(parents=True, exist_ok=True)
                     if args.build_pdf:
                         command = ["make", "-C", str(latex_dir), "LATEX_CMD=pdflatex -interaction=nonstopmode -halt-on-error"]
-                        run_logged(command, work_root / "latex.log", verbose=args.verbose)
+                        run_logged(command, work_root / "latex.log", verbose=args.verbose,
+                                   phase_name=f"L0 {stage}: full indexed PDF")
                     else:
                         run_logged(["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "refman"],
-                                   work_root / "latex.log", verbose=args.verbose, cwd=latex_dir)
+                                   work_root / "latex.log", verbose=args.verbose, cwd=latex_dir,
+                                   phase_name=f"L0 {stage}: preview PDF")
                     shutil.copy2(latex_dir / "refman.pdf", pdf_dir / pdf_name(stage))
                     if (stage_root / "html").is_dir():
                         shutil.copytree(pdf_dir, stage_root / "html/pdf")
@@ -276,7 +275,11 @@ def main(argv: list[str] | None = None) -> int:
                     tools["python"] = subprocess.check_output([venv_python(), "--version"], text=True).strip()
                     tools["mcss"] = hashlib.sha256(
                         (REPO_ROOT.parent / "tools/m.css/documentation/doxygen.py").read_bytes()).hexdigest()
-                    create_bundle(stage_root, bundle, stage=stage, version=package_version(REPO_ROOT), source=identity, tools=tools)
+                    with phase(f"L0 {stage}: bundle creation and verification"):
+                        create_bundle(stage_root, bundle, stage=stage, version=package_version(REPO_ROOT), source=identity, tools=tools)
+                for name in ("docgen.log", "latex.log"):
+                    if (work_root / name).exists():
+                        shutil.copy2(work_root / name, stage_root / name)
                 destination = parent / stage
                 shutil.rmtree(destination, ignore_errors=True)
                 shutil.move(str(stage_root), destination)

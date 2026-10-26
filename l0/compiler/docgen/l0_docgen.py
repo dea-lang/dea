@@ -21,6 +21,7 @@ from jinja2 import Environment, FileSystemLoader
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
 from docgen_function_inventory import collect_undocumented_functions
 from docgen_doxygen import render_mcss, run_isolated_doxygen
+from docgen_progress import phase
 
 from .l0_docgen_l0_filter import transform_l0_for_doxygen
 from .l0_docgen_latex import normalize_latex_site
@@ -365,31 +366,32 @@ def _generate_stage(args: argparse.Namespace) -> int:
         markdown_dir.mkdir(parents=True)
     generated_root.mkdir(parents=True)
 
-    manifest = build_source_manifest(root, args.stage)
-    _build_shadow_tree(root, manifest, shadow_root)
-    _patch_mcss_renderer(mcss_root)
+    with phase("Prepare sources and configurations"):
+        manifest = build_source_manifest(root, args.stage)
+        _build_shadow_tree(root, manifest, shadow_root)
+        _patch_mcss_renderer(mcss_root)
 
-    _write_template("mainpage_html.md.j2", html_mainpage_path, stage=args.stage)
-    _write_template(
-        "doxyfile.in",
-        xml_doxygen_path,
-        stage=args.stage,
-        input_files=[(shadow_root / path).as_posix() for path in manifest.files],
-        output_directory=doxygen_root.as_posix(),
-        mainpage=html_mainpage_path.as_posix(),
-        strip_from_path=shadow_root.as_posix(),
-        warn_logfile=xml_warnings_log.as_posix(),
-        project_number="",
-        generate_xml="YES",
-        generate_latex="NO",
-    )
-    _write_template(
-        "mcss_conf.py.in",
-        mcss_conf_path,
-        stage=args.stage,
-        doxygen_path=xml_doxygen_path.as_posix(),
-        html_output=html_dir.as_posix(),
-    )
+        _write_template("mainpage_html.md.j2", html_mainpage_path, stage=args.stage)
+        _write_template(
+            "doxyfile.in",
+            xml_doxygen_path,
+            stage=args.stage,
+            input_files=[(shadow_root / path).as_posix() for path in manifest.files],
+            output_directory=doxygen_root.as_posix(),
+            mainpage=html_mainpage_path.as_posix(),
+            strip_from_path=shadow_root.as_posix(),
+            warn_logfile=xml_warnings_log.as_posix(),
+            project_number="",
+            generate_xml="YES",
+            generate_latex="NO",
+        )
+        _write_template(
+            "mcss_conf.py.in",
+            mcss_conf_path,
+            stage=args.stage,
+            doxygen_path=xml_doxygen_path.as_posix(),
+            html_output=html_dir.as_posix(),
+        )
 
     run_isolated_doxygen(xml_doxygen_path, cwd=root)
 
@@ -417,36 +419,41 @@ def _generate_stage(args: argparse.Namespace) -> int:
 
     if html_enabled:
         render_mcss(mcss_root / "documentation/doxygen.py", mcss_conf_path, cwd=root)
-        _normalize_html_output(doxygen_root, html_dir)
-        normalize_search_result_urls(html_dir)
+        with phase("Normalize HTML and search URLs"):
+            _normalize_html_output(doxygen_root, html_dir)
+            normalize_search_result_urls(html_dir)
     if markdown_render_root is not None:
-        render_markdown_site(xml_dir, markdown_render_root, templates_dir, stage=args.stage)
+        with phase("Render Markdown"):
+            render_markdown_site(xml_dir, markdown_render_root, templates_dir, stage=args.stage)
     if html_enabled and markdown_render_root is not None:
-        render_curated_html_site(xml_dir, markdown_render_root, html_dir, templates_dir, stage=args.stage)
-        render_raw_reference_backlinks(xml_dir, markdown_render_root, html_dir)
-        rewrite_and_prune_raw_html_surface(xml_dir, markdown_render_root, html_dir)
-        render_compat_redirect_pages(xml_dir, markdown_render_root, html_dir, templates_dir)
+        with phase("Curate HTML reference"):
+            render_curated_html_site(xml_dir, markdown_render_root, html_dir, templates_dir, stage=args.stage)
+            render_raw_reference_backlinks(xml_dir, markdown_render_root, html_dir)
+            rewrite_and_prune_raw_html_surface(xml_dir, markdown_render_root, html_dir)
+            render_compat_redirect_pages(xml_dir, markdown_render_root, html_dir, templates_dir)
     if latex_enabled:
-        tagline = (templates_dir / "tagline.txt.j2").read_text(encoding="utf-8").strip()
-        normalize_latex_site(xml_dir, doxygen_root / "latex", tagline=tagline)
+        with phase("Normalize LaTeX"):
+            tagline = (templates_dir / "tagline.txt.j2").read_text(encoding="utf-8").strip()
+            normalize_latex_site(xml_dir, doxygen_root / "latex", tagline=tagline)
 
-    undocumented_functions = _collect_undocumented_functions(xml_dir, root)
-    _write_undocumented_functions_report(undocumented_functions_report, undocumented_functions)
+    with phase("Reference inventory and strict validation"):
+        undocumented_functions = _collect_undocumented_functions(xml_dir, root)
+        _write_undocumented_functions_report(undocumented_functions_report, undocumented_functions)
 
-    warning_count = _warnings_count(xml_warnings_log) + _warnings_count(latex_warnings_log)
-    if args.strict:
-        pad_hits = _find_synthetic_pad_members(xml_dir)
-        if pad_hits:
-            preview = ", ".join(f"{xml}:{name}" for xml, name in pad_hits[:8])
+        warning_count = _warnings_count(xml_warnings_log) + _warnings_count(latex_warnings_log)
+        if args.strict:
+            pad_hits = _find_synthetic_pad_members(xml_dir)
+            if pad_hits:
+                preview = ", ".join(f"{xml}:{name}" for xml, name in pad_hits[:8])
+                raise SystemExit(
+                    "detected synthetic Doxygen members matching __padN__: "
+                    f"{preview}; this indicates an L0 parsing regression"
+                )
+        if args.strict and warning_count:
             raise SystemExit(
-                "detected synthetic Doxygen members matching __padN__: "
-                f"{preview}; this indicates an L0 parsing regression"
+                "doxygen reported "
+                f"{warning_count} warning(s); see {xml_warnings_log} and {latex_warnings_log}"
             )
-    if args.strict and warning_count:
-        raise SystemExit(
-            "doxygen reported "
-            f"{warning_count} warning(s); see {xml_warnings_log} and {latex_warnings_log}"
-        )
 
     return 0
 

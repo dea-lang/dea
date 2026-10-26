@@ -4,6 +4,7 @@
 
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
@@ -318,3 +319,43 @@ def test_workflow_handoffs_and_isolation_are_wired():
         assert standalone["on"][trigger]["inputs"]["run_isolation"]["default"] == "false"
     delegate = step(standalone["jobs"]["bootstrap"]["steps"], "Run L2 CI delegate")
     assert delegate["with"]["run_isolation"] == "${{ inputs.run_isolation }}"
+
+
+@pytest.mark.parametrize("filename,job", [
+    ("ci.yml", "unified"),
+    ("l0-ci.yml", "test-extended"),
+    ("l1-ci.yml", "bootstrap"),
+    ("l2-ci.yml", "bootstrap"),
+    ("l0-docs-build.yml", "build-docs"),
+    ("l0-docs-validate.yml", "validate-docs"),
+    ("l1-docs-build.yml", "build-docs"),
+    ("l1-docs-validate.yml", "validate-docs"),
+    ("l1-productization-acceptance.yml", "docs"),
+])
+def test_doxygen_setup_precedes_every_native_or_documentation_consumer(filename, job):
+    steps = workflow(f".github/workflows/{filename}")["jobs"][job]["steps"]
+    setups = [i for i, item in enumerate(steps) if item.get("uses") == "./.github/actions/setup-doxygen"]
+    assert len(setups) == 1
+    setup_index = setups[0]
+    checkout = next(i for i, item in enumerate(steps) if item.get("uses", "").startswith("actions/checkout@"))
+    consumers = [i for i, item in enumerate(steps)
+                 if item.get("uses", "").startswith("./.github/actions/l")
+                 or "gen_docs.py" in item.get("run", "") or "docs-artifacts" in item.get("run", "")]
+    assert consumers and checkout < setup_index < min(consumers)
+    assert not any("apt-get install" in item.get("run", "") and "doxygen" in item["run"] for item in steps)
+    if any(item.get("uses", "").startswith("./.github/actions/l") for item in steps):
+        windows = step(steps, "Show Windows environment")
+        assert 'command -v doxygen' in windows["run"]
+        assert 'test "$(doxygen --version)"' in windows["run"]
+        assert "steps.doxygen.outputs.version" in windows["run"]
+        assert windows["shell"] == "msys2 {0}"
+        assert steps[setup_index]["id"] == "doxygen"
+
+
+def test_doxygen_action_regressions():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is unavailable")
+    result = subprocess.run([node, "--test", str(ROOT / ".github/actions/setup-doxygen/setup.test.cjs")],
+                            cwd=ROOT, text=True, capture_output=True, timeout=60)
+    assert result.returncode == 0, result.stdout + result.stderr

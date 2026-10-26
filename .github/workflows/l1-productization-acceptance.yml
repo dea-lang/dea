@@ -20,7 +20,7 @@ env:
 
 jobs:
   docs:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Show inputs
         shell: bash
@@ -48,9 +48,10 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
       - name: Install full documentation toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y doxygen graphviz make texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended
+        uses: ./.github/actions/setup-docs-toolchain
+        timeout-minutes: 15
+      - name: Set up Doxygen
+        uses: ./.github/actions/setup-doxygen
       - name: Sync documentation dependencies
         run: uv sync --all-groups
       - name: Validate package version

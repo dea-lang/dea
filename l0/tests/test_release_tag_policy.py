@@ -186,7 +186,7 @@ def check_release_workflow() -> None:
         'expected_heading="# Dea/L0 $release_version"',
         context=validation_step,
     )
-    # The production step runs on ubuntu-latest. Native Windows CI still
+    # The production step runs on ubuntu-26.04. Native Windows CI still
     # performs every static wiring assertion below, but does not execute the
     # Ubuntu Bash fragment through an MSYS subprocess boundary.
     if os.name != "nt":
@@ -314,14 +314,22 @@ def check_docs_build_workflow() -> None:
     assert_contains(text, "inputs.source_ref == inputs.release_tag", context="l0-docs-build.yml")
     assert_contains(text, "format('refs/tags/{0}', inputs.release_tag)", context="l0-docs-build.yml")
     assert_contains(text, "actions/checkout", context="l0-docs-build.yml")
-    assert_contains(text, "- name: Show Doxygen version", context="l0-docs-build.yml")
-    assert_contains(text, "run: doxygen --version", context="l0-docs-build.yml")
+    assert_before(
+        text,
+        "uses: ./.github/actions/setup-doxygen",
+        "python3 scripts/gen_docs.py",
+        context="l0-docs-build.yml",
+    )
 
 
 def check_docs_validate_workflow() -> None:
     text = read_text(".github/workflows/l0-docs-validate.yml")
-    assert_contains(text, "- name: Show Doxygen version", context="l0-docs-validate.yml")
-    assert_contains(text, "run: doxygen --version", context="l0-docs-validate.yml")
+    assert_before(
+        text,
+        "uses: ./.github/actions/setup-doxygen",
+        "python3 scripts/gen_docs.py",
+        context="l0-docs-validate.yml",
+    )
 
 
 def check_docs() -> None:

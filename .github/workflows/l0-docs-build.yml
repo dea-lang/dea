@@ -36,7 +36,7 @@ jobs:
       fail-fast: false
       matrix:
         stage: ${{ fromJSON(inputs.stage == 'all' && '["stage1", "stage2"]' || format('["{0}"]', inputs.stage)) }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     defaults:
       run:
         working-directory: l0
@@ -79,23 +79,13 @@ jobs:
           cache-suffix: docs-build-py3.14-ws
 
       - name: Install docs toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            doxygen \
-            graphviz \
-            make
+        uses: ./.github/actions/setup-docs-toolchain
+        timeout-minutes: 15
+        with:
+          build_pdf: ${{ inputs.build_pdf }}
 
-      - name: Show Doxygen version
-        run: doxygen --version
-
-      - name: Install TeX toolchain
-        if: inputs.build_pdf
-        run: |
-          sudo apt-get install -y \
-            texlive-latex-recommended \
-            texlive-latex-extra \
-            texlive-fonts-recommended
+      - name: Set up Doxygen
+        uses: ./.github/actions/setup-doxygen
 
       - name: Sync docs dependencies
         working-directory: ${{ github.workspace }}

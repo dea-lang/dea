@@ -248,12 +248,18 @@ jobs:
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-clang
 
+      - name: Set up Doxygen
+        id: doxygen
+        uses: ./.github/actions/setup-doxygen
+
       - name: Show Windows environment
         if: matrix.os == 'windows'
         shell: msys2 {0}
         run: |
           printf 'platform=%s\n' '${{ matrix.platform }}'
           printf 'MSYSTEM=%s\n' "${MSYSTEM:-}"
+          command -v doxygen
+          test "$(doxygen --version)" = '${{ steps.doxygen.outputs.version }}'
           pwd
           printf 'GITHUB_WORKSPACE=%s\n' "${GITHUB_WORKSPACE:-}"
           command -v python
