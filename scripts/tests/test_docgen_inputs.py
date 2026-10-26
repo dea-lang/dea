@@ -24,7 +24,7 @@ from docs_artifacts import source_identity
 args = (root, "stage2") if root.name == "l0" else (root,)
 baseline = source_identity(*args)["input_digest"]
 read = Path.read_bytes
-for name in ("c_declarators.py", "docgen_c_contracts.py", "docgen_doxygen.py", "docgen_function_inventory.py", "docgen_progress.py"):
+for name in ("c_declarators.py", "docgen_c_contracts.py", "docgen_doxygen.py", "docgen_function_inventory.py", "docgen_progress.py", "docgen_pdf.py"):
     changed = (root.parent / "scripts" / name).resolve()
     def virtual_bytes(path):
         contents = read(path)

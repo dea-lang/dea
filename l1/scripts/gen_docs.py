@@ -23,6 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT.parent / "scripts"))
 
 from docgen_progress import phase, run_logged as run_progress_logged
+from docgen_pdf import validate_full_pdf
 
 
 @dataclass(frozen=True)
@@ -253,11 +254,7 @@ def main(argv: list[str] | None = None) -> int:
                     command = ["make", "-C", str(latex_dir), "LATEX_CMD=pdflatex -interaction=nonstopmode -halt-on-error"]
                     run_logged(command, work_root / "latex.log", verbose=args.verbose,
                                phase_name="L1: full indexed PDF")
-                    latex_log = (latex_dir / "refman.log").read_text(errors="replace")
-                    if "There were undefined references" in latex_log or "Rerun to get cross-references right" in latex_log:
-                        raise ValueError("full PDF has unresolved references")
-                    if not (latex_dir / "refman.ind").is_file():
-                        raise ValueError("full PDF index is missing")
+                    validate_full_pdf(latex_dir)
                 else:
                     run_logged(["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "refman"],
                                work_root / "latex.log", verbose=args.verbose, cwd=latex_dir,

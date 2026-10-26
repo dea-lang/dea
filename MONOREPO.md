@@ -106,6 +106,12 @@ invocation. Full subprocess output is flushed continuously to `docgen.log` and `
 references or failure diagnostics. Verbose mode additionally streams every subprocess line. Measure complete reference
 performance in CI after runner or package changes; toolchain compatibility alone does not establish build duration.
 
+Both full-PDF wrappers validate the final `refman.log` and require `refman.ind` before copying PDFs or creating bundles.
+Unresolved references, rerun requests, and pdfTeX missing-destination warnings fail the build, including when TeX wraps
+the warning or target identifier across lines. Earlier-pass messages in the aggregate `latex.log` do not fail an
+otherwise complete final pass. Enum payload lists retain each XML variant's destination and label. Failed builds
+preserve the prior successful reference and save diagnostics; `--pdf-fast` remains an incomplete-reference preview.
+
 Native compiler CI and all documentation producers use upstream Doxygen 1.18.0 through
 [.github/actions/setup-doxygen/action.yml](.github/actions/setup-doxygen/action.yml). The action selects the native
 Linux x64, macOS Intel/ARM64, or Windows x64 archive, verifies its upstream SHA-256 checksum and CLI version, and

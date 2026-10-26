@@ -372,9 +372,26 @@ def _retarget_l0_symbol_links(text: str, preferred_refids_by_name: dict[str, str
     return pattern.sub(replace, text)
 
 
-def _variants_block(variants: list[str]) -> list[str]:
+def _variants_block(variants: list[str], memberdef: ET.Element) -> list[str]:
+    """Render source variants with their original Doxygen link identities.
+
+    Args:
+        variants: Source declarations in their original order.
+        memberdef: XML enum containing stable per-variant IDs.
+
+    Returns:
+        LaTeX list lines with an anchor and label on each identified variant.
+    """
+    identities = {value.findtext("name", default="").strip(): value.get("id", "")
+                  for value in memberdef.findall("enumvalue")}
     lines = [r"\textbf{Variants:}\\", r"\begin{DoxyItemize}"]
-    lines.extend(rf"\item \texttt{{{_escape_latex_texttt(variant)}}}" for variant in variants)
+    for variant in variants:
+        name = re.match(r"\w+", variant)
+        identity = identities.get(name.group() if name else "", "")
+        # Doxygen removes the XML compound/member separator in LaTeX targets.
+        target = re.sub(r"_1([a-z])", r"_\1", identity, count=1)
+        anchors = rf"\Hypertarget{{{target}}}\label{{{target}}}" if target else ""
+        lines.append(rf"\item {anchors}\texttt{{{_escape_latex_texttt(variant)}}}")
     lines.append(r"\end{DoxyItemize}")
     lines.append("")
     return lines
@@ -491,7 +508,7 @@ def _inject_enum_variants(text: str, file_compound: ET.Element) -> str:
                 line.startswith(r"\paragraph{Variants}") or line.startswith(r"\textbf{Variants:}\\")
                 for line in lines[header_index:enum_fields_index]
             )
-            block = [] if already_injected else _variants_block(source_variants)
+            block = [] if already_injected else _variants_block(source_variants, memberdef)
             replacements.append((enum_fields_index, enum_fields_end + 1, block))
 
     # XML declaration order can differ from the alphabetical LaTeX member order.
@@ -531,6 +548,40 @@ def _normalize_symbol_tex(
     return normalized
 
 
+def _module_link_targets(
+    compounds: list[ET.Element],
+    file_compounds_by_source: dict[str, ET.Element],
+    latex_dir: Path,
+) -> dict[str, str]:
+    """Resolve dangling Doxygen module aliases to documented source-file pages.
+
+    Args:
+        compounds: All parsed XML compounds, including native and module pages.
+        file_compounds_by_source: Dea file compounds keyed by source path.
+        latex_dir: Generated LaTeX directory containing available file pages.
+
+    Returns:
+        Module aliases with exactly one available source-file destination.
+    """
+    known_ids = {compound.get("id") for compound in compounds}
+    pages_by_module: dict[str, set[str]] = {}
+    for source_path, compound in file_compounds_by_source.items():
+        module_name = module_name_for_source_path(source_path)
+        refid = compound.attrib["id"]
+        if module_name and (latex_dir / f"{refid}.tex").is_file():
+            pages_by_module.setdefault(module_name, set()).add(refid)
+
+    targets_by_alias: dict[str, set[str]] = {}
+    for compound in compounds:
+        for reference in compound.iter("ref"):
+            alias = reference.get("refid", "")
+            if not alias.startswith("module__") or alias in known_ids:
+                continue
+            module_name = "".join(reference.itertext()).strip()
+            targets_by_alias.setdefault(alias, set()).update(pages_by_module.get(module_name, ()))
+    return {alias: next(iter(targets)) for alias, targets in targets_by_alias.items() if len(targets) == 1}
+
+
 def normalize_latex_site(xml_dir: Path, latex_dir: Path, *, tagline: str = "") -> None:
     """Normalize native Doxygen LaTeX output for L0 sources.
 
@@ -549,6 +600,7 @@ def normalize_latex_site(xml_dir: Path, latex_dir: Path, *, tagline: str = "") -
     file_refids_by_source: dict[str, str] = {}
     preferred_refids_by_name: dict[str, str] = {}
     symbol_compounds: list[ET.Element] = []
+    compounds: list[ET.Element] = []
 
     for xml_path in sorted(xml_dir.glob("*.xml")):
         if xml_path.name == "index.xml":
@@ -557,6 +609,7 @@ def normalize_latex_site(xml_dir: Path, latex_dir: Path, *, tagline: str = "") -
         compounddef = root.find("compounddef")
         if compounddef is None:
             continue
+        compounds.append(compounddef)
         location = compounddef.find("location")
         source_path = location.attrib.get("file", "") if location is not None else ""
         if not source_path or Path(source_path).is_absolute() or Path(source_path).suffix not in {".l0", ".l1"}:
@@ -607,8 +660,14 @@ def normalize_latex_site(xml_dir: Path, latex_dir: Path, *, tagline: str = "") -
             encoding="utf-8",
         )
 
+    module_targets = _module_link_targets(compounds, file_compounds_by_source, latex_dir)
     for tex_path in sorted(latex_dir.glob("*.tex")):
         tex = tex_path.read_text(encoding="utf-8")
         tex = _normalize_prose_arrows(tex)
         tex = _normalize_l0_signature_links(tex)
+        tex = re.sub(
+            r"(\\(?:doxy|hyper)link\{)([^}]+)(\})",
+            lambda match: match[1] + module_targets.get(match[2], match[2]) + match[3],
+            tex,
+        )
         tex_path.write_text(tex, encoding="utf-8")

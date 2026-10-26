@@ -315,3 +315,34 @@ Absent&\\
     first_pass = _inject_enum_variants(original, compound)
     assert first_pass == expected
     assert _inject_enum_variants(first_pass, compound) == first_pass
+
+
+@pytest.mark.parametrize("xml_order", [("Plain", "Present"), ("Present", "Plain")])
+def test_payload_enum_list_preserves_each_variants_destination_and_label(tmp_path, monkeypatch, xml_order):
+    monkeypatch.chdir(tmp_path)
+    Path("fixture.l0").write_text("enum Result { Plain; Present(value: int); }\n")
+    compound = ET.fromstring('''<compounddef kind="file"><sectiondef kind="enum">
+<memberdef kind="enum" id="binding_file_8l0_1aenum"><name>Result</name>
+<location file="fixture.l0" line="1"/></memberdef>
+</sectiondef></compounddef>''')
+    member = compound.find("sectiondef/memberdef")
+    for name in xml_order:
+        value = ET.SubElement(member, "enumvalue", id="binding_file_8l0_1aenumav" + name)
+        ET.SubElement(value, "name").text = name
+    original = r'''\doxysubsubsection{\texorpdfstring{Result}{Result}}
+\begin{DoxyEnumFields}[2]{Enumerator}
+\Hypertarget{binding_file_8l0_aenumavPlain}\label{binding_file_8l0_aenumavPlain}Plain&\\
+\Hypertarget{binding_file_8l0_aenumavPresent}\label{binding_file_8l0_aenumavPresent}Present&\\
+\end{DoxyEnumFields}
+'''
+    output = _inject_enum_variants(original, compound)
+    plain = r"\item \Hypertarget{binding_file_8l0_aenumavPlain}\label{binding_file_8l0_aenumavPlain}\texttt{Plain}"
+    payload = r"\item \Hypertarget{binding_file_8l0_aenumavPresent}\label{binding_file_8l0_aenumavPresent}\texttt{Present(value: int)}"
+    assert plain in output and payload in output
+    assert output.index(plain) < output.index(payload)
+    assert output.count(r"\Hypertarget{binding_file_8l0_aenumavPlain}") == 1
+    assert output.count(r"\Hypertarget{binding_file_8l0_aenumavPresent}") == 1
+    assert output.count(r"\label{binding_file_8l0_aenumavPlain}") == 1
+    assert output.count(r"\label{binding_file_8l0_aenumavPresent}") == 1
+    assert r"\begin{DoxyEnumFields}" not in output
+    assert _inject_enum_variants(output, compound) == output

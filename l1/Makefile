@@ -544,4 +544,4 @@ docs-artifacts:
 	DEA_DIST_VERSION="$(DEA_DIST_VERSION)" "$(PYTHON)" scripts/gen_docs.py --strict --pdf --artifacts
 
 test-docgen: venv
-	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_docgen_*.py ../scripts/tests/test_docgen_function_inventory.py ../scripts/tests/test_c_docs.py ../scripts/tests/test_docgen_inputs.py
+	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_docgen_*.py ../scripts/tests/test_docgen_function_inventory.py ../scripts/tests/test_c_docs.py ../scripts/tests/test_docgen_inputs.py ../scripts/tests/test_docgen_pdf.py
