@@ -154,7 +154,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential clang make
 
-      - name: Set up MSYS2 UCRT64 toolchain with MSYS2 Python
+      - name: Set up MSYS2 UCRT64 toolchain
         if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
         with:
@@ -164,17 +164,18 @@ jobs:
             make
             diffutils
             mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-python
-            mingw-w64-ucrt-x86_64-python-pip
-            mingw-w64-ucrt-x86_64-uv
+
+      - name: Set up Windows Python environments
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/setup-windows-python
 
       - name: Show Windows environment
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
           printf 'MSYSTEM=%s\n' "${MSYSTEM:-}"
-          command -v python
-          python -VV
+          printf 'Native Python: %s\n' "$HOST_PYTHON"
+          "$HOST_PYTHON" -VV
           command -v uv || true
           uv --version || true
           command -v "${{ matrix.c_compiler }}"
@@ -192,7 +193,6 @@ jobs:
         shell: msys2 {0}
         env:
           L0_CC: ${{ matrix.c_compiler }}
-          PYTHON: python
         run: |
           make check-examples
 
@@ -214,7 +214,6 @@ jobs:
         shell: msys2 {0}
         env:
           L0_CC: ${{ matrix.c_compiler }}
-          PYTHON: python
           DEA_BUILD_ID: gha-${{ github.run_id }}.${{ github.run_attempt }}-snapshot-${{ matrix.os }}-${{ matrix.arch }}
           SNAPSHOT_VERSION: ${{ needs.prepare-snapshot.outputs.snapshot_version }}
         run: |
@@ -249,7 +248,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
-          python - <<'PY'
+          "$HOST_PYTHON" - <<'PY'
           from pathlib import Path
           import os
           import re
@@ -354,7 +353,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
-          python - <<'PY'
+          "$HOST_PYTHON" - <<'PY'
           from pathlib import Path
           import os
           import subprocess

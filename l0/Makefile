@@ -4,14 +4,16 @@ VENV_DIR_REL := ../.venv
 VENV_DIR := $(abspath $(VENV_DIR_REL))
 
 ifeq ($(OS),Windows_NT)
-VENV_PYTHON_DEFAULT := $(VENV_DIR)/Scripts/python.exe
+# MSYS2 Python is reserved for the separate Stage 1 compatibility environment.
+VENV_PYTHON := $(VENV_DIR)/Scripts/python.exe
+HOST_PYTHON ?= $(shell py -3 -c 'import sys; print(sys.executable)' 2>/dev/null)
+PYTHON ?= $(shell if [ -x "$(VENV_PYTHON)" ]; then printf '%s' "$(VENV_PYTHON)"; else printf '%s' "$(HOST_PYTHON)"; fi)
 else
 VENV_PYTHON_DEFAULT := $(VENV_DIR)/bin/python
-endif
-
 HOST_PYTHON ?= $(shell if command -v python3 >/dev/null 2>&1; then printf '%s' python3; else printf '%s' python; fi)
 VENV_PYTHON := $(shell if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(VENV_DIR)/bin/python"; elif [ -x "$(VENV_DIR)/Scripts/python.exe" ]; then printf '%s' "$(VENV_DIR)/Scripts/python.exe"; else printf '%s' $(VENV_PYTHON_DEFAULT); fi)
 PYTHON ?= $(shell if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(VENV_DIR)/bin/python"; elif [ -x "$(VENV_DIR)/Scripts/python.exe" ]; then printf '%s' "$(VENV_DIR)/Scripts/python.exe"; else printf '%s' $(HOST_PYTHON); fi)
+endif
 DEA_BUILD_DIR ?= build/dea
 DOCKER_IMAGE ?= l0-test
 
@@ -41,6 +43,7 @@ L0_COMPILER_RT_QUARANTINE_MAX_COUNT ?= 256
 	use-dev-stage2 \
 	test \
 	test-stage1 \
+	test-stage1-msys2 \
 	test-stage2 \
 	test-stage2-trace \
 	check-examples \
@@ -144,19 +147,23 @@ help:
 		'                     Checked-runtime quarantine record limit used when building L0 compiler binaries only; empty disables this compiler-build default and user program defaults stay unchanged.'
 
 venv:
+ifeq ($(OS),Windows_NT)
+	@$(MAKE) -C .. venv PYTHON="$(PYTHON)"
+else
 	@$(MAKE) -C .. venv
+endif
 
 install-dev-stage1:
-	$(PYTHON) ./scripts/gen_dist_tools.py write-stage1-wrapper --dea-build-dir "$(DEA_BUILD_DIR)"
-	$(PYTHON) ./scripts/gen_dist_tools.py write-env-script --dea-build-dir "$(DEA_BUILD_DIR)"
+	"$(PYTHON)" ./scripts/gen_dist_tools.py write-stage1-wrapper --dea-build-dir "$(DEA_BUILD_DIR)"
+	"$(PYTHON)" ./scripts/gen_dist_tools.py write-env-script --dea-build-dir "$(DEA_BUILD_DIR)"
 	@printf 'Repo-local Stage 1 compiler version:\n'
 	@"$(DEA_BUILD_DIR)/bin/l0c-stage1" --version
 
 install-dev-stage2: export L0_COMPILER_RT_CHECK_BASIC := $(L0_COMPILER_RT_CHECK_BASIC)
 install-dev-stage2: export L0_COMPILER_RT_QUARANTINE_MAX_COUNT := $(L0_COMPILER_RT_QUARANTINE_MAX_COUNT)
 install-dev-stage2:
-	DEA_BUILD_DIR="$(DEA_BUILD_DIR)" $(PYTHON) ./scripts/build_stage2_l0c.py
-	$(PYTHON) ./scripts/gen_dist_tools.py write-env-script --dea-build-dir "$(DEA_BUILD_DIR)"
+	DEA_BUILD_DIR="$(DEA_BUILD_DIR)" "$(PYTHON)" ./scripts/build_stage2_l0c.py
+	"$(PYTHON)" ./scripts/gen_dist_tools.py write-env-script --dea-build-dir "$(DEA_BUILD_DIR)"
 	@printf 'Repo-local Stage 2 compiler version:\n'
 	@"$(DEA_BUILD_DIR)/bin/l0c-stage2" --version
 
@@ -167,7 +174,7 @@ install:
 		printf '%s\n' 'make install: PREFIX is required; example: make PREFIX=/tmp/l0-install L0_CC=gcc install' >&2; \
 		exit 2; \
 	fi
-	L0_COMPILER_RT_CHECK_BASIC="$(L0_COMPILER_RT_CHECK_BASIC)" L0_COMPILER_RT_QUARANTINE_MAX_COUNT="$(L0_COMPILER_RT_QUARANTINE_MAX_COUNT)" L0_CFLAGS="$${L0_CFLAGS:-$(DIST_L0_CFLAGS_DEFAULT)}" $(PYTHON) ./scripts/gen_dist_tools.py install-prefix --prefix "$(PREFIX)"
+	L0_COMPILER_RT_CHECK_BASIC="$(L0_COMPILER_RT_CHECK_BASIC)" L0_COMPILER_RT_QUARANTINE_MAX_COUNT="$(L0_COMPILER_RT_QUARANTINE_MAX_COUNT)" L0_CFLAGS="$${L0_CFLAGS:-$(DIST_L0_CFLAGS_DEFAULT)}" "$(PYTHON)" ./scripts/gen_dist_tools.py install-prefix --prefix "$(PREFIX)"
 	@printf 'Installed Stage 2 compiler version:\n'
 	@"$(PREFIX)/bin/l0c-stage2" --version
 	@printf '\n------------------------------------------------------------------------------\n'
@@ -181,20 +188,20 @@ endif
 	@printf '\n------------------------------------------------------------------------------\n'
 
 bench-runtime:
-	$(PYTHON) ./scripts/bench_runtime.py $(if $(strip $(BENCH_CC)),--cc "$(BENCH_CC)") $(if $(strip $(BENCH_SCALE)),--scale "$(BENCH_SCALE)") $(if $(strip $(BENCH_RUNS)),--runs "$(BENCH_RUNS)")
+	"$(PYTHON)" ./scripts/bench_runtime.py $(if $(strip $(BENCH_CC)),--cc "$(BENCH_CC)") $(if $(strip $(BENCH_SCALE)),--scale "$(BENCH_SCALE)") $(if $(strip $(BENCH_RUNS)),--runs "$(BENCH_RUNS)")
 
 list-installed:
 	@if [ -z "$(strip $(PREFIX))" ]; then \
 		printf '%s\n' 'make list-installed: PREFIX is required; example: make PREFIX=/usr/local list-installed' >&2; \
 		exit 2; \
 	fi
-	@$(PYTHON) ./scripts/gen_dist_tools.py list-installed --prefix "$(PREFIX)"
+	@"$(PYTHON)" ./scripts/gen_dist_tools.py list-installed --prefix "$(PREFIX)"
 
 dist: venv
-	L0_COMPILER_RT_CHECK_BASIC="$(L0_COMPILER_RT_CHECK_BASIC)" L0_COMPILER_RT_QUARANTINE_MAX_COUNT="$(L0_COMPILER_RT_QUARANTINE_MAX_COUNT)" L0_CFLAGS="$${L0_CFLAGS:-$(DIST_L0_CFLAGS_DEFAULT)}" $(PYTHON) ./scripts/gen_dist_tools.py make-dist
+	L0_COMPILER_RT_CHECK_BASIC="$(L0_COMPILER_RT_CHECK_BASIC)" L0_COMPILER_RT_QUARANTINE_MAX_COUNT="$(L0_COMPILER_RT_QUARANTINE_MAX_COUNT)" L0_CFLAGS="$${L0_CFLAGS:-$(DIST_L0_CFLAGS_DEFAULT)}" "$(PYTHON)" ./scripts/gen_dist_tools.py make-dist
 
 use-dev-stage1: install-dev-stage1
-	$(PYTHON) ./scripts/gen_dist_tools.py set-alias --dea-build-dir "$(DEA_BUILD_DIR)" --stage stage1
+	"$(PYTHON)" ./scripts/gen_dist_tools.py set-alias --dea-build-dir "$(DEA_BUILD_DIR)" --stage stage1
 	@printf '\n------------------------------------------------------------------------------\n'
 ifeq ($(OS),Windows_NT)
 	@cmd_env_path="$$(cygpath -w "$$(realpath "$(DEA_BUILD_DIR)/bin/l0-env.cmd")")"; \
@@ -205,7 +212,7 @@ endif
 	@printf '\n------------------------------------------------------------------------------\n'
 
 use-dev-stage2: install-dev-stage2
-	$(PYTHON) ./scripts/gen_dist_tools.py set-alias --dea-build-dir "$(DEA_BUILD_DIR)" --stage stage2
+	"$(PYTHON)" ./scripts/gen_dist_tools.py set-alias --dea-build-dir "$(DEA_BUILD_DIR)" --stage stage2
 	@printf '\n------------------------------------------------------------------------------\n'
 ifeq ($(OS),Windows_NT)
 	@cmd_env_path="$$(cygpath -w "$$(realpath "$(DEA_BUILD_DIR)/bin/l0-env.cmd")")"; \
@@ -215,8 +222,17 @@ else
 endif
 	@printf '\n------------------------------------------------------------------------------\n'
 
+# Both interpreters use the same collection, configuration, and xdist parallelism.
+STAGE1_PYTEST_ARGS := -n auto -q --quiet-progress
+
 test-stage1: | venv
-	"$(VENV_PYTHON)" -m pytest -n auto -q --quiet-progress
+	"$(VENV_PYTHON)" -m pytest $(STAGE1_PYTEST_ARGS)
+
+# Provisioning is deliberately separate: this target never syncs or installs packages.
+test-stage1-msys2:
+	@test -n "$(DEA_MSYS2_TEST_PYTHON)" || { printf '%s\n' 'error: provision DEA_MSYS2_TEST_PYTHON first' >&2; exit 1; }
+	"$(DEA_MSYS2_TEST_PYTHON)" ../scripts/check_windows_python.py msys2
+	"$(DEA_MSYS2_TEST_PYTHON)" -m pytest $(STAGE1_PYTEST_ARGS)
 
 test-stage2: install-dev-stage2 | venv
 test-stage2: export L0_COMPILER_RT_CHECK_BASIC := $(L0_COMPILER_RT_CHECK_BASIC)
@@ -283,13 +299,13 @@ print-dea-build-dir:
 DOC_STAGE ?= all
 
 docs:
-	$(PYTHON) ./scripts/gen_docs.py --strict --stage $(DOC_STAGE)
+	"$(PYTHON)" ./scripts/gen_docs.py --strict --stage $(DOC_STAGE)
 
 docs-pdf:
-	$(PYTHON) ./scripts/gen_docs.py --strict --pdf --stage $(DOC_STAGE)
+	"$(PYTHON)" ./scripts/gen_docs.py --strict --pdf --stage $(DOC_STAGE)
 
 docs-artifacts:
-	$(PYTHON) ./scripts/gen_docs.py --strict --pdf --artifacts --stage $(DOC_STAGE)
+	"$(PYTHON)" ./scripts/gen_docs.py --strict --pdf --artifacts --stage $(DOC_STAGE)
 
 # Export path values without interpolating them into shell command text.
 clean clean-dea-build clean-all: export DEA_BUILD_DIR := $(DEA_BUILD_DIR)

@@ -91,7 +91,6 @@ jobs:
                   "arch": "x86_64",
                   "c_compiler": "gcc",
                   "platform": "linux",
-                  "python_runtime": "hosted",
                   "msystem": "",
                   "msys2_package_prefix": "",
               },
@@ -101,7 +100,6 @@ jobs:
                   "arch": "x86_64",
                   "c_compiler": "clang",
                   "platform": "macos-intel",
-                  "python_runtime": "hosted",
                   "msystem": "",
                   "msys2_package_prefix": "",
               },
@@ -111,7 +109,6 @@ jobs:
                   "arch": "arm64",
                   "c_compiler": "clang",
                   "platform": "macos-arm64",
-                  "python_runtime": "hosted",
                   "msystem": "",
                   "msys2_package_prefix": "",
               },
@@ -121,7 +118,6 @@ jobs:
                   "arch": "x86_64",
                   "c_compiler": "gcc",
                   "platform": "windows-ucrt64-python",
-                  "python_runtime": "msys2",
                   "msystem": "UCRT64",
                   "msys2_package_prefix": "mingw-w64-ucrt-x86_64",
               },
@@ -133,17 +129,6 @@ jobs:
                   "arch": "x86_64",
                   "c_compiler": "gcc",
                   "platform": "windows-mingw64-python",
-                  "python_runtime": "msys2",
-                  "msystem": "MINGW64",
-                  "msys2_package_prefix": "mingw-w64-x86_64",
-              },
-              {
-                  "runner": "windows-latest",
-                  "os": "windows",
-                  "arch": "x86_64",
-                  "c_compiler": "gcc",
-                  "platform": "windows-native-python",
-                  "python_runtime": "native",
                   "msystem": "MINGW64",
                   "msys2_package_prefix": "mingw-w64-x86_64",
               },
@@ -151,6 +136,9 @@ jobs:
 
           event_name = os.environ["EVENT_NAME"]
           requested_platform = os.environ.get("INPUT_PLATFORM", "all").strip() or "all"
+          # Retain the old selector as an alias; both lanes now use native tooling.
+          if requested_platform == "windows-native-python":
+              requested_platform = "windows-mingw64-python"
           selected = default_matrix
           if event_name in {"workflow_dispatch", "workflow_call"}:
               dispatch_matrix = default_matrix + manual_only_matrix
@@ -193,7 +181,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Set up Python
-        if: matrix.python_runtime != 'msys2'
+        if: runner.os != 'Windows'
         uses: actions/setup-python@v6
         with:
           python-version: "3.14"
@@ -209,7 +197,7 @@ jobs:
           fi
 
       - name: Set up uv
-        if: matrix.python_runtime != 'msys2'
+        if: runner.os != 'Windows'
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -221,8 +209,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential clang make
 
-      - name: Set up MSYS2 toolchain with MSYS2 Python
-        if: ${{ matrix.os == 'windows' && matrix.python_runtime == 'msys2' }}
+      - name: Set up MSYS2 toolchain and UCRT64 test Python
+        if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
         with:
           msystem: ${{ matrix.msystem }}
@@ -232,21 +220,16 @@ jobs:
             diffutils
             ${{ matrix.msys2_package_prefix }}-gcc
             ${{ matrix.msys2_package_prefix }}-clang
-            ${{ matrix.msys2_package_prefix }}-python
-            ${{ matrix.msys2_package_prefix }}-python-pip
-            ${{ matrix.msys2_package_prefix }}-uv
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-clang
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-python-pip
 
-      - name: Set up MSYS2 native-Python toolchain
-        if: ${{ matrix.os == 'windows' && matrix.python_runtime == 'native' }}
-        uses: msys2/setup-msys2@v2
+      - name: Set up Windows Python environments
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/setup-windows-python
         with:
-          msystem: MINGW64
-          path-type: inherit
-          install: >-
-            make
-            diffutils
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-clang
+          msys2_stage1: "true"
 
       - name: Set up Doxygen
         id: doxygen
@@ -262,8 +245,8 @@ jobs:
           test "$(doxygen --version)" = '${{ steps.doxygen.outputs.version }}'
           pwd
           printf 'GITHUB_WORKSPACE=%s\n' "${GITHUB_WORKSPACE:-}"
-          command -v python
-          python -VV
+          printf 'Native Python: %s\n' "$HOST_PYTHON"
+          "$HOST_PYTHON" -VV
           command -v uv || true
           uv --version || true
           command -v "${{ steps.select-cc.outputs.value }}"

@@ -1,6 +1,6 @@
 # L0 Project Status
 
-Version: 2026-10-05
+Version: 2026-10-26
 
 This document summarizes what is implemented in this repository today. The latest Dea/L0 release is `2.1.1`.
 
@@ -137,7 +137,9 @@ The current development support baseline remains:
 
 - Tier 1 hosts: Linux and macOS for Stage 1 and Stage 2 workflows.
 - Tier 1 Windows toolchain: MSYS2 `UCRT64` with MinGW-w64 GCC or Clang for build, test, install, and distribution
-  workflows. MSYS2 `MINGW64` is supported as an alternate validation environment. Generated native `cmd.exe` launchers
+  workflows, with native CPython for shared repository tooling. Windows L0 CI also runs the complete Stage 1 suite in a
+  separate UCRT64 Python environment using the same pytest/xdist settings. MSYS2 `MINGW64` remains a manual alternate
+  C-toolchain lane using native Python tooling and the same UCRT64 Stage 1 pass. Generated native `cmd.exe` launchers
   can invoke the packaged toolchain outside the MSYS2 shell.
 - Tier 2 / experimental: MSVC-family builds remain outside the validated release matrix.
 

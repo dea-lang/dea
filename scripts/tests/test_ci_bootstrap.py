@@ -359,3 +359,239 @@ def test_doxygen_action_regressions():
     result = subprocess.run([node, "--test", str(ROOT / ".github/actions/setup-doxygen/setup.test.cjs")],
                             cwd=ROOT, text=True, capture_output=True, timeout=60)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("target,expected", [
+    ("test", ["test"]), ("test-extended", ["test-extended"]),
+    ("test-stage1", ["test-stage1"]), ("test-docgen", ["test-docgen", "test-stage1"]),
+    ("test-stage2 TESTS=parser_test", ["test-stage2", "test-stage1"]),
+])
+def test_windows_focused_l0_targets_still_validate_native_stage1(checkout, target, expected):
+    root, calls = checkout
+    ci.run_delegate("l0", {"RUNNER_OS": "Windows", "CI_MAKE_TARGET": target}, root=root)
+    assert [command[3] for command, _ in make_calls(calls)] == expected
+
+
+@pytest.mark.parametrize("family,os_name,platform,temporary,valid", [
+    ("native", "nt", "win-amd64", True, True),
+    ("native", "nt", "mingw_x86_64_ucrt", True, False),
+    ("native", "posix", "linux-x86_64", True, False),
+    ("msys2", "nt", "mingw_x86_64_ucrt", True, True),
+    ("msys2", "nt", "win-amd64", True, False),
+    ("msys2", "nt", "mingw_x86_64", True, False),
+    ("msys2", "nt", "mingw_x86_64_ucrt", False, False),
+])
+def test_windows_interpreter_family_boundary(tmp_path, family, os_name, platform, temporary, valid):
+    from check_windows_python import validate_family
+    root = tmp_path / "checkout with spaces"
+    prefix = tmp_path / "runner temporary/venv" if temporary else root / ".venv"
+    arguments = dict(os_name=os_name, platform=platform, prefix=prefix,
+                     base_prefix=tmp_path / "base Python", root=root)
+    if valid:
+        validate_family(family, **arguments)
+    else:
+        with pytest.raises(ValueError):
+            validate_family(family, **arguments)
+    if family == "msys2" and valid:
+        with pytest.raises(ValueError, match="separate virtual environment"):
+            validate_family(family, **{**arguments, "base_prefix": prefix})
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX stubs simulate Windows Make selection without installing Python")
+@pytest.mark.parametrize("windows", [False, True])
+def test_make_forwards_selected_python_only_on_windows(tmp_path, windows):
+    selected = tmp_path / "native Python"
+    selected.write_text('#!/bin/sh\ncase "$*" in\n'
+                        '  *sys.executable*) printf "%s\\n" "$EXPECTED_PYTHON";;\nesac\n')
+    selected.chmod(0o755)
+    uv = tmp_path / "uv"
+    uv.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$UV_ARGUMENTS"\n'
+                  'printf "%s\\n" "$UV_PROJECT_ENVIRONMENT" > "$UV_ENVIRONMENT"\n')
+    uv.chmod(0o755)
+    arguments = tmp_path / "uv arguments"
+    environment = tmp_path / "uv environment"
+    venv = tmp_path / "checkout with spaces/.venv"
+    env = {**os.environ, "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"],
+           "EXPECTED_PYTHON": r"C:\Native Python\python.exe", "UV_ARGUMENTS": str(arguments),
+           "UV_ENVIRONMENT": str(environment)}
+    command = ["make", "-f", str(ROOT / "Makefile"), "venv", f"PYTHON={selected}",
+               f"VENV_DIR={venv}", f"OS={'Windows_NT' if windows else 'POSIX'}"]
+    result = subprocess.run(command, cwd=tmp_path, env=env, text=True, capture_output=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    expected = ["sync", "--quiet", "--all-groups"]
+    if windows:
+        expected += ["--python", env["EXPECTED_PYTHON"]]
+    assert arguments.read_text().splitlines() == expected
+    assert environment.read_text().strip() == str(venv)
+    if windows:
+        # An old MSYS2 checkout environment must fail before uv can replace it.
+        (venv / "bin").mkdir(parents=True)
+        (venv / "bin/python").touch()
+        arguments.unlink()
+        result = subprocess.run(command, cwd=tmp_path, env=env, text=True, capture_output=True)
+        assert result.returncode != 0
+        assert "recreate it with native Windows CPython" in result.stderr
+        assert not arguments.exists()
+
+
+def test_windows_provisioning_and_stage1_pass_share_canonical_suite():
+    action = workflow(".github/actions/setup-windows-python/action.yml")
+    steps = action["runs"]["steps"]
+    assert step(steps, "Set up native CPython")["uses"].startswith("actions/setup-python@")
+    native = step(steps, "Provision native shared environment")["run"]
+    assert 'make venv PYTHON="$native_python"' in native
+    assert "UV_PROJECT_ENVIRONMENT=" in native and "UV_PYTHON=" in native
+    setup = step(steps, "Provision temporary MSYS2 Stage 1 environment")
+    assert setup["if"] == "inputs.msys2_stage1 == 'true'"
+    assert setup["env"]["MSYSTEM"] == "UCRT64"
+    script = setup["run"]
+    assert 'mktemp -d "$(cygpath -u "$RUNNER_TEMP")/' in script
+    assert '/ucrt64/bin/python.exe -m venv' in script
+    assert "uv export --frozen --all-groups --no-emit-workspace" in script
+    assert '"$test_python" -m pip install' in script
+    assert "--python" not in script and "pytest" not in script
+    assert "DEA_MSYS2_TEST_PYTHON=" in script
+    makefile = (ROOT / "l0/Makefile").read_text()
+    for name, interpreter in (("test-stage1", "VENV_PYTHON"), ("test-stage1-msys2", "DEA_MSYS2_TEST_PYTHON")):
+        recipe = makefile.split(f"\n{name}:", 1)[1].split("\n\n", 1)[0]
+        assert f'"$({interpreter})" -m pytest $(STAGE1_PYTEST_ARGS)' in recipe
+        if name.endswith("msys2"):
+            assert "| venv" not in recipe and "pip" not in recipe and "uv " not in recipe
+            assert "check_windows_python.py msys2" in recipe
+    assert "STAGE1_PYTEST_ARGS := -n auto -q --quiet-progress" in makefile
+    delegate = workflow(".github/actions/l0-ci/action.yml")["runs"]["steps"]
+    msys2 = step(delegate, "Run full L0 Stage 1 suite (MSYS2 UCRT64)")
+    assert msys2["if"] == "runner.os == 'Windows'"
+    assert msys2["env"]["MSYSTEM"] == "UCRT64"
+    assert "make -C l0 test-stage1-msys2" in msys2["run"]
+    assert "Stage 1 pytest: %s seconds" in msys2["run"]
+
+
+@pytest.mark.parametrize("filename", [
+    "ci.yml", "l0-ci.yml", "l1-ci.yml", "l2-ci.yml", "l0-release.yml", "l0-snapshot.yml",
+    "l1-release.yml", "l1-snapshot.yml", "l1-productization-acceptance.yml",
+])
+def test_windows_consumers_select_native_tooling(filename):
+    document = workflow(f".github/workflows/{filename}")
+    for job in document["jobs"].values():
+        steps = job.get("steps", [])
+        msys = [i for i, item in enumerate(steps) if item.get("uses", "").startswith("msys2/setup-msys2@")]
+        if not msys:
+            continue
+        provision = [i for i, item in enumerate(steps)
+                     if item.get("uses") == "./.github/actions/setup-windows-python"]
+        has_checkout = any(item.get("uses", "").startswith("actions/checkout@") for item in steps)
+        if has_checkout:
+            assert len(provision) == 1 and provision[0] > max(msys)
+            options = steps[provision[0]].get("with", {})
+            expected = "${{ needs.route-levels.outputs.run_l0 }}" if filename == "ci.yml" else str(filename == "l0-ci.yml").lower()
+            assert options.get("msys2_stage1", "false") == expected
+        else:
+            assert not provision
+            setup = step(steps, "Set up Python")
+            assert "if" not in setup
+            verify = step(steps, "Verify without source checkout or bootstrap compilers (Windows)")
+            assert '"$(cygpath -u "$pythonLocation/python.exe")" -I' in verify["run"]
+        for index in msys:
+            assert "-uv" not in steps[index]["with"]["install"]
+            if filename not in {"ci.yml", "l0-ci.yml"}:
+                assert "-python" not in steps[index]["with"]["install"]
+        for item in steps:
+            if item.get("shell") == "msys2 {0}":
+                assert item.get("env", {}).get("PYTHON") != "python"
+                assert not any(line.strip().startswith(("python ", "python3 ")) for line in item.get("run", "").splitlines())
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX filesystem fixtures simulate both Make host branches")
+@pytest.mark.parametrize("level", ["", "l0", "l1", "l2"])
+@pytest.mark.parametrize("windows", [False, True])
+@pytest.mark.parametrize("recursive", [False, True], ids=["direct", "recursive"])
+def test_make_shared_environment_selection_cannot_pick_msys2_on_windows(
+    tmp_path, monkeypatch, level, windows, recursive,
+):
+    if recursive:
+        monkeypatch.setenv("MAKELEVEL", "1")
+        monkeypatch.setenv("MAKEFLAGS", "w")
+    venv = tmp_path / "shared environment"
+    for name in ("bin/python", "Scripts/python.exe"):
+        path = venv / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+        path.chmod(0o755)
+    probe = tmp_path / "probe.mk"
+    probe.write_text('print-selected:\n\t@printf "%s\\n" "$(VENV_PYTHON)" "$(PYTHON)"\n')
+    result = subprocess.run([
+        "make", "--no-print-directory", "-f", str(ROOT / level / "Makefile"), "-f", str(probe),
+        "print-selected", f"VENV_DIR={venv}", f"OS={'Windows_NT' if windows else 'POSIX'}",
+    ], cwd=ROOT / level, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    expected = str(venv / ("Scripts/python.exe" if windows else "bin/python"))
+    assert result.stdout.splitlines() == [expected, expected]
+
+
+@pytest.mark.parametrize("prefix,root,valid", [
+    (r"C:\runner temp\test-env", "C:/Dea checkout", True),
+    (r"C:\Dea checkout/.venv", "C:/Dea checkout", False),
+    (r"C:\Dea checkout different/.venv", "C:/Dea checkout", True),
+    (r"\\server\share\runner temp/test-env", r"\\server/share/Dea checkout", True),
+    (r"\\server\share\Dea checkout/.venv", r"\\server/share/Dea checkout", False),
+])
+def test_temporary_interpreter_boundary_handles_windows_path_spellings(prefix, root, valid):
+    from pathlib import PureWindowsPath
+    from check_windows_python import validate_family
+    arguments = dict(os_name="nt", platform="mingw_x86_64_ucrt", prefix=PureWindowsPath(prefix),
+                     base_prefix=PureWindowsPath("C:/msys64/ucrt64"), root=PureWindowsPath(root))
+    if valid:
+        validate_family("msys2", **arguments)
+    else:
+        with pytest.raises(ValueError, match="outside the checkout"):
+            validate_family("msys2", **arguments)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX executable stubs verify the external MSYS2 test command")
+def test_msys2_stage1_execution_never_installs_or_uses_native_environment(tmp_path):
+    interpreter = tmp_path / "MSYS2 environment/python.exe"
+    interpreter.parent.mkdir()
+    interpreter.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$INTERPRETER_CALLS"\n')
+    interpreter.chmod(0o755)
+    calls = tmp_path / "calls"
+    env = {**os.environ, "INTERPRETER_CALLS": str(calls)}
+    command = ["make", "-C", str(ROOT / "l0"), "test-stage1-msys2"]
+    result = subprocess.run([*command, f"DEA_MSYS2_TEST_PYTHON={interpreter}"],
+                            env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert calls.read_text().splitlines() == [
+        "../scripts/check_windows_python.py msys2", "-m pytest -n auto -q --quiet-progress",
+    ]
+    calls.unlink()
+    result = subprocess.run([*command, "DEA_MSYS2_TEST_PYTHON="], env=env, capture_output=True, text=True)
+    assert result.returncode != 0 and "provision DEA_MSYS2_TEST_PYTHON first" in result.stderr
+    assert not calls.exists()
+
+
+@pytest.mark.parametrize("event,platform,expected", [
+    ("push", "all", ["linux", "macos-intel", "macos-arm64", "windows-ucrt64-python"]),
+    ("workflow_call", "all", ["linux", "macos-intel", "macos-arm64", "windows-ucrt64-python", "windows-mingw64-python"]),
+    ("workflow_dispatch", "windows-native-python", ["windows-mingw64-python"]),
+    ("workflow_dispatch", "windows-ucrt64-python", ["windows-ucrt64-python"]),
+    ("workflow_call", "linux", ["linux"]),
+    ("workflow_dispatch", "macos-intel", ["macos-intel"]),
+    ("workflow_dispatch", "macos-arm64", ["macos-arm64"]),
+])
+def test_l0_manual_python_selector_alias_preserves_platform_routes(tmp_path, event, platform, expected):
+    import json
+    document = workflow(".github/workflows/l0-ci.yml")
+    shell = step(document["jobs"]["select-matrix"]["steps"], "Select matrix")["run"]
+    script = shell.split("python3 - <<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+    output = tmp_path / "matrix output"
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True,
+                            env={**os.environ, "EVENT_NAME": event, "INPUT_PLATFORM": platform,
+                                 "GITHUB_OUTPUT": str(output)})
+    assert result.returncode == 0, result.stdout + result.stderr
+    matrix = json.loads(output.read_text().removeprefix("matrix="))["include"]
+    assert [entry["platform"] for entry in matrix] == expected
+    for entry in matrix:
+        if entry["os"] == "windows":
+            assert entry["msystem"] == ("MINGW64" if entry["platform"] == "windows-mingw64-python" else "UCRT64")
+        else:
+            assert entry["c_compiler"] == ("gcc" if entry["os"] == "linux" else "clang")

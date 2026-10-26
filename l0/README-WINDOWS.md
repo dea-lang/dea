@@ -19,6 +19,7 @@ The recommended Windows path today is:
 - MSYS2 `UCRT64`
 - MinGW-w64 GCC or Clang
 - GNU Make on `PATH`
+- Native Windows CPython 3.14+ and native uv for repository tooling
 
 MSYS2 `MINGW64` is supported as an alternate environment. MSVC-family builds remain outside the validated release
 matrix. Native `cmd.exe` entrypoints are supported; the MSYS2 requirement comes from the supported backend C toolchain,
@@ -86,17 +87,30 @@ Notes:
 For day-to-day development, MSYS2 `UCRT64` bash is the recommended shell. MSYS2 `MINGW64` bash is supported for
 alternate validation.
 
-For repo development in `UCRT64`, install Python and `uv` alongside the C toolchain:
+Install native Windows CPython 3.14+ and native uv separately from the MSYS2 C toolchain. Keep the shared repository
+`.venv` native: Make uses `../.venv/Scripts/python.exe`, not an MSYS2 `bin/python`. For a new environment, Make probes
+`py -3`; override `HOST_PYTHON` or pass a native executable explicitly when needed:
 
 ```bash
-pacman -S mingw-w64-ucrt-x86_64-python mingw-w64-ucrt-x86_64-python-pip mingw-w64-ucrt-x86_64-uv
+make venv PYTHON="C:/path with spaces/Python/python.exe"
 ```
 
-For `MINGW64`, use the matching package family:
+Make checks the interpreter family and forwards this selection to Windows `uv sync --python`. Recreate an old MSYS2
+shared `.venv` before using this workflow. Subsequent Make commands select the native shared environment automatically.
+
+Windows CI runs the full Stage 1 suite twice: once in the normal native environment and once in an independent UCRT64
+Python environment outside the checkout. Both use the canonical suite and xdist settings; no smaller suite is
+maintained. MSYS2 compatibility setup installs `mingw-w64-ucrt-x86_64-python` and `mingw-w64-ucrt-x86_64-python-pip`,
+creates a temporary venv, and installs requirements exported from the existing `uv.lock` using that venv's own pip. The
+test command only runs tests:
 
 ```bash
-pacman -S mingw-w64-x86_64-python mingw-w64-x86_64-python-pip mingw-w64-x86_64-uv
+make test-stage1-msys2 DEA_MSYS2_TEST_PYTHON="C:/temporary/msys2-stage1/venv/bin/python.exe"
 ```
+
+Use the UCRT64 shell for this pass, including when the normal tooling lane uses MINGW64. Keep uv attached to the native
+project environment. See [MONOREPO.md](../MONOREPO.md#windows-python-environments) for provisioning, timing, and
+retained manual CI selectors. Stage 2, L1/L2, and dedicated trace suites are not duplicated for interpreter coverage.
 
 ### Work on Stage 2
 

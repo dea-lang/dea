@@ -491,7 +491,12 @@ jobs:
             mingw-w64-ucrt-x86_64-clang
             mingw-w64-ucrt-x86_64-python
             mingw-w64-ucrt-x86_64-python-pip
-            mingw-w64-ucrt-x86_64-uv
+
+      - name: Set up Windows Python environments
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/setup-windows-python
+        with:
+          msys2_stage1: ${{ needs.route-levels.outputs.run_l0 }}
 
       - name: Set up Doxygen
         id: doxygen
@@ -507,8 +512,8 @@ jobs:
           test "$(doxygen --version)" = '${{ steps.doxygen.outputs.version }}'
           pwd
           printf 'GITHUB_WORKSPACE=%s\n' "${GITHUB_WORKSPACE:-}"
-          command -v python
-          python -VV
+          printf 'Native Python: %s\n' "$HOST_PYTHON"
+          "$HOST_PYTHON" -VV
           command -v uv || true
           uv --version || true
           command -v make

@@ -130,7 +130,9 @@ The `$CC` environment variable will be checked as a last resort if none of the a
 If you need a specific compiler, set `$L0_CC` to its executable name or path.
 
 For the current `2.1.1` support matrix, Windows validation is through MSYS2 `UCRT64` with MinGW-w64 GCC. MSYS2 `MINGW64`
-is supported as an alternate environment.
+is supported as an alternate C-toolchain environment. Repository builds, docs, and normal tests use native Windows
+CPython in the shared uv environment. Windows CI adds the same full Stage 1 suite under a separate temporary UCRT64
+Python environment; see [l0/README-WINDOWS.md](README-WINDOWS.md).
 
 MSVC-family builds are still unsupported and are not part of the validated release matrix.
 

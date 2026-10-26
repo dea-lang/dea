@@ -4,14 +4,16 @@ VENV_DIR_REL := ../.venv
 VENV_DIR := $(abspath $(VENV_DIR_REL))
 
 ifeq ($(OS),Windows_NT)
-VENV_PYTHON_DEFAULT := $(VENV_DIR)/Scripts/python.exe
+# MSYS2 Python is reserved for the separate Stage 1 compatibility environment.
+VENV_PYTHON := $(VENV_DIR)/Scripts/python.exe
+HOST_PYTHON ?= $(shell py -3 -c 'import sys; print(sys.executable)' 2>/dev/null)
+PYTHON ?= $(shell if [ -x "$(VENV_PYTHON)" ]; then printf '%s' "$(VENV_PYTHON)"; else printf '%s' "$(HOST_PYTHON)"; fi)
 else
 VENV_PYTHON_DEFAULT := $(VENV_DIR)/bin/python
-endif
-
 HOST_PYTHON ?= $(shell if command -v python3 >/dev/null 2>&1; then printf '%s' python3; else printf '%s' python; fi)
 VENV_PYTHON := $(shell if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(VENV_DIR)/bin/python"; elif [ -x "$(VENV_DIR)/Scripts/python.exe" ]; then printf '%s' "$(VENV_DIR)/Scripts/python.exe"; else printf '%s' $(VENV_PYTHON_DEFAULT); fi)
 PYTHON ?= $(shell if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(VENV_DIR)/bin/python"; elif [ -x "$(VENV_DIR)/Scripts/python.exe" ]; then printf '%s' "$(VENV_DIR)/Scripts/python.exe"; else printf '%s' $(HOST_PYTHON); fi)
+endif
 L2_BUILD_DIR ?= build/dea
 L2_COMPILER_RT_CHECK_BASIC ?= 1
 L2_COMPILER_RT_UNCHECKED ?=
@@ -271,7 +273,11 @@ help:
 		'  4. `l2c --help`'
 
 venv:
+ifeq ($(OS),Windows_NT)
+	@$(MAKE) -C .. venv PYTHON="$(PYTHON)"
+else
 	@$(MAKE) -C .. venv
+endif
 
 build: export L2_BUILD_DIR := $(L2_BUILD_DIR)
 build: export L2_COMPILER_RT_CHECK_BASIC := $(L2_COMPILER_RT_CHECK_BASIC)

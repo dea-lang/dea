@@ -61,6 +61,13 @@ reuse as described in `l2/AGENTS.md`. For targeted level work, enter that level'
   `pip install` of the dev/docs dependency-group specifiers when `uv` is not on `PATH`. `uv` is therefore an optional
   accelerator, not a hard dependency.
 - Level-local `make venv` targets delegate upward to the root and are no-ops once the shared `./.venv` is in sync.
+- On Windows, the shared `.venv` uses native CPython (`Scripts/python.exe`). Make forwards its selected `PYTHON` to
+  `uv sync --python`; use native `HOST_PYTHON` (or explicit `PYTHON`) when bootstrapping from MSYS2. An old MSYS2
+  `.venv` must be recreated, not reused. POSIX selection is unchanged.
+- Windows L0 CI also runs the complete Stage 1 suite under a separate temporary UCRT64 Python environment outside the
+  checkout. Provision dependencies once from `uv export --frozen --all-groups --no-emit-workspace` using that
+  environment's pip; invoke `make -C l0 test-stage1-msys2` with explicit `DEA_MSYS2_TEST_PYTHON`. Never use this
+  interpreter for shared tooling or ask uv to manage it with `--python`.
 - Dev/docs dependency groups (`pre-commit`, `pytest`, `pytest-xdist`, `mdformat*`, `jinja2`, `PyYAML`, `pygments`) are
   declared once in the root `pyproject.toml`.
 

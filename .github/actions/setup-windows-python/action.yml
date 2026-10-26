@@ -1,0 +1,57 @@
+name: Set up native Windows Python
+
+description: Keep shared tooling native and optionally provision separate UCRT64 Stage 1 coverage.
+
+inputs:
+  msys2_stage1:
+    description: Provision the full L0 Stage 1 compatibility environment outside the checkout
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up native CPython
+      id: native
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.14"
+
+    - name: Set up native uv
+      uses: astral-sh/setup-uv@v7
+
+    - name: Provision native shared environment
+      shell: msys2 {0}
+      env:
+        NATIVE_PYTHON: ${{ steps.native.outputs.python-path }}
+      run: |
+        cd "$(cygpath -u "$GITHUB_WORKSPACE")"
+        native_python="$(cygpath -m "$NATIVE_PYTHON")"
+        project_environment="$(cygpath -m "$GITHUB_WORKSPACE/.venv")"
+        "$native_python" scripts/check_windows_python.py native
+        make venv PYTHON="$native_python"
+        .venv/Scripts/python.exe scripts/check_windows_python.py native
+        {
+          printf 'HOST_PYTHON=%s\n' "$native_python"
+          printf 'UV_PYTHON=%s\n' "$native_python"
+          printf 'UV_PROJECT_ENVIRONMENT=%s\n' "$project_environment"
+        } >> "$(cygpath -u "$GITHUB_ENV")"
+
+    - name: Provision temporary MSYS2 Stage 1 environment
+      if: inputs.msys2_stage1 == 'true'
+      shell: msys2 {0}
+      env:
+        MSYSTEM: UCRT64
+      run: |
+        cd "$(cygpath -u "$GITHUB_WORKSPACE")"
+        started=$SECONDS
+        temporary="$(mktemp -d "$(cygpath -u "$RUNNER_TEMP")/dea-msys2-stage1.XXXXXX")"
+        /ucrt64/bin/python.exe -m venv "$(cygpath -m "$temporary/venv")"
+        test_python="$temporary/venv/bin/python.exe"
+        "$test_python" scripts/check_windows_python.py msys2
+        uv export --frozen --all-groups --no-emit-workspace \
+          --output-file "$(cygpath -m "$temporary/requirements.txt")"
+        "$test_python" -m pip install --disable-pip-version-check -r "$(cygpath -m "$temporary/requirements.txt")"
+        printf 'DEA_MSYS2_TEST_PYTHON=%s\n' "$(cygpath -m "$test_python")" >> "$(cygpath -u "$GITHUB_ENV")"
+        printf 'MSYS2 Stage 1 environment setup: %s seconds\n' "$((SECONDS - started))" \
+          | tee -a "$(cygpath -u "$GITHUB_STEP_SUMMARY")"

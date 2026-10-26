@@ -45,6 +45,12 @@ monorepo is a single `uv` workspace; level-local `make venv` targets delegate to
 when on `PATH`; when absent, `make venv` falls back to `python -m venv` plus `pip install` of the same dependency-group
 specifiers.
 
+On Windows, install native CPython and native uv, then run Make from MSYS2 with the supported C toolchain. The shared
+environment uses `.venv/Scripts/python.exe`. Set `HOST_PYTHON` to the native executable or pass an explicit quoted
+`PYTHON` path to `make venv`; Make forwards that choice to uv. MSYS2 Python is confined to a separate temporary full
+Stage 1 compatibility pass. See [MONOREPO.md](MONOREPO.md#windows-python-environments) for CI provisioning and
+manual-lane policy.
+
 ### Pre-commit hooks
 
 After running `make venv`, install the monorepo hooks once from the repository root:

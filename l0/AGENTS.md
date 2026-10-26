@@ -59,10 +59,13 @@ Also see: `../CONTRIBUTING.md`, `../SECURITY.md`.
   `pyproject.toml` manually. The project is not an installable Python package (`[tool.uv] package = false`); there is no
   `pip install -e .` step.
 - **Windows Host Setup:** For Windows validation, use an MSYS2 `UCRT64` shell with MinGW-w64 GCC and GNU Make on `PATH`.
-  `MINGW64` is supported as an alternate environment. Source-tree Stage 1 usage is available through
-  `./scripts/l0c.cmd`, while repo-local and install-prefix workflows now generate `l0-env.cmd` plus the selected
-  `l0c.cmd` alias for native `cmd.exe` usage. Keep the fallback under `scripts/`: the root-level `l0c` name is reserved
-  for the selected dev or installed compiler command.
+  `MINGW64` is supported as an alternate C-toolchain environment. Use native Windows CPython for the shared `.venv`,
+  builds, docs, and normal tests. Set native `HOST_PYTHON` or explicit `PYTHON` for initial setup. The additional full
+  Stage 1 UCRT64 Python pass uses a separately provisioned temporary environment and explicit `DEA_MSYS2_TEST_PYTHON`;
+  never replace the shared environment with it. Source-tree Stage 1 usage is available through `./scripts/l0c.cmd`,
+  while repo-local and install-prefix workflows now generate `l0-env.cmd` plus the selected `l0c.cmd` alias for native
+  `cmd.exe` usage. Keep the fallback under `scripts/`: the root-level `l0c` name is reserved for the selected dev or
+  installed compiler command.
 - **Environment Variables:** Source `build/dea/bin/l0-env.sh` only for the repo-local Dea build workflow in POSIX/MSYS2
   bash, or `call build\dea\bin\l0-env.cmd` in `cmd.exe`. For an installed Stage 2 prefix, source
   `<PREFIX>/bin/l0-env.sh` in POSIX/MSYS2 bash or `call <PREFIX>\bin\l0-env.cmd` in `cmd.exe`. For source-tree usage,

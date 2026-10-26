@@ -1,6 +1,6 @@
 # L0 Compiler Architecture
 
-Version: 2026-09-08
+Version: 2026-10-26
 
 This is the canonical architecture document for the current compiler pipeline. Stage 1 remains the reference
 implementation and Stage 2 mirrors the same pass structure through code generation and driver execution.
@@ -26,8 +26,11 @@ Expression inference and semantic type formatting use structural pattern matchin
 representations preserve the existing diagnostics, generated C, and Stage 2 parity contract. New generic abstractions or
 template-string processors are introduced only when a concrete compiler operation calls for them.
 
-Unified CI uses Python 3.14 for its validation matrix. Python 3.15 compatibility has been verified locally, with the
-Python 3.14 workspace minimum retained.
+Unified CI uses hosted Python 3.14 for normal validation. Python 3.15 compatibility has been verified locally, with the
+Python 3.14 workspace minimum retained. Windows shared tooling uses native CPython with the MSYS2 shell and C toolchain.
+Windows L0 CI additionally runs the same complete Stage 1 suite with equivalent pytest/xdist settings through an
+explicit temporary UCRT64 Python interpreter; Stage 2 and trace suites run once. See
+[MONOREPO.md](../../../MONOREPO.md#windows-python-environments) for provisioning and dependency ownership.
 
 ### 1.1 Stage 1 Reference Pipeline
 

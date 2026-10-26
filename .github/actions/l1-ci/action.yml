@@ -97,10 +97,9 @@ runs:
         L0_CC: ${{ inputs.c_compiler }}
         L1_CC: ${{ inputs.c_compiler }}
         L1_RUNTIME_CC: ${{ inputs.c_compiler }}
-        PYTHON: python
         CI_BOOTSTRAP_L0C: ${{ inputs.bootstrap_l0c }}
         CI_MAKE_TARGET: ${{ inputs.make_target }}
-      run: python scripts/ci_bootstrap.py l1
+      run: '"$HOST_PYTHON" scripts/ci_bootstrap.py l1'
 
     - name: Report L1 preparation reuse
       if: always() && runner.os != 'Windows'
@@ -114,7 +113,7 @@ runs:
       shell: msys2 {0}
       env:
         L1_CC: ${{ inputs.c_compiler }}
-      run: python l1/scripts/check_preparation_reuse.py --c-compiler "$L1_CC" --expect available
+      run: '"$HOST_PYTHON" l1/scripts/check_preparation_reuse.py --c-compiler "$L1_CC" --expect available'
 
     - name: Publish L1 preparation summary
       if: always() && runner.os != 'Windows'

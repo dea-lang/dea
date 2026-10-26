@@ -139,8 +139,12 @@ jobs:
         with:
           msystem: UCRT64
           path-type: inherit
-          install: make diffutils mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-python mingw-w64-ucrt-x86_64-python-pip
-            mingw-w64-ucrt-x86_64-uv
+          install: make diffutils mingw-w64-ucrt-x86_64-gcc
+
+      - name: Set up Windows Python environments
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/setup-windows-python
+
       - name: Record native compiler
         if: runner.os != 'Windows'
         shell: bash
@@ -174,7 +178,6 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         env:
-          PYTHON: python
           ACCEPTANCE_DIR: ${{ runner.temp }}/l1-acceptance
           DOCS_ARTIFACT: ${{ runner.temp }}/l1-docs/dea_l1_autodocs.tar.gz
         run: |
@@ -231,7 +234,6 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Set up Python
-        if: runner.os != 'Windows'
         uses: actions/setup-python@v6
         with:
           python-version: '3.14'
@@ -246,8 +248,8 @@ jobs:
         with:
           msystem: UCRT64
           path-type: strict
-          install: make diffutils mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-python mingw-w64-ucrt-x86_64-python-pip
-            mingw-w64-ucrt-x86_64-uv
+          install: make diffutils mingw-w64-ucrt-x86_64-gcc
+
       - name: Record native compiler
         if: runner.os != 'Windows'
         shell: bash
@@ -282,7 +284,7 @@ jobs:
         run: |
           set -o pipefail
           cd "$(cygpath -u "$RUNNER_TEMP")"
-          python -I "$ACCEPTANCE_DIR/harness/productization_acceptance.py" --phase verify 2>&1 | tee "$(cygpath -u "$RUNNER_TEMP")/l1-acceptance-smoke.log"
+          "$(cygpath -u "$pythonLocation/python.exe")" -I "$ACCEPTANCE_DIR/harness/productization_acceptance.py" --phase verify 2>&1 | tee "$(cygpath -u "$RUNNER_TEMP")/l1-acceptance-smoke.log"
       - name: Retain successful acceptance report
         if: success()
         uses: actions/upload-artifact@v6

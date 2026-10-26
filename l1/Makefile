@@ -4,14 +4,16 @@ VENV_DIR_REL := ../.venv
 VENV_DIR := $(abspath $(VENV_DIR_REL))
 
 ifeq ($(OS),Windows_NT)
-VENV_PYTHON_DEFAULT := $(VENV_DIR)/Scripts/python.exe
+# MSYS2 Python is reserved for the separate Stage 1 compatibility environment.
+VENV_PYTHON := $(VENV_DIR)/Scripts/python.exe
+HOST_PYTHON ?= $(shell py -3 -c 'import sys; print(sys.executable)' 2>/dev/null)
+PYTHON ?= $(shell if [ -x "$(VENV_PYTHON)" ]; then printf '%s' "$(VENV_PYTHON)"; else printf '%s' "$(HOST_PYTHON)"; fi)
 else
 VENV_PYTHON_DEFAULT := $(VENV_DIR)/bin/python
-endif
-
 HOST_PYTHON ?= $(shell if command -v python3 >/dev/null 2>&1; then printf '%s' python3; else printf '%s' python; fi)
 VENV_PYTHON := $(shell if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(VENV_DIR)/bin/python"; elif [ -x "$(VENV_DIR)/Scripts/python.exe" ]; then printf '%s' "$(VENV_DIR)/Scripts/python.exe"; else printf '%s' $(VENV_PYTHON_DEFAULT); fi)
 PYTHON ?= $(shell if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(VENV_DIR)/bin/python"; elif [ -x "$(VENV_DIR)/Scripts/python.exe" ]; then printf '%s' "$(VENV_DIR)/Scripts/python.exe"; else printf '%s' $(HOST_PYTHON); fi)
+endif
 L1_BUILD_DIR ?= build/dea
 L1_COMPILER_RT_CHECK_BASIC ?= 1
 L1_COMPILER_RT_UNCHECKED ?=
@@ -220,7 +222,11 @@ help:
 		'  3. `l1c --help`'
 
 venv:
+ifeq ($(OS),Windows_NT)
+	@$(MAKE) -C .. venv PYTHON="$(PYTHON)"
+else
 	@$(MAKE) -C .. venv
+endif
 
 _ensure-bootstrap-l0-stage2:
 	@if [ -n "$${L1_BOOTSTRAP_L0C:-}" ]; then \
@@ -353,10 +359,10 @@ endif
 runtime: $(call make-path,$(RUNTIME_DEFAULT_LIB)) $(call make-path,$(RUNTIME_TRACED_LIB)) $(call make-path,$(RUNTIME_UNCHECKED_LIB)) $(call make-path,$(RUNTIME_CHECK_BASIC_LIB)) $(RUNTIME_PUBLIC_HEADERS) runtime-tcc-objects
 
 bench-runtime:
-	$(PYTHON) ./scripts/bench_runtime.py $(if $(strip $(BENCH_CC)),--cc "$(BENCH_CC)") $(if $(strip $(BENCH_SCALE)),--scale "$(BENCH_SCALE)") $(if $(strip $(BENCH_RUNS)),--runs "$(BENCH_RUNS)")
+	"$(PYTHON)" ./scripts/bench_runtime.py $(if $(strip $(BENCH_CC)),--cc "$(BENCH_CC)") $(if $(strip $(BENCH_SCALE)),--scale "$(BENCH_SCALE)") $(if $(strip $(BENCH_RUNS)),--runs "$(BENCH_RUNS)")
 
 bench-link-provenance: _ensure-bootstrap-l0-stage2
-	$(PYTHON) ./scripts/bench_link_provenance.py $(if $(strip $(BENCH_PROVENANCE_SHAPES)),--shapes "$(BENCH_PROVENANCE_SHAPES)") $(if $(strip $(BENCH_PROVENANCE_SIZES)),--sizes "$(BENCH_PROVENANCE_SIZES)") $(if $(strip $(BENCH_PROVENANCE_WARMUPS)),--warmups "$(BENCH_PROVENANCE_WARMUPS)") $(if $(strip $(BENCH_PROVENANCE_RUNS)),--runs "$(BENCH_PROVENANCE_RUNS)") $(if $(strip $(BENCH_PROVENANCE_JSON)),--json "$(BENCH_PROVENANCE_JSON)") $(if $(strip $(BENCH_PROVENANCE_COMPARE)),--compare "$(BENCH_PROVENANCE_COMPARE)")
+	"$(PYTHON)" ./scripts/bench_link_provenance.py $(if $(strip $(BENCH_PROVENANCE_SHAPES)),--shapes "$(BENCH_PROVENANCE_SHAPES)") $(if $(strip $(BENCH_PROVENANCE_SIZES)),--sizes "$(BENCH_PROVENANCE_SIZES)") $(if $(strip $(BENCH_PROVENANCE_WARMUPS)),--warmups "$(BENCH_PROVENANCE_WARMUPS)") $(if $(strip $(BENCH_PROVENANCE_RUNS)),--runs "$(BENCH_PROVENANCE_RUNS)") $(if $(strip $(BENCH_PROVENANCE_JSON)),--json "$(BENCH_PROVENANCE_JSON)") $(if $(strip $(BENCH_PROVENANCE_COMPARE)),--compare "$(BENCH_PROVENANCE_COMPARE)")
 
 build: venv $(RUNTIME_PUBLIC_HEADERS) _ensure-bootstrap-l0-stage2
 	L1_BUILD_DIR="$(L1_BUILD_DIR)" \
@@ -529,13 +535,13 @@ test-docker-wine-runner:
 # Source documentation is independent of compiler bootstrap.
 .PHONY: docs docs-pdf docs-artifacts test-docgen
 docs:
-	$(PYTHON) scripts/gen_docs.py --strict
+	"$(PYTHON)" scripts/gen_docs.py --strict
 
 docs-pdf:
-	$(PYTHON) scripts/gen_docs.py --strict --pdf
+	"$(PYTHON)" scripts/gen_docs.py --strict --pdf
 
 docs-artifacts:
-	DEA_DIST_VERSION="$(DEA_DIST_VERSION)" $(PYTHON) scripts/gen_docs.py --strict --pdf --artifacts
+	DEA_DIST_VERSION="$(DEA_DIST_VERSION)" "$(PYTHON)" scripts/gen_docs.py --strict --pdf --artifacts
 
 test-docgen: venv
 	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_docgen_*.py ../scripts/tests/test_docgen_function_inventory.py ../scripts/tests/test_c_docs.py ../scripts/tests/test_docgen_inputs.py

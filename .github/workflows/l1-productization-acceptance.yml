@@ -133,9 +133,11 @@ jobs:
             make
             diffutils
             mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-python
-            mingw-w64-ucrt-x86_64-python-pip
-            mingw-w64-ucrt-x86_64-uv
+
+      - name: Set up Windows Python environments
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/setup-windows-python
+
       - name: Record native compiler
         if: runner.os != 'Windows'
         shell: bash
@@ -169,7 +171,6 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         env:
-          PYTHON: python
           ACCEPTANCE_DIR: ${{ runner.temp }}/l1-acceptance
           DOCS_ARTIFACT: ${{ runner.temp }}/l1-docs/dea_l1_autodocs.tar.gz
         run: |
@@ -229,7 +230,6 @@ jobs:
 
       # Deliberately no checkout or compiler build artifacts on these fresh runners.
       - name: Set up Python
-        if: runner.os != 'Windows'
         uses: actions/setup-python@v6
         with:
           python-version: "3.14"
@@ -248,9 +248,7 @@ jobs:
             make
             diffutils
             mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-python
-            mingw-w64-ucrt-x86_64-python-pip
-            mingw-w64-ucrt-x86_64-uv
+
       - name: Record native compiler
         if: runner.os != 'Windows'
         shell: bash
@@ -285,7 +283,7 @@ jobs:
         run: |
           set -o pipefail
           cd "$(cygpath -u "$RUNNER_TEMP")"
-          python -I "$ACCEPTANCE_DIR/harness/productization_acceptance.py" --phase verify 2>&1 | tee "$(cygpath -u "$RUNNER_TEMP")/l1-acceptance-smoke.log"
+          "$(cygpath -u "$pythonLocation/python.exe")" -I "$ACCEPTANCE_DIR/harness/productization_acceptance.py" --phase verify 2>&1 | tee "$(cygpath -u "$RUNNER_TEMP")/l1-acceptance-smoke.log"
       - name: Retain acceptance report and log
         if: always()
         uses: actions/upload-artifact@v6

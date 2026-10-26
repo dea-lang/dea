@@ -6,14 +6,16 @@ ROOT_CLEAN_PATHS := build .pytest_cache __pycache__ pytest-of-*
 VENV_DIR := $(abspath ./.venv)
 
 ifeq ($(OS),Windows_NT)
-VENV_PYTHON_DEFAULT := $(VENV_DIR)/Scripts/python.exe
+# MSYS2 Python is reserved for the separate Stage 1 compatibility environment.
+VENV_PYTHON := $(VENV_DIR)/Scripts/python.exe
+HOST_PYTHON ?= $(shell py -3 -c 'import sys; print(sys.executable)' 2>/dev/null)
+PYTHON ?= $(shell if [ -x "$(VENV_PYTHON)" ]; then printf '%s' "$(VENV_PYTHON)"; else printf '%s' "$(HOST_PYTHON)"; fi)
 else
 VENV_PYTHON_DEFAULT := $(VENV_DIR)/bin/python
-endif
-
 HOST_PYTHON ?= $(shell if command -v python3 >/dev/null 2>&1; then printf '%s' python3; else printf '%s' python; fi)
 VENV_PYTHON := $(shell if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(VENV_DIR)/bin/python"; elif [ -x "$(VENV_DIR)/Scripts/python.exe" ]; then printf '%s' "$(VENV_DIR)/Scripts/python.exe"; else printf '%s' $(VENV_PYTHON_DEFAULT); fi)
 PYTHON ?= $(shell if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(VENV_DIR)/bin/python"; elif [ -x "$(VENV_DIR)/Scripts/python.exe" ]; then printf '%s' "$(VENV_DIR)/Scripts/python.exe"; else printf '%s' $(HOST_PYTHON); fi)
+endif
 
 VENV_UV_FLAGS := --quiet
 VENV_PIP_FLAGS := --quiet --disable-pip-version-check
@@ -24,7 +26,7 @@ PIP_DEPS_CMD = import tomllib,pathlib;\
 	g=tomllib.loads(pathlib.Path('pyproject.toml').read_text()).get('dependency-groups',{});\
 	print(' '.join(d for d in g.get('dev',[])+g.get('docs',[]) if isinstance(d,str)))
 
-.PHONY: help venv clean clean-all test test-extended _check-level-dirs _check-python _clean-root-paths
+.PHONY: help venv clean clean-all test test-extended _check-level-dirs _check-python _check-python-version _clean-root-paths
 
 help:
 	@printf '%s\n' \
@@ -56,10 +58,18 @@ _check-level-dirs:
 		fi; \
 	done
 
-_check-python:
-	@$(PYTHON) -c "import sys; sys.exit(0 if sys.version_info >= (3, 14) else 1)" 2>/dev/null \
+_check-python-version:
+	@"$(PYTHON)" -c "import sys; sys.exit(0 if sys.version_info >= (3, 14) else 1)" 2>/dev/null \
 		|| { printf 'error: Python 3.14+ is required (found: %s)\n' \
-			"$$($(PYTHON) -c 'import sys; print(".".join(map(str,sys.version_info[:3])))' 2>/dev/null || echo 'none')" >&2; exit 1; }
+			"$$("$(PYTHON)" -c 'import sys; print(".".join(map(str,sys.version_info[:3])))' 2>/dev/null || echo 'none')" >&2; exit 1; }
+
+_check-python: _check-python-version
+ifeq ($(OS),Windows_NT)
+	@"$(PYTHON)" scripts/check_windows_python.py native
+	@if [ -e "$(VENV_DIR)/bin/python" ]; then \
+		printf '%s\n' 'error: .venv contains MSYS2 Python; recreate it with native Windows CPython' >&2; exit 1; \
+	fi
+endif
 
 venv: _check-python
 	@if command -v uv >/dev/null 2>&1; then \
@@ -86,12 +96,17 @@ venv: _check-python
 		if [ "$(OS)" = "Windows_NT" ] && command -v cygpath >/dev/null 2>&1; then \
 			uv_project_environment="$$(cygpath -w "$(VENV_DIR)")"; \
 		fi; \
-		UV_PROJECT_ENVIRONMENT="$$uv_project_environment" uv sync $(VENV_UV_FLAGS) --all-groups; \
+		set --; \
+		if [ "$(OS)" = "Windows_NT" ]; then \
+			uv_python="$$("$(PYTHON)" -c 'import sys; print(sys.executable)')"; \
+			set -- --python "$$uv_python"; \
+		fi; \
+		UV_PROJECT_ENVIRONMENT="$$uv_project_environment" uv sync $(VENV_UV_FLAGS) --all-groups "$$@"; \
 	elif [ -x "$(VENV_PYTHON)" ]; then \
 		printf '%s\n' 'make venv: refreshing existing ./.venv with pip $(VENV_QUIET_LABEL)'; \
 		"$(VENV_PYTHON)" -m pip install $(VENV_PIP_FLAGS) $$("$(VENV_PYTHON)" -c "$(PIP_DEPS_CMD)"); \
 	else \
-		$(PYTHON) -m venv "$(VENV_DIR)"; \
+		"$(PYTHON)" -m venv "$(VENV_DIR)"; \
 		_vp="$$(if [ -x "$(VENV_DIR)/bin/python" ]; then printf '%s' "$(VENV_DIR)/bin/python"; else printf '%s' "$(VENV_DIR)/Scripts/python.exe"; fi)"; \
 		"$$_vp" -m pip install $(VENV_PIP_FLAGS) $$("$$_vp" -c "$(PIP_DEPS_CMD)"); \
 	fi

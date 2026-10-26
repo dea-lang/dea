@@ -62,9 +62,10 @@ You need Python 3.14 or newer, Make, a supported C compiler/linker and host tool
 Use a supported GCC toolchain or capability-verified Clang/Apple Clang. Validated Debian Clang 14/15 support managed
 preparation through an isolated empty configuration; modern Clang uses `--no-default-config`. See
 [l1/docs/reference/stdlib-preparation.md](docs/reference/stdlib-preparation.md) for reuse requirements and tested scope.
-Windows development uses MSYS2 UCRT64. `L0_CC` selects the C compiler used while building L1 through L0; `L1_CC` selects
-it for L1 native program builds and defaults `L1_RUNTIME_CC`. See [l1/AGENTS.md](AGENTS.md) for the full
-compiler-selection requirements and [l0/README.md](../l0/README.md) for L0 setup.
+Windows development uses the MSYS2 UCRT64 shell and C toolchain, with native CPython for the shared uv environment and
+repository tooling. `L0_CC` selects the C compiler used while building L1 through L0; `L1_CC` selects it for L1 native
+program builds and defaults `L1_RUNTIME_CC`. See [l1/AGENTS.md](AGENTS.md) for the full compiler-selection requirements
+and [l0/README.md](../l0/README.md) for L0 setup.
 
 Select an existing L0 Stage 2 compiler by absolute path, then build and activate L1:
 

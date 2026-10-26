@@ -27,6 +27,35 @@ the root, so `make venv` from any level directory converges on the same `./.venv
 absent, `make venv` falls back to `python -m venv` plus `pip install` of the dependency-group specifiers extracted from
 the root `pyproject.toml`.
 
+## Windows Python environments
+
+Windows repository tooling uses native CPython 3.14+ and native uv with the shared `.venv/Scripts/python.exe`. MSYS2
+supplies the shell and C toolchain. Make selects native Python through `HOST_PYTHON` (the Windows Python launcher is the
+local default), checks its family, and forwards `PYTHON` to Windows `uv sync --python`. Quote explicit paths:
+`make venv PYTHON="C:/path with spaces/Python/python.exe"`. A former MSYS2 `.venv/bin/python` must be removed and
+recreated as native before normal Windows tooling runs. POSIX selection and uv invocation are unchanged.
+
+[.github/actions/setup-windows-python/action.yml](.github/actions/setup-windows-python/action.yml) provisions
+checked-out Windows CI, snapshot, release, and L1 artifact-build consumers. It exports the native bootstrap as
+`HOST_PYTHON`, pins `UV_PYTHON` to that native interpreter, and keeps `UV_PROJECT_ENVIRONMENT` attached to the
+checkout's `.venv`. Fresh L1 artifact-verification runners have no checkout; they invoke the native
+`actions/setup-python` installation explicitly while retaining the strict MSYS2 toolchain PATH.
+
+Windows jobs validating L0 additionally provision a temporary UCRT64 Python virtual environment under `RUNNER_TEMP`,
+outside the checkout. Setup exports pip-compatible requirements from the existing `uv.lock` with
+`uv export --frozen --all-groups --no-emit-workspace`, then installs them using the temporary environment's own pip.
+`pyproject.toml` and `uv.lock` remain the only dependency authorities; generated requirements stay temporary. Tests do
+not export or install requirements. The MSYS2 pass invokes `DEA_MSYS2_TEST_PYTHON` directly through
+`make -C l0 test-stage1-msys2`, with the same Stage 1 collection, data, expectations, and `-n auto -q --quiet-progress`
+options as the native pass. Both honor `PYTEST_XDIST_AUTO_NUM_WORKERS`. Focused manual L0 targets add native Stage 1
+when their target does not already include it. Stage 2, L1/L2, and dedicated trace suites are not repeated for Python
+coverage. Environment setup and the extra pytest pass report separate elapsed times in the job summary.
+
+Standalone L0 CI retains `windows-ucrt64-python` for the standard UCRT64 C toolchain and `windows-mingw64-python` for
+manual alternate C-toolchain coverage. Both use native shared tooling and the additional UCRT64 Stage 1 pass. The old
+`windows-native-python` selector is a compatibility alias for `windows-mingw64-python`; `all` includes the alternate
+lane once. No standalone lane creates an MSYS2 shared `.venv`.
+
 ## Workflow inputs
 
 Every workflow job starts with `Show inputs`, which prints the current `inputs` context as JSON in the job log and
@@ -81,7 +110,7 @@ Native compiler CI and all documentation producers use upstream Doxygen 1.18.0 t
 [.github/actions/setup-doxygen/action.yml](.github/actions/setup-doxygen/action.yml). The action selects the native
 Linux x64, macOS Intel/ARM64, or Windows x64 archive, verifies its upstream SHA-256 checksum and CLI version, and
 prepends its binary directory through `GITHUB_PATH`. Unsupported runners fail explicitly. Windows compiler jobs also
-verify the resolved version inside MSYS2; their Python interpreter selection is independent and unchanged. Release,
+verify the resolved version inside MSYS2; Python selection follows the Windows environment policy above. Release,
 snapshot, and publication consumers inherit the pin through the reusable documentation build workflows. To upgrade,
 update the version, archive layouts, and upstream checksums in
 [.github/actions/setup-doxygen/setup.cjs](.github/actions/setup-doxygen/setup.cjs), then validate the setup tests and

@@ -134,6 +134,12 @@ def run_delegate(level: str, source: dict[str, str], *, root: Path = ROOT) -> No
             compiler, mode=mode, env=l1_bootstrap_environment(env, build_dir / "bootstrap-cache")))
         print(f"ci-bootstrap: reusing {mode} L1 compiler {env['L2_BOOTSTRAP_L1C']}", flush=True)
     make_target(root, level, env.get("CI_MAKE_TARGET", ""), env)
+    if level == "l0" and env.get("RUNNER_OS") == "Windows":
+        # Focused manual targets still get both full interpreter passes. Normal
+        # aggregate targets already contain Stage 1 and must not repeat it.
+        targets = shlex.split(env.get("CI_MAKE_TARGET", ""))
+        if not {"test", "test-extended", "test-stage1"}.intersection(targets):
+            make_target(root, "l0", "test-stage1", env)
     if level in {"l0", "l1"}:
         publish_compiler(root, level, env)
 

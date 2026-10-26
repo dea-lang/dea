@@ -63,11 +63,10 @@ runs:
         CI_BOOTSTRAP_L0C: ${{ inputs.bootstrap_l0c }}
         CI_BOOTSTRAP_L1C: ${{ inputs.bootstrap_l1c }}
         CI_BOOTSTRAP_MODE: ${{ inputs.bootstrap_mode }}
-        PYTHON: python
       run: |
         command -v "$L2_CC"
         "$L2_CC" --version
-        python scripts/ci_bootstrap.py l2
+        "$HOST_PYTHON" scripts/ci_bootstrap.py l2
 
     - name: Verify Linux checkout and bootstrap isolation
       if: runner.os == 'Linux' && inputs.run_isolation == 'true'
