@@ -3,7 +3,7 @@
 ## Pin hosted Ubuntu runners by job role
 
 - Date: 2026-10-27
-- Status: In Progress
+- Status: Completed
 - Title: Pin hosted Ubuntu runners by job role
 - Kind: Tooling
 - Priority: Medium
@@ -36,7 +36,7 @@ builders use Ubuntu 24.04, as do L1 artifact acceptance builders and their match
 retains the pre-migration native build environment instead of silently increasing system-library requirements.
 
 This pins the operating-system release, not an immutable runner image or package set. It does not establish a minimum
-supported Linux distribution or glibc version. Hosted compatibility and actual-artifact acceptance remain required.
+supported Linux distribution or glibc version. Actual-artifact acceptance remains a separate release gate.
 
 ## ADR Impact
 
@@ -70,7 +70,7 @@ supported Linux distribution or glibc version. Hosted compatibility and actual-a
 - Linux compiler CI selects disk-backed temporary storage before tools and tests; missing runner storage fails setup.
 - Build/test commands, dependencies, compiler/runtime controls, and non-Ubuntu matrix entries retain their existing
   behavior.
-- Local focused checks pass; hosted validation and native artifact compatibility remain explicitly pending.
+- Local focused checks pass, and the project maintainer confirmed passing hosted CI for the final implementation.
 
 ## Local results
 
@@ -86,8 +86,8 @@ it does not add Windows-specific branches or compare diagnostic path spelling.
 
 ## Ubuntu 26 temporary storage
 
-Hosted Unified CI passes L0 and the L1 normal compiler, examples, productization, and environment checks with
-`/usr/bin/gcc` reporting Ubuntu GCC 15.2.0. The L1 dedicated trace sweep then fails while draining captured output with
+Hosted Unified CI initially passed L0 and the L1 normal compiler, examples, productization, and environment checks with
+`/usr/bin/gcc` reporting Ubuntu GCC 15.2.0. The L1 dedicated trace sweep failed while draining captured output with
 `OSError: failed to drain captured process output: [Errno 122] Disk quota exceeded`. Its artifact root is under `/tmp`.
 Ubuntu 26.04 runner images can mount `/tmp` as a quota-limited RAM-backed filesystem. This matches the reproduced
 upstream failure documented in
@@ -97,8 +97,7 @@ The shared Linux setup action creates `$RUNNER_TEMP/dea-tmp` and selects it thro
 environment variables for subsequent job steps. This covers Python trace artifacts and compiler/tool scratch files in
 Unified CI and all three standalone compiler workflows without changing trace contents, analyzer rules, parallelism,
 compiler flags, or the Ubuntu release/artifact pins. Setup uses no privileged mount operations and reports the selected
-filesystem and capacity. An upstream image repair is pending deployment; the explicit directory avoids dependence on
-that rollout.
+filesystem and capacity. The explicit directory avoids dependence on upstream runner-image repair rollout.
 
 Focused regressions execute the real Bash setup with a runner directory containing spaces and an apostrophe, then start
 a fresh Python subprocess that creates and writes a temporary trace artifact under the exported directory. Missing or
@@ -118,24 +117,24 @@ completion of the full Linux trace sweep.
 - `python3 scripts/check_adr_impact.py --all-active`: passed after plan creation.
 - Final local commit gates: staged whitespace, ADR Impact, and root pre-commit.
 
-The initial runner-pin checks above precede the temporary-storage repair. Follow-up validation must cover the shared
-action and the four changed compiler workflow entrypoints rather than treating the earlier result as proof of the
-repair.
-
-The temporary-storage repair passes these short local checks:
+The temporary-storage repair has separate focused coverage for the shared action and four compiler workflow entrypoints:
 
 - `.venv/bin/python -m pytest -q -n 0 scripts/tests/test_ci_bootstrap.py -k 'linux_temp or ubuntu or generated_linux_ci or workflow_handoffs or doxygen_setup or l0_manual' --tb=short`:
-  42 passed, 188 deselected in 1.90 seconds with installed CPython 3.15.2. Root `uv run` refreshed the shared
-  environment from locked Python dependencies after its former Python 3.14.7 interpreter was removed. No new interpreter
-  or native toolchain was installed. This check follows that environment refresh.
+  42 passed, 188 deselected in 1.90 seconds with CPython 3.15.2 and the locked shared environment.
 - `actionlint -config-file <temporary-config>`: passed for all workflows, with the same Ubuntu 26.04 label allowance.
 - `git diff --check` and `python3 scripts/check_adr_impact.py --all-active`: passed.
 
-The focused repair results remain applicable after Markdown-only updates and formatting; covered workflow, action, test,
-dependency, and interpreter inputs are unchanged, and the diff contains no unrelated modifications.
+## Completion and hosted validation
+
+The project maintainer confirmed on 2026-10-27 that the final runner-baseline and temporary-storage changes passed
+hosted CI and approved closure. The confirmed result resolves the outstanding hosted-validation gate. This records
+acceptance of the runner policy and repair; it introduces no Linux compatibility guarantee and does not replace
+actual-artifact acceptance for releases.
+
+The focused repair results remain applicable after this Markdown-only closure; covered workflow, action, test,
+dependency, and interpreter inputs are unchanged.
 
 This is a hosted configuration change with no compiler/runtime implementation, compiler flag, trace command, or trace
 input edits; the repair changes Linux temporary storage inherited by trace execution. Validation follows the project
 maintainer's short-check scope. No aggregate suites, native rebuilds, toolchain installations, full PDF builds,
-container builds, or remote operations were performed. Hosted compiler CI and actual Linux artifact acceptance remain
-pending; keep this plan active until that evidence is reviewed.
+container builds, or remote operations were performed locally. Hosted validation is recorded above.

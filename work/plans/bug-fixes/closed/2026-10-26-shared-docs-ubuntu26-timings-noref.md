@@ -2,8 +2,8 @@
 
 ## Select Ubuntu 26 documentation runners and report live phase timings
 
-- Date: 2026-10-26
-- Status: In Progress
+- Date: 2026-10-27
+- Status: Completed
 - Title: Select Ubuntu 26 documentation runners and report live phase timings
 - Kind: Bug Fix
 - Severity: Medium
@@ -14,8 +14,8 @@
 - Origin: Doxygen 1.18 table rendering with Ubuntu's old tabularray package
 - Porting rule: Select Ubuntu 26.04 for every documentation producer and share progress reporting across levels.
 - Target status:
-  - Shared Ubuntu documentation toolchain: Implemented locally; CI validation pending
-  - L0 and L1 reference generation and offline bundles: Implemented locally; CI validation pending
+  - Shared Ubuntu documentation toolchain: Implemented
+  - L0 and L1 reference generation and offline bundles: Implemented
 - Subsystem: Documentation CI and generation
 - Modules:
   - `.github/actions/setup-docs-toolchain/`
@@ -89,21 +89,24 @@ indexed PDFs, atomic output replacement, and bundle provenance.
 - `actionlint -config-file /private/tmp/dea-docs-actionlint.yaml` passed for the five changed workflows. The temporary
   configuration recognizes only the newly available `ubuntu-26.04` label missing from the local linter; no repository
   lint policy changes were needed.
-- No aggregate suites, reference/PDF builds, package installs, or remote operations were run. Installation, complete
-  indexed PDFs, timing improvement, and native Windows progress checks remain for CI. Keep the plan active until those
-  results are reviewed.
+- Local validation used focused tests and probes without aggregate suites, reference/PDF builds, package installs, or
+  remote operations. Hosted validation supplies the remaining acceptance evidence.
 
 ## Portable progress-log validation
 
 Progress logs are UTF-8 regardless of the host's default text encoding. Every progress-test read selects UTF-8
 explicitly while retaining live flushing, invalid-byte replacement, failure status, complete logs, and verbosity checks.
 A temporary CP1252-default-read simulation reproduces the two affected failures without that selection and passes all
-nine progress cases with it. This macOS simulation does not establish native Windows behavior or close hosted timing and
-full-reference validation.
+nine progress cases with it. This macOS simulation is separate from the confirmed hosted validation.
+
+## Completion and hosted validation
+
+The project maintainer confirmed on 2026-10-27 that the final implementation passed hosted CI and approved closure. The
+confirmed CI result resolves the outstanding hosted-validation gate. No quantitative rendering-speed improvement is
+claimed beyond the recorded timing instrumentation and successful validation.
 
 ## Scope
 
-This is a trace-independent CI/tooling repair. No long local tests, TeX installation, reference/PDF builds, container
-builds, remote writes, workflow dispatches, or publication are part of local validation. The project team will validate
-installation, complete references, and rendering performance in CI. A modern compatible stack addresses the known
-resource-exhaustion bug; runtime improvement must be measured rather than assumed.
+This is a trace-independent CI/tooling repair. Local validation excluded long tests, TeX installation, reference/PDF
+builds, container builds, remote writes, workflow dispatches, and publication. A modern compatible stack addresses the
+known resource-exhaustion bug; any rendering-speed claim requires measured timing evidence.

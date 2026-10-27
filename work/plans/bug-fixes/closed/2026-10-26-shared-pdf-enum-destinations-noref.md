@@ -3,7 +3,7 @@
 ## Preserve enum and module PDF destinations and validate final PDF links
 
 - Date: 2026-10-27
-- Status: In Progress
+- Status: Completed
 - Title: Preserve enum and module PDF destinations and validate final PDF links
 - Kind: Bug Fix
 - Severity: Medium
@@ -32,25 +32,23 @@
 
 ## Summary and root cause
 
-The L1 reference completes its indexed PDF but reports 99 missing PDF destinations. Every target matches an XML enum
-value. The normalizers replace Doxygen's enum tables with source-level payload declarations, discarding the per-variant
-anchors. This affects both language-level generators. Restore the canonical variant destination and label on the
-matching list item, preserving source order and declarations.
+The indexed L1 reference reported 99 missing PDF destinations, all matching XML enum values. Both language-level
+normalizers replaced Doxygen's enum tables with source-level payload declarations and discarded the per-variant anchors.
+The normalizers now preserve the canonical variant destination and label on the matching list item while retaining
+source order and declarations.
 
 Before this repair, full PDF validation checked only ordinary unresolved references and the index in L1, with no
 equivalent checks in L0. Both wrappers now validate the final `refman.log` and index, including wrapped pdfTeX
 missing-destination warnings. Earlier compilation passes may legitimately report unresolved references; inspect only the
 final log. Preview PDFs retain their incomplete-reference workflow.
 
-Strict hosted validation now accepts the L1 reference and the L0 Stage 1 reference. L0 Stage 2 still reports two missing
-module destinations. Doxygen emits `module__ast` and `module__l0c` references without corresponding XML compounds or
-LaTeX pages; the documented Dea modules have existing source-file pages instead. Resolve these aliases from XML
-reference names to unambiguous, present file pages, preserving genuine module compounds and unresolved or ambiguous
-references. Apply the same normalization rule in both level generators.
+L0 Stage 2 also had two missing module destinations: Doxygen emitted `module__ast` and `module__l0c` references without
+corresponding XML compounds or LaTeX pages. The documented Dea modules have existing source-file pages instead. Both
+normalizers now resolve these aliases from XML reference names to unambiguous, present file pages while preserving
+genuine module compounds and unresolved or ambiguous references.
 
-The L1 environment-preparation regression also retains the old exact pytest argument list, excluding the newly wired
-shared PDF checks. Update that fixture while retaining its ordering, interpreter-selection, and complete argument
-checks.
+The L1 environment-preparation regression now includes the shared PDF checks in its exact pytest argument list while
+retaining its ordering, interpreter-selection, and complete argument checks.
 
 ## ADR Impact
 
@@ -69,8 +67,8 @@ checks.
    logs, and missing indexes before PDF promotion or bundle creation.
 3. Include the shared validator in source fingerprints and focused documentation test targets. Test log wrapping,
    final-pass selection, and failed-build transactions with short fixtures and mocked subprocesses.
-4. Correlate all 99 retained warning targets with repaired variant identities without rebuilding references locally.
-   Complete indexed PDFs and native platform behavior remain for CI validation.
+4. Correlate all 99 retained warning targets with repaired variant identities without rebuilding references locally. Use
+   hosted CI for complete indexed PDFs and native platform validation.
 5. Resolve dangling Doxygen module aliases through their XML reference names and actual source-file page identities.
    Cover both generators, unknown and ambiguous modules, missing file pages, genuine module compounds, and repeated
    normalization with short fixtures. Update the L1 Make regression to include the shared PDF test selection.
@@ -81,10 +79,6 @@ All 99 retained missing destinations match XML enum-value IDs: 76 belong to `Tok
 The repaired list renderer emits exactly one destination and label for each of those targets, matched by variant name
 rather than XML order. The shared validator rejects the retained final LaTeX log with the exact count of 99 missing
 destinations. These were read-only checks against retained XML/log evidence; no reference or PDF was rebuilt.
-
-Hosted validation after the enum repair accepts the indexed L1 and L0 Stage 1 references. L0 Stage 2 rejects only the
-two dangling module destinations. Native Windows also passes the existing validator and wrapper fixtures; its L1
-documentation target fails in the stale Make fixture instead.
 
 The module repair uses XML reference names and the declared Dea module names rather than inferring destinations from
 display labels or Doxygen ID spelling. Genuine module compounds, unknown module names, ambiguous source mappings, and
@@ -104,12 +98,12 @@ PDF test module, including nested display formatting and repeated normalization.
   Normalization redirects all four to `ast_8l0` and `l0c_8l0`; both replacement destinations have actual LaTeX target
   definitions. No reference generation or PDF compilation runs in this probe.
 
-## Remaining validation
+## Completion and hosted validation
 
-Keep the plan active until CI rebuilds all three strict, indexed PDFs and confirms that missing-destination warnings are
-gone for the final generator inputs. The expanded module-link cases and corrected Make regression still require native
-Windows hosted validation. Earlier full reference success establishes enum-link and toolchain evidence, not acceptance
-of the subsequent module-link normalization changes.
+The project maintainer confirmed on 2026-10-27 that the final enum/module destination repairs and regression updates
+passed hosted CI and approved closure. The confirmed result resolves the outstanding full-PDF and native Windows
+validation gate for the final implementation. Existing focused results remain applicable because closure changes only
+the lifecycle document, with no generator, validator, test, toolchain, or workflow changes.
 
 ## Scope
 
