@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 gwz
+
+name: Select disk-backed Linux temporary storage
+description: Keep build and trace temporary files under the runner's disk-backed temporary directory.
+
+runs:
+  using: composite
+  steps:
+    - name: Select Linux temporary directory
+      shell: bash
+      run: |
+        linux_tmpdir="${RUNNER_TEMP:?RUNNER_TEMP is required}/dea-tmp"
+        mkdir -p "$linux_tmpdir"
+        printf 'TMPDIR=%s\nTMP=%s\nTEMP=%s\n' "$linux_tmpdir" "$linux_tmpdir" "$linux_tmpdir" >> "$GITHUB_ENV"
+        printf 'Linux temporary directory: %s\n' "$linux_tmpdir"
+        df -h "$linux_tmpdir"

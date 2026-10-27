@@ -20,6 +20,7 @@
 - Subsystem: Hosted CI and release runner selection
 - Modules:
   - `.github/workflows/`
+  - `.github/actions/setup-linux-temp/`
   - `MONOREPO.md`
 - Test modules:
   - `scripts/tests/test_ci_bootstrap.py`
@@ -51,11 +52,13 @@ supported Linux distribution or glibc version. Hosted compatibility and actual-a
 1. Pin direct CI and utility runners and generated compiler CI matrices to `ubuntu-26.04`.
 2. Pin Linux distribution matrices in both levels' release/snapshot workflows and L1 productization acceptance to
    `ubuntu-24.04`, including matching verification matrices. Keep documentation producers on Ubuntu 26.04.
-3. Document the two baselines and cover generated CI selections, static artifact matrices, and utility runners with
+3. Select disk-backed temporary storage for Unified and standalone Linux compiler CI before tool setup or testing.
+   Export `TMPDIR`, `TMP`, and `TEMP` as `$RUNNER_TEMP/dea-tmp` and report its filesystem and available space.
+4. Document the two baselines and cover generated CI selections, static artifact matrices, and utility runners with
    focused workflow regressions. Preserve job commands, compiler flags, trace selection, and non-Ubuntu platforms.
-4. Run short workflow tests, release-policy checks, workflow lint, ADR Impact checks, staged whitespace, and pre-commit.
+5. Run short workflow tests, release-policy checks, workflow lint, ADR Impact checks, staged whitespace, and pre-commit.
    Do not run aggregate suites, native rebuilds, full PDF builds, package installations, or containers locally.
-5. Review hosted compiler CI and Linux release/acceptance evidence before closing this plan. Remote writes, workflow
+6. Review hosted compiler CI and Linux release/acceptance evidence before closing this plan. Remote writes, workflow
    dispatches, tags, and publication are outside this local change and require their normal separate authorization.
 
 ## Verification criteria
@@ -64,18 +67,44 @@ supported Linux distribution or glibc version. Hosted compatibility and actual-a
 - Generated Linux compiler CI selections and all Ubuntu utility/documentation jobs use Ubuntu 26.04.
 - Both L0 native distribution builders and all six L1 release/snapshot/acceptance builder and verifier lanes use Ubuntu
   24.04.
-- Workflow steps, dependencies, compiler/runtime controls, and non-Ubuntu matrix entries retain their existing behavior.
+- Linux compiler CI selects disk-backed temporary storage before tools and tests; missing runner storage fails setup.
+- Build/test commands, dependencies, compiler/runtime controls, and non-Ubuntu matrix entries retain their existing
+  behavior.
 - Local focused checks pass; hosted validation and native artifact compatibility remain explicitly pending.
 
 ## Local results
 
 All 36 moving-alias selections in 12 workflows are replaced: 28 CI/utility selections use Ubuntu 26.04 and eight native
-artifact build/verification lanes use Ubuntu 24.04. Existing documentation producers retain Ubuntu 26.04. Workflow diffs
-contain only runner-label replacements. The shared monorepo guide records both baselines and their limits.
+artifact build/verification lanes use Ubuntu 24.04. Existing documentation producers retain Ubuntu 26.04. Linux compiler
+CI additionally selects disk-backed temporary storage. The shared monorepo guide records both baselines and their
+limits.
 
-The workflow regressions exercise generated Linux matrices for Unified CI and all three standalone levels, static native
-artifact matrices, and every direct Ubuntu utility/documentation runner. Changed assertions compare runner labels and
-structured matrix values; they do not add native filesystem-path comparisons or Windows-specific branches.
+The runner-policy regressions exercise generated Linux matrices for Unified CI and all three standalone levels, static
+native artifact matrices, and every direct Ubuntu utility/documentation runner. These assertions compare runner labels
+and structured matrix values. The temporary-storage probe compares extracted native paths with same-host `Path` values;
+it does not add Windows-specific branches or compare diagnostic path spelling.
+
+## Ubuntu 26 temporary storage
+
+Hosted Unified CI passes L0 and the L1 normal compiler, examples, productization, and environment checks with
+`/usr/bin/gcc` reporting Ubuntu GCC 15.2.0. The L1 dedicated trace sweep then fails while draining captured output with
+`OSError: failed to drain captured process output: [Errno 122] Disk quota exceeded`. Its artifact root is under `/tmp`.
+Ubuntu 26.04 runner images can mount `/tmp` as a quota-limited RAM-backed filesystem. This matches the reproduced
+upstream failure documented in
+[actions/runner-images issue 14777](https://github.com/actions/runner-images/issues/14777).
+
+The shared Linux setup action creates `$RUNNER_TEMP/dea-tmp` and selects it through all three standard temporary-path
+environment variables for subsequent job steps. This covers Python trace artifacts and compiler/tool scratch files in
+Unified CI and all three standalone compiler workflows without changing trace contents, analyzer rules, parallelism,
+compiler flags, or the Ubuntu release/artifact pins. Setup uses no privileged mount operations and reports the selected
+filesystem and capacity. An upstream image repair is pending deployment; the explicit directory avoids dependence on
+that rollout.
+
+Focused regressions execute the real Bash setup with a runner directory containing spaces and an apostrophe, then start
+a fresh Python subprocess that creates and writes a temporary trace artifact under the exported directory. Missing or
+empty runner storage fails before environment publication. Wiring checks require the Linux guard and setup ordering
+before tool setup and compiler delegates. These local POSIX checks do not reproduce the hosted tmpfs mount or establish
+completion of the full Linux trace sweep.
 
 ## Local validation
 
@@ -89,10 +118,24 @@ structured matrix values; they do not add native filesystem-path comparisons or 
 - `python3 scripts/check_adr_impact.py --all-active`: passed after plan creation.
 - Final local commit gates: staged whitespace, ADR Impact, and root pre-commit.
 
-The focused test results remain applicable after Markdown-only updates and formatting: no covered workflow, code, test,
-dependency, or toolchain inputs changed after those checks, and the diff contains no unrelated modifications.
+The initial runner-pin checks above precede the temporary-storage repair. Follow-up validation must cover the shared
+action and the four changed compiler workflow entrypoints rather than treating the earlier result as proof of the
+repair.
 
-This is a hosted configuration change with no compiler/runtime implementation, compiler flags, trace commands, or trace
-input edits. Validation follows the project maintainer's short-check scope. No aggregate suites, native rebuilds,
-toolchain installations, full PDF builds, container builds, or remote operations were performed. Hosted compiler CI and
-actual Linux artifact acceptance remain pending; keep this plan active until that evidence is reviewed.
+The temporary-storage repair passes these short local checks:
+
+- `.venv/bin/python -m pytest -q -n 0 scripts/tests/test_ci_bootstrap.py -k 'linux_temp or ubuntu or generated_linux_ci or workflow_handoffs or doxygen_setup or l0_manual' --tb=short`:
+  42 passed, 188 deselected in 1.90 seconds with installed CPython 3.15.2. Root `uv run` refreshed the shared
+  environment from locked Python dependencies after its former Python 3.14.7 interpreter was removed. No new interpreter
+  or native toolchain was installed. This check follows that environment refresh.
+- `actionlint -config-file <temporary-config>`: passed for all workflows, with the same Ubuntu 26.04 label allowance.
+- `git diff --check` and `python3 scripts/check_adr_impact.py --all-active`: passed.
+
+The focused repair results remain applicable after Markdown-only updates and formatting; covered workflow, action, test,
+dependency, and interpreter inputs are unchanged, and the diff contains no unrelated modifications.
+
+This is a hosted configuration change with no compiler/runtime implementation, compiler flag, trace command, or trace
+input edits; the repair changes Linux temporary storage inherited by trace execution. Validation follows the project
+maintainer's short-check scope. No aggregate suites, native rebuilds, toolchain installations, full PDF builds,
+container builds, or remote operations were performed. Hosted compiler CI and actual Linux artifact acceptance remain
+pending; keep this plan active until that evidence is reviewed.

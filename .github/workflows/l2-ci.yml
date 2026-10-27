@@ -160,6 +160,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Select Linux temporary storage
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/setup-linux-temp
+
       - name: Set up Python
         if: runner.os != 'Windows'
         uses: actions/setup-python@v6

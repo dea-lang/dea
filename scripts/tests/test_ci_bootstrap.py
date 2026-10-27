@@ -346,6 +346,73 @@ def test_generated_linux_ci_selections_use_ubuntu26(tmp_path, filename, event, p
         assert matrix == linux
 
 
+@pytest.mark.parametrize("filename,job_name", [
+    ("ci.yml", "unified"), ("l0-ci.yml", "test-extended"),
+    ("l1-ci.yml", "bootstrap"), ("l2-ci.yml", "bootstrap"),
+])
+def test_linux_temp_storage_precedes_compiler_ci_consumers(filename, job_name):
+    """Set job-wide temporary storage before tools and delegates can use /tmp."""
+    steps = workflow(f".github/workflows/{filename}")["jobs"][job_name]["steps"]
+    setup = [item for item in steps if item.get("uses") == "./.github/actions/setup-linux-temp"]
+    assert len(setup) == 1
+    assert setup[0]["if"] == "runner.os == 'Linux'"
+    checkout = next(item for item in steps if item.get("uses", "").startswith("actions/checkout@"))
+    python = next(item for item in steps if item.get("uses", "").startswith("actions/setup-python@"))
+    assert steps.index(checkout) < steps.index(setup[0]) < steps.index(python)
+    consumers = [item for item in steps if item.get("uses", "").startswith("./.github/actions/l")]
+    assert consumers and all(steps.index(setup[0]) < steps.index(item) for item in consumers)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Linux-only action exercised on native POSIX hosts")
+def test_linux_temp_action_redirects_real_subprocess_temporary_files(tmp_path):
+    """Exercise the actual action and Python's temporary-directory selection."""
+    action = workflow(".github/actions/setup-linux-temp/action.yml")
+    assert action["runs"]["using"] == "composite"
+    setup, = action["runs"]["steps"]
+    assert setup["shell"] == "bash"
+    runner_temp = tmp_path / "runner temp with spaces and 'apostrophe'"
+    runner_temp.mkdir()
+    output = tmp_path / "github environment"
+    source = {**os.environ, "RUNNER_TEMP": str(runner_temp), "GITHUB_ENV": str(output),
+              "TMPDIR": "/old-tmp", "TMP": "/old-tmp", "TEMP": "/old-tmp"}
+    result = subprocess.run(["bash", "-eu", "-o", "pipefail", "-c", setup["run"]],
+                            env=source, capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stdout + result.stderr
+    selected = dict(line.split("=", 1) for line in output.read_text().splitlines())
+    directory = runner_temp / "dea-tmp"
+    assert set(selected) == {"TMPDIR", "TMP", "TEMP"}
+    assert all(Path(value) == directory for value in selected.values())
+    assert directory.is_dir()
+    assert "Linux temporary directory:" in result.stdout
+    probe = subprocess.run(
+        [sys.executable, "-c", "import json, pathlib, tempfile; "
+         "p = pathlib.Path(tempfile.mkdtemp(prefix='trace-probe.')); "
+         "(p / 'trace.log').write_bytes(b'trace probe\\n'); print(json.dumps(str(p)))"],
+        env={**source, **selected}, capture_output=True, text=True, timeout=10)
+    assert probe.returncode == 0, probe.stdout + probe.stderr
+    artifact = Path(json.loads(probe.stdout))
+    assert artifact.parent == directory
+    assert (artifact / "trace.log").read_bytes() == b"trace probe\n"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Linux-only action exercised on native POSIX hosts")
+@pytest.mark.parametrize("runner_temp", [None, ""])
+def test_linux_temp_action_requires_runner_storage(tmp_path, runner_temp):
+    """Fail before exporting an unusable fallback when runner storage is absent."""
+    action = workflow(".github/actions/setup-linux-temp/action.yml")
+    setup, = action["runs"]["steps"]
+    output = tmp_path / "github environment"
+    env = {**os.environ, "GITHUB_ENV": str(output)}
+    env.pop("RUNNER_TEMP", None)
+    if runner_temp is not None:
+        env["RUNNER_TEMP"] = runner_temp
+    result = subprocess.run(["bash", "-eu", "-o", "pipefail", "-c", setup["run"]],
+                            env=env, capture_output=True, text=True, timeout=10)
+    assert result.returncode != 0
+    assert "RUNNER_TEMP is required" in result.stderr
+    assert not output.exists()
+
+
 def test_workflow_handoffs_and_isolation_are_wired():
     unified = workflow(".github/workflows/ci.yml")
     assert unified["env"]["L2_CI_DEFAULT_ENABLED"] == "false"
