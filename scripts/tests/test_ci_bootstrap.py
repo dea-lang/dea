@@ -2,6 +2,7 @@
 # Copyright (c) 2026 gwz
 """CI routing, explicit predecessor handoffs, and opt-in isolation regressions."""
 
+import json
 import os
 from pathlib import Path
 import shutil
@@ -288,6 +289,61 @@ def route(tmp_path, *, default, event, changed="", manual="default", missing="")
     result = subprocess.run(["bash", "-eu", "-c", script], env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     return dict(line.split("=", 1) for line in output.read_text().splitlines())
+
+
+def test_ubuntu_utilities_use_pinned_ci_baseline():
+    """Keep every direct Ubuntu job on the CI baseline and reject moving aliases."""
+    selected = []
+    for path in sorted((ROOT / ".github/workflows").glob("*.yml")):
+        assert "ubuntu-latest" not in path.read_text(), path.name
+        document = workflow(path.relative_to(ROOT))
+        for name, job in document["jobs"].items():
+            runner = job.get("runs-on", "")
+            if isinstance(runner, str) and runner.startswith("ubuntu-"):
+                assert runner == "ubuntu-26.04", (path.name, name)
+                selected.append((path.name, name))
+    assert selected
+
+
+@pytest.mark.parametrize("filename,jobs", [
+    ("l0-release.yml", ["build-dist"]),
+    ("l0-snapshot.yml", ["build-dist"]),
+    ("l1-release.yml", ["build-dist", "verify-dist"]),
+    ("l1-snapshot.yml", ["build-dist", "verify-dist"]),
+    ("l1-productization-acceptance.yml", ["build", "verify"]),
+])
+def test_linux_artifact_builders_and_verifiers_share_ubuntu24_baseline(filename, jobs):
+    """Preserve the native artifact baseline independently of compiler CI and docs."""
+    document = workflow(f".github/workflows/{filename}")
+    for name in jobs:
+        job = document["jobs"][name]
+        linux = [entry for entry in job["strategy"]["matrix"]["include"]
+                 if entry.get("os") == "linux" or entry.get("platform") == "linux-x86_64"]
+        assert len(linux) == 1, (filename, name)
+        assert linux[0]["runner"] == "ubuntu-24.04", (filename, name)
+        assert job["runs-on"] == "${{ matrix.runner }}"
+
+
+@pytest.mark.parametrize("filename", ["ci.yml", "l0-ci.yml", "l1-ci.yml", "l2-ci.yml"])
+@pytest.mark.parametrize("event,platform", [
+    ("push", "all"), ("workflow_dispatch", "all"), ("workflow_dispatch", "linux"),
+])
+def test_generated_linux_ci_selections_use_ubuntu26(tmp_path, filename, event, platform):
+    """Exercise real matrix selection for automatic and manual Linux CI routes."""
+    document = workflow(f".github/workflows/{filename}")
+    shell = step(document["jobs"]["select-matrix"]["steps"], "Select matrix")["run"]
+    script = shell.split("python3 - <<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+    output = tmp_path / "matrix output"
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True,
+                            env={**os.environ, "EVENT_NAME": event, "INPUT_PLATFORM": platform,
+                                 "GITHUB_OUTPUT": str(output)}, timeout=10)
+    assert result.returncode == 0, result.stdout + result.stderr
+    matrix = json.loads(output.read_text().removeprefix("matrix="))["include"]
+    linux = [entry for entry in matrix if entry["os"] == "linux"]
+    assert len(linux) == 1
+    assert linux[0]["runner"] == "ubuntu-26.04"
+    if platform == "linux":
+        assert matrix == linux
 
 
 def test_workflow_handoffs_and_isolation_are_wired():

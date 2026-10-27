@@ -62,6 +62,20 @@ Every workflow job starts with `Show inputs`, which prints the current `inputs` 
 appends it under `Workflow inputs` in the job summary. Reusable workflows report the inputs received by their own jobs.
 The step uses Bash and the workspace root so it can run before checkout on Linux, macOS, and Windows.
 
+## Ubuntu runner baselines
+
+Hosted workflows select explicit Ubuntu releases instead of the moving `ubuntu-latest` alias. Compiler CI, documentation
+producers, repository checks, routing, and release/publication utility jobs use `ubuntu-26.04`.
+
+Linux native distribution builders in the L0/L1 release and snapshot workflows use `ubuntu-24.04`. L1 productization
+acceptance builders and fresh artifact verification jobs use the same Ubuntu 24.04 baseline, including the verification
+jobs in release and snapshot workflows. This retains the pre-migration native build environment while compiler CI
+exercises Ubuntu 26.04. Documentation jobs remain on Ubuntu 26.04 and pass their verified bundles to native builders.
+
+The runner release pin does not freeze GitHub's image updates or installed package versions. Building on Ubuntu 24.04
+does not establish compatibility with every older Linux distribution. A change to the native artifact baseline requires
+reviewing system-library requirements and validating the actual artifacts on the intended deployment environments.
+
 ## Compiler CI
 
 Unified CI runs selected level delegates sequentially on each native runner. A successful L0 delegate hands its Stage 2

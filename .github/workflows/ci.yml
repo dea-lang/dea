@@ -111,7 +111,7 @@ env:
 jobs:
   adr-impact:
     name: ADR impact policy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Show inputs
         shell: bash
@@ -195,7 +195,7 @@ jobs:
           fi
 
   route-levels:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       run_l0: ${{ steps.route.outputs.run_l0 }}
       run_l1: ${{ steps.route.outputs.run_l1 }}
@@ -337,7 +337,7 @@ jobs:
     uses: ./.github/workflows/l1-docs-validate.yml
 
   select-matrix:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
     steps:
@@ -368,7 +368,7 @@ jobs:
 
           default_matrix = [
               {
-                  "runner": "ubuntu-latest",
+                  "runner": "ubuntu-26.04",
                   "os": "linux",
                   "arch": "x86_64",
                   "c_compiler": "gcc",

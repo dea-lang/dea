@@ -19,7 +19,7 @@ on:
 
 jobs:
   check-copyright-headers:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Show inputs
         shell: bash

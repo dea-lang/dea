@@ -72,7 +72,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest
+          - runner: ubuntu-24.04
             platform: linux-x86_64
             cc: gcc
           - runner: macos-15-intel
@@ -196,7 +196,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest
+          - runner: ubuntu-24.04
             platform: linux-x86_64
             cc: gcc
           - runner: macos-15-intel

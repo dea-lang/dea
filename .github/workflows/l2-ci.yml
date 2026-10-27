@@ -63,7 +63,7 @@ permissions:
 
 jobs:
   select-matrix:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
     steps:
@@ -93,7 +93,7 @@ jobs:
 
           default_matrix = [
               {
-                  "runner": "ubuntu-latest",
+                  "runner": "ubuntu-26.04",
                   "os": "linux",
                   "arch": "x86_64",
                   "c_compiler": "gcc",
