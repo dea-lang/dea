@@ -31,7 +31,7 @@
 - Related:
   - `work/plans/bug-fixes/closed/2026-07-03-shared-alloc-tracker-churn-rehash-noref.md`
   - `docs/decisions/0010-checked-runtime-pointer-access-validation.md`
-  - `l1/work/plans/features/2026-06-21-cheap-string-slices-noref.md`
+  - `l2/work/plans/features/2026-06-21-cheap-string-slices-noref.md`
 
 ## Summary
 
@@ -92,3 +92,12 @@ Completed on 2026-07-03.
   free rejection on string storage, and stale byte-pointer reporting.
 - ARC and memory trace suites keep passing unchanged (registration emits no trace events).
 - Bootstrap benchmark: `make -C l0 triple-test` wall time improves measurably against the checked baseline.
+
+## ADR Impact
+
+- Decision: Register exposed heap-string storage lazily while preserving checked pointer access and read-only storage.
+  - Scope: Shared
+  - Disposition: Covered by ADR
+  - ADR: `docs/decisions/0010-checked-runtime-pointer-access-validation.md`
+  - Rationale: The accepted pointer-validation ADR already records this lazy-registration contract and links this
+    completed plan. Updating the deferred successor-plan reference changes no runtime behavior or architectural choice.

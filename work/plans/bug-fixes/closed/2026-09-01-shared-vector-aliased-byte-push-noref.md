@@ -43,7 +43,7 @@
   - `work/plans/bug-fixes/closed/2026-08-23-shared-vector-logical-bounds-noref.md`
   - `work/plans/bug-fixes/closed/2026-09-01-shared-builtin-and-runtime-contract-observability-noref.md`
   - `work/plans/features/closed/2026-06-30-shared-runtime-pointer-access-validation-noref.md`
-  - `l1/work/plans/features/2026-06-21-cheap-string-slices-noref.md`
+  - `l2/work/plans/features/2026-06-21-cheap-string-slices-noref.md`
   - `docs/decisions/0010-checked-runtime-pointer-access-validation.md`
   - `l0/docs/reference/standard-library.md`
   - `l1/docs/reference/standard-library.md`

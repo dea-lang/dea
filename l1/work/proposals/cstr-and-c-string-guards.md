@@ -1,6 +1,6 @@
 # `cstr` and Scoped C-String Guards Proposal
 
-Version: 2026-08-30
+Version: 2026-10-27
 
 Status: Proposed
 
@@ -16,11 +16,11 @@ implementation.
 
 ## Context
 
-The [cheap string slices plan] allows a `string` to describe an interior span whose logical end is not necessarily
-followed by NUL. Consequently, arbitrary `string -> cstr` conversion cannot remain an unrestricted zero-cost pointer
-reinterpretation.
+The deferred L2 [l2/work/plans/features/2026-06-21-cheap-string-slices-noref.md][cheap string slices plan] proposes a
+`string` interior span whose logical end is not necessarily followed by NUL. Consequently, arbitrary `string -> cstr`
+conversion cannot remain an unrestricted zero-cost pointer reinterpretation.
 
-The planned string runtime provides two relevant primitives:
+String views no longer gate L1 stability. The candidate runtime design provides two relevant primitives:
 
 ```c
 dea_string _rt_string_ensure_terminated(dea_string value);
@@ -252,4 +252,4 @@ the live catalog before implementation.
 
 [c ffi initiative]: ../initiatives/0003-c-ffi.md
 [c ffi plan]: ../plans/features/closed/2026-04-24-c-ffi-extern-c-and-cstr-noref.md
-[cheap string slices plan]: ../plans/features/2026-06-21-cheap-string-slices-noref.md
+[cheap string slices plan]: ../../../l2/work/plans/features/2026-06-21-cheap-string-slices-noref.md

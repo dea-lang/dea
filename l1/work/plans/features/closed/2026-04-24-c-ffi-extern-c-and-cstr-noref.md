@@ -38,7 +38,7 @@
   - `l1/work/initiatives/0003-c-ffi.md`
   - `l1/work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md`
   - `l1/work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md`
-  - `l1/work/plans/features/2026-06-21-cheap-string-slices-noref.md`
+  - `l2/work/plans/features/2026-06-21-cheap-string-slices-noref.md`
   - `l1/work/proposals/cstr-and-c-string-guards.md`
   - `l1/work/plans/features/closed/2026-04-22-variadic-functions-noref.md`
   - `docs/specs/compiler/diagnostic-code-catalog.md`
@@ -76,9 +76,11 @@ ABI-compatible with C strings.
 6. Initiative `0001` now also provides ordered `-l`/`-L`, rpath, and raw-link-word controls for `--link`, `--build`, and
    `--run`. FFI bindings consume those explicit caller/build-tool inputs; declarations do not carry dependency metadata.
 
-The draft [cheap string slices plan] would allow a logical `string` view whose end is not NUL-terminated. The
-[C-string guard proposal] records the resulting alternative to this historical plan's zero-cost reinterpretation
-default. Its conversion phase was blocked until that proposal could be accepted, rejected, or superseded.
+The string-view work is now deferred to
+[l2/work/plans/features/2026-06-21-cheap-string-slices-noref.md][cheap string slices plan], which would allow a logical
+`string` view whose end is not NUL-terminated. The [C-string guard proposal] records the resulting alternative to this
+historical plan's zero-cost reinterpretation default. Its conversion phase was blocked until that proposal could be
+accepted, rejected, or superseded.
 
 ## Historical Candidate Defaults
 
@@ -199,4 +201,4 @@ Update grammar/design-decision docs and add regression coverage for:
 6. Any newly assigned diagnostic codes are registered in `docs/specs/compiler/diagnostic-code-catalog.md`.
 
 [c-string guard proposal]: ../../../proposals/cstr-and-c-string-guards.md
-[cheap string slices plan]: ../2026-06-21-cheap-string-slices-noref.md
+[cheap string slices plan]: ../../../../../l2/work/plans/features/2026-06-21-cheap-string-slices-noref.md

@@ -3,27 +3,32 @@
 ## Resolve the roadmap IFF item
 
 - Date: 2026-08-30
+- Last reviewed: 2026-10-27
 - Status: Draft
 - Title: Identify the intended IFF format, consumer, and standard-library scope
 - Kind: Feature
 - Priority: Low
 - Stdlib Tier: 4
-- Parent Initiative: `l1/work/initiatives/0008-data-format-modules.md`
 - Subsystem: Stdlib / data formats / roadmap design
 - Modules:
-  - `l1/docs/specs/stdlib/iff-format.md`
-  - `l1/compiler/shared/l1/stdlib/std/iff.l1`
+  - `l2/docs/specs/stdlib/iff-format.md`
+  - `l2/compiler/shared/l2/stdlib/std/iff.l2`
 - Test modules:
-  - `l1/compiler/tests/iff_test.l0`
+  - `l2/compiler/tests/iff_test.l1`
 - Related:
-  - `l1/work/initiatives/0008-data-format-modules.md`
-  - `l1/docs/roadmap.md`
-- Repro: `rg -n "IFF|Interchange File Format" l1 docs work`
+  - `l2/work/plans/features/2026-10-27-stable-l1-catch-up-noref.md`
+  - `l2/docs/roadmap.md`
+- Repro: `rg -n "IFF|Interchange File Format" l2 l1/docs/roadmap.md docs work`
 
 ## Summary
 
-The roadmap names `IFF` without identifying the exact format, variant, consumer, or desired operations. This Stdlib Tier
-4 plan resolves that ambiguity before any `std.iff` implementation is authorized.
+The historical roadmap names `IFF` without identifying the exact format, variant, consumer, or desired operations. This
+speculative Stdlib Tier 4 work is deferred to L2 and does not gate L1 stability. It remains a scope investigation rather
+than an implementation commitment.
+
+Begin only after the stable-L1 catch-up in [l2/work/plans/features/2026-10-27-stable-l1-catch-up-noref.md][catch-up] and
+a concrete L2 consumer justify revisiting the item. Resolve the ambiguity before opening any `std.iff` implementation
+work.
 
 ## Questions to Resolve
 
@@ -37,8 +42,8 @@ The roadmap names `IFF` without identifying the exact format, variant, consumer,
 ## Approach
 
 1. Trace the roadmap entry's history and record any motivating artifact or consumer.
-2. Compare candidate meanings and reject those without a current L1 use case.
-3. If retained, write an exact binary and stream contract in `l1/docs/specs/stdlib/iff-format.md`.
+2. Compare candidate meanings and reject those without a current L2 use case.
+3. If retained, write an exact binary and stream contract in `l2/docs/specs/stdlib/iff-format.md`.
 4. Define the smallest module surface and bounded follow-up implementation plans.
 5. If not retained, update the roadmap with the explicit replacement, deferral, or removal rationale.
 
@@ -54,7 +59,7 @@ The roadmap names `IFF` without identifying the exact format, variant, consumer,
 
 - Decision: Select the exact IFF meaning, consumer, module ownership, and binary contract, or remove the item from the
   core stdlib roadmap.
-  - Scope: L1
+  - Scope: L2
   - Disposition: Pending
   - ADR: None
   - Rationale: No correct API or implementation plan can be written until the roadmap acronym and motivating use case
@@ -65,4 +70,6 @@ The roadmap names `IFF` without identifying the exact format, variant, consumer,
 1. The conclusion cites a concrete consumer or recommends removal/deferral.
 2. Any retained format has an exact byte-order, padding, nesting, unknown-chunk, and size contract.
 3. Core-stdlib placement is justified against external-package or tooling ownership.
-4. Follow-up plans are bounded and depend on the shared byte-buffer and stream foundations.
+4. Follow-up plans are bounded and use the L2-owned byte-buffer and stream foundations adopted during catch-up.
+
+[catch-up]: 2026-10-27-stable-l1-catch-up-noref.md

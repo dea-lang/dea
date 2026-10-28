@@ -3,7 +3,7 @@
 ## Audit standard-library capability coverage
 
 - Date: 2026-08-30
-- Last reviewed: 2026-10-24
+- Last reviewed: 2026-10-28
 - Status: Draft
 - Title: Document portable systems capability and C99 coverage for the L1 standard library
 - Kind: Feature
@@ -28,6 +28,19 @@
 Create a maintained coverage matrix that replaces vague "C99 parity" with the actual target: portable systems capability
 through typed Dea APIs and platform-specific runtime bindings. The audit records what exists, what is partial, what is
 planned, what Dea intentionally replaces, what belongs to FFI/packages, and what is intentionally unsupported.
+
+## Scheduling and Maintenance
+
+Defer the comprehensive audit until the main L1 stdlib additions have landed and their public reference documentation
+describes the delivered APIs. Complete the audit and reconcile its findings before declaring L1 stable. Its current
+readiness is `not-ready` because preceding stdlib delivery is now an explicit prerequisite.
+
+Use [l1/docs/roadmap.md][roadmap] to identify the main additions at stabilization. Speculative file-watch/concurrency
+investigations and deferred L2 work are outside this scheduling gate.
+
+After establishing the coverage baseline, update affected rows, evidence links, and platform limitations in the same
+change as subsequent stdlib additions or behavior changes. Refresh the relevant entries incrementally; repeat a broader
+audit when the capability scope or stabilization baseline materially changes.
 
 ## Coverage Model
 
@@ -73,8 +86,8 @@ scope in the current stdlib plans.
 
 ## Implementation Phases
 
-1. Inventory exported `std.*` and `sys.*` modules and current runtime support, recording private reference code and
-   applicable regression cases separately.
+1. After the scheduling gate is satisfied, inventory exported `std.*` and `sys.*` modules and current runtime support,
+   recording private reference code and applicable regression cases separately.
 2. Build the C99-family matrix with evidence links into current reference docs.
 3. Add the non-C99 portable systems capability matrix.
 4. Reconcile every planned row against active lifecycle documents and remove unsupported parity language.
@@ -107,6 +120,9 @@ scope in the current stdlib plans.
 5. All links resolve and the roadmap and coverage matrix agree on ownership and status.
 6. Private-only services remain unimplemented in the public-coverage columns, even when they provide reference code for
    a planned API. L2 migration and removal of superseded helpers are not claimed as stdlib delivery.
+7. The comprehensive audit reflects the delivered main stdlib additions, and its findings are reconciled before L1 is
+   declared stable. Later stdlib changes update the affected coverage entries and evidence alongside the API change.
 
 [compiler-support]: ../../../compiler/support/compiler_support.c
 [platform-support]: ../../../compiler/support/preparation/platform.h
+[roadmap]: ../../../docs/roadmap.md

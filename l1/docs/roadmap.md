@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-10-25
+Version: 2026-10-28
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -364,7 +364,7 @@ tiers are distinct from implementation phases within a plan or initiative.
 | Stdlib Tier 1 | OS error and I/O results, 64-bit filesystem metadata, dynamic byte buffers, file handles, filesystem mutations, and directory traversal.  |
 | Stdlib Tier 2 | Streams and buffering, secure entropy, temporary objects, process spawning and pipes, typed formatting, and portable capability coverage. |
 | Stdlib Tier 3 | Time widening, sleep, deadlines and timeouts, blocking TCP/UDP/DNS networking, and JSON.                                                  |
-| Stdlib Tier 4 | File-watch contract design, IFF scope selection, and safe-concurrency semantics and runtime readiness.                                    |
+| Stdlib Tier 4 | File-watch contract design and safe-concurrency semantics and runtime readiness.                                                          |
 
 ## Active initiatives
 
@@ -380,8 +380,8 @@ tiers are distinct from implementation phases within a plan or initiative.
   process spawning, and anonymous pipes plus Stdlib Tier 3 sleep, deadlines, timeouts, and general time-second widening.
 - Initiative [0007-blocking-networking][blocking-networking] promotes networking into a Stdlib Tier 3 blocking IPv4/IPv6
   TCP, UDP, and DNS surface without selecting a portable asynchronous model prematurely.
-- Initiative [0008-data-format-modules][data-formats] owns Stdlib Tier 3 JSON and a Stdlib Tier 4 scope decision for the
-  roadmap's currently unspecified `IFF` item.
+- Initiative [0008-data-format-modules][data-formats] owns Stdlib Tier 3 JSON. Speculative IFF scope work is deferred to
+  L2.
 - Initiative [0009-safe-concurrency][safe-concurrency] promotes the Stdlib Tier 4 concurrency direction into
   memory-model and runtime-readiness design before safe threads, synchronization, atomics, or channels are exposed.
 - Initiative [0010-explicit-profiles-and-composable-builds][explicit-profiles] delivers caller-owned profile artifacts
@@ -444,12 +444,49 @@ tiers are distinct from implementation phases within a plan or initiative.
 
 ## Active standalone plans
 
-- Feature [2026-06-21-cheap-string-slices-noref][cheap-string-slices] extends `dea::slice` to ARC-backed string views
-  while preserving internal terminated copies for native runtime calls that require them.
 - Feature [2026-08-30-typed-formatting-noref][typed-formatting] is the Stdlib Tier 2 replacement for the combinatorial
   print-helper surface, using typed L1 variadics with shared string and writer formatting.
 - Feature [2026-08-30-standard-library-capability-coverage-noref][stdlib-coverage] is the Stdlib Tier 2 audit that
-  records portable systems capability and C99-family coverage without promising literal C99 API parity.
+  records portable systems capability and C99-family coverage without promising literal C99 API parity. It is meant to
+  run after the main stdlib additions land and to be completed before declaring L1 stable; affected entries will need to
+  be maintained alongside later stdlib changes.
+
+## Open plan readiness
+
+Readiness describes the current implementation path independently of priority and lifecycle status. All listed plans
+remain Draft. `ready` means scope and prerequisites permit implementation or the named audit to begin; `almost-ready`
+means a bounded contract decision or immediate prerequisite remains; `not-ready` means missing foundations, scheduled
+delivery prerequisites, or broader contract decisions block delivery; `speculative` means the portable API or
+architecture is still an investigation.
+
+| Readiness    | Plan                                                                                | Remaining gate                                                                                |
+| ------------ | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| ready        | [2026-10-21-semantic-dependency-discovery-noref][dependency-discovery]              | None identified; profile phases A through C are complete.                                     |
+| ready        | [2026-08-30-time-width-sleep-and-deadlines-noref][plan-time]                        | None identified; the OS-error foundation is complete.                                         |
+| almost-ready | [2026-08-30-dynamic-byte-buffers-noref][plan-buffers]                               | Resolve slice exposure under current return restrictions and view invalidation during growth. |
+| almost-ready | [2026-08-30-file-handles-and-random-access-noref][plan-files]                       | Settle ownership, explicit close, cleanup, and the buffer contract.                           |
+| almost-ready | [2026-08-30-secure-os-entropy-noref][plan-entropy]                                  | Supply the public byte-buffer API used by both entropy operations.                            |
+| not-ready    | [2026-08-30-streams-and-buffering-noref][plan-streams]                              | Stable file/buffer contracts and adapter endpoint ownership.                                  |
+| not-ready    | [2026-08-30-secure-temporary-files-and-directories-noref][plan-temp]                | File handles and secure entropy, plus parent and cleanup contracts.                           |
+| not-ready    | [2026-08-30-process-spawning-and-anonymous-pipes-noref][plan-process]               | File/stream ownership and the bounded-capture decision.                                       |
+| not-ready    | [2026-08-30-blocking-ip-networking-noref][plan-network]                             | Buffers, streams, endpoint ownership, and timeouts/deadlines.                                 |
+| not-ready    | [2026-08-30-json-data-format-noref][plan-json]                                      | Buffers/streams and number, duplicate-key, Unicode, and limit policies.                       |
+| not-ready    | [2026-08-30-typed-formatting-noref][typed-formatting]                               | Placeholder grammar, value policies, and the Writer contract.                                 |
+| not-ready    | [2026-08-30-standard-library-capability-coverage-noref][stdlib-coverage]            | After main stdlib additions land; finish and reconcile the audit before declaring L1 stable.  |
+| speculative  | [2026-08-30-file-watch-api-design-noref][plan-watch]                                | Portable event, overflow, rename, path, and lifetime model.                                   |
+| speculative  | [2026-08-30-concurrency-memory-model-and-runtime-readiness-noref][plan-concurrency] | Memory model, cross-worker ownership, and runtime thread-safety design.                       |
+
+## Deferred L2 work
+
+Optional ARC-backed string slices and the speculative IFF item are L2-owned and do not gate L1 stability:
+
+- [2026-06-21-cheap-string-slices-noref][cheap-string-slices] retains the string-view design for L2 after stable-L1
+  catch-up, preserving the stable L1 bootstrap.
+- [2026-08-30-iff-scope-and-format-selection-noref][iff-scope] requires a concrete L2 consumer and an exact format
+  decision before implementation.
+
+The deferred [2026-10-27-stable-l1-catch-up-noref][l2-catch-up] plan reconciles the eventual stable L1 compiler and
+stdlib baseline before sustained L2 feature work begins. Drafting these plans does not start that phase.
 
 ## Backlog
 
@@ -497,7 +534,8 @@ backlog does not imply missing work where L1 already has a narrower surface.
 - Secure entropy, temporary objects, process spawning, anonymous pipes, and scheduling-time helpers are tracked by
   Initiative [0006-process-and-host-services][host-services].
 - Blocking TCP, UDP, and DNS are tracked by Initiative [0007-blocking-networking][blocking-networking].
-- JSON and the unresolved roadmap `IFF` item are tracked by Initiative [0008-data-format-modules][data-formats].
+- JSON is tracked by Initiative [0008-data-format-modules][data-formats]. IFF scope selection is deferred to L2 under
+  [2026-08-30-iff-scope-and-format-selection-noref][iff-scope].
 - Safe concurrency design is tracked by Initiative [0009-safe-concurrency][safe-concurrency].
 - Typed formatting is tracked by Feature [2026-08-30-typed-formatting-noref][typed-formatting], and the portable
   capability/C99-family matrix by Feature [2026-08-30-standard-library-capability-coverage-noref][stdlib-coverage].
@@ -536,7 +574,7 @@ update to be promoted to an initiative or plan:
 [c-ffi]: ../work/initiatives/0003-c-ffi.md
 [case-builtin-literals]: ../work/plans/bug-fixes/closed/2026-06-08-stage1-case-builtin-literal-support-noref.md
 [case-else-recovery]: ../work/plans/bug-fixes/closed/2026-08-25-stage1-case-stray-else-recovery-boundary-noref.md
-[cheap-string-slices]: ../work/plans/features/2026-06-21-cheap-string-slices-noref.md
+[cheap-string-slices]: ../../l2/work/plans/features/2026-06-21-cheap-string-slices-noref.md
 [compile-foundation]: ../work/plans/features/closed/2026-04-24-separate-compilation-driver-surface-noref.md
 [compile-only]: ../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
 [compiler-contracts]: ../work/plans/tools/closed/2026-10-25-compiler-function-contracts-noref.md
@@ -561,10 +599,12 @@ update to be promoted to an initiative or plan:
 [function-pointers]: ../work/plans/features/closed/2026-04-18-l1-function-pointer-types-noref.md
 [generated-c-foundation]: ../work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md
 [host-services]: ../work/initiatives/0006-process-and-host-services.md
+[iff-scope]: ../../l2/work/plans/features/2026-08-30-iff-scope-and-format-selection-noref.md
 [interface-emission]: ../work/plans/features/closed/2026-04-24-module-interface-emission-noref.md
 [interface-fingerprints]: ../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [is-intrinsic]: ../work/plans/features/closed/2026-04-20-is-intrinsic-noref.md
 [l1m-authoritative-linking]: ../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
+[l2-catch-up]: ../../l2/work/plans/features/2026-10-27-stable-l1-catch-up-noref.md
 [legacy-clang-preparation]: ../work/plans/bug-fixes/closed/2026-09-27-legacy-clang-preparation-compatibility-noref.md
 [let-initializers]: ../work/plans/features/closed/2026-04-17-l1-let-non-constant-initializers-noref.md
 [library-linking]: ../work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md
@@ -582,6 +622,17 @@ update to be promoted to an initiative or plan:
 [os-results]: decisions/0045-direct-os-errors-and-io-results.md
 [parenthesized-casted-place-arc]: ../../work/plans/bug-fixes/closed/2026-08-21-shared-parenthesized-casted-place-arc-classification-noref.md
 [per-module-generated-c]: ../work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md
+[plan-buffers]: ../work/plans/features/2026-08-30-dynamic-byte-buffers-noref.md
+[plan-concurrency]: ../work/plans/features/2026-08-30-concurrency-memory-model-and-runtime-readiness-noref.md
+[plan-entropy]: ../work/plans/features/2026-08-30-secure-os-entropy-noref.md
+[plan-files]: ../work/plans/features/2026-08-30-file-handles-and-random-access-noref.md
+[plan-json]: ../work/plans/features/2026-08-30-json-data-format-noref.md
+[plan-network]: ../work/plans/features/2026-08-30-blocking-ip-networking-noref.md
+[plan-process]: ../work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md
+[plan-streams]: ../work/plans/features/2026-08-30-streams-and-buffering-noref.md
+[plan-temp]: ../work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md
+[plan-time]: ../work/plans/features/2026-08-30-time-width-sleep-and-deadlines-noref.md
+[plan-watch]: ../work/plans/features/2026-08-30-file-watch-api-design-noref.md
 [pointer-equality]: ../work/plans/features/closed/2026-04-19-pointer-identity-equality-noref.md
 [prefixed-literals]: ../work/plans/features/closed/2026-04-04-l1-prefixed-int-literals-noref.md
 [preparation-contract]: reference/stdlib-preparation.md

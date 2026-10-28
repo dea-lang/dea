@@ -1,19 +1,16 @@
 # L1 Initiative 0008 - Data Format Modules
 
-- Version: 2026-08-30
+- Version: 2026-10-27
 - Status: Active
 - Kind: Initiative
 - Open plans:
   - `l1/work/plans/features/2026-08-30-json-data-format-noref.md`
-  - `l1/work/plans/features/2026-08-30-iff-scope-and-format-selection-noref.md`
 - Closed plans: (none)
 
 ## Summary
 
-This initiative owns the data-format modules already named by the L1 roadmap. JSON is a Stdlib Tier 3 implementation
-target after dynamic byte buffers and streams exist. The roadmap's `IFF` entry remains Stdlib Tier 4 because neither the
-intended interchange format nor a motivating consumer is documented; its first plan resolves that ambiguity instead of
-inventing an API around an unexplained acronym.
+This initiative owns streaming-capable JSON as a Stdlib Tier 3 implementation target after dynamic byte buffers and
+streams exist. The speculative IFF item is reassigned to L2 and does not gate this initiative or L1 stability.
 
 ## Phases and stdlib tiers
 
@@ -25,25 +22,22 @@ inventing an API around an unexplained acronym.
 
 Spawned plan: [JSON data format].
 
-### Phase 2 - IFF scope decision (Stdlib Tier 4)
-
-- Identify the intended format and consumer, decide whether it belongs in the core stdlib, and specify its module and
-  stream contract before opening implementation work.
-
-Spawned plan: [IFF scope and format selection].
-
 ## Dependencies
 
 - JSON implementation depends on `std.bytes` and `std.stream` from [Initiative 0005].
-- A selected IFF design must reuse the same binary-buffer and stream foundations rather than create a parallel I/O
-  stack.
+
+## Deferred successor work
+
+The IFF scope investigation now lives in
+[l2/work/plans/features/2026-08-30-iff-scope-and-format-selection-noref.md][iff-scope]. It is a standalone L2 draft,
+with no parent membership in this L1 initiative.
 
 ## Non-goals
 
 - YAML, XML, TOML, CBOR, MessagePack, or schema languages in this initiative
 - forcing all input into one whole-file string
 - embedding network transport, filesystem, or character-encoding policy in a format parser
-- implementing an IFF module before the acronym, format variant, and consumer are selected
+- IFF scope selection or implementation, now deferred to L2
 
 ## ADR Impact
 
@@ -53,15 +47,9 @@ Spawned plan: [IFF scope and format selection].
   - ADR: `l1/docs/decisions/`
   - Rationale: Incremental parsing and writing avoid making the current `int`-bounded whole-file string helpers a
     format-size constraint.
-- Decision: Select the exact meaning, consumer, and stdlib ownership of the roadmap's `IFF` item.
-  - Scope: L1
-  - Disposition: Pending
-  - ADR: None
-  - Rationale: The roadmap names `IFF` without an exact format scope or demonstrated user, so an implementation contract
-    cannot yet be justified.
 
 ## References
 
-[iff scope and format selection]: ../plans/features/2026-08-30-iff-scope-and-format-selection-noref.md
+[iff-scope]: ../../../l2/work/plans/features/2026-08-30-iff-scope-and-format-selection-noref.md
 [initiative 0005]: 0005-filesystem-and-stream-io.md
 [json data format]: ../plans/features/2026-08-30-json-data-format-noref.md
