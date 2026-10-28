@@ -5,14 +5,23 @@
 
 module std.time;
 
+export WallTime, MonotonicTime, Duration, DateTime, CivilDate,
+    TimeError, DeadlineResult, RemainingResult, SleepResult,
+    is_valid_nsec, is_leap_year, days_in_month, day_of_year,
+    civil_from_unix_days, datetime_from_unix_sec, wall_now, monotonic_supported,
+    monotonic_now, monotonic_diff, wall_to_utc_datetime, wall_to_local_datetime,
+    utc_now_datetime, local_now_datetime, deadline_after, remaining, sleep, sleep_until;
+
 import sys.rt;
+import sys.time;
 import std.integer;
+import std.os as os;
 
 /**
  * Represents wall clock time in seconds and nanoseconds since the Unix epoch.
  */
 struct WallTime {
-    sec: int;
+    sec: long;
     nsec: int;
 }
 
@@ -20,7 +29,7 @@ struct WallTime {
  * Represents monotonic time in seconds and nanoseconds.
  */
 struct MonotonicTime {
-    sec: int;
+    sec: long;
     nsec: int;
 }
 
@@ -28,7 +37,7 @@ struct MonotonicTime {
  * Represents a duration of time in seconds and nanoseconds.
  */
 struct Duration {
-    sec: int;
+    sec: long;
     nsec: int;
 }
 
@@ -125,42 +134,37 @@ func day_of_year(year: int, month: int, day: int) -> int {
 }
 
 /**
- * Calculates civil date components from Unix days.
+ * Calculates civil date components from Unix days without narrowing seconds.
  *
  * @param days The number of days since the Unix epoch.
- * @return The broken-down CivilDate.
+ * @return The broken-down date, or null when arithmetic or the int year overflows.
  */
-func civil_from_unix_days(days: int) -> CivilDate {
-    let z = days + 719468;
-    let era = 0;
-    if (z >= 0) {
-        era = z / 146097;
-    } else {
-        era = (z - 146096) / 146097;
-    }
-
-    let doe = z - (era * 146097);
+func civil_from_unix_days(days: long) -> CivilDate? {
+    let z = checked_add_long(days, 719468)?;
+    let era = div_floor_l(z, 146097);
+    let doe = emod_l(z, 146097);
     let yoe = (doe - (doe / 1460) + (doe / 36524) - (doe / 146096)) / 365;
-    let y = yoe + era * 400;
+    let y = checked_add_long(yoe, checked_mul_long(era, 400)?)?;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;
-
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = 0;
+    let day = (doy - (153 * mp + 2) / 5 + 1) as int;
+    let month: int = 0;
     if (mp < 10) {
-        month = mp + 3;
+        month = (mp + 3) as int;
     } else {
-        month = mp - 9;
+        month = (mp - 9) as int;
     }
-
     let year = y;
     if (month <= 2) {
-        year = y + 1;
+        year = checked_add_long(y, 1)?;
     }
-
-    let weekday = emod(days + 4, 7);
-    let yearday = day_of_year(year, month, day);
-    return CivilDate(year, month, day, weekday, yearday);
+    if (year < (int_min() as long) || year > (int_max() as long)) {
+        return null;
+    }
+    let narrow_year = year as int;
+    let weekday = ((emod_l(days, 7) + 4) % 7) as int;
+    let yearday = day_of_year(narrow_year, month, day);
+    return CivilDate(narrow_year, month, day, weekday, yearday);
 }
 
 /**
@@ -170,23 +174,20 @@ func civil_from_unix_days(days: int) -> CivilDate {
  * @param nsec Nanoseconds component.
  * @param utc_offset_sec Offset from UTC in seconds.
  * @param is_dst True if daylight saving time is in effect.
- * @return The broken-down DateTime, or null if invalid.
+ * @return The broken-down DateTime, or null if invalid or the year overflows.
  */
-func datetime_from_unix_sec(unix_sec: int, nsec: int, utc_offset_sec: int, is_dst: bool) -> DateTime? {
+func datetime_from_unix_sec(unix_sec: long, nsec: int, utc_offset_sec: int, is_dst: bool) -> DateTime? {
     if (!is_valid_nsec(nsec)) {
         return null;
     }
-
-    let days = div_floor(unix_sec, 86400);
-    let sod = emod(unix_sec, 86400);
-
-    let hour = sod / 3600;
+    let days = div_floor_l(unix_sec, 86400);
+    let sod = emod_l(unix_sec, 86400);
+    let hour = (sod / 3600) as int;
     let rem = sod % 3600;
-    let minute = rem / 60;
-    let second = rem % 60;
-
-    let civil = civil_from_unix_days(days);
-    let out = DateTime(
+    let minute = (rem / 60) as int;
+    let second = (rem % 60) as int;
+    let civil = civil_from_unix_days(days)?;
+    return DateTime(
         civil.year,
         civil.month,
         civil.day,
@@ -199,7 +200,6 @@ func datetime_from_unix_sec(unix_sec: int, nsec: int, utc_offset_sec: int, is_ds
         utc_offset_sec,
         is_dst
     );
-    return out;
 }
 
 /**
@@ -256,10 +256,10 @@ func monotonic_now() -> MonotonicTime? {
  *
  * @param start The starting time.
  * @param end The ending time.
- * @return The Duration difference, or null if end < start or overflow.
+ * @return The Duration difference, or null for invalid values, end < start, or overflow.
  */
 func monotonic_diff(start: MonotonicTime, end: MonotonicTime) -> Duration? {
-    if (!is_valid_nsec(start.nsec) || !is_valid_nsec(end.nsec)) {
+    if (start.sec < 0 || end.sec < 0 || !is_valid_nsec(start.nsec) || !is_valid_nsec(end.nsec)) {
         return null;
     }
 
@@ -270,7 +270,7 @@ func monotonic_diff(start: MonotonicTime, end: MonotonicTime) -> Duration? {
         return null;
     }
 
-    let sec_diff = checked_sub_int(end.sec, start.sec)?;
+    let sec_diff = checked_sub_long(end.sec, start.sec)?;
 
     if (end.nsec >= start.nsec) {
         let nsec_diff = end.nsec - start.nsec;
@@ -308,7 +308,7 @@ func wall_to_local_datetime(t: WallTime) -> DateTime? {
 
     let offset = rt_time_local_offset_sec(t.sec)?;
     let is_dst = rt_time_local_is_dst(t.sec)?;
-    let local_sec = checked_add_int(t.sec, offset)?;
+    let local_sec = checked_add_long(t.sec, offset as long)?;
     return datetime_from_unix_sec(local_sec, t.nsec, offset, is_dst);
 }
 
@@ -330,4 +330,177 @@ func utc_now_datetime() -> DateTime? {
 func local_now_datetime() -> DateTime? {
     let now = wall_now()?;
     return wall_to_local_datetime(now);
+}
+
+/**
+ * Scheduling validation, arithmetic, support, or captured host failure.
+ */
+enum TimeError {
+    InvalidValue;
+    Overflow;
+    UnsupportedClock;
+    Host(error: os::OsError);
+}
+
+/**
+ * A sampled absolute monotonic deadline or explicit failure.
+ */
+enum DeadlineResult {
+    Ready(deadline: MonotonicTime);
+    DeadlineFailed(error: TimeError);
+}
+
+/**
+ * Positive time left until a deadline, expiry, or explicit failure.
+ */
+enum RemainingResult {
+    Remaining(duration: Duration);
+    Expired;
+    RemainingFailed(error: TimeError);
+}
+
+/**
+ * Sleep completion, caller-controlled interruption, or explicit failure.
+ */
+enum SleepResult {
+    Completed;
+    Interrupted(deadline: MonotonicTime, error: os::OsError);
+    SleepFailed(error: TimeError);
+}
+
+/**
+ * Convert the runtime's scheduling failure without querying ambient host state.
+ *
+ * @param result Captured runtime scheduling outcome.
+ * @return Structured scheduling error retaining any native host cause.
+ */
+func _time_error_from_rt(result: RtTimeResult) -> TimeError {
+    if (result.state == 1) { return InvalidValue; }
+    if (result.state == 2) { return Overflow; }
+    if (result.state == 3) { return UnsupportedClock; }
+    return Host(os::_os_error_from_rt(result.error));
+}
+
+/**
+ * Add a normalized nonnegative delay to one monotonic clock sample.
+ *
+ * @param now Nonnegative normalized monotonic sample.
+ * @param delay Nonnegative normalized duration.
+ * @return Checked absolute deadline, invalid value, or overflow.
+ */
+func _time_add_delay(now: MonotonicTime, delay: Duration) -> DeadlineResult {
+    if (now.sec < 0 || delay.sec < 0 || !is_valid_nsec(now.nsec) || !is_valid_nsec(delay.nsec)) {
+        return DeadlineFailed(InvalidValue);
+    }
+    let seconds = checked_add_long(now.sec, delay.sec);
+    if (seconds == null) {
+        return DeadlineFailed(Overflow);
+    }
+    let sec = seconds as long;
+    let nsec = now.nsec + delay.nsec;
+    if (nsec >= 1000000000) {
+        let carried = checked_add_long(sec, 1);
+        if (carried == null) {
+            return DeadlineFailed(Overflow);
+        }
+        sec = carried as long;
+        nsec = nsec - 1000000000;
+    }
+    return Ready(MonotonicTime(sec, nsec));
+}
+
+/**
+ * Sample a monotonic deadline after a nonnegative normalized delay.
+ *
+ * Zero delay still samples the clock. Deadlines belong to this host clock epoch
+ * and must not be persisted or transferred to unrelated hosts or boots.
+ *
+ * @param delay Nonnegative seconds and normalized nanoseconds.
+ * @return Absolute deadline, validation or arithmetic error, or clock failure.
+ */
+func deadline_after(delay: Duration) -> DeadlineResult {
+    if (delay.sec < 0 || !is_valid_nsec(delay.nsec)) {
+        return DeadlineFailed(InvalidValue);
+    }
+    let sample = rt_time_monotonic_result();
+    if (sample.state != 0) {
+        return DeadlineFailed(_time_error_from_rt(sample));
+    }
+    return _time_add_delay(MonotonicTime(sample.sec, sample.nsec), delay);
+}
+
+/**
+ * Sample the positive normalized time left until a monotonic deadline.
+ *
+ * @param deadline Nonnegative normalized deadline from this host clock epoch.
+ * @return Strictly positive remaining duration, expiry, or explicit failure.
+ */
+func remaining(deadline: MonotonicTime) -> RemainingResult {
+    if (deadline.sec < 0 || !is_valid_nsec(deadline.nsec)) {
+        return RemainingFailed(InvalidValue);
+    }
+    let sample = rt_time_monotonic_result();
+    if (sample.state != 0) {
+        return RemainingFailed(_time_error_from_rt(sample));
+    }
+    if (sample.sec < 0 || !is_valid_nsec(sample.nsec)) {
+        return RemainingFailed(InvalidValue);
+    }
+    if (deadline.sec < sample.sec || (deadline.sec == sample.sec && deadline.nsec <= sample.nsec)) {
+        return Expired;
+    }
+    let duration = monotonic_diff(MonotonicTime(sample.sec, sample.nsec), deadline);
+    if (duration == null) {
+        return RemainingFailed(Overflow);
+    }
+    return Remaining(duration as Duration);
+}
+
+/**
+ * Sleep until an absolute monotonic deadline without restarting interruptions.
+ *
+ * Completion means the clock reached the deadline, including a past deadline.
+ * Early wakeups recheck the same deadline. A host interruption returns its saved
+ * error and the original deadline; callers may explicitly retry that deadline.
+ * Suspend accounting follows the selected host clock. Scheduler latency and
+ * timer resolution may delay return without a hard real-time upper bound.
+ *
+ * @param deadline Nonnegative normalized deadline from this host clock epoch.
+ * @return Completion, interruption with the original deadline, or failure.
+ */
+func sleep_until(deadline: MonotonicTime) -> SleepResult {
+    if (deadline.sec < 0 || !is_valid_nsec(deadline.nsec)) {
+        return SleepFailed(InvalidValue);
+    }
+    let result = rt_time_sleep_until(deadline.sec, deadline.nsec);
+    if (result.state == 0) {
+        return Completed;
+    }
+    if (result.state == 5) {
+        return Interrupted(deadline, os::_os_error_from_rt(result.error));
+    }
+    return SleepFailed(_time_error_from_rt(result));
+}
+
+/**
+ * Sleep for a nonnegative normalized duration using one absolute deadline.
+ *
+ * Zero duration completes without allocation, clock sampling, or a host wait.
+ * An interruption returns immediately; resuming uses sleep_until with its saved
+ * deadline rather than restarting the relative duration.
+ *
+ * @param delay Nonnegative seconds and normalized nanoseconds.
+ * @return Completion, interruption with the original deadline, or failure.
+ */
+func sleep(delay: Duration) -> SleepResult {
+    if (delay.sec < 0 || !is_valid_nsec(delay.nsec)) {
+        return SleepFailed(InvalidValue);
+    }
+    if (delay.sec == 0 && delay.nsec == 0) {
+        return Completed;
+    }
+    match (deadline_after(delay)) {
+        Ready(deadline) => { return sleep_until(deadline); }
+        DeadlineFailed(error) => { return SleepFailed(error); }
+    }
 }

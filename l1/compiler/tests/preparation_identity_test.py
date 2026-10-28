@@ -1082,6 +1082,9 @@ def main() -> int:
             forced = identity(library, {**config, "force": 1})
             assert forced[:2] == plain[:2] and forced[3]["identity_content_reads"] > 0
             for path in (executable, implementation, home / "shared/l1/stdlib/std/io.l1",
+                         home / "shared/l1/stdlib/std/time.l1", home / "shared/l1/stdlib/sys/rt.l1",
+                         home / "shared/l1/stdlib/sys/time.l1", home / "shared/runtime/src/dea_rt_time.c",
+                         build / "interfaces/sys/time.l1m",
                          home / "shared/runtime/src/dea_rt_io.c", home / "shared/runtime/include/dea_rt.h"):
                 original = path.read_bytes()
                 path.write_bytes(original + b"\n/* changed working input */\n")

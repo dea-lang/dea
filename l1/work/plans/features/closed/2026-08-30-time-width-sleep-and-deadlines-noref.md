@@ -3,8 +3,8 @@
 ## Widen time seconds and add sleep and deadlines
 
 - Date: 2026-08-30
-- Last reviewed: 2026-10-24
-- Status: Draft
+- Last reviewed: 2026-10-28
+- Status: Completed
 - Title: Widen L1 time seconds and add monotonic sleep, deadline, and timeout helpers
 - Kind: Feature
 - Priority: Medium
@@ -35,38 +35,35 @@
   - `l1/work/initiatives/0007-blocking-networking.md`
   - `l1/work/plans/features/closed/2026-08-30-wide-filesystem-metadata-noref.md`
   - [l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md][os-errors]
-- Repro:
-  `rg -n 'sec: int|unix_sec: int' l1/compiler/shared/l1/stdlib/std/time.l1 l1/compiler/shared/l1/stdlib/sys/rt.l1`
+- Repro: `make -C l1 test-compiler TESTS="time_runtime_test time_test io_runtime_test runtime_symbol_manifest_test"`
 
 ## Summary
 
-Correct the general L0-era 32-bit second fields separately from filesystem metadata, then add the scheduling helpers
-needed by process control and networking. Wall, monotonic, and duration seconds become `long`; normalized nanoseconds
-remain `int`.
+Widened the general L0-era second fields separately from filesystem metadata and added the scheduling helpers needed by
+process control and networking. Wall, monotonic, and duration seconds use `long`; normalized nanoseconds remain `int`.
 
-## Current State and Dependencies
+## Implementation Baseline and Dependencies
 
-The reviewed 2026-09-08 sources still declare all four second fields as `int`. Runtime conversion helpers reject seconds
-outside the signed 32-bit range, and local-offset/DST entrypoints accept `dea_int`. Filesystem metadata is already
-widened; this plan must preserve that behavior rather than reopen its closed work.
+The implementation baseline declared all four second fields as `int`. Runtime conversion helpers rejected seconds
+outside the signed 32-bit range, and local-offset/DST entrypoints accepted `dea_int`. Previously widened filesystem
+metadata remains unchanged.
 
-`time_test.l0` is compiled by the upstream L0 compiler and imports the L0 seed's `std.time`. It is useful bootstrap
-coverage but cannot validate L1-only `long` fields or new L1 APIs. Add the named Python harness and `.l1` fixtures;
-`time_runtime_test.l0` and `l0c_lib_test.l0` are not current test entrypoints.
+`time_test.l0` is compiled by the upstream L0 compiler and imports the L0 seed's `std.time`. It remains bootstrap
+compatibility coverage. The new Python runtime harness and `.l1` fixtures validate actual L1 widths and scheduling APIs.
 
-The width/arithmetic phase can start independently. The new structured host-error results depend on
-[l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md][os-errors] supplying `OsError` and runtime
-error transport. Do not duplicate that error model inside `std.time`. Process and networking plans consume this contract
-later; neither is a prerequisite for completing this plan. Use deterministic consumer simulations to verify timeout
-behavior before those modules exist.
+The width/arithmetic phase was independent. Structured scheduling errors reuse
+[l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md][os-errors] and its `OsError` / runtime error
+transport. Process and networking plans consume this contract later; neither was a prerequisite. Deterministic consumer
+simulations verify timeout behavior without those modules.
 
 ## Stdlib-First Direction and Reference Material
 
-Use `l1c_timing_monotonic` in [l1/compiler/support/compiler_support.c][compiler-support] and timing/probe behavior in
-[l1/compiler/support/preparation/platform.h][platform-support] as references for host clock handling and regression
-cases. Inventory relevant failure and conversion cases before implementation. The public `long`-second, checked
-arithmetic, structured-error, and interruption contracts below govern the implementation; the private two-`int32`
-transport and floating-point millisecond deadlines are not its representation.
+Host clock handling and regression cases draw on `l1c_timing_monotonic` in
+[l1/compiler/support/compiler_support.c][compiler-support] and timing/probe behavior in
+[l1/compiler/support/preparation/platform.h][platform-support]. The review covered clock-read failures, timer/wait
+failures, native conversion widths, and cleanup precedence. The public `long`-second, checked arithmetic,
+structured-error, and interruption contracts below govern the implementation; the private two-`int32` transport and
+floating-point millisecond deadlines are not its representation.
 
 L2 adoption of L1 stdlib and removal of superseded private timing/probe helpers are separate follow-up work. This plan
 requires neither compiler migration nor extraction of shared private C code.
@@ -92,19 +89,22 @@ requires neither compiler migration nor extraction of shared private C code.
 6. Keep the nullable forms of existing `wall_now`, `monotonic_now`, `monotonic_diff`, and calendar helpers. New
    scheduling APIs use the structured results below; wholesale legacy-error migration is outside this plan.
 7. The L1 runtime/stdlib layout and function signatures change incompatibly. Rebuild runtime archives, interfaces, and
-   dependent native objects together. L0 time remains unchanged. Managed cache identities must invalidate affected
-   support if the cache feature has landed by implementation time.
+   dependent native objects together. L0 time remains unchanged. Managed cache identities include the affected inputs
+   and invalidate prior support.
 
 ### Public scheduling surface
 
-Use concrete result enums rather than generics. The following are selected contracts, not currently implemented APIs:
+Use concrete result enums rather than generics. The implemented concrete results are:
 
-| API                                                     | Result variants                                                                                 |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `deadline_after(delay: Duration) -> DeadlineResult`     | `Ready(deadline: MonotonicTime)`, `Failed(error: TimeError)`                                    |
-| `remaining(deadline: MonotonicTime) -> RemainingResult` | `Remaining(duration: Duration)`, `Expired`, `Failed(error: TimeError)`                          |
-| `sleep(delay: Duration) -> SleepResult`                 | `Completed`, `Interrupted(deadline: MonotonicTime, error: OsError)`, `Failed(error: TimeError)` |
-| `sleep_until(deadline: MonotonicTime) -> SleepResult`   | The same `SleepResult`                                                                          |
+| API                                                     | Result variants                                                                                      |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `deadline_after(delay: Duration) -> DeadlineResult`     | `Ready(deadline: MonotonicTime)`, `DeadlineFailed(error: TimeError)`                                 |
+| `remaining(deadline: MonotonicTime) -> RemainingResult` | `Remaining(duration: Duration)`, `Expired`, `RemainingFailed(error: TimeError)`                      |
+| `sleep(delay: Duration) -> SleepResult`                 | `Completed`, `Interrupted(deadline: MonotonicTime, error: OsError)`, `SleepFailed(error: TimeError)` |
+| `sleep_until(deadline: MonotonicTime) -> SleepResult`   | The same `SleepResult`                                                                               |
+
+L1 enum constructors share module scope, so result-specific failure names preserve the concrete result types without
+introducing a compiler extension.
 
 `TimeError` has `InvalidValue`, `Overflow`, `UnsupportedClock`, and `Host(error: OsError)` variants. Validation or
 arithmetic failures do not invent native error codes. Runtime host failures preserve the shared normalized category and
@@ -167,17 +167,24 @@ Clock and wait adapters expose private test seams for deterministic injected rea
 They are not public runtime configuration or production environment switches. No supported platform may substitute wall
 time when monotonic time is unavailable.
 
-## Implementation Phases
+## Implementation Findings
 
-1. Widen time structs, runtime ABI, seconds/day conversions, and checked arithmetic. Add `.l1` boundary fixtures and C
-   ABI probes; keep L0 seed compatibility coverage intact.
-2. Integrate the OS-error prerequisite, declare concrete results, and implement validation, `deadline_after`, and
-   `remaining` over an injectable monotonic clock.
-3. Implement the host wait adapters and both sleep entrypoints with the selected no-implicit-restart contract.
-4. Add deterministic failure, chunking, suspend-accounting, interruption/resume, and simulated consumer timeout tests
-   plus short real-host smoke waits. Add trace coverage for runtime resources and generated L1 fixtures.
-5. Update the L1 stdlib, ownership/ABI descriptions where affected, design-decision reference, and host-services
-   initiative. Record the selected contract in the new ADR in the same change that closes this plan.
+- Widened the four time-second fields, runtime ABI, local-time inputs, and checked civil/day arithmetic. Calendar years
+  remain `int`; exact minimum/maximum year boundaries and extreme timestamps have explicit rejection coverage.
+- Added concrete scheduling results through `sys.time`, reusing `sys.os::RtOsError`. L1 enum constructors share module
+  scope, so failure variants are `DeadlineFailed`, `RemainingFailed`, and `SleepFailed`. Generated validation imports
+  now use unique aliases to avoid the public `std.os` / `std.time` `Interrupted` collision during preparation, semantic
+  bootstrap, and captured package-input validation.
+- Implemented Linux absolute monotonic waits, bounded POSIX fallback, and Windows integer QPC/private-timer adapters.
+  Clock-read `EINTR` remains a host failure; wait interruption returns immediately with the original deadline. Timer
+  cleanup preserves a primary error, and cleanup-only failure is observable.
+- Added actual generated L1 width/calendar/scheduling fixtures in checked, unchecked, and traced modes. Deterministic
+  injected clock/wait/cleanup fixtures cover early wakes, suspension, expired and future-deadline resumption, error
+  precedence, and consumer timeout/partial-progress distinctions. Native adapter probes and synthetic signed/unsigned
+  32/64-bit `time_t` probes cover ABI conversions and error capture.
+- Existing managed content identities include the changed stdlib/runtime sources, header, and semantic interfaces;
+  mutation regressions now explicitly include those time inputs. Rebuild matching runtime/interfaces/native objects and
+  recreate caller-owned profiles; no cache schema change is needed.
 
 ## Diagnostic Planning
 
@@ -204,14 +211,14 @@ check the live shared diagnostic catalog before assigning any code.
   deadlines on monotonic time.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0050-wide-time-and-monotonic-deadlines.md`
   - Rationale: The existing second fields are inherited 32-bit limitations, and wall-clock adjustment must not change
     elapsed timeout behavior.
 - Decision: Return explicit sleep interruptions with the original deadline and distinguish scheduling completion from
   consumer timeout and structured host failure.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0051-explicit-sleep-interruption-and-restart.md`
   - Rationale: Retry policy and result distinctions are durable public contracts used by later process and networking
     APIs; host-specific signal and timer behavior must not choose those semantics implicitly.
 
@@ -238,15 +245,43 @@ check the live shared diagnostic catalog before assigning any code.
 9. Timer handles and fixture allocations are released on success and failure. Short real waits use a generous harness
    timeout and avoid fragile upper-latency assertions.
 
-During implementation, run the new `time_runtime_test` harness, existing I/O/runtime-symbol regressions, and L0-seed
-`time_test` compatibility checks through the L1 runner. Then run L1 `make test-ci` from clean runtime artifacts and the
-documented Linux Docker lane with `CMD=test-ci` for runtime portability, reusing applicable just-completed validation.
-Ensure new `.l1` fixtures explicitly run under ARC/memory tracing. This plan refresh requires documentation checks only.
+## Verification Results
+
+Selected the exhaustive L1 `test-ci` tier because this change alters runtime ABI, native wait-resource handling, stdlib
+preparation, and traced generated programs. L0 time remains unchanged. Commands below ran from `l1/`.
+
+- Rebuilt fresh native runtime artifacts with `make clean-runtime`, followed by `make build runtime` with
+  `L0_CC=/usr/bin/clang L1_CC=/usr/bin/clang L1_RUNTIME_CC=/usr/bin/clang`. The actual compiler was Apple Clang 17.0.0
+  on macOS Intel; the bootstrap was the repo-local `../l0/build/dea/bin/l0c-stage2`.
+- `make test-ci L0_CC=/usr/bin/clang L1_CC=/usr/bin/clang L1_RUNTIME_CC=/usr/bin/clang L1_TEST_JOBS=8 L1_TRACE_TEST_JOBS=8`:
+  passed 99 normal compiler cases, 50 canonical trace cases, 5 child trace fixtures, 244 docgen checks, 183 tooling
+  checks (1 skip), and 289 productization fixture checks (14 skips), plus examples, Wine-runner unit checks, and the
+  environment/bootstrap integration check. All traced cases reported zero leaked object/string pointers.
+- `make docker CMD=test-ci DOCKER_CC=gcc L1_TEST_JOBS=8 L1_TRACE_TEST_JOBS=8` exposed existing image omissions:
+  `.github` and `tools` are absent, so documentation tests stop before compiler validation. Reused the built image with
+  those two directories mounted read-only and ran the same `make test-ci` target with all three C compiler roles set to
+  `gcc`. The actual compiler was `/usr/bin/gcc`, Debian GCC 12.2.0, on Linux x86_64. The complete-input run passed 99
+  normal cases, 50 trace cases, 5 child fixtures, 202 docgen checks (42 skips), 153 tooling checks (31 skips), 287
+  productization fixture checks (16 skips), examples, Wine-runner checks, and environment integration.
+- Both complete normal suites ran `time_runtime_test`, `io_runtime_test`, `runtime_symbol_manifest_test`,
+  `preparation_identity_test`, and the L0-seed `time_test`. The time harness independently checks ARC/memory traces for
+  real-host and injected generated L1 fixtures. The three final boundary/restart fixtures were byte-identical between
+  hosts before execution. Default canonical trace discovery retains its documented slow math-compile exclusion; normal
+  CI-only math coverage passed.
+- Synthetic signed/unsigned 32/64-bit `time_t` conversions, native POSIX absolute/fallback error probes, and portable
+  QPC fraction / Windows tick conversions passed. Temporary C ABI probes on both hosts confirmed supported 1900/2100
+  local offset/DST results exactly match native data and extreme `long` timestamps fail cleanly. Simulated Win32
+  clock/timer failures and suspend handling also passed; this is separate from native Windows execution.
+- `python3 scripts/check_c_docs.py` and targeted checks for all three new C/header fixtures passed. ADR Impact, staged
+  whitespace, Markdown formatting, and root pre-commit checks complete the local closure gate.
+
+Native Windows and macOS ARM execution remain unverified locally. No path-text comparison changed. No release,
+publication, remote push, or hosted workflow dispatch is part of this implementation.
 
 [apple-sleep]: https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/nanosleep.2.html
-[compiler-support]: ../../../compiler/support/compiler_support.c
+[compiler-support]: ../../../../compiler/support/compiler_support.c
 [glibc-sleep]: https://sourceware.org/glibc/manual/2.42/html_node/Sleeping.html
-[os-errors]: closed/2026-08-30-os-error-and-io-results-noref.md
-[platform-support]: ../../../compiler/support/preparation/platform.h
+[os-errors]: 2026-08-30-os-error-and-io-results-noref.md
+[platform-support]: ../../../../compiler/support/preparation/platform.h
 [windows-clock]: https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps
 [windows-timer]: https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-setwaitabletimer

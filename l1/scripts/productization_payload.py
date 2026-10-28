@@ -144,7 +144,7 @@ def build_payload(root: Path, layout: Path, seed: Path, env: dict[str, str], *,
                    for path in support if path.startswith("interfaces/")]
         umbrella = scratch / "_dea_package_inputs.l1"
         umbrella.write_text("module _dea_package_inputs;\n" +
-                            "".join(f"import {module};\n" for module in modules), encoding="utf-8")
+                            "".join(f"import {module} as _dea_input_{index};\n" for index, module in enumerate(modules)), encoding="utf-8")
         subprocess.run([*wrapper_command(seed), "--gen", "--no-managed-stdlib",
                         "--sys-root", str(payload / "shared/l1/stdlib"),
                         "-I", str(payload / "interfaces"), str(umbrella), "-o", str(scratch / "verify.c")],

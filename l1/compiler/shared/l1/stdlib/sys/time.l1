@@ -1,0 +1,44 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/**
+ * Direct runtime transport for monotonic scheduling and captured host errors.
+ */
+module sys.time;
+
+import sys.os;
+
+/**
+ * Monotonic clock or wait outcome with validated seconds and nanoseconds.
+ *
+ * State tags are success (0), invalid value (1), overflow (2), unsupported
+ * clock (3), host failure (4), and interrupted wait (5). Error data is meaningful
+ * only for host failure and interruption; other failures have no native code.
+ */
+struct RtTimeResult {
+    state: int;
+    sec: long;
+    nsec: int;
+    error: RtOsError;
+}
+
+/**
+ * Read the selected monotonic clock once without a wall-clock fallback.
+ *
+ * @return Validated monotonic parts, unsupported clock, or captured failure.
+ */
+extern func rt_time_monotonic_result() -> RtTimeResult;
+
+/**
+ * Wait for an absolute monotonic deadline without restarting interruptions.
+ *
+ * Early successful wakeups recheck the same deadline. Host interruptions return
+ * immediately, even if the deadline crosses concurrently.
+ *
+ * @param sec Nonnegative absolute monotonic seconds.
+ * @param nsec Normalized nanoseconds from zero through 999999999.
+ * @return Completion, interruption, invalid deadline, or captured host failure.
+ */
+extern func rt_time_sleep_until(sec: long, nsec: int) -> RtTimeResult;

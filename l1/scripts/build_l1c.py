@@ -299,7 +299,7 @@ def build_semantic_interfaces(layout: L1BuildLayout, native_bin: Path) -> None:
                            cwd=REPO_ROOT, env=env, check=True)
         umbrella = workspace / "_dea_semantic_bootstrap.l1"
         umbrella.write_text("module _dea_semantic_bootstrap;\n" +
-                            "".join(f"import {module};\n" for module in modules), encoding="utf-8")
+                            "".join(f"import {module} as _dea_input_{index};\n" for index, module in enumerate(modules)), encoding="utf-8")
         subprocess.run([str(native_bin), "--gen", "--no-managed-stdlib", "--sys-root", str(source_root), "--project-root", str(workspace),
                         "-I", str(interfaces), "_dea_semantic_bootstrap", "-o", str(workspace / "verify.c")],
                        cwd=REPO_ROOT, env=env, check=True)

@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-10-24
+Version: 2026-10-28
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -257,6 +257,13 @@ Filesystem metadata now exposes `long?` sizes and modification seconds through `
 host-supported sparse extents beyond 2 GiB and timestamps outside the 32-bit seconds range. Nanoseconds remain `int?`;
 whole-file string reads remain `int`-bounded and return `null` for oversized files.
 
+`std.time` now uses `long` seconds for wall, monotonic, and duration values, while nanoseconds and calendar years remain
+`int`. Checked calendar conversion rejects unrepresentable years. `deadline_after`, `remaining`, `sleep`, and
+`sleep_until` expose monotonic scheduling with structured validation/overflow/host failures and explicit interruption
+carrying the original deadline. Windows uses QPC and private bounded relative timers; POSIX uses monotonic clocks and
+native sleeps. Runtime archives, semantic interfaces, dependent objects, and explicit profiles must match the new ABI.
+L0 time is unchanged. See [l1/docs/reference/standard-library.md][stdlib-time].
+
 `std.os` and `sys.os` supply normalized OS errors with captured native domain/code data and concrete read, write, and
 flush results. Additive `std.io` standard-stream result helpers distinguish clean EOF, timeout, interrupted or other
 failure, and successful partial transfers. Existing helpers retain their signatures. File handles, process/network
@@ -385,3 +392,4 @@ These remain true today:
 [explicit-profiles]: reference/explicit-profiles.md
 [filesystem-contract]: reference/filesystem.md
 [os-results]: decisions/0045-direct-os-errors-and-io-results.md
+[stdlib-time]: reference/standard-library.md#stdtime

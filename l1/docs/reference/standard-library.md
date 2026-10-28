@@ -1,6 +1,6 @@
 # The L1 Standard Library
 
-Version: 2026-10-24
+Version: 2026-10-28
 
 The standard library provides ergonomic L1 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -25,7 +25,7 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
                              v
 +---------------------------------------------------------+
 |                      sys.* Modules                      |
-|      hash, memory, os, real, rt (runtime API)           |
+|      hash, memory, os, real, rt, time (runtime API)     |
 +---------------------------------------------------------+
                              |
                              v
@@ -627,22 +627,56 @@ See [l1/docs/decisions/0045-direct-os-errors-and-io-results.md][os-results].
 
 ### `std.time`
 
-**Imports:** `sys.rt`, `std.integer`
+**Imports:** `sys.rt`, `sys.time`, `std.integer`, `std.os`
 
-| Type/Function            | Signature                                                                                                                                                                   | Description                                                    |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `WallTime`               | `struct WallTime { sec: int; nsec: int; }`                                                                                                                                  | Unix wall-clock snapshot with nanosecond fraction.             |
-| `MonotonicTime`          | `struct MonotonicTime { sec: int; nsec: int; }`                                                                                                                             | Monotonic-clock snapshot with nanosecond fraction.             |
-| `Duration`               | `struct Duration { sec: int; nsec: int; }`                                                                                                                                  | Non-negative normalized duration (`0 <= nsec < 1e9`).          |
-| `DateTime`               | `struct DateTime { year: int; month: int; day: int; hour: int; minute: int; second: int; nanosecond: int; weekday: int; yearday: int; utc_offset_sec: int; is_dst: bool; }` | Calendar breakdown (date/time, weekday, yearday, offset, DST). |
-| `wall_now`               | `func() -> WallTime?`                                                                                                                                                       | Captures current wall-clock time.                              |
-| `monotonic_supported`    | `func() -> bool`                                                                                                                                                            | Returns monotonic clock capability.                            |
-| `monotonic_now`          | `func() -> MonotonicTime?`                                                                                                                                                  | Captures current monotonic time when supported.                |
-| `monotonic_diff`         | `func(start: MonotonicTime, end: MonotonicTime) -> Duration?`                                                                                                               | Returns `end - start` or `null` for invalid/reversed inputs.   |
-| `wall_to_utc_datetime`   | `func(t: WallTime) -> DateTime?`                                                                                                                                            | Converts wall time to UTC calendar representation.             |
-| `wall_to_local_datetime` | `func(t: WallTime) -> DateTime?`                                                                                                                                            | Converts wall time to local calendar representation.           |
-| `utc_now_datetime`       | `func() -> DateTime?`                                                                                                                                                       | Convenience wrapper for current UTC calendar time.             |
-| `local_now_datetime`     | `func() -> DateTime?`                                                                                                                                                       | Convenience wrapper for current local calendar time.           |
+| Type/Function                            | Signature                                                                                                                                                                   | Description                                                                                 |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `WallTime`                               | `struct WallTime { sec: long; nsec: int; }`                                                                                                                                 | Signed Unix seconds with a normalized nanosecond fraction.                                  |
+| `MonotonicTime`                          | `struct MonotonicTime { sec: long; nsec: int; }`                                                                                                                            | Nonnegative monotonic seconds and normalized nanoseconds.                                   |
+| `Duration`                               | `struct Duration { sec: long; nsec: int; }`                                                                                                                                 | Nonnegative seconds and `0 <= nsec < 1000000000`.                                           |
+| `DateTime`                               | `struct DateTime { year: int; month: int; day: int; hour: int; minute: int; second: int; nanosecond: int; weekday: int; yearday: int; utc_offset_sec: int; is_dst: bool; }` | Calendar breakdown, offset, and DST.                                                        |
+| `CivilDate`                              | `struct CivilDate { year: int; month: int; day: int; weekday: int; yearday: int; }`                                                                                         | Calendar range remains narrower than the timestamp range.                                   |
+| `wall_now`                               | `func() -> WallTime?`                                                                                                                                                       | Captures wall time; `null` on failure.                                                      |
+| `monotonic_supported`                    | `func() -> bool`                                                                                                                                                            | Reports monotonic-clock capability.                                                         |
+| `monotonic_now`                          | `func() -> MonotonicTime?`                                                                                                                                                  | Captures monotonic time; `null` on unsupported clock or failure.                            |
+| `monotonic_diff`                         | `func(start: MonotonicTime, end: MonotonicTime) -> Duration?`                                                                                                               | Checked difference; `null` for invalid/reversed inputs or overflow.                         |
+| `civil_from_unix_days`                   | `func(days: long) -> CivilDate?`                                                                                                                                            | Checked civil conversion; rejects unrepresentable years.                                    |
+| `datetime_from_unix_sec`                 | `func(unix_sec: long, nsec: int, utc_offset_sec: int, is_dst: bool) -> DateTime?`                                                                                           | Calendar conversion; offset is recorded metadata.                                           |
+| `wall_to_utc_datetime`                   | `func(t: WallTime) -> DateTime?`                                                                                                                                            | Converts signed wall time to UTC.                                                           |
+| `wall_to_local_datetime`                 | `func(t: WallTime) -> DateTime?`                                                                                                                                            | Uses host local-time support; `null` for unsupported ranges.                                |
+| `utc_now_datetime`, `local_now_datetime` | `func() -> DateTime?`                                                                                                                                                       | Current UTC/local calendar time.                                                            |
+| `TimeError`                              | `InvalidValue`, `Overflow`, `UnsupportedClock`, `Host(error: OsError)`                                                                                                      | Library validation/arithmetic failures stay distinct from captured host errors.             |
+| `DeadlineResult`                         | `Ready(deadline: MonotonicTime)`, `DeadlineFailed(error: TimeError)`                                                                                                        | Result of `deadline_after`.                                                                 |
+| `RemainingResult`                        | `Remaining(duration: Duration)`, `Expired`, `RemainingFailed(error: TimeError)`                                                                                             | Positive remaining duration, expiry, or failure.                                            |
+| `SleepResult`                            | `Completed`, `Interrupted(deadline: MonotonicTime, error: OsError)`, `SleepFailed(error: TimeError)`                                                                        | Completion, explicit interruption, or failure.                                              |
+| `deadline_after`                         | `func(delay: Duration) -> DeadlineResult`                                                                                                                                   | Validates, samples once, and adds with checked `long` arithmetic. Zero delay still samples. |
+| `remaining`                              | `func(deadline: MonotonicTime) -> RemainingResult`                                                                                                                          | Validates and samples once; equal/past deadlines are expired.                               |
+| `sleep`                                  | `func(delay: Duration) -> SleepResult`                                                                                                                                      | Zero completes without allocation or host calls; positive delays compute one deadline.      |
+| `sleep_until`                            | `func(deadline: MonotonicTime) -> SleepResult`                                                                                                                              | Rechecks one absolute deadline after successful wakes.                                      |
+
+Public values must already be normalized. Negative durations/monotonic seconds and invalid nanoseconds fail explicitly;
+arbitrary inputs are not silently normalized. Arithmetic keeps seconds and nanoseconds separate, preserving the full
+signed `long` seconds range without flattening it to a nanosecond count. Extreme calendar timestamps return `null`.
+
+Deadlines belong to the current host clock epoch. Do not persist or transfer them across unrelated hosts or boots.
+Wall-clock adjustments do not affect deadlines. A host wait interruption returns immediately, carrying the original
+deadline and captured `OsError`, even if the deadline simultaneously expires. Resume explicitly with `sleep_until` and
+that deadline; retrying the original duration would extend the budget. Sleep expiry is `Completed`; a future process or
+network consumer reports its own timeout and retains positive partial progress independently. Native timer cleanup
+preserves a primary failure; cleanup failure after an otherwise successful wait returns `SleepFailed(Host(error))`.
+
+Linux uses `CLOCK_MONOTONIC` and absolute `clock_nanosleep` where available; the relative fallback rechecks bounded
+chunks. Other POSIX paths use `CLOCK_MONOTONIC` with relative `nanosleep`, capped at one second when suspend accounting
+is not established. Windows uses QPC and a private non-inheritable one-shot relative waitable timer, rounded up to
+100-nanosecond units and capped at one second per wait. QPC includes suspension while modern Windows relative timers
+exclude it; the cap bounds extra countdown after resuming past the deadline to one second plus timer-resolution and
+scheduling latency. Linux `CLOCK_MONOTONIC` excludes suspension; suspend inclusion on other hosts follows their selected
+monotonic source. No wall-clock fallback, busy wait, hard real-time bound, timer-resolution change, or wake-from-suspend
+request is made.
+
+The time ABI changed: rebuild runtime archives, semantic interfaces, and dependent native objects together. L0 time
+remains unchanged. See [l1/docs/decisions/0050-wide-time-and-monotonic-deadlines.md][time-width] and
+[l1/docs/decisions/0051-explicit-sleep-interruption-and-restart.md][time-sleep].
 
 ### `std.types`
 
@@ -731,8 +765,18 @@ return `Runtime` / `InvalidInput` with code zero; the public byte-array helpers 
 ### `sys.rt`
 
 Low-level runtime FFI for strings, I/O, process/system, time, and errors. Also defines `RtTimeParts`
-(`struct RtTimeParts { sec: int; nsec: int; }`) and `RtFileInfo`
+(`struct RtTimeParts { sec: long; nsec: int; }`) and `RtFileInfo`
 (`struct RtFileInfo { exists: bool; is_file: bool; is_dir: bool; size: long?; mtime_sec: long?; mtime_nsec: int?; }`).
+
+### `sys.time`
+
+Scheduling transport reuses `sys.os::RtOsError`. `RtTimeResult` contains `state: int`, `sec: long`, `nsec: int`, and
+`error: RtOsError`. States are success (0), invalid value (1), overflow (2), unsupported monotonic clock (3), host
+failure (4), and interruption (5). `rt_time_monotonic_result() -> RtTimeResult` returns a validated clock sample;
+`rt_time_sleep_until(sec: long, nsec: int) -> RtTimeResult` waits against the supplied absolute deadline. Records are
+initialized on every path; successful clock samples carry validated time, and interruptions carry the original deadline.
+These transport tags are independent of public enum layout. Deterministic clock/wait injection is private test
+infrastructure, with no production environment switch.
 
 ### `sys.real`
 
@@ -837,11 +881,18 @@ The normal and traced runtime symbol manifests contain the same direct-error sur
 | `rt_time_unix`                | `func(out: RtTimeParts*) -> bool`                 | Captures wall-clock time.                                                                                  |
 | `rt_time_monotonic`           | `func(out: RtTimeParts*) -> bool`                 | Captures monotonic time.                                                                                   |
 | `rt_time_monotonic_supported` | `func() -> bool`                                  | Reports monotonic-clock availability.                                                                      |
-| `rt_time_local_offset_sec`    | `func(unix_sec: int) -> int?`                     | Looks up local UTC offset.                                                                                 |
-| `rt_time_local_is_dst`        | `func(unix_sec: int) -> bool?`                    | Looks up local DST state.                                                                                  |
+| `rt_time_local_offset_sec`    | `func(unix_sec: long) -> int?`                    | Looks up local UTC offset.                                                                                 |
+| `rt_time_local_is_dst`        | `func(unix_sec: long) -> bool?`                   | Looks up local DST state.                                                                                  |
 | `rt_system`                   | `func(cmd: string) -> int`                        | Runs a shell command.                                                                                      |
 | `rt_file_info`                | `func(path: string) -> RtFileInfo`                | Returns stat-like file metadata.                                                                           |
 | `rt_delete_file`              | `func(path: string) -> bool`                      | Deletes a nonempty path; returns false on failure.                                                         |
+
+### Declared in `sys.time` (2)
+
+| Function                   | Signature                                    | Description                                                          |
+| -------------------------- | -------------------------------------------- | -------------------------------------------------------------------- |
+| `rt_time_monotonic_result` | `func() -> RtTimeResult`                     | Samples the monotonic clock with structured errors.                  |
+| `rt_time_sleep_until`      | `func(sec: long, nsec: int) -> RtTimeResult` | Waits for an absolute monotonic deadline with explicit interruption. |
 
 ### Declared in `sys.real` (68)
 
@@ -925,3 +976,5 @@ These are runtime-backed hash externs declared directly in `sys.hash`.
 
 [filesystem]: filesystem.md
 [os-results]: ../decisions/0045-direct-os-errors-and-io-results.md
+[time-sleep]: ../decisions/0051-explicit-sleep-interruption-and-restart.md
+[time-width]: ../decisions/0050-wide-time-and-monotonic-deadlines.md

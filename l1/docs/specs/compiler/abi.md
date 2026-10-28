@@ -1,6 +1,6 @@
 # Dea/L1 Binary Interface (LBI)
 
-Version: 2026-10-10
+Version: 2026-10-28
 
 Status: Finalized
 
@@ -207,6 +207,25 @@ Linkage is driven by the module's export manifest:
 Declarations marked `extern` or within an `extern "C"` block bypass LBI mangling entirely and use their declared C
 spelling. `cstr` boundary rules are deferred to the C FFI ADR.
 
+### Time Runtime ABI
+
+`sys.rt::RtTimeParts` is `struct __deaM3sys2rtS11RtTimeParts { dea_long sec; dea_int nsec; }`. `dea_long` is a signed
+64-bit language value, independent of host C `long`. `WallTime`, `MonotonicTime`, and `Duration` use the same field
+widths; calendar years, calendar components, UTC offsets, and normalized nanoseconds remain `int`. Native local-offset
+and DST entrypoints accept `dea_long` Unix seconds and retain their optional `dea_int` / `dea_bool` results.
+`civil_from_unix_days(long)` returns `CivilDate?`.
+
+`sys.time::RtTimeResult` lowers to `struct __deaM3sys4timeS12RtTimeResult` with `dea_int state`, `dea_long sec`,
+`dea_int nsec`, and `sys.os::RtOsError error`, in declaration order. It is returned by value from
+`rt_time_monotonic_result(void)` and `rt_time_sleep_until(dea_long sec, dea_int nsec)`. State tags are runtime protocol
+values, independent of public enum layout. Normal, traced, unchecked, and basic-checked runtime variants share this ABI.
+Native seconds conversions validate `time_t` signedness/width before narrowing.
+
+This incompatible layout/signature change requires matching semantic interfaces, runtime archives, and dependent native
+objects to be rebuilt together. Managed preparation includes bundled stdlib/runtime sources, headers, and interfaces in
+its content identity, invalidating older support automatically. Explicit caller-owned profiles must be recreated. L0
+retains its existing ABI. See [l1/docs/decisions/0050-wide-time-and-monotonic-deadlines.md][time-width].
+
 ## Module Interface Fingerprints
 
 The version 1 LBI compatibility fingerprint is a whole-module SipHash-1-3 digest over the canonical effective exported
@@ -305,3 +324,4 @@ remains portable C99 input, while any host object decoration is the host toolcha
 
 [module-interface-format]: module-interface-format.md
 [separate-compilation]: ../../reference/separate-compilation.md
+[time-width]: ../../decisions/0050-wide-time-and-monotonic-deadlines.md

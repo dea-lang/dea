@@ -1,0 +1,204 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module time_main;
+
+import std.assert;
+import std.integer;
+import std.io;
+import std.os as os;
+import std.time;
+import sys.rt;
+
+/**
+ * Require a scheduling validation failure without a fabricated native code.
+ *
+ * @param error Structured scheduling error to check.
+ */
+func expect_invalidvalue(error: TimeError) {
+    match (error) { InvalidValue => {} _ => { assert(false, "expected invalid value"); } }
+}
+
+/**
+ * Require an unavailable monotonic source.
+ *
+ * @param error Structured scheduling error to check.
+ */
+func expect_unsupportedclock(error: TimeError) {
+    match (error) { UnsupportedClock => {} _ => { assert(false, "expected unsupported clock"); } }
+}
+
+/**
+ * Require arithmetic overflow without a fabricated native code.
+ *
+ * @param error Structured scheduling error to check.
+ */
+func expect_overflow(error: TimeError) {
+    match (error) { Overflow => {} _ => { assert(false, "expected overflow"); } }
+}
+
+/**
+ * Check civil dates beyond the inherited signed-32-bit Unix-second range.
+ */
+func test_calendar() {
+    let future = wall_to_utc_datetime(WallTime(4102444800, 123456789));
+    assert(future != null, "year 2100 is representable");
+    let date = future as DateTime;
+    assert(date.year == 2100 && date.month == 1 && date.day == 1, "post-2038 date");
+    assert(date.hour == 0 && date.minute == 0 && date.second == 0, "UTC midnight");
+    assert(date.nanosecond == 123456789 && date.weekday == 5 && date.yearday == 1,
+           "post-2038 calendar components");
+    let past = wall_to_utc_datetime(WallTime(-2208988800, 0));
+    assert(past != null, "year 1900 is representable");
+    let old = past as DateTime;
+    assert(old.year == 1900 && old.month == 1 && old.day == 1 && old.weekday == 1,
+           "pre-1901 calendar components");
+    let before = wall_to_utc_datetime(WallTime(-1, 999999999)) as DateTime;
+    assert(before.year == 1969 && before.month == 12 && before.day == 31,
+           "negative seconds floor to prior day");
+    assert(before.hour == 23 && before.minute == 59 && before.second == 59,
+           "negative seconds normalize day fraction");
+    let leap = datetime_from_unix_sec(951782400, 0, 0, false) as DateTime;
+    assert(leap.year == 2000 && leap.month == 2 && leap.day == 29 && leap.yearday == 60,
+           "Gregorian leap day");
+    assert(wall_to_utc_datetime(WallTime(long_max(), 0)) == null, "positive year overflow");
+    assert(wall_to_utc_datetime(WallTime(long_min(), 0)) == null, "negative year overflow");
+    assert(civil_from_unix_days(long_max()) == null, "positive day arithmetic overflow");
+    assert(civil_from_unix_days(long_min()) == null, "negative day arithmetic overflow");
+    let first = civil_from_unix_days(-784353015833);
+    let last = civil_from_unix_days(784351576776);
+    assert(first != null && last != null, "int-year boundary dates accepted");
+    let first_date = first as CivilDate;
+    let last_date = last as CivilDate;
+    assert(first_date.year == -2147483648 && first_date.month == 1 && first_date.day == 1,
+           "minimum civil year");
+    assert(last_date.year == 2147483647 && last_date.month == 12 && last_date.day == 31,
+           "maximum civil year");
+    assert(civil_from_unix_days(-784353015834) == null, "day before minimum civil year rejected");
+    assert(civil_from_unix_days(784351576777) == null, "day after maximum civil year rejected");
+    assert(wall_to_utc_datetime(WallTime(0, -1)) == null, "negative wall nanoseconds");
+    assert(wall_to_utc_datetime(WallTime(0, 1000000000)) == null, "unnormalized wall nanoseconds");
+    let local_past = wall_to_local_datetime(WallTime(-2208988800, 123456789));
+    if (local_past != null) {
+        let local = local_past as DateTime;
+        assert((local.year == 1899 || local.year == 1900) && local.nanosecond == 123456789,
+               "supported pre-1901 local conversion preserves wide seconds and nanos");
+    }
+    let local_future = wall_to_local_datetime(WallTime(4102444800, 987654321));
+    if (local_future != null) {
+        let local = local_future as DateTime;
+        assert((local.year == 2099 || local.year == 2100) && local.nanosecond == 987654321,
+               "supported post-2038 local conversion preserves wide seconds and nanos");
+    }
+    assert(wall_to_local_datetime(WallTime(long_min(), 0)) == null,
+           "minimum long timestamp exceeds local calendar range");
+    assert(wall_to_local_datetime(WallTime(long_max(), 0)) == null,
+           "maximum long timestamp exceeds local calendar range");
+}
+
+/**
+ * Exercise full-width scalar differences and normalized nanosecond borrow.
+ */
+func test_difference() {
+    let start = MonotonicTime(4294967296, 900000000);
+    let end = MonotonicTime(4294967298, 100000000);
+    let difference = monotonic_diff(start, end);
+    assert(difference != null, "wide difference succeeds");
+    let duration = difference as Duration;
+    let seconds: long = duration.sec;
+    let nanos: int = duration.nsec;
+    assert(seconds == 1 && nanos == 200000000, "borrow across second boundary");
+    let wide = monotonic_diff(MonotonicTime(0, 0), MonotonicTime(long_max(), 999999999));
+    assert(wide != null, "no flattening into long nanoseconds");
+    assert((wide as Duration).sec == long_max(), "full long second range");
+    assert(monotonic_diff(end, start) == null, "backwards time fails");
+    assert(monotonic_diff(MonotonicTime(-1, 0), end) == null, "negative monotonic input");
+    assert(monotonic_diff(start, MonotonicTime(4294967298, 1000000000)) == null,
+           "invalid monotonic nanoseconds");
+}
+
+/**
+ * Validate public scheduling results and one short real-host monotonic wait.
+ */
+func test_host_wait() {
+    match (sleep(Duration(0, 0))) {
+        Completed => {}
+        _ => { assert(false, "zero sleep succeeds"); }
+    }
+    match (sleep(Duration(-1, 0))) {
+        SleepFailed(error) => { expect_invalidvalue(error); }
+        _ => { assert(false, "negative duration rejected"); }
+    }
+    match (sleep(Duration(0, 1000000000))) {
+        SleepFailed(error) => { expect_invalidvalue(error); }
+        _ => { assert(false, "unnormalized duration rejected"); }
+    }
+    match (remaining(MonotonicTime(-1, 0))) {
+        RemainingFailed(error) => { expect_invalidvalue(error); }
+        _ => { assert(false, "negative deadline rejected"); }
+    }
+    match (sleep_until(MonotonicTime(0, -1))) {
+        SleepFailed(error) => { expect_invalidvalue(error); }
+        _ => { assert(false, "invalid sleep deadline rejected"); }
+    }
+    if (!monotonic_supported()) {
+        match (deadline_after(Duration(0, 0))) {
+            DeadlineFailed(error) => { expect_unsupportedclock(error); }
+            _ => { assert(false, "unsupported monotonic clock is explicit"); }
+        }
+        return;
+    }
+    let before = monotonic_now() as MonotonicTime;
+    match (remaining(before)) {
+        Expired => {}
+        _ => { assert(false, "sampled deadline expires"); }
+    }
+    match (sleep_until(before)) {
+        Completed => {}
+        _ => { assert(false, "past deadline completes"); }
+    }
+    match (deadline_after(Duration(long_max(), 999999999))) {
+        DeadlineFailed(error) => { expect_overflow(error); }
+        _ => { assert(false, "deadline addition overflow"); }
+    }
+    let deadline = before;
+    match (deadline_after(Duration(0, 2000000))) {
+        Ready(value) => { deadline = value; }
+        _ => { assert(false, "short deadline creation"); }
+    }
+    match (sleep_until(deadline)) {
+        Completed => {}
+        Interrupted(original, error) => {
+            assert(original.sec == deadline.sec && original.nsec == deadline.nsec,
+                   "real interruption retains absolute deadline");
+            assert(os::_os_error_to_rt(error).kind == 6, "real interrupt category");
+            return;
+        }
+        _ => { assert(false, "short host sleep"); }
+    }
+    let after = monotonic_now() as MonotonicTime;
+    assert(after.sec > deadline.sec || (after.sec == deadline.sec && after.nsec >= deadline.nsec),
+           "successful sleep never returns before deadline");
+    assert(monotonic_diff(before, after) != null, "host clock advances monotonically");
+    let wall = wall_now();
+    assert(wall != null, "real wall clock");
+    let seconds: long = (wall as WallTime).sec;
+    assert(seconds > 0, "wall seconds use wide field");
+}
+
+/**
+ * Run width, calendar, normalized arithmetic, and real-host scheduling checks.
+ *
+ * @return Zero after every time assertion succeeds.
+ */
+func main() -> int {
+    test_calendar();
+    test_difference();
+    test_host_wait();
+    let text = os::error_message(os::OsError(os::InvalidInput, os::Runtime, 0));
+    assert(text != "", "owned OS error text remains usable by time callers");
+    printl_s("time_main: PASS");
+    return 0;
+}

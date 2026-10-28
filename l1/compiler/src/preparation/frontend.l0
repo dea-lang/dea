@@ -150,7 +150,7 @@ func pr_frontend_workspace_order(semantic_root: string, home: string, module_nam
             let name = sv_get(names, i);
             if (len_s(name) > 0) {
                 ss_add(modules, name);
-                sb_append(source, "import " + name + ";\n");
+                sb_append(source, "import " + name + " as _dea_preparation_" + int_to_string(i) + ";\n");
             }
         }
         let umbrella = cfs_workspace_child(workspace, "_dea_preparation.l1");

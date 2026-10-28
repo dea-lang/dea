@@ -12,7 +12,7 @@ module sys.rt;
  * Represents components of wall or monotonic time.
  */
 struct RtTimeParts {
-    sec: int;
+    sec: long;
     nsec: int;
 }
 
@@ -381,7 +381,7 @@ extern func rt_time_monotonic_supported() -> bool;
  * @param unix_sec The Unix timestamp in seconds.
  * @return The offset in seconds, or null.
  */
-extern func rt_time_local_offset_sec(unix_sec: int) -> int?;
+extern func rt_time_local_offset_sec(unix_sec: long) -> int?;
 
 /**
  * Returns whether local time is in DST for the given unix second, or null on error.
@@ -389,7 +389,7 @@ extern func rt_time_local_offset_sec(unix_sec: int) -> int?;
  * @param unix_sec The Unix timestamp in seconds.
  * @return True if DST, false if not, or null.
  */
-extern func rt_time_local_is_dst(unix_sec: int) -> bool?;
+extern func rt_time_local_is_dst(unix_sec: long) -> bool?;
 
 /**
  * Execute a system command and return its normalized status code.

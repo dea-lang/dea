@@ -31,7 +31,7 @@
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
   - `l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md`
   - `l1/work/plans/features/2026-08-30-streams-and-buffering-noref.md`
-  - `l1/work/plans/features/2026-08-30-time-width-sleep-and-deadlines-noref.md`
+  - `l1/work/plans/features/closed/2026-08-30-time-width-sleep-and-deadlines-noref.md`
 - Repro: `make -C l1 test-compiler TESTS="process_runtime_test pipe_runtime_test analysis_trace_test"`
 
 ## Summary

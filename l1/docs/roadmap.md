@@ -378,6 +378,8 @@ tiers are distinct from implementation phases within a plan or initiative.
   file handles, dynamic buffers, and stream adapters remain planned.
 - Initiative [0006-process-and-host-services][host-services] owns Stdlib Tier 2 secure entropy, temporary objects,
   process spawning, and anonymous pipes plus Stdlib Tier 3 sleep, deadlines, timeouts, and general time-second widening.
+  The [l1/work/plans/features/closed/2026-08-30-time-width-sleep-and-deadlines-noref.md][plan-time] phase is complete;
+  process and networking consumers can reuse its monotonic deadline contract.
 - Initiative [0007-blocking-networking][blocking-networking] promotes networking into a Stdlib Tier 3 blocking IPv4/IPv6
   TCP, UDP, and DNS surface without selecting a portable asynchronous model prematurely.
 - Initiative [0008-data-format-modules][data-formats] owns Stdlib Tier 3 JSON. Speculative IFF scope work is deferred to
@@ -462,14 +464,13 @@ architecture is still an investigation.
 | Readiness    | Plan                                                                                | Remaining gate                                                                                |
 | ------------ | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | ready        | [2026-10-21-semantic-dependency-discovery-noref][dependency-discovery]              | None identified; profile phases A through C are complete.                                     |
-| ready        | [2026-08-30-time-width-sleep-and-deadlines-noref][plan-time]                        | None identified; the OS-error foundation is complete.                                         |
 | almost-ready | [2026-08-30-dynamic-byte-buffers-noref][plan-buffers]                               | Resolve slice exposure under current return restrictions and view invalidation during growth. |
 | almost-ready | [2026-08-30-file-handles-and-random-access-noref][plan-files]                       | Settle ownership, explicit close, cleanup, and the buffer contract.                           |
 | almost-ready | [2026-08-30-secure-os-entropy-noref][plan-entropy]                                  | Supply the public byte-buffer API used by both entropy operations.                            |
 | not-ready    | [2026-08-30-streams-and-buffering-noref][plan-streams]                              | Stable file/buffer contracts and adapter endpoint ownership.                                  |
 | not-ready    | [2026-08-30-secure-temporary-files-and-directories-noref][plan-temp]                | File handles and secure entropy, plus parent and cleanup contracts.                           |
 | not-ready    | [2026-08-30-process-spawning-and-anonymous-pipes-noref][plan-process]               | File/stream ownership and the bounded-capture decision.                                       |
-| not-ready    | [2026-08-30-blocking-ip-networking-noref][plan-network]                             | Buffers, streams, endpoint ownership, and timeouts/deadlines.                                 |
+| not-ready    | [2026-08-30-blocking-ip-networking-noref][plan-network]                             | Buffers, streams, and endpoint ownership.                                                     |
 | not-ready    | [2026-08-30-json-data-format-noref][plan-json]                                      | Buffers/streams and number, duplicate-key, Unicode, and limit policies.                       |
 | not-ready    | [2026-08-30-typed-formatting-noref][typed-formatting]                               | Placeholder grammar, value policies, and the Writer contract.                                 |
 | not-ready    | [2026-08-30-standard-library-capability-coverage-noref][stdlib-coverage]            | After main stdlib additions land; finish and reconcile the audit before declaring L1 stable.  |
@@ -631,7 +632,7 @@ update to be promoted to an initiative or plan:
 [plan-process]: ../work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md
 [plan-streams]: ../work/plans/features/2026-08-30-streams-and-buffering-noref.md
 [plan-temp]: ../work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md
-[plan-time]: ../work/plans/features/2026-08-30-time-width-sleep-and-deadlines-noref.md
+[plan-time]: ../work/plans/features/closed/2026-08-30-time-width-sleep-and-deadlines-noref.md
 [plan-watch]: ../work/plans/features/2026-08-30-file-watch-api-design-noref.md
 [pointer-equality]: ../work/plans/features/closed/2026-04-19-pointer-identity-equality-noref.md
 [prefixed-literals]: ../work/plans/features/closed/2026-04-04-l1-prefixed-int-literals-noref.md

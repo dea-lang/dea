@@ -1,0 +1,368 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module time_failure_main;
+
+import std.assert;
+import std.integer;
+import std.io;
+import std.os as os;
+import std.time;
+
+/**
+ * Require a scheduling validation failure without a fabricated native code.
+ *
+ * @param error Structured scheduling error to check.
+ */
+func expect_invalidvalue(error: TimeError) {
+    match (error) { InvalidValue => {} _ => { assert(false, "expected invalid value"); } }
+}
+
+/**
+ * Require an unavailable monotonic source.
+ *
+ * @param error Structured scheduling error to check.
+ */
+func expect_unsupportedclock(error: TimeError) {
+    match (error) { UnsupportedClock => {} _ => { assert(false, "expected unsupported clock"); } }
+}
+
+/**
+ * Require arithmetic overflow without a fabricated native code.
+ *
+ * @param error Structured scheduling error to check.
+ */
+func expect_overflow(error: TimeError) {
+    match (error) { Overflow => {} _ => { assert(false, "expected overflow"); } }
+}
+
+/**
+ * Extract a structured host cause for native-code and lifetime checks.
+ *
+ * @param error Scheduling failure required to contain an OS error.
+ * @return Captured host cause.
+ */
+func expect_host(error: TimeError) -> os::OsError {
+    match (error) {
+        Host(value) => { return value; }
+        _ => { assert(false, "expected host error"); }
+    }
+    return os::OsError(os::Other, os::Runtime, 0);
+}
+
+/**
+ * Reset the deterministic runtime clock and wait scenario.
+ *
+ * @param mode Native fixture scenario number.
+ */
+extern func time_probe_config(mode: int);
+
+/**
+ * Report clock samples consumed by the current scenario.
+ *
+ * @return Number of clock reads.
+ */
+extern func time_probe_reads() -> int;
+
+/**
+ * Report wait attempts consumed by the current scenario.
+ *
+ * @return Number of waits.
+ */
+extern func time_probe_waits() -> int;
+
+/**
+ * Report native wait-context open attempts.
+ *
+ * @return Number of attempted context opens.
+ */
+extern func time_probe_opens() -> int;
+
+/**
+ * Report native wait-context cleanup attempts.
+ *
+ * @return Number of consumed contexts.
+ */
+extern func time_probe_closes() -> int;
+
+/**
+ * Report the largest relative wait requested by the runtime.
+ *
+ * @return Maximum requested seconds.
+ */
+extern func time_probe_max_wait_sec() -> long;
+
+/**
+ * Report the absolute deadline seconds last supplied to the wait adapter.
+ *
+ * @return Original absolute deadline seconds.
+ */
+extern func time_probe_deadline_sec() -> long;
+
+/**
+ * Report the absolute deadline fraction last supplied to the wait adapter.
+ *
+ * @return Original normalized deadline nanoseconds.
+ */
+extern func time_probe_deadline_nsec() -> int;
+
+/**
+ * Verify invalid values and zero sleep avoid all host operations.
+ */
+func test_validation() {
+    time_probe_config(1);
+    match (sleep(Duration(0, 0))) { Completed => {} _ => { assert(false, "zero sleep"); } }
+    match (sleep(Duration(-1, 0))) {
+        SleepFailed(error) => { expect_invalidvalue(error); }
+        _ => { assert(false, "invalid duration"); }
+    }
+    match (deadline_after(Duration(0, -1))) {
+        DeadlineFailed(error) => { expect_invalidvalue(error); }
+        _ => { assert(false, "invalid delay before clock"); }
+    }
+    match (remaining(MonotonicTime(0, 1000000000))) {
+        RemainingFailed(error) => { expect_invalidvalue(error); }
+        _ => { assert(false, "invalid deadline before clock"); }
+    }
+    assert(time_probe_reads() == 0 && time_probe_waits() == 0, "validation avoids host calls");
+    match (deadline_after(Duration(0, 0))) {
+        DeadlineFailed(error) => { expect_unsupportedclock(error); }
+        _ => { assert(false, "zero deadline samples unsupported source"); }
+    }
+    assert(time_probe_reads() == 1, "zero deadline reads exactly once");
+    time_probe_config(2);
+    match (deadline_after(Duration(0, 1))) {
+        DeadlineFailed(failure) => {
+            let error = expect_host(failure);
+            assert(error.native_code != 0 && os::_os_error_to_rt(error).domain == 1,
+                   "clock error preserves native code and namespace");
+        }
+        _ => { assert(false, "clock read failure is structured"); }
+    }
+    assert(time_probe_reads() == 1 && time_probe_waits() == 0, "failed clock never waits");
+    time_probe_config(14);
+    match (deadline_after(Duration(0, 1))) {
+        DeadlineFailed(error) => { expect_overflow(error); }
+        _ => { assert(false, "invalid host sample never becomes public time"); }
+    }
+}
+
+/**
+ * Exercise wide deadline addition, nanosecond carry and borrow, and expiry.
+ */
+func test_arithmetic() {
+    time_probe_config(0);
+    match (deadline_after(Duration(2, 200000000))) {
+        Ready(deadline) => {
+            assert(deadline.sec == (4294967299 as long) && deadline.nsec == 100000000,
+                   "checked long deadline carry");
+        }
+        _ => { assert(false, "wide deadline"); }
+    }
+    assert(time_probe_reads() == 1, "deadline uses one sample");
+    match (remaining(MonotonicTime(4294967297, 100000000))) {
+        Remaining(duration) => {
+            assert(duration.sec == (0 as long) && duration.nsec == 200000000,
+                   "remaining borrows normalized nanoseconds");
+        }
+        _ => { assert(false, "strictly positive remainder"); }
+    }
+    assert(time_probe_reads() == 2, "remaining uses one sample");
+    match (remaining(MonotonicTime(4294967296, 900000000))) {
+        Expired => {}
+        _ => { assert(false, "equal deadline expired"); }
+    }
+    match (remaining(MonotonicTime(4294967295, 999999999))) {
+        Expired => {}
+        _ => { assert(false, "past deadline expired"); }
+    }
+    time_probe_config(4);
+    match (deadline_after(Duration(0, 100000000))) {
+        DeadlineFailed(error) => { expect_overflow(error); }
+        _ => { assert(false, "nanosecond carry cannot overflow seconds"); }
+    }
+    time_probe_config(3);
+    match (deadline_after(Duration(long_max(), 999999999))) {
+        Ready(deadline) => {
+            assert(deadline.sec == long_max() && deadline.nsec == 999999999,
+                   "full-range delay is never flattened to nanoseconds");
+        }
+        _ => { assert(false, "maximum delay from zero epoch"); }
+    }
+}
+
+/**
+ * Keep interruptions observable and resume using the original absolute deadline.
+ */
+func test_interruption() {
+    time_probe_config(6);
+    let resumed = false;
+    match (sleep(Duration(3, 200000000))) {
+        Interrupted(deadline, error) => {
+            assert(deadline.sec == (4294967300 as long) && deadline.nsec == 100000000,
+                   "interruption preserves original deadline");
+            assert(os::_os_error_to_rt(error).kind == 6 && error.native_code != 0,
+                   "interruption preserves captured cause");
+            assert(time_probe_waits() == 1 && time_probe_closes() == 1,
+                   "interruption returns once and releases context");
+            assert(time_probe_reads() == 2, "interruption wins over crossing deadline");
+            match (remaining(deadline)) { Expired => {} _ => { assert(false, "expired during interrupt"); } }
+            match (sleep_until(deadline)) { Completed => { resumed = true; } _ => { assert(false, "explicit resume"); } }
+        }
+        _ => { assert(false, "observable host interruption"); }
+    }
+    assert(resumed && time_probe_waits() == 1 && time_probe_closes() == 1,
+           "resuming expired deadline never restarts duration");
+    time_probe_config(15);
+    resumed = false;
+    match (sleep(Duration(3, 200000000))) {
+        Interrupted(deadline, error) => {
+            assert(deadline.sec == (4294967300 as long) && deadline.nsec == 100000000,
+                   "nonexpired interruption retains original deadline");
+            assert(time_probe_waits() == 1 && time_probe_closes() == 1 && time_probe_reads() == 2,
+                   "nonexpired interruption returns once without restart");
+            match (remaining(deadline)) {
+                Remaining(duration) => {
+                    assert(duration.sec == (2 as long) && duration.nsec == 200000000,
+                           "remaining accounts for time elapsed before interruption");
+                }
+                _ => { assert(false, "interrupted deadline is still future"); }
+            }
+            match (sleep_until(deadline)) {
+                Completed => { resumed = true; }
+                _ => { assert(false, "explicit future-deadline resume"); }
+            }
+            assert(time_probe_deadline_sec() == deadline.sec && time_probe_deadline_nsec() == deadline.nsec,
+                   "resumed waits use original absolute deadline");
+        }
+        _ => { assert(false, "nonexpired interruption is observable"); }
+    }
+    assert(resumed && time_probe_waits() == 4 && time_probe_closes() == 2,
+           "explicit resume waits only remaining duration and releases both contexts");
+}
+
+/**
+ * Recheck early wakeups, cap waits across suspension, and preserve primary errors.
+ */
+func test_wait_outcomes() {
+    time_probe_config(7);
+    match (sleep_until(MonotonicTime(4294967299, 0))) {
+        Completed => {}
+        _ => { assert(false, "early wakeup eventually reaches deadline"); }
+    }
+    assert(time_probe_waits() >= 2 && time_probe_closes() == 1, "early wakeup reuses context");
+    time_probe_config(12);
+    match (sleep_until(MonotonicTime(long_max(), 999999999))) {
+        Completed => {}
+        _ => { assert(false, "suspension can pass a distant deadline"); }
+    }
+    assert(time_probe_max_wait_sec() <= (1 as long) && time_probe_waits() == 1,
+           "bounded native wait after suspend never rearms past deadline");
+    time_probe_config(8);
+    match (sleep_until(MonotonicTime(4294967299, 0))) {
+        SleepFailed(failure) => {
+            let error = expect_host(failure);
+            assert(os::_os_error_to_rt(error).kind == 2, "wait error survives failed cleanup");
+            let text = os::error_message(error);
+            assert(text != "", "captured failure text has owned lifetime");
+        }
+        _ => { assert(false, "wait failure is observable"); }
+    }
+    assert(time_probe_closes() == 1, "failed wait consumes context");
+    time_probe_config(9);
+    match (sleep_until(MonotonicTime(4294967297, 0))) {
+        SleepFailed(failure) => {
+            let error = expect_host(failure);
+            assert(os::_os_error_to_rt(error).kind == 5, "cleanup failure replaces successful wait");
+        }
+        _ => { assert(false, "cleanup-only failure is observable"); }
+    }
+    assert(time_probe_closes() == 1, "cleanup attempted exactly once");
+    time_probe_config(10);
+    match (sleep_until(MonotonicTime(4294967299, 0))) {
+        SleepFailed(failure) => {
+            let error = expect_host(failure);
+            assert(os::_os_error_to_rt(error).kind == 13, "open failure preserves resource error");
+        }
+        _ => { assert(false, "wait-context open failure"); }
+    }
+    assert(time_probe_opens() == 1 && time_probe_waits() == 0 && time_probe_closes() == 0,
+           "failed open has no owned context to close");
+    time_probe_config(11);
+    match (sleep_until(MonotonicTime(4294967299, 0))) {
+        SleepFailed(failure) => {
+            let error = expect_host(failure);
+            assert(os::_os_error_to_rt(error).kind == 2, "reread failure preserves host cause");
+        }
+        _ => { assert(false, "clock failure after wakeup"); }
+    }
+    assert(time_probe_waits() == 1 && time_probe_closes() == 1,
+           "clock failure after wait releases context");
+}
+
+/**
+ * Model future process/socket outcomes without borrowing the sleep success state.
+ */
+enum ConsumerResult {
+    Partial(count: int);
+    ConsumerTimedOut;
+    ConsumerInterrupted(deadline: MonotonicTime);
+    ConsumerFailed(error: TimeError);
+}
+
+/**
+ * Preserve partial progress or select an explicit consumer timeout outcome.
+ *
+ * @param deadline Original deadline reused by every simulated retry.
+ * @param count Successful progress from the attempted operation.
+ * @return Partial progress, timeout, or captured scheduling failure.
+ */
+func consume(deadline: MonotonicTime, count: int) -> ConsumerResult {
+    if (count > 0) { return Partial(count); }
+    match (remaining(deadline)) {
+        Expired => { return ConsumerTimedOut; }
+        RemainingFailed(error) => { return ConsumerFailed(error); }
+        Remaining(duration) => {
+            match (sleep_until(deadline)) {
+                Completed => { return ConsumerTimedOut; }
+                Interrupted(original, error) => { return ConsumerInterrupted(original); }
+                SleepFailed(error) => { return ConsumerFailed(error); }
+            }
+        }
+    }
+}
+
+/**
+ * Distinguish timeout, interruption, host failure, and successful partial progress.
+ */
+func test_consumer() {
+    let deadline = MonotonicTime(4294967297, 0);
+    time_probe_config(0);
+    match (consume(deadline, 2)) { Partial(count) => { assert(count == 2, "partial count"); } _ => { assert(false, "partial progress"); } }
+    assert(time_probe_reads() == 0, "successful partial operation precedes deadline check");
+    match (consume(deadline, 0)) { ConsumerTimedOut => {} _ => { assert(false, "consumer timeout"); } }
+    time_probe_config(6);
+    match (consume(deadline, 0)) {
+        ConsumerInterrupted(original) => { assert(original.sec == deadline.sec, "same consumer deadline"); }
+        _ => { assert(false, "consumer interruption differs from timeout"); }
+    }
+    time_probe_config(2);
+    match (consume(deadline, 0)) { ConsumerFailed(failure) => { expect_host(failure); } _ => { assert(false, "consumer host failure"); } }
+}
+
+/**
+ * Run generated L1 scheduling over deterministic runtime adapters.
+ *
+ * @return Zero after all library and integration assertions succeed.
+ */
+func main() -> int {
+    test_validation();
+    test_arithmetic();
+    test_interruption();
+    test_wait_outcomes();
+    test_consumer();
+    printl_s("time_failure_main: PASS");
+    return 0;
+}

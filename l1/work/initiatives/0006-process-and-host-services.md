@@ -1,14 +1,14 @@
 # L1 Initiative 0006 - Process and Host Services
 
-- Version: 2026-10-24
+- Version: 2026-10-28
 - Status: Active
 - Kind: Initiative
 - Open plans:
   - `l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md`
   - `l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md`
   - `l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md`
-  - `l1/work/plans/features/2026-08-30-time-width-sleep-and-deadlines-noref.md`
-- Closed plans: (none)
+- Closed plans:
+  - `l1/work/plans/features/closed/2026-08-30-time-width-sleep-and-deadlines-noref.md`
 
 ## Summary
 
@@ -36,8 +36,8 @@ requirements for this initiative or its stdlib plans.
 - L1 has no pipe endpoints, wait status, child standard-stream redirection, or termination API.
 - `std.rand` is a pseudorandom generator and is not a secure entropy source.
 - There is no race-free temporary-file or temporary-directory API.
-- `std.time` reads wall and monotonic clocks, but inherited second fields remain `int` and there are no sleep or
-  deadline helpers.
+- `std.time` uses `long` seconds and normalized `int` nanoseconds. Checked calendar conversion, monotonic sleep,
+  deadlines, structured errors, and explicit interruption/resumption are implemented.
 
 ## Decisions and invariants
 
@@ -76,7 +76,10 @@ Spawned plan: [process spawning and anonymous pipes].
 
 ### Phase 3 - Sleep, deadlines, and timeouts (Stdlib Tier 3)
 
-Widen general time seconds and add `sleep`, `sleep_until`, `deadline_after`, and `remaining` with monotonic semantics.
+Completed: general time seconds use `long`; `sleep`, `sleep_until`, `deadline_after`, and `remaining` use monotonic
+deadlines with checked arithmetic, structured failures, and caller-controlled interruption/resumption. Native macOS
+Intel and Linux `test-ci` gates passed, including generated L1 traces; native Windows/macOS ARM validation remains
+unverified locally.
 
 Spawned plan: [time width, sleep, and deadlines].
 
@@ -111,10 +114,14 @@ Spawned plan: [time width, sleep, and deadlines].
     a deterministic fallback silently.
 - Decision: Use `long` seconds for general time values and monotonic time for deadlines.
   - Scope: L1
-  - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
-  - Rationale: The inherited 32-bit second fields are an L0-era width leak, while deadlines require a clock unaffected
-    by wall-clock adjustments.
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0050-wide-time-and-monotonic-deadlines.md`
+  - Rationale: Wide seconds and monotonic deadline semantics are implemented and recorded in the accepted time ADR.
+- Decision: Expose sleep interruption with the original deadline and leave restart policy to callers.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0051-explicit-sleep-interruption-and-restart.md`
+  - Rationale: The completed sleep contract preserves deadline budgets, captured errors, and explicit retry policy.
 
 ## References
 
@@ -123,4 +130,4 @@ Spawned plan: [time width, sleep, and deadlines].
 [process spawning and anonymous pipes]: ../plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md
 [secure os entropy]: ../plans/features/2026-08-30-secure-os-entropy-noref.md
 [secure temporary objects]: ../plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md
-[time width, sleep, and deadlines]: ../plans/features/2026-08-30-time-width-sleep-and-deadlines-noref.md
+[time width, sleep, and deadlines]: ../plans/features/closed/2026-08-30-time-width-sleep-and-deadlines-noref.md

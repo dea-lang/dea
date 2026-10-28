@@ -406,7 +406,7 @@ typedef struct { dea_bool has_value; } _dea_base_opt;
 #ifndef DEA_DEFINED___deaM3sys2rtS11RtTimeParts
 #define DEA_DEFINED___deaM3sys2rtS11RtTimeParts
 struct __deaM3sys2rtS11RtTimeParts {
-    dea_int sec;
+    dea_long sec;
     dea_int nsec;
 };
 #endif
@@ -480,6 +480,28 @@ struct __deaM3sys2osS9RtOsError {
 struct __deaM3sys2osS10RtIoResult {
     dea_int state;
     dea_int count;
+    struct __deaM3sys2osS9RtOsError error;
+};
+#endif
+
+/* Stable scheduling transport states, independent of public enum layouts. */
+#define DEA_TIME_OK 0
+#define DEA_TIME_INVALID 1
+#define DEA_TIME_OVERFLOW 2
+#define DEA_TIME_UNSUPPORTED 3
+#define DEA_TIME_HOST 4
+#define DEA_TIME_INTERRUPTED 5
+
+#ifndef DEA_DEFINED___deaM3sys4timeS12RtTimeResult
+#define DEA_DEFINED___deaM3sys4timeS12RtTimeResult
+
+/**
+ * Scheduling outcome with validated time parts and a captured shared OS error.
+ */
+struct __deaM3sys4timeS12RtTimeResult {
+    dea_int state;
+    dea_long sec;
+    dea_int nsec;
     struct __deaM3sys2osS9RtOsError error;
 };
 #endif
@@ -843,14 +865,17 @@ dea_int rt_get_pid(void);
 /* Get the command-line argument at the given index. */
 dea_string rt_get_argv(dea_int i);
 
-/* Convert native time seconds to a representable Dea integer. */
-dea_bool _rt_time_to_dea_int_sec(time_t value, dea_int *out);
+/* Convert native time seconds to a representable Dea long. */
+dea_bool _rt_time_to_dea_long_sec(time_t value, dea_long *out);
+
+/* Convert Dea long seconds to a representable native time value. */
+dea_bool _rt_time_to_time_t(dea_long value, time_t *out);
 
 /* Internal helper to convert long to dea_int nanoseconds. */
 dea_bool _rt_time_to_dea_int_nsec(long value, dea_int *out);
 
 /* Internal helper to write time parts to struct. */
-dea_bool _rt_time_write_parts(struct __deaM3sys2rtS11RtTimeParts *out, dea_int sec, dea_int nsec);
+dea_bool _rt_time_write_parts(struct __deaM3sys2rtS11RtTimeParts *out, dea_long sec, dea_int nsec);
 
 /* Capture current unix wall clock into `out`. */
 dea_bool rt_time_unix(struct __deaM3sys2rtS11RtTimeParts *out);
@@ -861,11 +886,17 @@ dea_bool rt_time_monotonic(struct __deaM3sys2rtS11RtTimeParts *out);
 /* Returns whether a monotonic clock source is available. */
 dea_bool rt_time_monotonic_supported(void);
 
+/* Read the monotonic clock as a structured scheduling result. */
+struct __deaM3sys4timeS12RtTimeResult rt_time_monotonic_result(void);
+
+/* Wait for an absolute monotonic deadline with explicit interruption semantics. */
+struct __deaM3sys4timeS12RtTimeResult rt_time_sleep_until(dea_long sec, dea_int nsec);
+
 /* Returns local UTC offset in seconds for `unix_sec`. */
-dea_opt_int rt_time_local_offset_sec(dea_int unix_sec);
+dea_opt_int rt_time_local_offset_sec(dea_long unix_sec);
 
 /* Returns whether local time is daylight-saving time for `unix_sec`. */
-dea_opt_bool rt_time_local_is_dst(dea_int unix_sec);
+dea_opt_bool rt_time_local_is_dst(dea_long unix_sec);
 
 /* Read entire file contents into a string. */
 dea_opt_string rt_read_file_all(dea_string path);

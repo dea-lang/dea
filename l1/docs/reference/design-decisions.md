@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-10-24
+Version: 2026-10-28
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -741,6 +741,27 @@ See [l1/docs/reference/filesystem.md][filesystem-contract] and
 [l1/docs/decisions/0048-absolute-anchoring-and-existing-path-canonicalization.md][filesystem-resolution], and
 [l1/docs/decisions/0049-filesystem-replacement-and-no-replace-capability.md][filesystem-replacement].
 
+## Wide Time, Monotonic Deadlines, and Explicit Sleep Interruption
+
+`std.time` uses signed `long` seconds and normalized `int` nanoseconds. Checked second arithmetic and explicit
+nanosecond carry/borrow retain the wide range; converting a full timestamp to signed nanoseconds would lose it. Calendar
+years remain `int`, and unrepresentable calendar or native local-time conversions return `null`.
+
+`deadline_after` and `remaining` sample monotonic time once. `sleep` computes one absolute deadline; successful early
+wakes recheck it. Zero sleep avoids host operations and allocation. Unsupported clocks, invalid values, overflow, and
+captured host failures remain distinct. Sleep interruption returns the original deadline immediately; callers explicitly
+resume with `sleep_until`. The concrete failure constructors are `DeadlineFailed`, `RemainingFailed`, and `SleepFailed`
+because L1 enum constructors share module scope. Sleep completion is success; operation-level timeout remains the
+consumer's result, independent of interruption or positive partial progress.
+
+Windows QPC deadlines use a private relative timer in chunks of at most one second because QPC and modern relative
+timers account for suspension differently. POSIX fallbacks also cap chunks when agreement is unestablished. Native
+errors are captured before cleanup; a primary operation failure takes precedence over cleanup failure. No monotonic
+source falls back to wall time. Scheduler latency has no hard upper bound.
+
+See [l1/docs/decisions/0050-wide-time-and-monotonic-deadlines.md][time-width] and
+[l1/docs/decisions/0051-explicit-sleep-interruption-and-restart.md][time-sleep].
+
 [filesystem-contract]: filesystem.md
 [filesystem-identity]: ../decisions/0047-followed-native-filesystem-identity.md
 [filesystem-replacement]: ../decisions/0049-filesystem-replacement-and-no-replace-capability.md
@@ -748,3 +769,5 @@ See [l1/docs/reference/filesystem.md][filesystem-contract] and
 [filesystem-traversal]: ../decisions/0046-filesystem-paths-and-owned-directory-traversal.md
 [filesystem-width]: ../decisions/0037-wide-filesystem-metadata.md
 [os-results]: ../decisions/0045-direct-os-errors-and-io-results.md
+[time-sleep]: ../decisions/0051-explicit-sleep-interruption-and-restart.md
+[time-width]: ../decisions/0050-wide-time-and-monotonic-deadlines.md

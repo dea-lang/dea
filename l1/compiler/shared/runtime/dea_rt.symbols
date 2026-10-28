@@ -59,7 +59,8 @@ _rt_realloc_string
 _rt_stream_write_some
 _rt_string_bytes
 _rt_time_to_dea_int_nsec
-_rt_time_to_dea_int_sec
+_rt_time_to_dea_long_sec
+_rt_time_to_time_t
 _rt_time_write_parts
 _rt_track_arc_bytes
 _rt_track_static_bytes
@@ -173,7 +174,9 @@ rt_system
 rt_time_local_is_dst
 rt_time_local_offset_sec
 rt_time_monotonic
+rt_time_monotonic_result
 rt_time_monotonic_supported
+rt_time_sleep_until
 rt_time_unix
 rt_unregister_foreign
 rt_write_file_all
