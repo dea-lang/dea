@@ -247,7 +247,7 @@ def test_l1_docs_routing_ignores_unrelated_changes(tmp_path, event, changed):
     ("l2/compiler/src/parser.l1", "false"),
     ("tools/m.css/documentation/doxygen.py", "true"),
     ("scripts/dea_tooling/bootstrap.py", "false"),
-    (".github/workflows/l1-docs-validate.yml", "true"),
+    (".github/workflows/l1-docs-validate.yml", "false"),
     (".github/actions/l1-ci/action.yml", "false"),
 ])
 def test_l1_docs_routing_preserves_l0_docs_selection(tmp_path, changed, expected):
@@ -271,24 +271,162 @@ def test_unavailable_diff_selects_l1_docs(tmp_path, default, missing):
     assert result["run_l1_docs"] == result["run_docs"] == "true"
 
 
-def route(tmp_path, *, default, event, changed="", manual="default", missing=""):
+def route(tmp_path, *, default, event, changed="", manual="default", missing="", merge_missing=False):
     """Execute the actual workflow routing script with controlled Git answers."""
     document = workflow(".github/workflows/ci.yml")
     script = step(document["jobs"]["route-levels"]["steps"], "Decide level routing")["run"]
     git = tmp_path / "git"
-    git.write_text('#!/bin/sh\ncase "$1" in\n'
-                   'rev-parse) [ "$DIFF_MISSING" != endpoints ];;\n'
-                   'diff) printf "%s\\n" "$DIFF_CHANGED";;\nesac\n')
+    git.write_text('''#!/bin/sh
+printf '%s\n' "$*" >> "$GIT_CALLS"
+case "$1" in
+  rev-parse)
+    [ "$DIFF_MISSING" != endpoints ] || exit 1
+    [ "$DIFF_MISSING" != recoverable ] || [ "$3" != 'base^{commit}' ] || [ -e "$RECOVERED" ] ;;
+  fetch)
+    [ "$DIFF_MISSING" = recoverable ] || exit 1
+    touch "$RECOVERED" ;;
+  merge-base)
+    [ "$MERGE_MISSING" != true ] || exit 1
+    printf '%s\n' ancestor ;;
+  diff) printf '%s\n' "$DIFF_CHANGED" ;;
+esac
+''')
     git.chmod(0o755)
     output = tmp_path / "output"
     env = {**os.environ, "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"],
            "EVENT_NAME": event, "L2_CI_DEFAULT_ENABLED": default, "INPUT_RUN_L2_CI": manual,
            "BEFORE_SHA": "" if missing == "base" else "base", "PUSH_SHA": "head",
            "PR_BASE_SHA": "base", "PR_HEAD_SHA": "head", "GITHUB_OUTPUT": str(output),
-           "DIFF_CHANGED": changed, "DIFF_MISSING": missing}
+           "DIFF_CHANGED": changed, "DIFF_MISSING": missing,
+           "MERGE_MISSING": str(merge_missing).lower(), "RECOVERED": str(tmp_path / "recovered"),
+           "GIT_CALLS": str(tmp_path / "git-calls")}
     result = subprocess.run(["bash", "-eu", "-c", script], env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     return dict(line.split("=", 1) for line in output.read_text().splitlines())
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Workflow routing runs in POSIX Bash")
+@pytest.mark.parametrize("default", ["false", "true"])
+@pytest.mark.parametrize("changed,levels", [
+    ("l0/compiler/shared/runtime/dea_rt.h", (True, True, True)),
+    ("l0/compiler/stage2_l0/src/analysis.l0", (True, True, True)),
+    ("l0/compiler/stage1_py/l0_types.py", (True, True, True)),
+    ("l0/compiler/stage2_l0/scripts/check_trace_log.py", (True, True, True)),
+    ("l0/compiler/stage1_py/tests/backend/test_header.py", (True, False, False)),
+    ("l0/docs/reference/grammar.md", (True, False, False)),
+    ("l0/scripts/gen_docs.py", (True, False, False)),
+    ("l1/compiler/src/analysis.l0", (False, True, True)),
+    ("l1/compiler/shared/runtime/include/dea_rt.h", (False, True, True)),
+    ("l1/compiler/shared/l1/stdlib/std/time.l1", (False, True, True)),
+    ("l1/tests/test_predecessor_compatibility.py", (False, True, False)),
+    ("l1/docs/reference/grammar.md", (False, True, False)),
+    ("l1/scripts/docs/templates/file.html.j2", (False, True, False)),
+    (".github/actions/l1-ci/action.yml", (False, True, False)),
+    (".github/workflows/l1-ci.yml", (False, True, False)),
+    (".github/actions/l0-ci/action.yml", (True, False, False)),
+    (".github/workflows/l0-ci.yml", (True, False, False)),
+    ("l2/compiler/src/analysis.l1", (False, False, True)),
+    (".github/actions/l2-ci/action.yml", (False, False, True)),
+    (".github/actions/setup-doxygen/action.yml", (True, True, True)),
+    ("scripts/tests/test_shuffle_sources.py", (True, True, True)),
+])
+def test_validation_follows_level_dependencies(tmp_path, default, changed, levels):
+    """Successor changes stay downstream; predecessor input changes reach consumers."""
+    result = route(tmp_path, default=default, event="push", changed=changed)
+    for level, selected in zip(("l0", "l1", "l2"), levels):
+        assert result[f"run_{level}"] == str(selected and (level != "l2" or default == "true")).lower()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Workflow routing runs in POSIX Bash")
+def test_recovered_push_base_preserves_l1_only_selection(tmp_path):
+    """Recover the exact event base before selecting workloads after a rewrite."""
+    result = route(tmp_path, default="false", event="push", missing="recoverable",
+                   changed="l1/compiler/shared/runtime/include/dea_rt.h")
+    assert result["run_l0"] == "false"
+    assert result["run_l1"] == "true"
+    calls = (tmp_path / "git-calls").read_text().splitlines()
+    assert "fetch --no-tags --no-recurse-submodules origin base" in calls
+    assert "diff --name-only base head" in calls
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Workflow routing runs in POSIX Bash")
+def test_pull_request_uses_merge_base_for_selection(tmp_path):
+    """Unrelated target-branch changes must not expand a pull request's scope."""
+    result = route(tmp_path, default="false", event="pull_request", changed="l1/docs/roadmap.md")
+    assert result["run_l0"] == "false"
+    assert result["run_l1"] == "true"
+    calls = (tmp_path / "git-calls").read_text().splitlines()
+    assert "merge-base base head" in calls
+    assert "diff --name-only ancestor head" in calls
+    assert not any(line.startswith("fetch ") for line in calls)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Workflow routing runs in POSIX Bash")
+def test_missing_merge_base_selects_conservative_workloads(tmp_path):
+    """Keep validation when a pull request has no resolvable common ancestor."""
+    result = route(tmp_path, default="false", event="pull_request", merge_missing=True)
+    assert result["run_l0"] == result["run_l1"] == "true"
+    assert result["run_l2"] == "false"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Workflow routing runs in POSIX Bash")
+def test_rewrite_routing_recovers_unadvertised_commit_from_local_remote(tmp_path):
+    """Exercise real Git recovery of a force-push base missing from a fresh clone."""
+    origin = tmp_path / "origin.git"
+    writer = tmp_path / "writer"
+    checkout = tmp_path / "checkout"
+    git_env = {**os.environ, "GIT_AUTHOR_NAME": "Routing Test", "GIT_COMMITTER_NAME": "Routing Test",
+               "GIT_AUTHOR_EMAIL": "routing@example.invalid", "GIT_COMMITTER_EMAIL": "routing@example.invalid"}
+
+    def git(*args, cwd=tmp_path):
+        return subprocess.run(["git", "-c", "core.hooksPath=/dev/null", *args], cwd=cwd,
+                              env=git_env, capture_output=True, text=True, check=True).stdout.strip()
+
+    git("init", "--bare", str(origin))
+    git("init", "-b", "main", str(writer))
+    (writer / "l0").mkdir()
+    (writer / "l1").mkdir()
+    (writer / "l0/baseline").write_text("unchanged")
+    (writer / "l1/source").write_text("original")
+    git("add", ".", cwd=writer)
+    git("commit", "-m", "Original fixture.", cwd=writer)
+    before = git("rev-parse", "HEAD", cwd=writer)
+    git("remote", "add", "origin", str(origin), cwd=writer)
+    git("push", "origin", "main", cwd=writer)
+    (writer / "l1/source").write_text("rewritten")
+    git("add", ".", cwd=writer)
+    git("commit", "--amend", "-m", "Rewritten fixture.", cwd=writer)
+    head = git("rev-parse", "HEAD", cwd=writer)
+    git("push", "--force", "origin", "main", cwd=writer)
+    git("clone", "--no-local", "--branch", "main", str(origin), str(checkout))
+    missing = subprocess.run(["git", "cat-file", "-e", before], cwd=checkout, capture_output=True)
+    assert missing.returncode != 0
+    output = tmp_path / "route-output"
+    env = {**git_env, "EVENT_NAME": "push", "BEFORE_SHA": before, "PUSH_SHA": head,
+           "PR_BASE_SHA": "", "PR_HEAD_SHA": "", "L2_CI_DEFAULT_ENABLED": "false",
+           "INPUT_RUN_L2_CI": "default", "GITHUB_OUTPUT": str(output)}
+    document = workflow(".github/workflows/ci.yml")
+    script = step(document["jobs"]["route-levels"]["steps"], "Decide level routing")["run"]
+    result = subprocess.run(["bash", "-eu", "-o", "pipefail", "-c", script], cwd=checkout,
+                            env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Recovering the push comparison base" in result.stdout
+    selection = dict(line.split("=", 1) for line in output.read_text().splitlines())
+    assert selection["run_l0"] == "false"
+    assert selection["run_l1"] == "true"
+    assert selection["run_l2"] == "false"
+    assert git("rev-parse", before, cwd=checkout) == before
+
+
+def test_repository_checks_have_a_separate_native_step():
+    """Run shared checks on every native platform outside the L0 delegate."""
+    steps = workflow(".github/workflows/ci.yml")["jobs"]["unified"]["steps"]
+    for name, python in (("Run repository checks", ".venv/bin/python"),
+                         ("Run repository checks (Windows)", ".venv/Scripts/python.exe")):
+        selected = step(steps, name)
+        assert f"{python} -m pytest -q -n 0 scripts/tests" in selected["run"]
+    assert "scripts/tests" not in (ROOT / "l0/Makefile").read_text()
+    assert "test_shuffle_sources.py" not in (ROOT / "l0/Makefile").read_text()
 
 
 def test_ubuntu_utilities_use_pinned_ci_baseline():

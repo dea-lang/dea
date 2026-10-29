@@ -1,7 +1,7 @@
 # ADR-0027: Public C Runtime Header
 
 - Decision date: 2026-08-29
-- Last edited: 2026-08-29
+- Last edited: 2026-10-29
 - Status: Accepted
 
 ## Context
@@ -36,8 +36,10 @@ deliberately different header-only implementation and existing `l0_*` ABI spelli
    wrappers for foreign C callers, whose trace provenance is the explicit fallback `loc="<runtime>":0`.
 
 Consequently, `rt_time_unix`, `rt_time_monotonic`, and `rt_file_info` are L0-specific C declarations despite matching
-function names in L1, because their record tags are level-mangled. L1-only wider optionals and numeric print functions
-are not added to L0.
+function names in L1, because their record tags are level-mangled. `rt_time_local_offset_sec` and `rt_time_local_is_dst`
+also have level-specific signatures: L0 retains `dea_int` seconds and L1 accepts `dea_long`. L1-only wider optionals and
+numeric print functions are not added to L0. L1 owns comparison of the explicit compatible subset against L0; L0's
+declaration and linking checks validate its own API independently.
 
 ## Rationale
 
@@ -57,6 +59,9 @@ are not added to L0.
 - Adding this interface does not publish L0 2.1.0 or authorize a release tag or remote write.
 
 ## Related Plans
+
+- [work/plans/bug-fixes/closed/2026-10-29-shared-validation-ownership-and-routing-noref.md](../../../work/plans/bug-fixes/closed/2026-10-29-shared-validation-ownership-and-routing-noref.md):
+  separates predecessor validation and records the intentional time-width exception.
 
 - [l0/work/plans/features/closed/2026-08-29-public-c-runtime-header-noref.md](../../work/plans/features/closed/2026-08-29-public-c-runtime-header-noref.md):
   introduced the declaration boundary, compatibility contract, tests, and packaging coverage

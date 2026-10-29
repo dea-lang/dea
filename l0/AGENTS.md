@@ -217,7 +217,12 @@ make -j test # normal Stage 1, Stage 2, example, workflow, and distribution vali
 make -j test-extended # the same validation plus the dedicated broad Stage 2 trace sweep
 ```
 
-For workflow and distribution tooling validation:
+L0 validation does not read successor inputs. Cross-level runtime and trace-checker comparisons belong to L1's
+compatibility checks. Shared repository checks run from the monorepo root with
+`.venv/bin/python -m pytest -q -n 0 scripts/tests`, through root aggregate targets, or in Unified CI's separate
+repository-check steps.
+
+For L0 workflow and distribution tooling validation:
 
 ```bash
 make test-dea-build                                   # validate Make build and install-prefix workflows

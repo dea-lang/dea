@@ -268,6 +268,23 @@ jobs:
               head_sha="$PUSH_SHA"
             fi
 
+            if [ "$EVENT_NAME" = push ] && [ -n "$base_sha" ] && \
+               [ "$base_sha" != "0000000000000000000000000000000000000000" ] && \
+               ! git rev-parse --verify "$base_sha^{commit}" >/dev/null 2>&1; then
+              echo "Recovering the push comparison base after rewritten history."
+              if ! git fetch --no-tags --no-recurse-submodules origin "$base_sha"; then
+                echo "Push base recovery failed; retaining conservative validation selection."
+              fi
+            fi
+            if [ "$EVENT_NAME" = pull_request ] && \
+               git rev-parse --verify "$base_sha^{commit}" >/dev/null 2>&1 && \
+               git rev-parse --verify "$head_sha^{commit}" >/dev/null 2>&1; then
+              if ! base_sha="$(git merge-base "$base_sha" "$head_sha")"; then
+                echo "Pull request merge base unavailable; retaining conservative validation selection."
+                base_sha=""
+              fi
+            fi
+
             if [ -z "$base_sha" ] || [ "$base_sha" = "0000000000000000000000000000000000000000" ]; then
               run_l0=true
               run_l1=true
@@ -286,27 +303,43 @@ jobs:
               changed_files="$(git diff --name-only "$base_sha" "$head_sha")"
               shared=false
 
-              if printf '%s\n' "$changed_files" | grep -Eq '^(tools/|scripts/|pyproject\.toml$|uv\.lock$|\.github/actions/|\.github/workflows/(ci|l0-ci|l1-ci|l2-ci)\.yml$|Makefile$)'; then
+              if printf '%s\n' "$changed_files" | grep -Eq '^(tools/|scripts/|pyproject\.toml$|uv\.lock$|\.github/actions/(setup-[^/]+/)|\.github/workflows/ci\.yml$|Makefile$)'; then
                 shared=true
               fi
-              if printf '%s\n' "$changed_files" | grep -Eq '^l0/'; then
+              if printf '%s\n' "$changed_files" | grep -Eq '^(l0/|\.github/actions/l0-ci/|\.github/workflows/l0-ci\.yml$)'; then
                 run_l0=true
               fi
-              if printf '%s\n' "$changed_files" | grep -Eq '^l1/'; then
+              if printf '%s\n' "$changed_files" | grep -Eq '^(l1/|\.github/actions/l1-ci/|\.github/workflows/l1-ci\.yml$)'; then
+                run_l1=true
+              fi
+              # Construction dependencies flow toward successors. Tests and docs alone do not.
+              l0_inputs=false
+              l1_inputs=false
+              while IFS= read -r changed; do
+                case "$changed" in
+                  l0/compiler/stage1_py/tests/*|l0/compiler/stage2_l0/tests/*|l1/compiler/tests/*) ;;
+                  l0/scripts/docs/*|l1/scripts/docs/*|l0/scripts/gen_docs.py|l1/scripts/gen_docs.py|l0/scripts/docs_artifacts.py|l1/scripts/docs_artifacts.py|l0/scripts/stage_docs_pages.py|l1/scripts/stage_docs_pages.py) ;;
+                  l0/compiler/stage1_py/*|l0/compiler/stage2_l0/*|l0/compiler/shared/*|l0/scripts/*|l0/Makefile|l0/pyproject.toml)
+                    l0_inputs=true ;;
+                  l1/compiler/src/*|l1/compiler/support/*|l1/compiler/shared/*|l1/scripts/*|l1/Makefile|l1/pyproject.toml)
+                    l1_inputs=true ;;
+                esac
+              done <<< "$changed_files"
+              if [ "$l0_inputs" = true ]; then
                 run_l1=true
               fi
               if [ "$shared" = true ]; then
                 run_l0=true
                 run_l1=true
               fi
-              if [ "$l2_enabled" = true ] && { [ "$shared" = true ] || \
-                 printf '%s\n' "$changed_files" | grep -Eq '^l2/'; }; then
+              if [ "$l2_enabled" = true ] && { [ "$shared" = true ] || [ "$l0_inputs" = true ] || [ "$l1_inputs" = true ] || \
+                 printf '%s\n' "$changed_files" | grep -Eq '^(l2/|\.github/actions/l2-ci/|\.github/workflows/l2-ci\.yml$)'; }; then
                 run_l2=true
               fi
-              if printf '%s\n' "$changed_files" | grep -Eq '^(\.github/workflows/|README\.md$|CONTRIBUTING\.md$|CLAUDE\.md$|THIRD_PARTY_NOTICES$|tools/|pyproject\.toml$|uv\.lock$|l0/(compiler/(stage1_py|docgen|stage2_l0|shared)/|docs/|README(-WINDOWS)?\.md$|CLAUDE\.md$|pyproject\.toml$|scripts/(docs/|(gen_docs|docs_artifacts|stage_docs_pages|gen_dist_tools|dist_tools_lib)\.py$)))'; then
+              if printf '%s\n' "$changed_files" | grep -Eq '^(\.github/workflows/(ci|l0[^/]*)\.yml$|\.github/actions/(l0-ci|setup-[^/]+)/|README\.md$|CONTRIBUTING\.md$|CLAUDE\.md$|THIRD_PARTY_NOTICES$|tools/|pyproject\.toml$|uv\.lock$|l0/(compiler/(stage1_py|docgen|stage2_l0|shared)/|docs/|README(-WINDOWS)?\.md$|CLAUDE\.md$|pyproject\.toml$|scripts/(docs/|(gen_docs|docs_artifacts|stage_docs_pages|gen_dist_tools|dist_tools_lib)\.py$)))'; then
                 run_docs=true
               fi
-              if printf '%s\n' "$changed_files" | grep -Eq '^(\.github/(workflows|actions)/|README\.md$|CONTRIBUTING\.md$|CLAUDE\.md$|THIRD_PARTY_NOTICES$|Makefile$|tools/|scripts/|pyproject\.toml$|uv\.lock$|l1/(compiler/|scripts/|docs/|tests/test_docgen_[^/]+\.py$|README(-WINDOWS)?\.md$|AGENTS\.md$|CLAUDE\.md$|Makefile$|pyproject\.toml$))'; then
+              if printf '%s\n' "$changed_files" | grep -Eq '^(\.github/workflows/(ci|l1[^/]*)\.yml$|\.github/actions/(l1-ci|setup-[^/]+)/|README\.md$|CONTRIBUTING\.md$|CLAUDE\.md$|THIRD_PARTY_NOTICES$|Makefile$|tools/|scripts/|pyproject\.toml$|uv\.lock$|l1/(compiler/|scripts/|docs/|tests/test_docgen_[^/]+\.py$|README(-WINDOWS)?\.md$|AGENTS\.md$|CLAUDE\.md$|Makefile$|pyproject\.toml$))'; then
                 run_l1_docs=true
               fi
             fi
@@ -553,6 +586,28 @@ jobs:
           else
             echo "value=test-ci" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Run repository checks
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          L0_CC: ${{ steps.select-cc.outputs.value }}
+          L1_CC: ${{ steps.select-cc.outputs.value }}
+          L1_RUNTIME_CC: ${{ steps.select-cc.outputs.value }}
+        run: |
+          make venv
+          .venv/bin/python -m pytest -q -n 0 scripts/tests
+
+      - name: Run repository checks (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          L0_CC: ${{ steps.select-cc.outputs.value }}
+          L1_CC: ${{ steps.select-cc.outputs.value }}
+          L1_RUNTIME_CC: ${{ steps.select-cc.outputs.value }}
+        run: |
+          make venv
+          .venv/Scripts/python.exe -m pytest -q -n 0 scripts/tests
 
       - name: Run L0 CI delegate
         id: l0-delegate

@@ -15,9 +15,11 @@
  * than `l0_runtime.h`, whose implementation definitions are owned by the
  * single generated L0 translation unit.
  *
- * The `dea_*` names and public signatures that do not mention level-mangled
- * records form the source-compatible subset shared with L1. The existing
- * `l0_*` names remain available for L0-specific C code. This source
+ * The shared `dea_*` types and explicitly identical public signatures form
+ * the source-compatible subset with L1. Level-mangled records and the local
+ * time lookups are level-specific: L0 accepts `dea_int` seconds while L1
+ * accepts `dea_long`. The existing `l0_*` names remain available for
+ * L0-specific C code. This source
  * compatibility does not make L0 and L1 runtime binaries interchangeable.
  *
  * @since L0 2.1.0

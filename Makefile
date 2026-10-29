@@ -35,8 +35,8 @@ help:
 		'Targets:' \
 		'  help               Show this help text.' \
 		'  venv               Create or sync the shared monorepo `./.venv` (prefer `uv`, fall back to `python -m venv` + `pip`).' \
-		'  test               Run `make test` in each registered level without dedicated trace sweeps.' \
-		'  test-extended      Run the extended gate for each level; use level `test-ci` for exhaustive L1/L2 validation.' \
+		'  test               Run repository checks and `make test` in each registered level.' \
+		'  test-extended      Run repository checks and each level extended gate; use level `test-ci` for exhaustive L1/L2 validation.' \
 		'  clean              Run `make clean` in each registered level, then remove root caches/artifacts.' \
 		'  clean-all          Run `make clean-all` in each registered level, then remove root caches/artifacts.' \
 		'' \
@@ -135,13 +135,15 @@ _clean-root-paths:
 		done; \
 	done
 
-test: _check-level-dirs
+test: _check-level-dirs venv
+	"$(VENV_PYTHON)" -m pytest -q -n 0 scripts/tests
 	@for level in $(DEA_LEVEL_DIRS); do \
 		printf '==> %s: make test\n' "$$level"; \
 		$(MAKE) -C "$$level" test || exit $$?; \
 	done
 
-test-extended: _check-level-dirs
+test-extended: _check-level-dirs venv
+	"$(VENV_PYTHON)" -m pytest -q -n 0 scripts/tests
 	@for level in $(DEA_LEVEL_DIRS); do \
 		printf '==> %s: make test-extended\n' "$$level"; \
 		$(MAKE) -C "$$level" test-extended || exit $$?; \

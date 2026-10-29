@@ -55,6 +55,10 @@ make smoke-dist ARCHIVE=/absolute/archive.tar.gz
 make test-productization-acceptance DOCS_ARTIFACT=/absolute/dea_l1_autodocs.tar.gz ACCEPTANCE_DIR=/absolute/new-evidence
 ```
 
+`test-tooling` includes `tests/test_predecessor_compatibility.py`: L1 owns explicit common-runtime and trace-checker
+comparisons against L0, including the intentional L0 `int` versus L1 `long` time parameters. Shared repository checks
+run from the root under `scripts/tests/`, separately from level aggregates.
+
 `test` is the fast local gate; `test-extended` runs the complete normal compiler suite, examples, and tooling. `test-ci`
 includes CI-only normal cases and applicable environment, trace, and child-fixture gates. Use focused selectors when
 changing one subsystem. Dedicated trace discovery has a separate slow-case policy: slow cases are explicit or in

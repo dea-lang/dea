@@ -53,7 +53,6 @@ L0_COMPILER_RT_QUARANTINE_MAX_COUNT ?= 256
 	test-dea-build \
 	test-dist-fallback \
 	test-release-tags \
-	test-shuffle-sources \
 	test-workflows \
 	test-docker \
 	refresh-goldens \
@@ -94,7 +93,6 @@ help:
 		'  test-dea-build     Validate the Dea build and install-prefix workflows.' \
 		'  test-dist-fallback Validate Stage 2 provenance fallback without Git.' \
 		'  test-release-tags  Validate the monorepo release-tag policy wiring.' \
-		'  test-shuffle-sources Validate randomized production-source selection.' \
 		'  test-workflows     Run all workflow and distribution tests.' \
 		'' \
 		'Docker:' \
@@ -267,23 +265,11 @@ test-dist-fallback: | venv
 test-release-tags: | venv
 	"$(VENV_PYTHON)" ./tests/test_release_tag_policy.py
 
-test-shuffle-sources: | venv
-	"$(VENV_PYTHON)" ./tests/test_shuffle_sources.py
-
-test-cleanup: | venv
-	"$(VENV_PYTHON)" -m pytest -q -n 0 ../scripts/tests/test_cleanup.py
-
-.PHONY: test-cleanup
-
-.PHONY: test-ci-bootstrap
-test-ci-bootstrap: | venv
-	"$(VENV_PYTHON)" -m pytest -q -n 0 ../scripts/tests/test_ci_bootstrap.py ../scripts/tests/test_ci_docs_toolchain.py ../scripts/tests/test_docgen_progress.py
-
 .PHONY: test-docgen
 test-docgen: | venv
-	"$(VENV_PYTHON)" -m pytest -q -n 0 compiler/stage1_py/tests/cli/test_docgen_*.py ../scripts/tests/test_docgen_function_inventory.py ../scripts/tests/test_c_docs.py ../scripts/tests/test_docgen_inputs.py ../scripts/tests/test_docgen_pdf.py
+	"$(VENV_PYTHON)" -m pytest -q -n 0 compiler/stage1_py/tests/cli/test_docgen_*.py
 
-test-workflows: test-docgen test-cleanup test-compiler-runtime-flags test-dist test-dea-build test-dist-fallback test-release-tags test-shuffle-sources test-ci-bootstrap
+test-workflows: test-docgen test-compiler-runtime-flags test-dist test-dea-build test-dist-fallback test-release-tags
 	@printf 'All workflow tests passed!\n'
 
 test: test-stage1 test-stage2 check-examples test-workflows

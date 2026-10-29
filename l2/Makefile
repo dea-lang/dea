@@ -313,7 +313,7 @@ test-compiler-trace-children:
 	"$(VENV_PYTHON)" compiler/scripts/run_trace_tests.py --children $(TESTS)
 
 test-tooling: venv
-	"$(VENV_PYTHON)" -m pytest -q -n 0 tests ../scripts/tests/test_cleanup.py
+	"$(VENV_PYTHON)" -m pytest -q -n 0 tests
 
 check-examples: build
 	"$(PYTHON)" ../scripts/check_examples.py --compiler "$(L2_BUILD_DIR)/bin/l2c" --examples-dir examples --extension .l2 --label L2
@@ -351,4 +351,4 @@ docs-pdf:
 	"$(PYTHON)" scripts/gen_c_docs.py --strict --pdf
 
 test-docgen: venv
-	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_docgen_native.py ../scripts/tests/test_docgen_function_inventory.py ../scripts/tests/test_c_docs.py ../scripts/tests/test_docgen_inputs.py
+	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_docgen_native.py

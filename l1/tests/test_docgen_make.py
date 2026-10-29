@@ -32,7 +32,7 @@ def test_docgen_prepares_environment_before_using_its_python(tmp_path, parallel)
     (level / "pytest.py").write_text('''from pathlib import Path
 import sys
 assert (Path(__file__).resolve().parent.parent / "environment-ready").is_file(), "environment not prepared"
-assert sys.argv[1:] == ["-q", "-n", "0", "tests/test_docgen_probe.py", "../scripts/tests/test_docgen_function_inventory.py", "../scripts/tests/test_c_docs.py", "../scripts/tests/test_docgen_inputs.py", "../scripts/tests/test_docgen_pdf.py"], sys.argv
+assert sys.argv[1:] == ["-q", "-n", "0", "tests/test_docgen_probe.py"], sys.argv
 print("prepared documentation runner passed")
 ''')
     env = {key: value for key, value in os.environ.items()

@@ -16,74 +16,74 @@ import pytest
 from conftest import _compiler_flag_family, _find_cc
 
 
-# (return type, symbol, parameter types, portable in the L1 shared subset)
+# L0 public runtime signatures: return type, symbol, and parameter types.
 PUBLIC_RUNTIME_SIGNATURES = (
-    ("dea_int", "rt_strlen", "dea_string", True),
-    ("dea_byte", "rt_string_get", "dea_string, dea_int", True),
-    ("dea_byte *", "rt_string_bytes_ptr", "dea_string", True),
-    ("dea_bool", "rt_string_equals", "dea_string, dea_string", True),
-    ("dea_int", "rt_string_compare", "dea_string, dea_string", True),
-    ("dea_string", "rt_string_concat", "dea_string, dea_string", True),
-    ("dea_string", "rt_string_slice", "dea_string, dea_int, dea_int", True),
-    ("dea_string", "rt_string_from_byte", "dea_byte", True),
-    ("dea_string", "rt_string_from_byte_array", "dea_byte *, dea_int", True),
-    ("void", "rt_string_retain", "dea_string", True),
-    ("void", "rt_string_release", "dea_string", True),
-    ("dea_int", "rt_system", "dea_string", True),
-    ("dea_opt_string", "rt_get_env_var", "dea_string", True),
-    ("dea_int", "rt_get_argc", "void", True),
-    ("dea_int", "rt_get_pid", "void", True),
-    ("dea_string", "rt_get_argv", "dea_int", True),
-    ("dea_bool", "rt_time_unix", "struct l0_sys_rt_RtTimeParts *", False),
-    ("dea_bool", "rt_time_monotonic", "struct l0_sys_rt_RtTimeParts *", False),
-    ("dea_bool", "rt_time_monotonic_supported", "void", True),
-    ("dea_opt_int", "rt_time_local_offset_sec", "dea_int", True),
-    ("dea_opt_bool", "rt_time_local_is_dst", "dea_int", True),
-    ("dea_opt_string", "rt_read_file_all", "dea_string", True),
-    ("dea_bool", "rt_write_file_all", "dea_string, dea_string", True),
-    ("struct l0_sys_rt_RtFileInfo", "rt_file_info", "dea_string", False),
-    ("dea_bool", "rt_delete_file", "dea_string", True),
-    ("dea_int", "rt_stdin_read", "dea_byte *, dea_int", True),
-    ("dea_int", "rt_stdout_write", "dea_byte *, dea_int", True),
-    ("dea_int", "rt_stderr_write", "dea_byte *, dea_int", True),
-    ("void", "rt_flush_stdout", "void", True),
-    ("void", "rt_flush_stderr", "void", True),
-    ("void", "rt_print", "dea_string", True),
-    ("void", "rt_print_stderr", "dea_string", True),
-    ("void", "rt_println", "void", True),
-    ("void", "rt_println_stderr", "void", True),
-    ("void", "rt_print_int", "dea_int", True),
-    ("void", "rt_print_int_stderr", "dea_int", True),
-    ("void", "rt_print_bool", "dea_bool", True),
-    ("void", "rt_print_bool_stderr", "dea_bool", True),
-    ("dea_opt_string", "rt_read_line", "void", True),
-    ("dea_int", "rt_read_char", "void", True),
-    ("void", "rt_abort", "dea_string", True),
-    ("void", "rt_exit", "dea_int", True),
-    ("void", "rt_srand", "dea_int", True),
-    ("dea_int", "rt_rand", "dea_int", True),
-    ("dea_int", "rt_errno", "void", True),
-    ("void *", "rt_alloc", "dea_int", True),
-    ("void *", "rt_realloc", "void *, dea_int", True),
-    ("void", "rt_free", "void *", True),
-    ("void *", "rt_calloc", "dea_int, dea_int", True),
-    ("void *", "rt_memset", "void *, dea_int, dea_int", True),
-    ("void *", "rt_memcpy", "void *, void *, dea_int", True),
-    ("dea_int", "rt_memcmp", "void *, void *, dea_int", True),
-    ("void *", "rt_array_element", "void *, dea_int, dea_int", True),
-    ("void", "rt_register_foreign", "void *, dea_int, dea_bool", True),
-    ("void", "rt_unregister_foreign", "void *", True),
-    ("dea_int", "rt_hash_bool", "dea_bool", True),
-    ("dea_int", "rt_hash_byte", "dea_byte", True),
-    ("dea_int", "rt_hash_int", "dea_int", True),
-    ("dea_int", "rt_hash_string", "dea_string", True),
-    ("dea_int", "rt_hash_data", "void *, dea_int", True),
-    ("dea_int", "rt_hash_opt_bool", "dea_opt_bool", True),
-    ("dea_int", "rt_hash_opt_byte", "dea_opt_byte", True),
-    ("dea_int", "rt_hash_opt_int", "dea_opt_int", True),
-    ("dea_int", "rt_hash_opt_string", "dea_opt_string", True),
-    ("dea_int", "rt_hash_ptr", "void *", True),
-    ("dea_int", "rt_hash_opt_ptr", "void *", True),
+    ("dea_int", "rt_strlen", "dea_string"),
+    ("dea_byte", "rt_string_get", "dea_string, dea_int"),
+    ("dea_byte *", "rt_string_bytes_ptr", "dea_string"),
+    ("dea_bool", "rt_string_equals", "dea_string, dea_string"),
+    ("dea_int", "rt_string_compare", "dea_string, dea_string"),
+    ("dea_string", "rt_string_concat", "dea_string, dea_string"),
+    ("dea_string", "rt_string_slice", "dea_string, dea_int, dea_int"),
+    ("dea_string", "rt_string_from_byte", "dea_byte"),
+    ("dea_string", "rt_string_from_byte_array", "dea_byte *, dea_int"),
+    ("void", "rt_string_retain", "dea_string"),
+    ("void", "rt_string_release", "dea_string"),
+    ("dea_int", "rt_system", "dea_string"),
+    ("dea_opt_string", "rt_get_env_var", "dea_string"),
+    ("dea_int", "rt_get_argc", "void"),
+    ("dea_int", "rt_get_pid", "void"),
+    ("dea_string", "rt_get_argv", "dea_int"),
+    ("dea_bool", "rt_time_unix", "struct l0_sys_rt_RtTimeParts *"),
+    ("dea_bool", "rt_time_monotonic", "struct l0_sys_rt_RtTimeParts *"),
+    ("dea_bool", "rt_time_monotonic_supported", "void"),
+    ("dea_opt_int", "rt_time_local_offset_sec", "dea_int"),
+    ("dea_opt_bool", "rt_time_local_is_dst", "dea_int"),
+    ("dea_opt_string", "rt_read_file_all", "dea_string"),
+    ("dea_bool", "rt_write_file_all", "dea_string, dea_string"),
+    ("struct l0_sys_rt_RtFileInfo", "rt_file_info", "dea_string"),
+    ("dea_bool", "rt_delete_file", "dea_string"),
+    ("dea_int", "rt_stdin_read", "dea_byte *, dea_int"),
+    ("dea_int", "rt_stdout_write", "dea_byte *, dea_int"),
+    ("dea_int", "rt_stderr_write", "dea_byte *, dea_int"),
+    ("void", "rt_flush_stdout", "void"),
+    ("void", "rt_flush_stderr", "void"),
+    ("void", "rt_print", "dea_string"),
+    ("void", "rt_print_stderr", "dea_string"),
+    ("void", "rt_println", "void"),
+    ("void", "rt_println_stderr", "void"),
+    ("void", "rt_print_int", "dea_int"),
+    ("void", "rt_print_int_stderr", "dea_int"),
+    ("void", "rt_print_bool", "dea_bool"),
+    ("void", "rt_print_bool_stderr", "dea_bool"),
+    ("dea_opt_string", "rt_read_line", "void"),
+    ("dea_int", "rt_read_char", "void"),
+    ("void", "rt_abort", "dea_string"),
+    ("void", "rt_exit", "dea_int"),
+    ("void", "rt_srand", "dea_int"),
+    ("dea_int", "rt_rand", "dea_int"),
+    ("dea_int", "rt_errno", "void"),
+    ("void *", "rt_alloc", "dea_int"),
+    ("void *", "rt_realloc", "void *, dea_int"),
+    ("void", "rt_free", "void *"),
+    ("void *", "rt_calloc", "dea_int, dea_int"),
+    ("void *", "rt_memset", "void *, dea_int, dea_int"),
+    ("void *", "rt_memcpy", "void *, void *, dea_int"),
+    ("dea_int", "rt_memcmp", "void *, void *, dea_int"),
+    ("void *", "rt_array_element", "void *, dea_int, dea_int"),
+    ("void", "rt_register_foreign", "void *, dea_int, dea_bool"),
+    ("void", "rt_unregister_foreign", "void *"),
+    ("dea_int", "rt_hash_bool", "dea_bool"),
+    ("dea_int", "rt_hash_byte", "dea_byte"),
+    ("dea_int", "rt_hash_int", "dea_int"),
+    ("dea_int", "rt_hash_string", "dea_string"),
+    ("dea_int", "rt_hash_data", "void *, dea_int"),
+    ("dea_int", "rt_hash_opt_bool", "dea_opt_bool"),
+    ("dea_int", "rt_hash_opt_byte", "dea_opt_byte"),
+    ("dea_int", "rt_hash_opt_int", "dea_opt_int"),
+    ("dea_int", "rt_hash_opt_string", "dea_opt_string"),
+    ("dea_int", "rt_hash_ptr", "void *"),
+    ("dea_int", "rt_hash_opt_ptr", "void *"),
 )
 
 PRIVATE_STDLIB_RUNTIME_SIGNATURES = (
@@ -96,13 +96,11 @@ PRIVATE_STDLIB_RUNTIME_SIGNATURES = (
 )
 
 
-def _typed_symbol_references(*, portable_only: bool) -> str:
+def _typed_symbol_references() -> str:
     """Return C definitions that type-check and retain every selected symbol."""
 
     lines = []
-    for return_type, name, parameters, portable in PUBLIC_RUNTIME_SIGNATURES:
-        if portable_only and not portable:
-            continue
+    for return_type, name, parameters in PUBLIC_RUNTIME_SIGNATURES:
         lines.append(
             f"{return_type} (*volatile dea_test_{name})({parameters}) = {name};"
         )
@@ -196,7 +194,7 @@ func main() -> int {
     )
     (temp_project / "symbols.c").write_text(
         "#include \"dea_rt.h\"\n\n"
-        + _typed_symbol_references(portable_only=False)
+        + _typed_symbol_references()
         + "\n\ndea_int exercise_symbols(void)\n"
         + "{\n    return dea_test_rt_strlen != NULL;\n}\n",
         encoding="utf-8",
@@ -296,22 +294,17 @@ def test_public_runtime_declarations_cover_l0_extern_functions(runtime_dir: Path
         re.findall(r"^[^#\n;{}]*\b(rt_[a-z0-9_]+)\s*\([^;{}]*\);$", header, re.MULTILINE)
     )
 
-    expected_names = {name for _, name, _, _ in PUBLIC_RUNTIME_SIGNATURES}
+    expected_names = {name for _, name, _ in PUBLIC_RUNTIME_SIGNATURES}
 
     assert declaration_names == extern_names == expected_names
 
 
-def test_private_stdlib_runtime_declarations_match_l0_and_l1_headers(
+def test_private_stdlib_runtime_declarations_match_l0_header(
     temp_project: Path,
     runtime_dir: Path,
 ) -> None:
     """Keep private stdlib helper signatures aligned without making them public API."""
 
-    l0_root = Path(__file__).resolve().parents[4]
-    include_dirs = {
-        "l0": runtime_dir,
-        "l1": l0_root.parent / "l1" / "compiler" / "shared" / "runtime" / "include",
-    }
     declarations = temp_project / "private_stdlib_symbols.c"
     declarations.write_text(
         '#include "dea_rt.h"\n\n'
@@ -319,90 +312,14 @@ def test_private_stdlib_runtime_declarations_match_l0_and_l1_headers(
         + "\n",
         encoding="utf-8",
     )
-    for label, include_dir in include_dirs.items():
-        compiled = _compile_c(
-            declarations,
-            temp_project / f"private_stdlib_symbols_{label}.o",
-            include_dir,
-            link=False,
-        )
-        assert compiled.returncode == 0, compiled.stderr
+    compiled = _compile_c(
+        declarations,
+        temp_project / "private_stdlib_symbols.o",
+        runtime_dir,
+        link=False,
+    )
+    assert compiled.returncode == 0, compiled.stderr
 
-    public_names = {name for _, name, _, _ in PUBLIC_RUNTIME_SIGNATURES}
+    public_names = {name for _, name, _ in PUBLIC_RUNTIME_SIGNATURES}
     assert "_rt_byte_span_offset" not in public_names
     assert "_rt_byte_spans_overlap" not in public_names
-
-
-def test_l1_compatible_subset_compiles_and_has_matching_layout(
-    temp_project: Path,
-    runtime_dir: Path,
-) -> None:
-    """Compile shared C unchanged and compare ABI layouts against L1's header."""
-
-    l0_root = Path(__file__).resolve().parents[4]
-    l1_runtime_dir = l0_root.parent / "l1" / "compiler" / "shared" / "runtime" / "include"
-    assert (l1_runtime_dir / "dea_rt.h").is_file()
-
-    declarations = temp_project / "portable_symbols.c"
-    declarations.write_text(
-        "#include \"dea_rt.h\"\n\n"
-        + _typed_symbol_references(portable_only=True)
-        + "\n",
-        encoding="utf-8",
-    )
-    for label, include_dir in (("l0", runtime_dir), ("l1", l1_runtime_dir)):
-        compiled = _compile_c(
-            declarations,
-            temp_project / f"portable_symbols_{label}.o",
-            include_dir,
-            link=False,
-        )
-        assert compiled.returncode == 0, compiled.stderr
-
-    layout_source = temp_project / "layout.c"
-    layout_source.write_text(
-        """\
-#include <stddef.h>
-#include <stdio.h>
-#include "dea_rt.h"
-
-int main(void)
-{
-    dea_string value = DEA_STRING_CONST("x", 1);
-    dea_opt_string empty = DEA_OPT_STRING_EMPTY;
-    printf(
-        "%zu %zu %zu %zu %zu %zu %zu %zu %zu %zu %zu "
-        "%zu %zu %zu %zu %zu %zu %u %d %u\\n",
-        sizeof(dea_bool), sizeof(dea_tiny), sizeof(dea_short), sizeof(dea_int),
-        sizeof(dea_long), sizeof(dea_byte), sizeof(dea_ushort), sizeof(dea_uint),
-        sizeof(dea_ulong), sizeof(dea_float), sizeof(dea_double),
-        sizeof(dea_string), offsetof(dea_string, data),
-        sizeof(dea_opt_bool), sizeof(dea_opt_byte),
-        sizeof(dea_opt_int), sizeof(dea_opt_string),
-        (unsigned int)value.kind, (int)value.data.s_str.len,
-        (unsigned int)empty.has_value
-    );
-    return 0;
-}
-""",
-        encoding="utf-8",
-    )
-    layouts: dict[str, str] = {}
-    for label, include_dir in (("l0", runtime_dir), ("l1", l1_runtime_dir)):
-        executable = temp_project / (f"layout_{label}.exe" if os.name == "nt" else f"layout_{label}")
-        compiled = _compile_c(layout_source, executable, include_dir, link=True)
-        assert compiled.returncode == 0, compiled.stderr
-        executed = subprocess.run(
-            [str(executable)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=10,
-            check=False,
-        )
-        assert executed.returncode == 0, executed.stderr
-        layouts[label] = executed.stdout
-
-    assert layouts["l0"] == layouts["l1"]

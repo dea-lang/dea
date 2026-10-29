@@ -441,7 +441,7 @@ def check_docs_helper_routing() -> None:
     with tempfile.TemporaryDirectory(prefix="docs-routing.") as work:
         root = Path(work)
         git = root / "git"
-        git.write_text('#!/bin/sh\nif [ "$1" = diff ]; then printf "%s\\n" "$MOCK_CHANGED_PATH"; fi\n')
+        git.write_text('#!/bin/sh\ncase "$1" in\nmerge-base) printf "%s\\n" base;;\ndiff) printf "%s\\n" "$MOCK_CHANGED_PATH";;\nesac\n')
         git.chmod(0o755)
         for helper in ("gen_docs", "docs_artifacts", "stage_docs_pages", "gen_dist_tools", "dist_tools_lib"):
             output = root / "output"

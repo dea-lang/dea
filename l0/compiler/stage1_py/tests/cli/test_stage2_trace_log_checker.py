@@ -18,11 +18,6 @@ def _checker_path() -> Path:
     return workspace_root / "compiler" / "stage2_l0" / "scripts" / "check_trace_log.py"
 
 
-def _l1_checker_path() -> Path:
-    monorepo_root = Path(__file__).resolve().parents[5]
-    return monorepo_root / "l1" / "compiler" / "scripts" / "check_trace_log.py"
-
-
 def _run_checker(tmp_path, log_text: str, extra_args: list[str] | None = None):
     log_path = tmp_path / "trace.stderr.log"
     log_path.write_text(dedent(log_text), encoding="utf-8")
@@ -183,50 +178,6 @@ def test_trace_checker_triage_output(tmp_path):
     assert "leaked_string_ptrs=1" in proc.stdout
     assert "bytes=16 count=1" in proc.stdout
     assert "bytes=64 count=1" in proc.stdout
-
-
-@pytest.mark.parametrize(
-    "log_text",
-    [
-        """
-        unrelated diagnostic
-        [l0][mem] payload-without-op ptr=0x1
-        [l0][mem] op=new_alloc bytes=16 ptr=0x1 action=ok loc="main.l0":4
-        [l0][mem] op=drop ptr=0x1 action=free loc="main.l0":5
-        """,
-        """
-        [l0][mem] op=drop ptr=0x2 action=free
-        [l0][arc] op=release kind=heap ptr=0x3 rc_before=x rc_after=y action=free
-        """,
-        """
-        [l0][mem] op=new_alloc bytes=8 ptr=0x4 action=ok
-        [l0][mem] op=drop ptr=0x4 action=free
-        [l0][mem] op=new_alloc bytes=32 ptr=0x4 action=ok
-        [l0][mem] op=drop ptr=0x4 action=free
-        [l0][mem] op=alloc_string len=2 ptr=0x5 loc="reuse.l0":7
-        [l0][mem] op=free_string ptr=0x5 action=free loc="reuse.l0":8
-        """,
-    ],
-)
-def test_l0_and_l1_trace_checkers_report_identical_results(tmp_path, log_text):
-    log_path = tmp_path / "shared-trace.stderr.log"
-    log_path.write_text(dedent(log_text), encoding="utf-8")
-    args = [str(log_path), "--triage", "--max-details", "3"]
-
-    l0_proc = subprocess.run(
-        [sys.executable, str(_checker_path()), *args],
-        capture_output=True,
-        text=True,
-    )
-    l1_proc = subprocess.run(
-        [sys.executable, str(_l1_checker_path()), *args],
-        capture_output=True,
-        text=True,
-    )
-
-    assert l0_proc.returncode == l1_proc.returncode
-    assert l0_proc.stdout == l1_proc.stdout
-    assert l0_proc.stderr == l1_proc.stderr
 
 
 def test_trace_checker_releases_balanced_pointer_state_while_streaming():

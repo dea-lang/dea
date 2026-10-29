@@ -451,7 +451,7 @@ test-env: venv
 	"$(VENV_PYTHON)" ./tests/test_env_stackability.py
 
 test-tooling: venv
-	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_compiler_tooling.py ../scripts/tests/test_cleanup.py ../scripts/tests/test_l1_release.py
+	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_compiler_tooling.py tests/test_predecessor_compatibility.py
 
 test-productization: venv
 	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_bootstrap_productization.py tests/test_productization_provenance.py tests/test_installation_guard.py tests/test_productization_payload.py tests/test_install_toolchain.py tests/test_distribution.py tests/test_productization_acceptance.py
@@ -544,4 +544,4 @@ docs-artifacts:
 	DEA_DIST_VERSION="$(DEA_DIST_VERSION)" "$(PYTHON)" scripts/gen_docs.py --strict --pdf --artifacts
 
 test-docgen: venv
-	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_docgen_*.py ../scripts/tests/test_docgen_function_inventory.py ../scripts/tests/test_c_docs.py ../scripts/tests/test_docgen_inputs.py ../scripts/tests/test_docgen_pdf.py
+	"$(VENV_PYTHON)" -m pytest -q -n 0 tests/test_docgen_*.py

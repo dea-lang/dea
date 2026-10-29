@@ -14,8 +14,8 @@ import tempfile
 from pathlib import Path, PurePosixPath
 
 
-L0_ROOT = Path(__file__).resolve().parent.parent
-REPO_ROOT = L0_ROOT.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
+L0_ROOT = REPO_ROOT / "l0"
 SCRIPT = REPO_ROOT / "scripts" / "shuffle_sources.py"
 
 
@@ -284,6 +284,11 @@ def main() -> int:
 
     print("test_shuffle_sources: PASS")
     return 0
+
+
+def test_registered_source_pools() -> None:
+    """Validate all registered levels through the repository-owned source picker."""
+    assert main() == 0
 
 
 if __name__ == "__main__":

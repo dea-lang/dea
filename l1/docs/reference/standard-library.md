@@ -1,6 +1,6 @@
 # The L1 Standard Library
 
-Version: 2026-10-28
+Version: 2026-10-29
 
 The standard library provides ergonomic L1 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -814,6 +814,11 @@ for checked access through `rt_register_foreign(ptr, bytes, read_only)` and unre
 ## FFI Inventory (`extern func` / `unsafe extern func`)
 
 All `extern func` and `unsafe extern func` symbols exposed to L1 from `sys.*` modules are listed here.
+
+The portable C runtime subset with L0 contains only explicitly identical signatures and common type representations. L1
+owns its compatibility checks against that predecessor baseline. In particular, `rt_time_local_offset_sec` and
+`rt_time_local_is_dst` accept `long` seconds in L1 and `int` seconds in L0, so those functions require level-specific C
+declarations. Runtime binaries and level-mangled records are not interchangeable.
 
 ### Declared in `sys.os` (8)
 

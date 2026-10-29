@@ -69,6 +69,9 @@ header-defined implementations. L2 does not yet have compiler-language or stdlib
 contract convention in [docs/reference/c-documentation.md](../docs/reference/c-documentation.md); reports remain
 informational and preserve unrelated function identities.
 
+Shared repository checks under `scripts/tests/` run through root aggregate targets and Unified CI's repository steps.
+Level aggregates contain their own checks; comparisons with a predecessor belong to the consuming level.
+
 `test` is the fast gate; `test-extended` covers the broad normal suite. `test-ci` includes applicable CI-only cases,
 trace sweeps, and child fixtures. Trace slow cases use explicit selectors or `test-compiler-trace-all`. Resolve test
 ownership by the subject, not the filename suffix: `.l1` implementation tests use the installed L1 builder, while `.l2`

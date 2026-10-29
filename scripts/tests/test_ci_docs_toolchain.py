@@ -226,10 +226,10 @@ def test_shared_action_passes_pdf_selection_and_is_in_ci_checks():
     report = action["runs"]["steps"][1]
     assert report["env"]["BUILD_PDF"] == "${{ inputs.build_pdf }}"
     assert report["run"] == 'python3 "$GITHUB_ACTION_PATH/install.py" --report-versions --build-pdf "$BUILD_PDF"'
-    makefile = (ROOT / "l0/Makefile").read_text()
-    target = makefile.split("test-ci-bootstrap: | venv\n", 1)[1].split("\n\n", 1)[0]
-    assert "../scripts/tests/test_ci_docs_toolchain.py" in target
-    assert "../scripts/tests/test_docgen_progress.py" in target
+    makefile = (ROOT / "Makefile").read_text()
+    for name in ("test", "test-extended"):
+        target = makefile.split(f"{name}: _check-level-dirs venv\n", 1)[1].split("\n\n", 1)[0]
+        assert "-m pytest -q -n 0 scripts/tests" in target
 
 
 @pytest.mark.parametrize("build_pdf", [False, True])

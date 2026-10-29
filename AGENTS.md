@@ -44,13 +44,28 @@ The monorepo root `Makefile` is intentionally minimal. Use it only for monorepo 
 - `make clean-all`
 
 Do not treat the root `Makefile` as a dispatcher for focused level-local build, test, or docs targets. Root `make test`
-runs each registered level's normal validation, and root `make test-extended` runs each level's extended gate. Their
-contents vary by level: L0 `test-extended` includes its Stage 2 trace sweep, while L1/L2 `test-extended` cover their
-canonical compiler normal suites without CI-only cases. Use level-local `test-ci` for exhaustive compiler validation,
-including applicable environment, trace, and child fixtures. L1 artifact acceptance remains a separate gate; L2
-additionally provides opt-in `test-isolation`. L2 requires explicit `L2_BOOTSTRAP_L1C`, including when root aggregate
-tests enter L2. Installed L1 is the default; `L2_BOOTSTRAP_MODE=development` permits explicit development-toolchain
-reuse as described in `l2/AGENTS.md`. For targeted level work, enter that level's directory first.
+runs repository checks and each registered level's normal validation; root `make test-extended` runs repository checks
+and each level's extended gate. Their contents vary by level: L0 `test-extended` includes its Stage 2 trace sweep, while
+L1/L2 `test-extended` cover their canonical compiler normal suites without CI-only cases. Use level-local `test-ci` for
+exhaustive compiler validation, including applicable environment, trace, and child fixtures. L1 artifact acceptance
+remains a separate gate; L2 additionally provides opt-in `test-isolation`. L2 requires explicit `L2_BOOTSTRAP_L1C`,
+including when root aggregate tests enter L2. Installed L1 is the default; `L2_BOOTSTRAP_MODE=development` permits
+explicit development-toolchain reuse as described in `l2/AGENTS.md`. For targeted level work, enter that level's
+directory first.
+
+## Validation Ownership
+
+- A level's suite validates that level without reading successor source or artifacts. L0 checks must not depend on L1 or
+  L2 files. A successor owns comparisons against an explicitly supported predecessor contract.
+- Runtime compatibility covers reviewed common signatures and representations, not automatic equality of all APIs or
+  private implementation details. Keep intentional level differences explicit and tested.
+- Shared repository tests live under `scripts/tests/` and run through root aggregate targets or Unified CI's repository
+  checks. Do not add shared cross-level tests to predecessor aggregates merely because their helpers were introduced
+  there.
+- CI selects the changed level and affected consumers of predecessor compiler, runtime, or build inputs. Successor-only
+  changes do not select predecessor compiler suites. L2 selection still requires its configured enablement.
+- Recover unavailable event comparison bases before routing rewritten pushes. Use the pull-request merge base for PR
+  changes. If comparison evidence cannot be recovered, report the reason and retain conservative validation.
 
 ## Shared Environment
 

@@ -9,17 +9,17 @@ The monorepo root owns a minimal maintenance `Makefile`:
 ```bash
 make help   # show root-only monorepo targets
 make venv   # create or sync the shared ./.venv (uv if available, pip fallback otherwise)
-make test  # run each registered level's normal test entrypoint
-make test-extended  # run each registered level's extended validation entrypoint
+make test  # run repository checks and each registered level's normal test entrypoint
+make test-extended  # run repository checks and each registered level's extended validation entrypoint
 make clean  # clean each registered level plus root caches/artifacts
 make clean-all  # run each level's full cleanup entrypoint plus root caches/artifacts
 ```
 
 The root `Makefile` is not a dispatcher for focused level-specific targets. Root `make test` and `make test-extended`
-delegate to each registered level. Extended coverage varies by level: L0 adds its dedicated Stage 2 trace sweep; L1 runs
-its canonical compiler normal suite. L2 has the corresponding single-compiler gates. Use `make -C l1 test-ci` for
-exhaustive L1 coverage. Build, targeted test, docs, and compiler workflows should be run inside the relevant level
-directory.
+run `.venv/bin/python -m pytest -q -n 0 scripts/tests` once, then delegate to each registered level. Extended coverage
+varies by level: L0 adds its dedicated Stage 2 trace sweep; L1 runs its canonical compiler normal suite. L2 has the
+corresponding single-compiler gates. Use `make -C l1 test-ci` for exhaustive L1 coverage. Build, targeted test, docs,
+and compiler workflows should be run inside the relevant level directory.
 
 The repository is a single `uv` workspace: the root `pyproject.toml` declares `l0/`, `l1/`, and `l2/` as members, owns
 the shared dev/docs dependency groups, and produces a single root `uv.lock`. Level Makefiles' `venv` targets delegate to
@@ -80,9 +80,29 @@ compiler-construction fixtures retain their independent builds.
 
 The single `L2_CI_DEFAULT_ENABLED` setting in `.github/workflows/ci.yml` is initially `"false"`. Unified's manual
 `run_l2_ci` choices are `default`, `on`, and `off`; `off` suppresses L2 even when the central default is enabled.
-Push/PR events use the central default. When enabled, L2 is selected for `l2/` or existing shared-tooling changes,
-including build helpers, dependency manifests, CI actions, and compiler workflow files. Missing diff endpoints use the
-same default. L0/L1 routing is unchanged; an L0/L1-only change does not automatically select L2.
+Push/PR events use the central default. Selection follows changed inputs and their consumers:
+
+| Changed inputs                                                           | Compiler validation                             |
+| ------------------------------------------------------------------------ | ----------------------------------------------- |
+| L0 compiler, runtime, or build inputs                                    | L0, L1, and L2 when enabled                     |
+| L1 compiler, runtime, or build inputs                                    | L1 and L2 when enabled                          |
+| Level-local tests, documentation, or CI delegate                         | Owning level only; L2 still requires enablement |
+| L2 inputs                                                                | L2 when enabled                                 |
+| Shared build helpers, dependency manifests, setup actions, or Unified CI | L0, L1, and L2 when enabled                     |
+
+Runtime-header and trace compatibility checks belong to L1 and are included in its normal tooling gate. L0's tests do
+not inspect successor inputs. Shared tests under `scripts/tests/`, including source selection and shared documentation
+and workflow checks, run in explicit repository-check steps on each selected native runner, outside the level delegates.
+They also run once through root `make test` and `make test-extended`; focused invocation uses
+`.venv/bin/python -m pytest -q -n 0 scripts/tests` from the repository root.
+
+Push routing recovers a missing event-provided base by exact object ID before comparing trees, including after a force
+push. Pull requests compare from their merge base so unrelated target-branch changes do not widen validation. If the
+comparison remains unavailable, CI reports that condition and selects all enabled workloads conservatively.
+Documentation routing follows its level's inputs and workflow or shared documentation tooling.
+
+The ownership and routing decision is recorded in
+[docs/decisions/0027-validation-ownership-and-dependency-routing.md](docs/decisions/0027-validation-ownership-and-dependency-routing.md).
 
 Standalone L2 CI constructs an installed L1 bootstrap by default. Linux Docker isolation is independent and disabled by
 default in every delegate invocation: request `run_isolation=true` in L2 CI or `l2_run_isolation=true` in Unified CI.
@@ -176,8 +196,8 @@ deletions in each level operation, including standard cleanup within `clean-all`
 permission and other deletion failures produce a nonzero exit. Generated child symlinks are unlinked without following
 them. Cleanup is not transactional after deletion begins.
 
-Run `make test-cleanup` in L0 or `make test-tooling` in L1/L2 for cleanup regressions. The tests use copied Makefiles
-and disposable directories; they do not clean the working checkout.
+Run `.venv/bin/python -m pytest -q -n 0 scripts/tests/test_cleanup.py` from the root for cleanup regressions. The tests
+use copied Makefiles and disposable directories; they do not clean the working checkout.
 
 ## Language Levels
 
@@ -276,7 +296,7 @@ Rerun all jobs after a failed release attempt. Original source/tag identity is r
 and logs are isolated by attempt; partial reruns fail rather than mix attempts. Matching drafts may replace their own
 older timestamped archives. Published releases remain immutable. The publisher validates four native archives, one
 matching docs bundle, its byte-identical standalone PDF, and `SHA256SUMS` before publication. Local policy validation is
-available through `.venv/bin/python -m pytest -q -n 0 scripts/tests/test_l1_release.py` and L1 `make test-tooling`.
+available through `.venv/bin/python -m pytest -q -n 0 scripts/tests/test_l1_release.py` and the repository-check gate.
 
 Delivery documentation distinguishes implementation, fresh acceptance, publication, and language maturity. L1 0.1.0
 contains the canonical L0-implemented `l1c`, matching toolchain inputs and canonical offline HTML/full PDF, `VERSION`,

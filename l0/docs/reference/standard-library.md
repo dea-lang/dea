@@ -1,6 +1,6 @@
 # The L0 Standard Library
 
-Version: 2026-09-02
+Version: 2026-10-29
 
 The standard library provides ergonomic L0 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -427,10 +427,12 @@ The exact source-compatible subset with L1 is:
   memory, and hash groups below.
 
 `rt_time_unix`, `rt_time_monotonic`, and `rt_file_info` are not portable C calls across levels because their record tags
-are level-mangled. L1's wider optional types and unsigned/long/floating-point print functions are not L0 APIs. The
-common subset promises source compatibility and common-type representation, not that L0 and L1 objects or runtime
-binaries can be mixed. L0-specific `l0_*` aliases remain supported; `_rt_*` helpers, tracker internals, build macros,
-and packaging are private or level-specific.
+are level-mangled. `rt_time_local_offset_sec` and `rt_time_local_is_dst` are also outside that subset: their seconds
+parameter is `int` in L0 and `long` in L1. L1's wider optional types and unsigned/long/floating-point print functions
+are not L0 APIs. L1 owns validation of the common subset against the L0 baseline; L0 validates its own signatures
+independently. The common subset promises source compatibility and common-type representation, not that L0 and L1
+objects or runtime binaries can be mixed. L0-specific `l0_*` aliases remain supported; `_rt_*` helpers, tracker
+internals, build macros, and packaging are private or level-specific.
 
 ### Declared in `sys.rt` (42)
 
