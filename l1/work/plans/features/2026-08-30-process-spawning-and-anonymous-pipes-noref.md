@@ -3,7 +3,7 @@
 ## Add process spawning and anonymous pipes
 
 - Date: 2026-08-30
-- Last reviewed: 2026-10-24
+- Last reviewed: 2026-10-29
 - Status: Draft
 - Title: Add shell-free process spawning, waiting, and anonymous pipe endpoints
 - Kind: Feature
@@ -15,7 +15,6 @@
   - `l1/compiler/shared/l1/stdlib/std/process.l1`
   - `l1/compiler/shared/l1/stdlib/std/pipe.l1`
   - `l1/compiler/shared/l1/stdlib/std/file.l1`
-  - `l1/compiler/shared/l1/stdlib/std/stream.l1`
   - `l1/compiler/shared/l1/stdlib/sys/process.l1`
   - `l1/compiler/shared/runtime/include/dea_rt.h`
   - `l1/compiler/shared/runtime/src/dea_rt_process.c`
@@ -30,7 +29,6 @@
   - `l1/work/initiatives/0006-process-and-host-services.md`
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
   - `l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md`
-  - `l1/work/plans/features/2026-08-30-streams-and-buffering-noref.md`
   - `l1/work/plans/features/closed/2026-08-30-time-width-sleep-and-deadlines-noref.md`
 - Repro: `make -C l1 test-compiler TESTS="process_runtime_test pipe_runtime_test analysis_trace_test"`
 
@@ -61,11 +59,10 @@ require compiler migration, bootstrap changes, or extraction of a common private
 `SpawnOptions` carries an argument vector, environment replacement or overrides, working directory, and standard-stream
 routing as inherit, null, file, or pipe.
 
-Assess a bounded `run_capture` convenience over the process/pipe APIs. Before including it, settle separate
-stdout/stderr limits, binary results, concurrent draining, input completion, timeout and partial-output results, and
-child/resource cleanup. Use the time/deadline plan's monotonic contract. If these guarantees exceed the initial tranche,
-record a bounded follow-up scope and defer the helper explicitly; capture is not a prerequisite for closing the core API
-plan.
+Concurrent in-memory capture and `run_capture` are deferred to later L2 work. Their separate limits, concurrent
+draining, timeout, partial-output, and cleanup contracts require a separate plan. L1 callers route output to explicitly
+selected files or pipes; the acceptance build driver captures to temporary files. Generic stream adapters are not
+required.
 
 ## Required Semantics
 
@@ -88,8 +85,7 @@ plan.
 2. Define process handles, argument/environment transport, standard-stream routing, and executable discovery.
 3. Add spawn and wait/try-wait on POSIX and Windows without a shell.
 4. Add termination, kill, and exit-status normalization.
-5. Decide the bounded-capture tranche; implement and test it only if its result and cleanup contracts are settled.
-6. Add stream adapters, failure injection, handle-leak checks, and hostile-argument fixtures.
+5. Add explicit file/pipe routing, failure injection, handle-leak checks, and hostile-argument fixtures.
 
 ## Non-Goals
 
@@ -116,12 +112,12 @@ plan.
   - ADR: `l1/docs/decisions/`
   - Rationale: Search order, Windows suffix selection, alias preservation, and host-discovered identity are durable
     process API behavior.
-- Decision: Include bounded process capture in the initial tranche or defer it with explicit follow-up scope.
+- Decision: Defer concurrent in-memory output capture and use explicit file/pipe routing in L1.
   - Scope: L1
-  - Disposition: Pending
-  - ADR: None
-  - Rationale: Concurrent draining, limits, timeout, partial output, and cleanup must be resolved before a convenience
-    helper can promise bounded execution; an explicit deferral also resolves this question.
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: Compiler drivers can capture output through temporary files without adding concurrent draining, timeout,
+    and buffering policy to the L1 stabilization boundary.
 
 ## Verification Criteria
 
@@ -134,9 +130,8 @@ plan.
 7. Executable lookup covers root order, empty/relative components, aliases, spaces, Unicode, and native Windows suffix
    behavior. A later cwd change does not reinterpret a returned path; current-executable lookup works independently of
    the original command spelling.
-8. If capture is selected, exercise simultaneous stdout/stderr beyond pipe capacity, binary bytes, independent limits,
-   partial output, timeout, and cleanup without deadlock. Otherwise record its deferral and resolve its ADR Impact
-   entry.
+8. The acceptance build driver captures stdout and stderr to temporary files and inspects exact binary output after
+   waiting. No generic stream or concurrent capture helper is required.
 
 [compiler-support]: ../../../compiler/support/compiler_support.c
 [platform-support]: ../../../compiler/support/preparation/platform.h

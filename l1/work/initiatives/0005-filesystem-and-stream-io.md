@@ -1,13 +1,11 @@
 # L1 Initiative 0005 - Filesystem and Stream I/O
 
-- Version: 2026-10-24
+- Version: 2026-10-29
 - Status: Active
 - Kind: Initiative
 - Open plans:
   - `l1/work/plans/features/2026-08-30-dynamic-byte-buffers-noref.md`
   - `l1/work/plans/features/2026-08-30-file-handles-and-random-access-noref.md`
-  - `l1/work/plans/features/2026-08-30-streams-and-buffering-noref.md`
-  - `l1/work/plans/features/2026-08-30-file-watch-api-design-noref.md`
 - Closed plans:
   - `l1/work/plans/features/closed/2026-08-30-filesystem-mutations-and-directory-traversal-noref.md`
   - `l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md`
@@ -17,9 +15,8 @@
 
 This initiative establishes the portable I/O foundation needed by compiler tooling and ordinary L1 programs. It adds a
 shared OS error model, corrects inherited 32-bit filesystem metadata, introduces mutable dynamic byte buffers, adds
-stateful file handles and path operations, provides streaming directory traversal, and builds explicit stream adapters
-over the concrete endpoint contracts. A later Stdlib Tier 4 design tranche defines whether file watching can have a
-useful portable surface.
+stateful file handles and path operations, and provides streaming directory traversal. Generic streams and file-watch
+design are now L2-owned and do not gate this initiative.
 
 The target is portable systems capability with typed Dea APIs and platform-specific behavior contained behind the
 runtime boundary. It is not a literal mirror of C99 or of any one host API. This initiative executes under the
@@ -66,7 +63,8 @@ shared-private-code extraction are not completion requirements for this initiati
 10. Directory traversal is incremental. Sorting and full materialization are explicit helpers.
 11. Path-taking runtime operations reject embedded NUL, use wide Win32 APIs after UTF-8 conversion on Windows, preserve
     filesystem bytes on POSIX, and document symbolic-link following per operation.
-12. Stream adapters have explicit endpoint ownership; freely escaping borrowed views are not part of the v1 surface.
+12. Dynamic buffers expose checked operations, borrowed inputs, copying conversions, and explicit cleanup. Returning
+    buffer views is outside L1.
 
 ## Phases and stdlib tiers
 
@@ -81,8 +79,8 @@ Spawned plans: [OS errors and I/O results] and [wide filesystem metadata].
 
 ### Phase 1 - Dynamic binary buffers (Stdlib Tier 1)
 
-- Add a public growable byte buffer with reserve, resize, indexed access, append, slicing, and explicit string
-  conversion.
+- Add a public growable byte buffer with reserve, resize, indexed access, copying append from borrowed slices, and
+  explicit string conversion.
 
 Spawned plan: [dynamic byte buffers].
 
@@ -110,25 +108,11 @@ adoption is separate.
 
 Closed plan: [filesystem mutations and directory traversal].
 
-### Phase 4 - Streams and buffering (Stdlib Tier 2)
-
-- Add reader, writer, seeker, and buffered adapters only after the concrete file contracts are stable.
-
-Spawned plan: [streams and buffering].
-
-### Phase 5 - File-watch contract discovery (Stdlib Tier 4)
-
-- Select a portable event, overflow, rename, lifetime, and path contract before any implementation plan is opened.
-
-Spawned plan: [file-watch API design].
-
 ## Dependencies
 
-- Initiative 0006 consumes the error, file, stream, and handle-inheritance contracts for processes, pipes, and temporary
+- Initiative 0006 consumes the error, buffer, file, and handle-inheritance contracts for processes, pipes, and temporary
   objects.
-- Initiative 0007 consumes the error, byte-buffer, stream, and timeout contracts for networking.
-- Initiative 0008 consumes byte buffers and streams for incremental format processing.
-- File watching does not block Phases 0 through 4.
+- The L1 borrowed-slice correction precedes new buffer delivery.
 
 ## Non-goals
 
@@ -168,26 +152,12 @@ Spawned plan: [file-watch API design].
   - ADR: None
   - Rationale: The initiative fixes the required distinctions, while the file-handle plan must settle exact lifetime and
     durability behavior against the supported host implementations.
-- Decision: Finalize stream-adapter ownership and endpoint-lifetime semantics.
-  - Scope: L1
-  - Disposition: Pending
-  - ADR: None
-  - Rationale: Function-pointer dispatch is available, but L1 has no general lifetime system that would make an escaping
-    borrowed endpoint safe.
-- Decision: Define a portable file-watch event and overflow model.
-  - Scope: L1
-  - Disposition: Pending
-  - ADR: None
-  - Rationale: Host watcher APIs disagree on event coalescing, rename pairing, recursive watches, overflow, and path
-    identity; the Stdlib Tier 4 design plan must determine whether a useful common contract exists.
 
 ## References
 
 [dynamic byte buffers]: ../plans/features/2026-08-30-dynamic-byte-buffers-noref.md
 [file handles and random access]: ../plans/features/2026-08-30-file-handles-and-random-access-noref.md
-[file-watch api design]: ../plans/features/2026-08-30-file-watch-api-design-noref.md
 [filesystem mutations and directory traversal]: ../plans/features/closed/2026-08-30-filesystem-mutations-and-directory-traversal-noref.md
 [l1 roadmap]: ../../docs/roadmap.md
 [os errors and i/o results]: ../plans/features/closed/2026-08-30-os-error-and-io-results-noref.md
-[streams and buffering]: ../plans/features/2026-08-30-streams-and-buffering-noref.md
 [wide filesystem metadata]: ../plans/features/closed/2026-08-30-wide-filesystem-metadata-noref.md

@@ -3,7 +3,7 @@
 ## Audit standard-library capability coverage
 
 - Date: 2026-08-30
-- Last reviewed: 2026-10-28
+- Last reviewed: 2026-10-29
 - Status: Draft
 - Title: Document portable systems capability and C99 coverage for the L1 standard library
 - Kind: Feature
@@ -19,8 +19,8 @@
 - Related:
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
   - `l1/work/initiatives/0006-process-and-host-services.md`
-  - `l1/work/initiatives/0007-blocking-networking.md`
-  - `l1/work/initiatives/0008-data-format-modules.md`
+  - `l2/work/initiatives/0001-blocking-networking.md`
+  - `l2/work/initiatives/0002-data-format-modules.md`
 - Repro: `rg -n "^## |^### " l1/docs/reference/standard-library.md l1/compiler/shared/l1/stdlib`
 
 ## Summary
@@ -35,8 +35,9 @@ Defer the comprehensive audit until the main L1 stdlib additions have landed and
 describes the delivered APIs. Complete the audit and reconcile its findings before declaring L1 stable. Its current
 readiness is `not-ready` because preceding stdlib delivery is now an explicit prerequisite.
 
-Use [l1/docs/roadmap.md][roadmap] to identify the main additions at stabilization. Speculative file-watch/concurrency
-investigations and deferred L2 work are outside this scheduling gate.
+Use [l1/docs/roadmap.md][roadmap] to identify the main additions at stabilization. Streams, networking, JSON, file
+watching, concurrency, owned slices, and broader C interoperability are deferred to L2 and outside this scheduling gate.
+The finite target is recorded in `l1/work/initiatives/0011-l1-stabilization.md`.
 
 After establishing the coverage baseline, update affected rows, evidence links, and platform limitations in the same
 change as subsequent stdlib additions or behavior changes. Refresh the relevant entries incrementally; repeat a broader
@@ -48,7 +49,8 @@ Classify each capability as:
 
 - implemented
 - partially implemented
-- planned
+- required for L1 stabilization, with implementation status
+- deferred to L2, outside L1 completion
 - intentionally replaced by a Dea design
 - FFI or package territory
 - intentionally unsupported
@@ -63,7 +65,7 @@ Record public stdlib availability separately from compiler-private capability. I
 [l1/compiler/support/preparation/platform.h][platform-support], with related preparation helpers, as reference material
 for implementation and regression cases. A private helper does not make a capability implemented in `std.*` or `sys.*`.
 Link candidate public additions to their existing plans: filesystem identity and resolution, opened-file metadata,
-executable discovery, bounded-capture assessment, and owned private temporary directories.
+executable discovery, explicit file/pipe output routing, and owned private temporary directories.
 
 The direction is complete L1 stdlib contracts first, then separately scoped L2 adoption and removal of superseded
 compiler-private helpers. This audit neither creates that migration plan nor makes migration or shared-private-code
@@ -76,7 +78,8 @@ scope in the current stdlib plans.
    termination are assessed against current L1 behavior.
 2. Standard I/O gaps link to Initiative 0005 rather than promise a `stdio.h` clone.
 3. Ambient `errno` is classified as replaced by direct structured errors.
-4. C variadic formatting is classified as replaced by typed formatting.
+4. C variadic formatting is replaced by the selected typed-string design, but typed formatting remains planned until its
+   public implementation and tests land. Generic writer integration is deferred to L2.
 5. Locale/wide-character mirrors, safe signal handlers, and `setjmp`/`longjmp` remain unsupported unless a concrete
    future workload justifies them.
 6. Complex arithmetic and floating-environment control remain low-priority gaps rather than implied requirements.

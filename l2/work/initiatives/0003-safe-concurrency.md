@@ -1,16 +1,19 @@
-# L1 Initiative 0009 - Safe Concurrency
+# L2 Initiative 0003 - Safe Concurrency
 
-- Version: 2026-08-30
+- Version: 2026-10-29
 - Status: Active
 - Kind: Initiative
 - Open plans:
-  - `l1/work/plans/features/2026-08-30-concurrency-memory-model-and-runtime-readiness-noref.md`
+  - `l2/work/plans/features/2026-08-30-concurrency-memory-model-and-runtime-readiness-noref.md`
 - Closed plans: (none)
 
 ## Summary
 
+This work is deferred until stable-L1 catch-up and explicit activation of sustained L2 development. It does not gate L1
+stabilization.
+
 This Stdlib Tier 4 initiative promotes the roadmap's concurrency direction into explicit design work without pretending
-that a thin wrapper over `pthread_create` or `CreateThread` would be a safe L1 concurrency model. Dea's UB-free goal
+that a thin wrapper over `pthread_create` or `CreateThread` would be a safe L2 concurrency model. Dea's UB-free goal
 requires a data-race policy, rules for values crossing worker boundaries, and a thread-safe runtime before safe threads,
 atomics, synchronization, or channels can ship.
 
@@ -33,7 +36,8 @@ semantics the language and runtime can enforce.
 Produce the concurrency memory-model decision, runtime thread-safety audit, implementation prerequisites, and ordered
 follow-up plan set.
 
-Spawned plan: [concurrency memory model and runtime readiness].
+Spawned plan:
+[l2/work/plans/features/2026-08-30-concurrency-memory-model-and-runtime-readiness-noref.md][concurrency memory model and runtime readiness].
 
 ### Later phases - Not yet opened
 
@@ -52,9 +56,9 @@ Spawned plan: [concurrency memory model and runtime readiness].
 
 ## ADR Impact
 
-- Decision: Define the L1 concurrency memory model, cross-thread value rules, and the boundary between safe workers,
+- Decision: Define the L2 concurrency memory model, cross-thread value rules, and the boundary between safe workers,
   channels, atomics, and shared synchronization.
-  - Scope: L1
+  - Scope: L2
   - Disposition: Pending
   - ADR: None
   - Rationale: Safe concurrency cannot be exposed until the language response to data races and the runtime ownership

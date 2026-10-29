@@ -3,32 +3,35 @@
 ## Add a JSON data-format module
 
 - Date: 2026-08-30
-- Last reviewed: 2026-10-24
+- Last reviewed: 2026-10-29
 - Status: Draft
 - Title: Add streaming-capable JSON parsing and serialization
 - Kind: Feature
 - Priority: Medium
 - Stdlib Tier: 3
-- Parent Initiative: `l1/work/initiatives/0008-data-format-modules.md`
+- Parent Initiative: `l2/work/initiatives/0002-data-format-modules.md`
 - Subsystem: Stdlib / data formats / streams
 - Modules:
-  - `l1/compiler/shared/l1/stdlib/std/json.l1`
-  - `l1/compiler/shared/l1/stdlib/std/bytes.l1`
-  - `l1/compiler/shared/l1/stdlib/std/stream.l1`
-  - `l1/compiler/shared/l1/stdlib/std/string.l1`
-  - `l1/compiler/shared/l1/stdlib/std/vector.l1`
-  - `l1/compiler/shared/l1/stdlib/std/linear_map.l1`
-  - `l1/docs/reference/standard-library.md`
+  - `l2/compiler/shared/l2/stdlib/std/json.l2`
+  - `l2/compiler/shared/l2/stdlib/std/bytes.l2`
+  - `l2/compiler/shared/l2/stdlib/std/stream.l2`
+  - `l2/compiler/shared/l2/stdlib/std/string.l2`
+  - `l2/compiler/shared/l2/stdlib/std/vector.l2`
+  - `l2/compiler/shared/l2/stdlib/std/linear_map.l2`
+  - `l2/docs/reference/standard-library.md`
 - Test modules:
-  - `l1/compiler/tests/json_test.l0`
-  - `l1/compiler/tests/analysis_trace_test.l0`
+  - `l2/compiler/tests/json_test.l1`
+  - `l2/compiler/tests/analysis_trace_test.l1`
 - Related:
-  - `l1/work/initiatives/0008-data-format-modules.md`
+  - `l2/work/initiatives/0002-data-format-modules.md`
   - `l1/work/plans/features/2026-08-30-dynamic-byte-buffers-noref.md`
-  - `l1/work/plans/features/2026-08-30-streams-and-buffering-noref.md`
-- Repro: `make -C l1 test-compiler TESTS="json_test analysis_trace_test"`
+  - `l2/work/plans/features/2026-08-30-streams-and-buffering-noref.md`
+- Repro: `make -C l2 test-compiler TESTS="json_test analysis_trace_test"`
 
 ## Summary
+
+This work is deferred until stable-L1 catch-up and explicit activation of sustained L2 development. It does not gate L1
+stabilization.
 
 Add `std.json` with a streaming tokenizer/parser as the foundation, convenient whole-string parsing, and matching
 serialization to strings or writers. The implementation must not require every document to fit in one whole-file string
@@ -36,14 +39,15 @@ before parsing begins.
 
 ## Stdlib-First Direction and Reference Material
 
-Use [l1/compiler/support/preparation/json.h][json-support] as reference material for escaping, number preservation,
+Use [l2/compiler/support/preparation/json.h][json-support] as reference material for escaping, number preservation,
 duplicate-key handling, limits, and regression inputs. Inventory useful cases before implementation while choosing the
 public data model independently. The private parser reads a complete buffer, rejects escaped NUL, and has
 compiler-specific allocation/error behavior; it is not the streaming stdlib contract. Test valid embedded-NUL strings
 with explicit lengths, Unicode validation, and chunk boundaries under the public contract.
 
-L2 adoption of L1 stdlib and replacement/removal of its private JSON implementation belong to separate follow-up work.
-Neither compiler migration nor extraction of shared private C code is required to complete this plan.
+Migration of L2 compiler code to the public JSON module and removal of its private JSON implementation belong to
+separate follow-up work. Neither compiler migration nor extraction of shared private C code is required to complete this
+plan.
 
 ## Proposed Surface
 
@@ -75,14 +79,14 @@ Neither compiler migration nor extraction of shared private C code is required t
 - silently accepting invalid UTF-8 or unpaired surrogate escapes
 - requiring one whole-file read before tokenization
 - network transport or filesystem policy inside `std.json`
-- a generic serialization framework for arbitrary L1 structs in v1
+- a generic serialization framework for arbitrary L2 structs in v1
 - L2 compiler migration, bootstrap changes, or removal of compiler-private support
 
 ## ADR Impact
 
 - Decision: Define JSON value representation, number semantics, duplicate-key policy, Unicode behavior, parser limits,
   and deterministic serialization over the common stream contract.
-  - Scope: L1
+  - Scope: L2
   - Disposition: Pending
   - ADR: None
   - Rationale: Streaming is settled direction, but interoperable parsing cannot ship until the durable data-model and
@@ -97,4 +101,4 @@ Neither compiler migration nor extraction of shared private C code is required t
 5. Parse/serialize round trips follow the selected number and object-order policies.
 6. Trace tests cover success and every partially constructed aggregate failure path.
 
-[json-support]: ../../../compiler/support/preparation/json.h
+[json-support]: ../../../../l2/compiler/support/preparation/json.h

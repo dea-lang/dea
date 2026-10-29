@@ -27,3 +27,4 @@
 | [0023](0023-l1-release-workflow-policy.md)                                        | L1 Release Workflow Policy                                          | Accepted               |
 | [0024](0024-c-contracts-and-isolated-reference-extraction.md)                     | C Contracts and Isolated Reference Extraction                       | Accepted               |
 | [0025](0025-windows-python-environment-ownership.md)                              | Windows Python Environment Ownership                                | Accepted               |
+| [0026](0026-l1-stabilization-boundary.md)                                         | Finite L1 Stabilization Boundary                                    | Accepted               |

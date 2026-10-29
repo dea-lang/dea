@@ -32,7 +32,7 @@
   - `l1/compiler/tests/runtime_symbol_manifest_test.py`
 - Related:
   - `l1/work/initiatives/0006-process-and-host-services.md`
-  - `l1/work/initiatives/0007-blocking-networking.md`
+  - `l2/work/initiatives/0001-blocking-networking.md`
   - `l1/work/plans/features/closed/2026-08-30-wide-filesystem-metadata-noref.md`
   - [l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md][os-errors]
 - Repro: `make -C l1 test-compiler TESTS="time_runtime_test time_test io_runtime_test runtime_symbol_manifest_test"`

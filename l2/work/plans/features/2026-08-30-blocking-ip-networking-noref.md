@@ -8,29 +8,32 @@
 - Kind: Feature
 - Priority: Medium
 - Stdlib Tier: 3
-- Parent Initiative: `l1/work/initiatives/0007-blocking-networking.md`
+- Parent Initiative: `l2/work/initiatives/0001-blocking-networking.md`
 - Subsystem: Stdlib / runtime / networking
 - Modules:
-  - `l1/compiler/shared/l1/stdlib/std/net.l1`
-  - `l1/compiler/shared/l1/stdlib/std/os.l1`
-  - `l1/compiler/shared/l1/stdlib/std/stream.l1`
-  - `l1/compiler/shared/l1/stdlib/sys/net.l1`
-  - `l1/compiler/shared/runtime/include/dea_rt.h`
-  - `l1/compiler/shared/runtime/src/dea_rt_net.c`
-  - `l1/compiler/shared/runtime/dea_rt.symbols`
-  - `l1/compiler/shared/runtime/dea_rt_traced.symbols`
-  - `l1/docs/reference/standard-library.md`
-  - `l1/docs/reference/design-decisions.md`
+  - `l2/compiler/shared/l2/stdlib/std/net.l2`
+  - `l2/compiler/shared/l2/stdlib/std/os.l2`
+  - `l2/compiler/shared/l2/stdlib/std/stream.l2`
+  - `l2/compiler/shared/l2/stdlib/sys/net.l2`
+  - `l2/compiler/shared/runtime/include/dea_rt.h`
+  - `l2/compiler/shared/runtime/src/dea_rt_net.c`
+  - `l2/compiler/shared/runtime/dea_rt.symbols`
+  - `l2/compiler/shared/runtime/dea_rt_traced.symbols`
+  - `l2/docs/reference/standard-library.md`
+  - `l2/docs/reference/design-decisions.md`
 - Test modules:
-  - `l1/compiler/tests/net_runtime_test.l0`
-  - `l1/compiler/tests/analysis_trace_test.l0`
+  - `l2/compiler/tests/net_runtime_test.l1`
+  - `l2/compiler/tests/analysis_trace_test.l1`
 - Related:
-  - `l1/work/initiatives/0007-blocking-networking.md`
+  - `l2/work/initiatives/0001-blocking-networking.md`
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
   - `l1/work/plans/features/closed/2026-08-30-time-width-sleep-and-deadlines-noref.md`
-- Repro: `make -C l1 test-compiler TESTS="net_runtime_test analysis_trace_test"`
+- Repro: `make -C l2 test-compiler TESTS="net_runtime_test analysis_trace_test"`
 
 ## Summary
+
+This work is deferred until stable-L1 catch-up and explicit activation of sustained L2 development. It does not gate L1
+stabilization.
 
 Add the first portable networking surface as blocking APIs over typed IPv4/IPv6 addresses, TCP streams/listeners, UDP
 sockets, and DNS resolution. This plan deliberately avoids selecting an asynchronous or event-loop model.
@@ -77,9 +80,9 @@ sockets, and DNS resolution. This plan deliberately avoids selecting an asynchro
 
 - Decision: Define blocking typed IPv4/IPv6 TCP, UDP, and DNS APIs with explicit timeout, graceful-close, partial-
   transfer, shutdown, and handle-inheritance behavior.
-  - Scope: L1
+  - Scope: L2
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l2/docs/decisions/`
   - Rationale: The initial networking contract must be useful and portable without making a premature promise about
     incompatible host asynchronous models.
 

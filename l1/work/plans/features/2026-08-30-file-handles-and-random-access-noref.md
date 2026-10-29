@@ -3,7 +3,7 @@
 ## Add file handles and complete file I/O
 
 - Date: 2026-08-30
-- Last reviewed: 2026-10-24
+- Last reviewed: 2026-10-29
 - Status: Draft
 - Title: Add opaque file handles, incremental transfers, random access, and synchronization
 - Kind: Feature
@@ -55,7 +55,8 @@ this plan; L2 can adopt L1 stdlib through separate follow-up work once the APIs 
 - Handle metadata: `metadata`, querying the opened object and retaining `long` sizes and timestamp seconds.
 - Completion: `flush`, `sync_data`, `sync_all`.
 
-Buffer starts, lengths, and per-call counts are `int`; file sizes, positions, and positional offsets are `long`.
+Transfers take an opaque `ByteBuffer*` plus a checked start/count range; they never require a returned slice. Buffer
+starts, lengths, and per-call counts are `int`; file sizes, positions, and positional offsets are `long`.
 
 ## Required Semantics
 

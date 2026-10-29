@@ -1,6 +1,6 @@
 # L1 Initiative 0006 - Process and Host Services
 
-- Version: 2026-10-28
+- Version: 2026-10-29
 - Status: Active
 - Kind: Initiative
 - Open plans:
@@ -12,10 +12,10 @@
 
 ## Summary
 
-This initiative adds the host services needed by compiler drivers, build tools, and networked programs: secure OS
-entropy, race-free temporary objects, shell-free process spawning with anonymous pipes, and time primitives for sleep,
-deadlines, and timeouts. Public `std.*` modules remain typed and portable; `sys.*` modules and the C runtime contain
-POSIX and Win32 differences.
+This initiative adds the host services needed by compiler drivers and build tools: secure OS entropy, race-free
+temporary objects, shell-free process spawning with anonymous pipes, and time primitives for sleep, deadlines, and
+timeouts. Public `std.*` modules remain typed and portable; `sys.*` modules and the C runtime contain POSIX and Win32
+differences.
 
 This initiative executes under the [L1 roadmap] and consumes the shared error and endpoint contracts from
 [Initiative 0005].
@@ -69,8 +69,8 @@ Spawned plan: [secure temporary objects].
 ### Phase 2 - Process spawning and pipes (Stdlib Tier 2)
 
 Add anonymous pipe endpoints, child spawning, wait and try-wait, exit status, termination, and explicit standard-stream
-routing. Add executable lookup and current-executable discovery. Assess bounded output capture only with explicit
-limits, monotonic timeout, partial-output, and cleanup contracts, or record a bounded follow-up scope.
+routing. Add executable lookup and current-executable discovery. Concurrent in-memory capture is deferred to L2;
+acceptance captures output to temporary files.
 
 Spawned plan: [process spawning and anonymous pipes].
 
@@ -85,9 +85,8 @@ Spawned plan: [time width, sleep, and deadlines].
 
 ## Dependencies
 
-- OS errors, file handles, and stream adapters come from [Initiative 0005].
+- OS errors, byte buffers, and file handles come from [Initiative 0005].
 - Temporary-object work depends on the filesystem mutation and secure-entropy plans.
-- Blocking networking in Initiative 0007 depends on the timeout and deadline contract.
 
 ## Non-goals
 

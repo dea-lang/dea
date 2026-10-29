@@ -3,25 +3,28 @@
 ## Design a portable file-watch API
 
 - Date: 2026-08-30
+- Last reviewed: 2026-10-29
 - Status: Draft
 - Title: Define a portable file-watch event and lifetime contract
 - Kind: Feature
 - Priority: Low
 - Stdlib Tier: 4
-- Parent Initiative: `l1/work/initiatives/0005-filesystem-and-stream-io.md`
 - Subsystem: Stdlib / runtime / filesystem watching
 - Modules:
-  - `l1/docs/specs/stdlib/file-watching.md`
-  - `l1/compiler/shared/l1/stdlib/std/watch.l1`
-  - `l1/compiler/shared/l1/stdlib/sys/watch.l1`
+  - `l2/docs/specs/stdlib/file-watching.md`
+  - `l2/compiler/shared/l2/stdlib/std/watch.l2`
+  - `l2/compiler/shared/l2/stdlib/sys/watch.l2`
 - Test modules:
-  - `l1/compiler/tests/file_watch_runtime_test.l0`
+  - `l2/compiler/tests/file_watch_runtime_test.l1`
 - Related:
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
-  - `l1/docs/roadmap.md`
-- Repro: `rg -n "File-watch|File watch|watch" l1/docs l1/work`
+  - `l2/docs/roadmap.md`
+- Repro: `rg -n "File-watch|File watch|watch" l2/docs l2/work`
 
 ## Summary
+
+This work is deferred until stable-L1 catch-up and explicit activation of sustained L2 development. It does not gate L1
+stabilization.
 
 Resolve the Stdlib Tier 4 file-watch item already present in the roadmap before opening implementation work. The plan
 compares supported host facilities and either defines a useful common event model or records why the capability should
@@ -41,7 +44,7 @@ remain platform-specific or deferred.
 
 1. Inventory inotify, kqueue/FSEvents, ReadDirectoryChangesW, and any supported fallback constraints.
 2. Derive the smallest semantics that can be tested consistently on all supported hosts.
-3. Write the candidate contract in `l1/docs/specs/stdlib/file-watching.md`.
+3. Write the candidate contract in `l2/docs/specs/stdlib/file-watching.md`.
 4. Prototype only enough runtime behavior to falsify the candidate semantics.
 5. End with a decision to open bounded implementation plans, retain deferral, or expose only lower-level platform-
    specific bindings.
@@ -58,7 +61,7 @@ remain platform-specific or deferred.
 
 - Decision: Define a portable file-watch event, overflow, rename, path, and lifetime model or reject a common safe
   surface.
-  - Scope: L1
+  - Scope: L2
   - Disposition: Pending
   - ADR: None
   - Rationale: Supported host APIs expose materially different event and overflow semantics, and the roadmap item lacks
@@ -66,7 +69,7 @@ remain platform-specific or deferred.
 
 ## Verification Criteria
 
-1. The design matrix covers every supported L1 host family.
+1. The design matrix covers every supported L2 host family.
 2. The contract states which event distinctions are guaranteed and which are hints.
 3. Overflow always produces an explicit rescan requirement.
 4. Rename behavior remains correct when pairing is unavailable.

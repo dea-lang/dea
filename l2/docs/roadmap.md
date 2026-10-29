@@ -1,6 +1,6 @@
 # Dea/L2 Roadmap
 
-Version: 2026-10-27
+Version: 2026-10-29
 
 L2 establishes an independent canonical compiler implemented in L1, with owned `.l2` stdlib/runtime inputs and `.l2m`
 interfaces. The initial milestone passed native compiler CI on all four platforms and two-phase Linux isolation with
@@ -29,12 +29,29 @@ These plans remain Draft and are scheduled after that activation gate. Readiness
 | not-ready   | [2026-06-21-cheap-string-slices-noref][string-slices]        | Complete catch-up, recheck the target-runtime inventory, and activate the optional optimization.  |
 | speculative | [2026-08-30-iff-scope-and-format-selection-noref][iff-scope] | Complete catch-up and identify an exact format, concrete L2 consumer, and justified module scope. |
 
+## Deferred initiatives and reassigned plans
+
+- [l2/work/initiatives/0001-blocking-networking.md](../work/initiatives/0001-blocking-networking.md) owns blocking TCP,
+  UDP, and DNS after concrete endpoints and streams.
+- [l2/work/initiatives/0002-data-format-modules.md](../work/initiatives/0002-data-format-modules.md) owns JSON after
+  byte buffers, streams, and data-model decisions.
+- [l2/work/initiatives/0003-safe-concurrency.md](../work/initiatives/0003-safe-concurrency.md) owns concurrency
+  memory-model and runtime-readiness design.
+- [l2/work/plans/features/2026-08-30-streams-and-buffering-noref.md](../work/plans/features/2026-08-30-streams-and-buffering-noref.md)
+  is a standalone plan for generic adapters and later integration with the adopted L1 typed formatter.
+- [l2/work/plans/features/2026-08-30-file-watch-api-design-noref.md](../work/plans/features/2026-08-30-file-watch-api-design-noref.md)
+  is a standalone portable-event investigation.
+
+These active lifecycle documents are deferred work, not permission to start sustained L2 development. Completed L1
+history stays in L1. The catch-up plan adopts delivered predecessor behavior; unimplemented drafts are adopted only by
+explicit reassignment.
+
 ## Future placement
 
-Other feature plans remain L1-owned until individually reassigned. Stable-L1 catch-up covers accepted predecessor
-behavior, including delivered profiles/composable builds and stdlib work; it does not automatically adopt unimplemented
-drafts. String slices and IFF are now L2-only plans and do not gate L1 stability. Self-hosting and release
-productization remain separate future work.
+Owned slices and escaping buffer views, closures, generics, broader first-class C interoperability, and concurrent
+in-memory process capture belong to future L2 design. Owned-slice syntax, mutation policy, and runtime ownership are
+unresolved. Typed string formatting remains required L1 work; direct formatting through generic writers belongs here.
+Self-hosting and release productization remain separate future work.
 
 [catch-up]: ../work/plans/features/2026-10-27-stable-l1-catch-up-noref.md
 [iff-scope]: ../work/plans/features/2026-08-30-iff-scope-and-format-selection-noref.md
