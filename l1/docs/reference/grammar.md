@@ -1,6 +1,6 @@
 # Dea/L<sub>1</sub> Grammar
 
-Version: 2026-10-13
+Version: 2026-10-29
 
 The following is the formal grammar for level 1 of the Dea programming language (Dea/L<sub>1</sub>) in EBNF style. This
 describes the concrete syntax that lexers and parsers should accept.
@@ -293,8 +293,10 @@ checker, not in the grammar.
 
 The empty-bracket suffix `[]` is a slice type `T[]`: a non-owning view over contiguous `T` storage. The initial slice
 surface supports `T[]`, `T*[]`, and `T?[]`. Nullable-after-slice (`T[]?`) and pointer-after-slice (`T[]*`) are rejected
-in the type checker because they would weaken the non-owning escape restrictions. The inferred-length array suffix `[_]`
-is reserved for future use and is rejected by the parser; it is never treated as `T[]`.
+in the type checker because they would weaken the non-owning escape restrictions. The same prohibition follows arrays
+and aliases, including `T[][N]?` and `T[][N]*`. Callable parameter slices remain legal; callable results containing
+slices do not. The inferred-length array suffix `[_]` is reserved for future use and is rejected by the parser; it is
+never treated as `T[]`.
 
 Type suffixes apply left-to-right and build an ordered constructor stack. `T?*` is a pointer to an optional `T`; `T*?`
 is an optional pointer to `T`; `T??` is an optional optional `T` and is not collapsed by the type system. `void*` is

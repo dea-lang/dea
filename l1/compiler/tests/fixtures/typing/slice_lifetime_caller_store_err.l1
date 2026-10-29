@@ -1,0 +1,9 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module slice_lifetime_caller_store_err;
+
+func store(rows: int[][]) { let local: int[1] = [2]; rows[0] = local; }
+func main() -> int { return 0; }

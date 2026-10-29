@@ -1,0 +1,15 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module slice_lifetime_nullable_arc_err;
+
+func main() -> int {
+    let values: string[1] = ["owned" + " value"];
+    let optional: string[1]? = values;
+    let view = slice(optional as string[1]);
+    optional = null;
+    values = ["replacement"];
+    return len(view[0]);
+}

@@ -1,0 +1,9 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module slice_shape_pointer_err;
+
+func leak() -> int[][1]* { let a: int[1] = [2]; return new int[][1]([a]); }
+func main() -> int { return 0; }

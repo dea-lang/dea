@@ -1,0 +1,80 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module slice_lifetimes_test;
+
+import std.assert;
+import analysis;
+import sem_context;
+import source_paths;
+import util.log;
+
+/**
+ * Analyze one regression fixture and require its exact lifetime diagnostic.
+ *
+ * @param module_name Fixture module to analyze.
+ * @param code Required diagnostic code, or empty for success.
+ */
+func check_fixture(module_name: string, code: string) {
+    with (let paths = sp_create() => sp_free(paths),
+          let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        sp_add_project_root(paths, "compiler/tests/fixtures/typing");
+        let result = analysis_analyze_entry(paths, module_name, cfg);
+        let found = false;
+        for (let i = 0; i < analysis_diag_count(result); i = i + 1) {
+            if (analysis_diag_get(result, i).code == code) found = true;
+        }
+        if (code == "") {
+            assert(!analysis_has_errors(result), "unexpected rejection of " + module_name);
+        } else {
+            assert(found, "missing " + code + " for " + module_name);
+        }
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Run independent lifetime and wrapper regressions.
+ */
+func main() {
+    check_fixture("slice_lifetime_inner_err", "TYP-0818");
+    check_fixture("slice_lifetime_alias_err", "TYP-0818");
+    check_fixture("slice_lifetime_restore_err", "TYP-0818");
+    check_fixture("slice_lifetime_shadow_err", "TYP-0818");
+    check_fixture("slice_lifetime_field_err", "TYP-0818");
+    check_fixture("slice_lifetime_array_subobject_err", "TYP-0818");
+    check_fixture("slice_lifetime_descriptor_store_err", "TYP-0818");
+    check_fixture("slice_lifetime_descriptor_copy_err", "TYP-0818");
+    check_fixture("slice_lifetime_caller_store_err", "TYP-0818");
+    check_fixture("slice_lifetime_caller_cross_err", "TYP-0818");
+    check_fixture("slice_lifetime_caller_param_array_err", "TYP-0818");
+    check_fixture("slice_lifetime_branch_err", "TYP-0818");
+    check_fixture("slice_lifetime_loop_err", "TYP-0818");
+    check_fixture("slice_lifetime_loop_break_err", "TYP-0818");
+    check_fixture("slice_lifetime_iteration_err", "TYP-0818");
+    check_fixture("slice_lifetime_with_body_err", "TYP-0818");
+    check_fixture("slice_lifetime_cleanup_err", "TYP-0818");
+    check_fixture("slice_lifetime_cleanup_continue_err", "TYP-0818");
+    check_fixture("slice_lifetime_cleanup_return_err", "TYP-0818");
+    check_fixture("slice_lifetime_cleanup_override_err", "TYP-0818");
+    check_fixture("slice_lifetime_cleanup_try_err", "TYP-0818");
+    check_fixture("slice_lifetime_header_try_err", "TYP-0818");
+    check_fixture("slice_lifetime_match_err", "TYP-0818");
+    check_fixture("slice_lifetime_case_err", "TYP-0818");
+    check_fixture("slice_lifetime_temporary_err", "TYP-0818");
+    check_fixture("slice_lifetime_temporary_update_err", "TYP-0818");
+    check_fixture("slice_lifetime_effectful_subobject_err", "TYP-0818");
+    check_fixture("slice_shape_pointer_err", "TYP-0814");
+    check_fixture("slice_shape_nullable_err", "TYP-0814");
+    check_fixture("slice_shape_alias_err", "TYP-0814");
+    check_fixture("slice_shape_callback_err", "TYP-0810");
+    check_fixture("slice_lifetime_nullable_array_err", "TYP-0818");
+    check_fixture("slice_lifetime_nullable_field_err", "TYP-0818");
+    check_fixture("slice_lifetime_try_array_err", "TYP-0818");
+    check_fixture("slice_lifetime_cleanup_temporary_err", "TYP-0818");
+    check_fixture("slice_lifetime_nullable_arc_err", "TYP-0818");
+    check_fixture("slice_lifetime_header_return_err", "TYP-0818");
+    check_fixture("slice_lifetime_ok", "");
+}

@@ -1,0 +1,16 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module slice_lifetime_loop_break_err;
+
+func choose(flag: bool) -> int {
+    let a: int[1] = [1]; let view: int[] = a;
+    { let b: int[1] = [2]; let alias: int[] = a;
+      while (true) { alias = b; break; }
+      view = alias;
+    }
+    return view[0];
+}
+func main() -> int { return choose(false); }

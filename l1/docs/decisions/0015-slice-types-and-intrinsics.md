@@ -1,14 +1,14 @@
 # ADR-0015: Slice Types and `len`/`slice` Intrinsics
 
 - Decision date: 2026-06-16
-- Last edited: 2026-07-11
+- Last edited: 2026-10-29
 - Status: Accepted
 
 ## Context
 
 L1 had owning fixed-size value arrays `T[N]` (see [ADR-0011][adr-arrays]) but no variable-length contiguous view. APIs
-needing variable-length spans had to fall back to library containers or raw pointers. L1 also has no borrow checker or
-lifetime inference, so a general escape-capable reference type was out of reach. The question was how to introduce a
+needing variable-length spans had to fall back to library containers or raw pointers. L1 initially had no borrow checker
+or lifetime inference, so a general escape-capable reference type was out of reach. The question was how to introduce a
 first slice surface that is useful for parameters and local spans without committing to ownership or lifetime analysis.
 
 ## Decision
@@ -20,9 +20,8 @@ Slices are first-class non-owning views spelled `T[]`, layered on top of fixed a
   ownership transfer; the underlying fixed array remains the sole owner of the storage.
 - The initial surface supports `T[]`, `T*[]`, and `T?[]`. `T[]?` and `T[]*` are rejected so the non-owning escape
   restrictions are not weakened. The inferred-length form `T[_]` is reserved and rejected by the parser, never `T[]`.
-- Because there is no lifetime analysis, slices are accepted only as local variables, parameters, and call arguments.
-  They are rejected as function return types, returned expressions, struct fields, top-level `let` bindings, and enum
-  (heap) payload fields.
+- Slices are accepted only as local variables, parameters, and call arguments. They are rejected as function return
+  types, returned expressions, struct fields, top-level `let` bindings, and enum (heap) payload fields.
 - A fixed array `T[N]` converts to `T[]` only in known slice target contexts: function arguments, annotated local
   initialization, and assignment to an existing slice variable. There is no unconstrained C-style array decay.
 - Two compiler-owned `dea` prelude intrinsics are added (see [ADR-0002][adr-prelude]): `len(x)` returns the `int` length
@@ -34,7 +33,7 @@ Slices are first-class non-owning views spelled `T[]`, layered on top of fixed a
 ## Rationale
 
 - A non-owning, escape-restricted descriptor is the smallest slice surface that is useful for parameters and spans
-  without requiring borrow or lifetime analysis that L1 does not yet have.
+  without a general borrow checker or lifetime-parameter system.
 - Conservatively rejecting returns and long-lived storage keeps the "underlying array owns the storage" invariant
   explicit, so slice descriptor copies stay plain value copies. If the compiler materializes a fixed-array rvalue to
   back a slice, that temporary still follows normal array cleanup rules.
@@ -45,6 +44,14 @@ Slices are first-class non-owning views spelled `T[]`, layered on top of fixed a
   shadowing behavior as `sizeof`, `ord`, and `is`.
 
 ## Consequences
+
+L1 now checks lexical backing lifetimes after successful expression typing. Backing storage must outlive its destination
+binding or storage, including indexed descriptor stores. Aliases preserve actual origins; control-flow joins and loop
+fixed points account for cleanup and iteration scopes. An assignment is rejected even if later restoration would prevent
+an eventual read. Unprovable caller-owned transfers fail with `TYP-0818`. Wrapper containment follows arrays,
+nullable/pointer types, and resolved source/interface aliases while preserving callable slice parameters. Materialized
+backing keeps its real scope; the checker does not introduce copies or extend lifetimes. Unowned nullable ARC carriers
+require an explicit owning array binding before borrowing their payload.
 
 - Slice descriptor copies do not retain or release elements. When a slice is backed by a compiler-materialized
   fixed-array rvalue, that backing array remains scope-owned and is cleaned up when it transitively contains ARC-managed
@@ -57,7 +64,10 @@ Slices are first-class non-owning views spelled `T[]`, layered on top of fixed a
 
 ## Related Plans
 
+- [l1/work/plans/bug-fixes/closed/2026-10-29-borrowed-slice-escape-noref.md][lifetime-fix]
+
 - [l1/work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md][slices]
+
 - [l1/work/plans/features/closed/2026-05-10-fixed-size-array-primitive-noref.md][arrays-plan]
 
 ## Current Docs
@@ -76,5 +86,6 @@ Slices are first-class non-owning views spelled `T[]`, layered on top of fixed a
 [backend]: ../reference/c-backend-design.md
 [design-decisions]: ../reference/design-decisions.md
 [grammar]: ../reference/grammar.md
+[lifetime-fix]: ../../work/plans/bug-fixes/closed/2026-10-29-borrowed-slice-escape-noref.md
 [ownership]: ../reference/ownership.md
 [slices]: ../../work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md

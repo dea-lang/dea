@@ -12,6 +12,7 @@ import util.diag;
 import driver;
 import driver.state;
 import expr_types;
+import slice_lifetimes;
 import interface_emitter;
 import locals;
 import mi_utils;
@@ -84,6 +85,7 @@ func analysis_analyze_driver_state(driver_state: DriverState*, cfg: LogConfig*) 
         let expr_diag_start = diag_count(result.diags);
         expr_types_check(result);
         log_debug(cfg, "Expression type checking produced " + int_to_string(diag_count(result.diags) - expr_diag_start) + " diagnostic(s)");
+        slice_lifetimes_check(result);
         log_info(cfg, "Analysis complete: " + int_to_string(analysis_diag_count(result)) + " total diagnostic(s), " + int_to_string(result.diags.error_count) + " error(s)");
 
         timing_end(timing, !analysis_has_errors(result));

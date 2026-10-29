@@ -1,0 +1,16 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module slice_lifetime_case_err;
+
+func example(choice: int) -> int {
+    let a: int[1] = [1]; let view: int[] = a;
+    { let b: int[1] = [2]; let alias: int[] = a;
+      case (choice) { 0 => { alias = b; } _ => { alias = a; } }
+      view = alias;
+    }
+    return view[0];
+}
+func main() -> int { return 0; }

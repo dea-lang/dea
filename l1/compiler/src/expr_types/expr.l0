@@ -6,6 +6,8 @@
 module expr_types.expr;
 
 import std.hashset;
+import std.hashmap;
+import locals;
 import std.string;
 import std.text;
 import std.vector;
@@ -1218,6 +1220,11 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                         unit.path, expr.span);
                 }
                 etc_set_var_res(self, expr_id, VAR_RES_LOCAL);
+                let binding = etc_lookup_visible_local_symbol(self, expr.text_value);
+                if (binding != null && self.result.locals_result != null) {
+                    spm_put((self.result.locals_result as LocalsResult*).expr_bindings,
+                        etc_key(self.current_module, expr_id), binding as void*);
+                }
                 ty = local_ty;
             } else {
                 if (expr.name_qualifier != null) {

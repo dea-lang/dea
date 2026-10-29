@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-10-28
+Version: 2026-10-29
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -412,6 +412,10 @@ tiers are distinct from implementation phases within a plan or initiative.
 
 ## Completed standalone plans
 
+- Bug Fix [l1/work/plans/bug-fixes/closed/2026-10-29-borrowed-slice-escape-noref.md][slice-safety] enforces
+  backing-lifetime and containment rules before C emission. Native `make test-ci` passed on Linux, macOS Intel, macOS
+  ARM, and Windows UCRT64, including canonical and child trace checks.
+
 - Tool [2026-10-25-compiler-function-contracts-noref][compiler-contracts] documented the remaining 73 compiler helpers
   and native bindings, with verified full references and zero undocumented findings; CI reporting remains informational.
 
@@ -659,6 +663,7 @@ update to be promoted to an initiative or plan:
 [scalar-const-flow]: ../work/plans/features/closed/2026-06-24-stage1-scalar-const-expression-flow-noref.md
 [separate-compilation]: ../work/initiatives/closed/0001-separate-compilation-and-linking.md
 [single-statements]: ../work/plans/features/closed/2026-04-23-single-statement-loop-and-match-bodies-noref.md
+[slice-safety]: ../work/plans/bug-fixes/closed/2026-10-29-borrowed-slice-escape-noref.md
 [small-int]: ../work/plans/features/closed/2026-04-04-l1-small-int-builtins-on-dea-abi-noref.md
 [stage1-slices]: ../work/plans/features/closed/2026-05-19-stage1-slices-len-slice-intrinsics-noref.md
 [stage1-source-decomposition]: ../work/plans/refactors/closed/2026-07-08-stage1-source-decomposition-noref.md

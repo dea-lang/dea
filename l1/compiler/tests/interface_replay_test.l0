@@ -1125,7 +1125,38 @@ func test_direct_interface_replay_rejects_duplicate_interfaces() {
 }
 
 /**
- * Main entry point for the module.
+ * Reject a wrapper introduced after a peer interface's slice alias materializes.
+ *
+ * @param declaration Facade declaration that must be rejected.
+ */
+func check_interface_slice_wrapper(declaration: string) {
+    let peer = parse_test_interface(
+        "module interface replay_alias_peer;\n" +
+        "fingerprint \"sip13:0000000000000000\";\n" +
+        "type Items = int[][1];\n", "<slice-wrapper-peer.l1m>");
+    let facade = parse_test_interface(
+        "module interface replay_alias_facade;\n" +
+        "fingerprint \"sip13:0000000000000000\";\n" +
+        "require replay_alias_peer::Items == \"sip13:0000000000000000\";\n" +
+        declaration, "<slice-wrapper-facade.l1m>");
+    assert(!ipr_has_errors(peer) && !ipr_has_errors(facade), "wrapper interfaces must parse before semantic validation");
+    let interfaces = ptr_vec_create(2);
+    ptr_vec_push(interfaces, peer.interface as void*);
+    ptr_vec_push(interfaces, facade.interface as void*);
+    let paths = make_paths();
+    let cfg = log_config_create(LL_SILENT, false);
+    let result = analysis_analyze_entry_with_interfaces(paths, "replay_alias_closure_consumer", interfaces, cfg);
+    assert(has_diag_code(result, "TYP-0814"), "materialized interface wrapper must fail with TYP-0814");
+    analysis_result_free(result);
+    vec_free(interfaces);
+    ipr_free(facade);
+    ipr_free(peer);
+    drop cfg;
+    sp_free(paths);
+}
+
+/**
+ * Run interface replay regressions.
  */
 func main() {
     test_direct_interface_replay_open_import_codegen();
@@ -1146,6 +1177,9 @@ func main() {
     test_interface_surface_requires_interface_provider();
     test_interface_surface_requires_source_provider();
     test_cross_interface_alias_slice_shape_error();
+    check_interface_slice_wrapper("func bad(items: replay_alias_peer::Items*) -> void;\n");
+    check_interface_slice_wrapper("type Hidden = replay_alias_peer::Items?;\n");
+    check_interface_slice_wrapper("struct Hidden { items: replay_alias_peer::Items*; }\n");
     test_incomplete_source_shape_check_materializes_late_alias();
     test_nested_link_only_interface_surface_is_validated();
     test_direct_interface_replay_ignores_unused_interfaces();

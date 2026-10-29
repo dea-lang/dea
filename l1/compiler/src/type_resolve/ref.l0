@@ -558,7 +558,7 @@ func tr_apply_suffix(tables: SignatureTables*, nr: NameResolution*, driver_state
         for (let i = 0; i < vec_size(suffixes); i = i + 1) {
             let suffix = ptr_vec_get(suffixes, i) as TypeSuffix*;
             if (ord(suffix.kind) == ord(TS_POINTER)) {
-                if (ord(current.kind) == ord(TY_SLICE)) {
+                if (type_contains_slice_storage(current)) {
                     type_free(current);
                     tr_diag_error(diags, "TYP-0814", "slice type '[]' may not be a pointer base ('T[]*')",
                         filename, suffix.span);
@@ -625,7 +625,7 @@ func tr_apply_suffix(tables: SignatureTables*, nr: NameResolution*, driver_state
                     tr_diag_error(diags, "SIG-0011", "type 'void' cannot be nullable", filename, tref.span);
                     return null;
                 }
-                if (ord(current.kind) == ord(TY_SLICE)) {
+                if (type_contains_slice_storage(current)) {
                     type_free(current);
                     tr_diag_error(diags, "TYP-0814", "slice type '[]' may not be made nullable ('T[]?')",
                         filename, suffix.span);
@@ -666,7 +666,7 @@ func tr_apply_suffix(tables: SignatureTables*, nr: NameResolution*, driver_state
  * @param driver_state Driver state used for module and type resolution.
  * @return Resolved type, or `null` if resolution fails.
  */
-func tr_resolve_type_ref(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
+func tr_resolve_type_ref_unchecked(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
                          tref: TypeRef*, diags: DiagCollector*, seen: StringSet*) -> Type*? {
     if (tref.func_params != null) {
         with (let params: VectorBase*? = ptr_vec_create(vec_size(tref.func_params as VectorBase*)) => type_param_vec_free(params),
@@ -682,6 +682,11 @@ func tr_resolve_type_ref(tables: SignatureTables*, nr: NameResolution*, driver_s
             }
             result = tr_resolve_type_ref(tables, nr, driver_state, env, tref.func_result as TypeRef*, diags, seen);
             if (result == null) {
+                return null;
+            }
+            if (type_contains_slice_storage(result as Type*)) {
+                tr_diag_error(diags, "TYP-0810", "slice-containing storage may not be a callable result",
+                    env.module_ptr.filename, tref.span);
                 return null;
             }
             let is_variadic = vec_size(parsed_params) > 0 &&
@@ -767,4 +772,33 @@ func tr_resolve_type_ref(tables: SignatureTables*, nr: NameResolution*, driver_s
         return null;
     }
     return tr_apply_suffix(tables, nr, driver_state, env, base as Type*, tref, diags, env.module_ptr.filename);
+}
+
+/**
+ * Resolve a type reference and check slice containment after alias expansion.
+ *
+ * @param tables Signature tables available during resolution.
+ * @param nr Name-resolution context.
+ * @param driver_state Source and interface providers.
+ * @param env Current module environment.
+ * @param tref Parsed type reference.
+ * @param diags Diagnostic destination.
+ * @param seen Alias cycle stack.
+ * @return Owned resolved type, or null after a resolution or shape failure.
+ */
+func tr_resolve_type_ref(tables: SignatureTables*, nr: NameResolution*, driver_state: DriverState*, env: ModuleEnv*,
+                         tref: TypeRef*, diags: DiagCollector*, seen: StringSet*) -> Type*? {
+    let resolved = tr_resolve_type_ref_unchecked(tables, nr, driver_state, env, tref, diags, seen);
+    if (resolved == null) return null;
+    let error = type_slice_shape_error(resolved as Type*);
+    if (error == 0) return resolved;
+    if (error == 814) {
+        tr_diag_error(diags, "TYP-0814", "slice-containing storage may not be nullable or a pointer base",
+            env.module_ptr.filename, tref.span);
+    } else {
+        tr_diag_error(diags, "TYP-0810", "slice-containing storage may not be a callable result",
+            env.module_ptr.filename, tref.span);
+    }
+    type_free(resolved as Type*);
+    return null;
 }

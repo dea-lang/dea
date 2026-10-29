@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-10-28
+Version: 2026-10-29
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -243,9 +243,27 @@ array cleanup rules when their element type transitively contains ARC-managed da
 `T*[]`, and `T?[]`; `T[]?` and `T[]*` are rejected so the non-owning escape restrictions are not weakened. The
 inferred-length form `T[_]` is reserved and rejected by the parser, never `T[]`.
 
-Because slices do not own their storage and this stage has no borrow or lifetime analysis, they are accepted only as
-local variables, parameters, and call arguments. They are rejected as function return types, returned expressions,
-struct fields, top-level `let` bindings, and enum (heap) payload fields.
+Slices are accepted as local variables, parameters, and call arguments. They are rejected as function return types,
+returned expressions, struct fields, top-level `let` bindings, and enum payload fields. Containment checks follow
+arrays, pointers, nullable wrappers, and source/interface aliases; wrappers such as `int[][1]?` and `int[][1]*` cannot
+hide a descriptor. Callable signatures may accept slices but may not return slice-containing values.
+
+After successful typing, L1 validates that backing storage outlives the destination binding or storage. Assigning an
+inner-block array to an outer slice is rejected with `TYP-0818`, even if a later assignment would restore the outer
+value. Direct aliases retain their actual backing origin, so an inner alias of an outer array can be assigned back to an
+outer binding. Branches merge reachable origins; loops converge across backedges, `break`, `continue`, and `with`
+cleanup. Fixed-array value copies retain their destination storage lifetime.
+
+Indexed descriptor stores must preserve the same containment rule. A descriptor read from an array is conservatively
+guaranteed for its containing storage's lifetime, since aliases may mutate its elements. Local backing cannot be stored
+through a caller-owned descriptor array; transfers between independent caller parameters are rejected when their
+relative lifetimes cannot be proven. Same-parameter descriptor rearrangement and ordinary parameter forwarding remain
+legal.
+
+Materialized array values, nullable unwraps, and loop-update temporaries use their actual cleanup scope. An unowned
+nullable carrier cannot prove an ARC array borrow when replacing the original carrier may release its elements; bind an
+explicit owning array value first, then borrow that value. No check inserts allocation, copying, or lifetime extension
+to make an escape pass. Explicit raw-pointer pointee lifetime contracts remain separate.
 
 A fixed array `T[N]` converts to `T[]` only in known slice target contexts: function arguments, annotated local
 initialization, and assignment to an existing slice variable. There is no unconstrained `T[N] -> T[]` decay, keeping

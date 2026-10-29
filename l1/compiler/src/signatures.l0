@@ -6,6 +6,7 @@
 module signatures;
 
 import std.hashset;
+import std.hashmap;
 import std.vector;
 import util.diag;
 import ast;
@@ -87,6 +88,17 @@ func sig_resolve(driver_state: DriverState*, nr: NameResolution*, diags: DiagCol
     }
 
     tr_finalize_materialized_types(tables, nr, driver_state, diags);
+    for (let env_i = 0; env_i < nr_env_count(nr); env_i = env_i + 1) {
+        let env = nr_env_get(nr, env_i);
+        for (let sym_i = 0; sym_i < spm_capacity(env.locals); sym_i = sym_i + 1) {
+            if (spm_slot_occupied(env.locals, sym_i)) {
+                let sym = spm_slot_value(env.locals, sym_i) as Symbol*;
+                if (sym.resolved_type != null) {
+                    sig_check_slice_shape(sym.resolved_type as Type*, diags, env.module_ptr.filename, sym.span);
+                }
+            }
+        }
+    }
     sig_check_interface_semantic_closures(driver_state, diags);
     sig_check_pending_materialized_shapes(pending_shapes, tables, nr, driver_state, diags);
     sig_check_materialized_interface_shapes(nr, driver_state, diags);

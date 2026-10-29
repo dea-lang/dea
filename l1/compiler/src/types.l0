@@ -772,3 +772,45 @@ func sig_tables_free(self: SignatureTables*) {
     ss_free(self.failed_aliases);
     drop self;
 }
+
+/**
+ * Report whether a value carries borrowed slice descriptors through storage wrappers.
+ *
+ * Callable signatures do not embed their parameter values in the callable.
+ * Nominal fields are validated separately when signatures are resolved.
+ *
+ * @param ty Resolved type to inspect.
+ * @return Whether storage transitively contains a slice descriptor.
+ */
+func type_contains_slice_storage(ty: Type*) -> bool {
+    if (ord(ty.kind) == ord(TY_SLICE)) return true;
+    if (ord(ty.kind) == ord(TY_ARRAY) || ord(ty.kind) == ord(TY_POINTER) ||
+        ord(ty.kind) == ord(TY_NULLABLE)) {
+        return type_contains_slice_storage(ty.inner as Type*);
+    }
+    return false;
+}
+
+/**
+ * Find an invalid slice wrapper or callable result in a resolved type tree.
+ *
+ * Slice parameters remain legal, including inside stored callable signatures.
+ *
+ * @param ty Resolved type to inspect.
+ * @return Existing diagnostic number 810 or 814, or zero for a legal shape.
+ */
+func type_slice_shape_error(ty: Type*) -> int {
+    if ((ord(ty.kind) == ord(TY_POINTER) || ord(ty.kind) == ord(TY_NULLABLE)) &&
+        type_contains_slice_storage(ty.inner as Type*)) return 814;
+    if (ord(ty.kind) == ord(TY_FUNC)) {
+        if (type_contains_slice_storage(ty.result as Type*)) return 810;
+        let params = ty.params as VectorBase*;
+        for (let i = 0; i < vec_size(params); i = i + 1) {
+            let error = type_slice_shape_error(ptr_vec_get(params, i) as Type*);
+            if (error != 0) return error;
+        }
+        return type_slice_shape_error(ty.result as Type*);
+    }
+    if (ty.inner != null) return type_slice_shape_error(ty.inner as Type*);
+    return 0;
+}

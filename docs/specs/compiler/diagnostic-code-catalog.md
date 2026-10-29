@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-10-19
+Version: 2026-10-29
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -600,10 +600,11 @@ diagnostic.
 | `TYP-0811` | L1+     | Slice type may not be used as a struct field                                                           |
 | `TYP-0812` | L1+     | Slice type may not be used in a top-level `let`                                                        |
 | `TYP-0813` | L1+     | Slice type may not be used as an enum payload field                                                    |
-| `TYP-0814` | L1+     | Slice type may not be made nullable or be a pointer base (`T[]?`, `T[]*`)                              |
+| `TYP-0814` | L1+     | Slice-containing storage may not be nullable or a pointer base, including arrays and aliases           |
 | `TYP-0815` | L1+     | Array length expression is not a compile-time constant                                                 |
 | `TYP-0816` | L1+     | Array length constant is not an `int`                                                                  |
 | `TYP-0817` | L1+     | Array length constant is not positive                                                                  |
+| `TYP-0818` | L1      | Slice backing does not provably outlive destination binding or storage                                 |
 | `TYP-9209` | All     | Internal error: variant does not produce enum type                                                     |
 | `TYP-9288` | All     | Internal error: 'new' outside function context                                                         |
 | `TYP-9289` | All     | Internal error: missing module environment for the current function                                    |

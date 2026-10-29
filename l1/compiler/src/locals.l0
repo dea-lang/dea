@@ -36,6 +36,7 @@ struct LocalSymbol {
  * Represents the Scope structure.
  */
 struct Scope {
+    region_id: int;
     parent: Scope*?;
     symbols: StringPtrMap*; // string -> LocalSymbol*
 }
@@ -77,6 +78,8 @@ struct FunctionEnv {
 struct LocalsResult {
     envs: VectorBase*;          // FunctionEnv*
     by_name: StringPtrMap*;     // string -> FunctionEnv*
+    expr_bindings: StringPtrMap*; // module::ExprId -> borrowed LocalSymbol*
+    dead_statements: StringIntMap*; // module::StmtId -> proven unreachable branch
 }
 
 /**
@@ -97,7 +100,7 @@ func lc_key(module_name: string, func_name: string) -> string {
  * @return New scope.
  */
 func lc_scope_create(parent: Scope*?) -> Scope* {
-    return new Scope(parent, spm_create());
+    return new Scope(-1, parent, spm_create());
 }
 
 /**
@@ -184,6 +187,8 @@ func locals_free(self: LocalsResult*) {
     }
     vec_free(self.envs);
     spm_free(self.by_name);
+    spm_free(self.expr_bindings);
+    sim_free(self.dead_statements);
     drop self;
 }
 
@@ -262,6 +267,7 @@ func lc_func_env_get_match_arm_scope(self: FunctionEnv*, arm: MatchArm*) -> Scop
  * @param scope Scope to record.
  */
 func lc_scope_track(env: FunctionEnv*, scope: Scope*) {
+    scope.region_id = vec_size(env.scopes) + 1;
     ptr_vec_push(env.scopes, scope as void*);
 }
 
@@ -402,6 +408,16 @@ func lc_visit_with(env: FunctionEnv*, stmt_id: StmtId, stmt: StmtNode*, parent_s
         lc_scope_track(env, cleanup_scope);
         lc_scope_set_block(env, stmt.stmt_b, cleanup_scope);
         lc_visit_block(env, stmt.stmt_b, cleanup_scope);
+    } else {
+        // Inline cleanup runs inside one generated child block as well.
+        let inline_scope = lc_scope_create(header_scope);
+        lc_scope_track(env, inline_scope);
+        for (let cleanup_i = 0; cleanup_i < vec_size(items); cleanup_i = cleanup_i + 1) {
+            let cleanup_item = ptr_vec_get(items, cleanup_i) as WithItem*;
+            if (cleanup_item.has_cleanup) {
+                lc_visit_scoped_stmt(env, cleanup_item.cleanup_stmt, inline_scope);
+            }
+        }
     }
 }
 
@@ -520,7 +536,7 @@ func lc_make_function_env(module_name: string, unit: DriverUnit*, decl: FuncDecl
  * @return Locals-resolution result.
  */
 func locals_resolve(driver_state: DriverState*, diags: DiagCollector*) -> LocalsResult* {
-    let result = new LocalsResult(ptr_vec_create(8), spm_create());
+    let result = new LocalsResult(ptr_vec_create(8), spm_create(), spm_create(), sim_create());
 
     for (let i = 0; i < driver_unit_count(driver_state); i = i + 1) {
         let unit = driver_unit_get(driver_state, i);

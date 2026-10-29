@@ -298,21 +298,15 @@ func sig_make_tables() -> SignatureTables* {
 /**
  * Report whether a resolved type is, or transitively contains, a slice.
  *
- * Recursion descends into array element types so that array-of-slice forms are
- * also detected. It does not descend into function parameter or result types,
+ * Recursion descends through arrays, pointers, and nullable storage so that
+ * wrappers cannot hide a descriptor. It does not descend into function parameter or result types,
  * because slices are permitted as function parameters.
  *
  * @param ty Resolved type to inspect.
- * @return `true` when `ty` is a slice or an array whose element contains a slice.
+ * @return `true` when the stored value transitively contains a slice.
  */
 func sig_type_contains_slice(ty: Type*) -> bool {
-    if (ord(ty.kind) == ord(TY_SLICE)) {
-        return true;
-    }
-    if (ord(ty.kind) == ord(TY_ARRAY)) {
-        return sig_type_contains_slice(ty.inner as Type*);
-    }
-    return false;
+    return type_contains_slice_storage(ty);
 }
 
 /**
@@ -327,6 +321,7 @@ func sig_type_contains_slice(ty: Type*) -> bool {
  */
 func sig_reject_slice_escape(ty: Type*, code: string, message: string, diags: DiagCollector*, filename: string,
                              span: Span) {
+    sig_check_slice_shape(ty, diags, filename, span);
     if (sig_type_contains_slice(ty)) {
         sig_diag_error(diags, code, message, filename, span);
     }
@@ -353,5 +348,24 @@ func sig_check_pending_materialized_shapes(checks: VectorBase*, tables: Signatur
             tr_finalize_materialized_type(tables, nr, driver_state, check.module_name, check.ty, diags, seen);
             sig_reject_slice_escape(check.ty, check.code, check.message, diags, check.filename, check.span);
         }
+    }
+}
+
+/**
+ * Validate nested slice wrappers without rejecting legal callable parameters.
+ *
+ * @param ty Materialized type to inspect.
+ * @param diags Diagnostic destination.
+ * @param filename Source or interface filename.
+ * @param span Declaration span.
+ */
+func sig_check_slice_shape(ty: Type*, diags: DiagCollector*, filename: string, span: Span) {
+    let error = type_slice_shape_error(ty);
+    if (error == 814) {
+        sig_diag_error(diags, "TYP-0814", "slice-containing storage may not be nullable or a pointer base",
+            filename, span);
+    } else if (error == 810) {
+        sig_diag_error(diags, "TYP-0810", "slice-containing storage may not be a callable result",
+            filename, span);
     }
 }

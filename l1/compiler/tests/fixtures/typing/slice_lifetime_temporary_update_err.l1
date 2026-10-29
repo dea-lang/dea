@@ -1,0 +1,9 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module slice_lifetime_temporary_update_err;
+
+func make() -> int[1] { return [2]; }
+func main() -> int { let a: int[1] = [1]; let view: int[] = a; for (let i = 0; i < 1; view = slice(make())) { i = i + 1; } return view[0]; }

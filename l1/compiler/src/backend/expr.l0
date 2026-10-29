@@ -170,30 +170,7 @@ func be_is_place_expr(self: Backend*, expr_id: ExprId) -> bool {
  * @return `true` when the expression should be cached before reuse.
  */
 func be_has_side_effects(self: Backend*, expr_id: ExprId) -> bool {
-    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
-    match (expr.kind) {
-        EX_INT => { return false; }
-        EX_BIGINT => { return false; }
-        EX_FLOAT => { return false; }
-        EX_DOUBLE => { return false; }
-        EX_BYTE => { return false; }
-        EX_STRING => { return false; }
-        EX_BOOL => { return false; }
-        EX_NULL => { return false; }
-        EX_VAR_REF => { return false; }
-        EX_CALL => { return true; }
-        EX_NEW => { return true; }
-        EX_UNARY => { return be_has_side_effects(self, expr.expr_a); }
-        EX_BINARY => { return be_has_side_effects(self, expr.expr_a) || be_has_side_effects(self, expr.expr_b); }
-        EX_CAST => { return be_has_side_effects(self, expr.expr_a); }
-        EX_PAREN => { return be_has_side_effects(self, expr.expr_a); }
-        EX_FIELD => { return be_has_side_effects(self, expr.expr_a); }
-        EX_INDEX => { return be_has_side_effects(self, expr.expr_a) || be_has_side_effects(self, expr.expr_b); }
-        EX_TRY => { return be_has_side_effects(self, expr.expr_a); }
-        EX_TYPE => { return false; }
-        EX_ARRAY_LITERAL => { return false; }
-        EX_ARRAY_CONSTRUCTOR => { return true; }
-    }
+    return expr_has_side_effects(be_current_expr_arena(self), expr_id);
 }
 
 /**

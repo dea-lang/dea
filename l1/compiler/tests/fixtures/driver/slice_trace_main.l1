@@ -34,5 +34,19 @@ func main() -> int {
     if (first_len(transient_part) != 2) {
         return 4;
     }
+    {
+        let alias = slice(view, 0, 1);
+        let chained = (alias);
+        part = chained;
+        let copy: string[2] = [concat_s("c", "1"), concat_s("d", "2")];
+        arr = copy;
+    }
+    for (let i = 0; i < 2; i = i + 1) {
+        with (let marker = 0) { continue; } cleanup { part = slice(view, 0, 1); }
+    }
+    let optional: string[2]? = arr;
+    let unwrapped_value = optional as string[2];
+    let unwrapped = slice(unwrapped_value);
+    if (first_len(part) != 2 || first_len(unwrapped) != 2) return 5;
     return 0;
 }

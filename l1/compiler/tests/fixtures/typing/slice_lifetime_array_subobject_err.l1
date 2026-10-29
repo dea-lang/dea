@@ -1,0 +1,12 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module slice_lifetime_array_subobject_err;
+
+func main() -> int {
+    let a: int[1] = [1]; let view: int[] = a;
+    { let rows: int[1][1] = [[2]]; view = rows[0]; }
+    return view[0];
+}

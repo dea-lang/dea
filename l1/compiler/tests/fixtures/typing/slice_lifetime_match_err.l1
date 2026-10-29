@@ -1,0 +1,17 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module slice_lifetime_match_err;
+
+enum Choice { Yes; No; }
+func example(choice: Choice) -> int {
+    let a: int[1] = [1]; let view: int[] = a;
+    { let b: int[1] = [2]; let alias: int[] = a;
+      match (choice) { Yes => { alias = b; } No => { alias = a; } }
+      view = alias;
+    }
+    return view[0];
+}
+func main() -> int { return 0; }

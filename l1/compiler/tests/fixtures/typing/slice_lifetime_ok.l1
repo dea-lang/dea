@@ -1,0 +1,83 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module slice_lifetime_ok;
+
+struct Holder { data: int[2]; }
+type Consumer = func(int[]) -> int;
+struct Callback { consume: Consumer; }
+
+func first(values: int[]) -> int { return values[0]; }
+func forward(values: int[]) -> int { let alias = slice(values); return first(alias); }
+func packed(values: int...) -> int { return forward(values); }
+func restore_row(rows: int[][]) { rows[0] = rows[0]; }
+func make() -> int[2] { return [4, 5]; }
+
+func test(flag: bool) -> int {
+    let outer: int[2] = [1, 2];
+    let view: int[] = outer;
+    {
+        let first_alias = (view);
+        let second_alias = dea::slice(first_alias, 0, 1);
+        view = second_alias;
+        let outer: int[2] = [3, 4];
+        let local: int[] = outer;
+        if (local[0] != 3) return 1;
+    }
+    {
+        let alias: int[] = outer;
+        let nested: int[2] = [7, 8];
+        if (flag) { alias = nested; return 0; }
+        view = alias;
+        if (false) { view = nested; }
+        while (false) { view = nested; }
+    }
+    {
+        let copied: int[2] = [9, 10];
+        outer = copied;
+    }
+    {
+        let alias = slice(outer);
+        for (let i = 0; i < 2; i = i + 1) {
+            with (let marker = 0) { view = alias; continue; } cleanup { view = outer; }
+        }
+    }
+    with (let marker = 0 => let cleanup_local = 1) {}
+    let holder = Holder([11, 12]);
+    let field = slice(holder.data);
+    let temp: int[] = make();
+    let temp_part = slice(make(), 1, 1);
+    let rows: int[][2] = [outer, holder.data];
+    restore_row(rows);
+    rows[0] = outer;
+    let callback = Callback(first);
+    if (callback.consume(view) != 9) return 2;
+    if (field[0] != 11 || temp[0] != 4 || temp_part[0] != 5) return 3;
+    if (packed(1, 2, 3) != 1) return 4;
+    return 0;
+}
+
+enum Choice { One; Two; }
+
+func unreachable_match(choice: Choice) -> int {
+    let a: int[1] = [1]; let view: int[] = a;
+    match (choice) {
+        One => {}
+        Two => {}
+        _ => { let inner: int[1] = [2]; view = inner; }
+    }
+    return view[0] - 1;
+}
+
+func unreachable_case(value: byte) -> int {
+    let a: int[1] = [1]; let view: int[] = a;
+    case (value) {
+        1000 => { let inner: int[1] = [2]; view = inner; }
+        _ => {}
+    }
+    return view[0] - 1;
+}
+
+func main() -> int { return test(false) + unreachable_match(One) + unreachable_case(0); }

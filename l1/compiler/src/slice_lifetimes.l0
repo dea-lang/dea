@@ -1,0 +1,844 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module slice_lifetimes;
+
+import std.hashmap;
+import std.hashset;
+import std.vector;
+import util.diag;
+import util.intset;
+import ast;
+import driver.state;
+import locals;
+import name_resolver.query;
+import name_resolver.state;
+import sem_context;
+import signatures.tables;
+import type_resolve.ref;
+import type_resolve.const_eval;
+import type_resolve.const_value;
+import types;
+
+/**
+ * A binding identity, its lexical storage region, and its owned type.
+ */
+struct SliceBinding {
+    symbol: LocalSymbol*;
+    region: int;
+    ty: Type*?;
+}
+
+/**
+ * A program point with one backing-origin guarantee per binding.
+ */
+struct SliceState {
+    reachable: bool;
+    origins: VectorBase*;
+}
+
+/**
+ * Separate continuations allow cleanup on returns and loop exits.
+ */
+struct SliceFlow {
+    next: SliceState*;
+    returns: SliceState*;
+    breaks: SliceState*;
+    continues: SliceState*;
+}
+
+/**
+ * Function-local state borrowing the successful typing result.
+ * Positive regions index lexical scopes; zero is static storage. Negative
+ * origins distinguish unknown (-1), unspecified caller storage (-2), and exact
+ * parameter identities (-3 and below). No lifetime metadata reaches the ABI.
+ */
+struct SliceChecker {
+    result: AnalysisResult*;
+    env: FunctionEnv*;
+    unit: DriverUnit*;
+    module_env: ModuleEnv*;
+    bindings: VectorBase*;
+    scope: Scope*;
+    temporary_region: int;
+    reported: IntSet*;
+}
+
+/**
+ * Return a lexical scope's stable region number.
+ *
+ * @param self Function checker.
+ * @param scope Borrowed lexical scope.
+ * @return Positive region number, or -1 if unavailable.
+ */
+func sl_region(self: SliceChecker*, scope: Scope*) -> int {
+    return scope.region_id;
+}
+
+/**
+ * Test the conservative backing-storage containment relation.
+ *
+ * @param self Function checker.
+ * @param source Backing origin.
+ * @param destination Storage region receiving a descriptor.
+ * @return Whether the backing provably outlives the destination.
+ */
+func sl_outlives(self: SliceChecker*, source: int, destination: int) -> bool {
+    if (source == 0) return true;
+    if (source == -1 || destination == -1 || destination == 0) return false;
+    if (destination < 0) return source == destination && destination < -2;
+    if (source < -1) return true;
+    let scope: Scope*? = ptr_vec_get(self.env.scopes, destination - 1) as Scope*;
+    while (scope != null) {
+        if (sl_region(self, scope as Scope*) == source) return true;
+        scope = (scope as Scope*).parent;
+    }
+    return false;
+}
+
+/**
+ * Meet backing guarantees from two reachable paths.
+ *
+ * @param self Function checker.
+ * @param left First origin.
+ * @param right Second origin.
+ * @return Weakest guarantee valid on both paths.
+ */
+func sl_meet_origin(self: SliceChecker*, left: int, right: int) -> int {
+    if (left == right) return left;
+    if (sl_outlives(self, left, right)) return right;
+    if (sl_outlives(self, right, left)) return left;
+    if (left < -1 && right < -1) return -2;
+    return -1;
+}
+
+/**
+ * Create a state with fixed binding slots.
+ *
+ * @param self Function checker.
+ * @param reachable Whether this point is reachable.
+ * @return Owned state with no initial borrowed backing.
+ */
+func sl_state(self: SliceChecker*, reachable: bool) -> SliceState* {
+    let origins = id_vec_create(vec_size(self.bindings));
+    for (let i = 0; i < vec_size(self.bindings); i = i + 1) {
+        id_vec_push(origins, 0);
+    }
+    return new SliceState(reachable, origins);
+}
+
+/**
+ * Clone a flow state.
+ *
+ * @param state Borrowed state.
+ * @return Independent owned clone.
+ */
+func sl_clone(state: SliceState*) -> SliceState* {
+    let origins = id_vec_create(vec_size(state.origins));
+    for (let i = 0; i < vec_size(state.origins); i = i + 1) {
+        id_vec_push(origins, id_vec_get(state.origins, i));
+    }
+    return new SliceState(state.reachable, origins);
+}
+
+/**
+ * Release a flow state.
+ *
+ * @param state Owned state.
+ */
+func sl_free_state(state: SliceState*) {
+    vec_free(state.origins);
+    drop state;
+}
+
+/**
+ * Merge a reachable incoming state into a continuation.
+ *
+ * @param self Function checker.
+ * @param destination State updated in place.
+ * @param source Borrowed incoming state.
+ * @return Whether the destination changed.
+ */
+func sl_merge(self: SliceChecker*, destination: SliceState*, source: SliceState*) -> bool {
+    if (!source.reachable) return false;
+    let changed = !destination.reachable;
+    for (let i = 0; i < vec_size(source.origins); i = i + 1) {
+        let origin = id_vec_get(source.origins, i);
+        let slot = vec_get(destination.origins, i) as int*;
+        if (destination.reachable) origin = sl_meet_origin(self, *slot, origin);
+        if (*slot != origin) changed = true;
+        *slot = origin;
+    }
+    destination.reachable = true;
+    return changed;
+}
+
+/**
+ * Create four initially unreachable continuations.
+ *
+ * @param self Function checker.
+ * @return Owned flow result.
+ */
+func sl_flow(self: SliceChecker*) -> SliceFlow* {
+    return new SliceFlow(sl_state(self, false), sl_state(self, false), sl_state(self, false), sl_state(self, false));
+}
+
+/**
+ * Release every continuation in a flow result.
+ *
+ * @param flow Owned flow result.
+ */
+func sl_free_flow(flow: SliceFlow*) {
+    sl_free_state(flow.next);
+    sl_free_state(flow.returns);
+    sl_free_state(flow.breaks);
+    sl_free_state(flow.continues);
+    drop flow;
+}
+
+/**
+ * Merge corresponding continuations.
+ *
+ * @param self Function checker.
+ * @param destination Flow updated in place.
+ * @param source Borrowed incoming flow.
+ */
+func sl_merge_flow(self: SliceChecker*, destination: SliceFlow*, source: SliceFlow*) {
+    sl_merge(self, destination.next, source.next);
+    sl_merge(self, destination.returns, source.returns);
+    sl_merge(self, destination.breaks, source.breaks);
+    sl_merge(self, destination.continues, source.continues);
+}
+
+/**
+ * Read a borrowed type from the successful typing result.
+ *
+ * @param self Function checker.
+ * @param expr_id Typed expression.
+ * @return Borrowed type, or null for an absent expression.
+ */
+func sl_type(self: SliceChecker*, expr_id: ExprId) -> Type*? {
+    let value = spm_get(self.result.expr_types, analysis_expr_key(self.env.module_name, expr_id));
+    if (value == null) return null;
+    return value as Type*;
+}
+
+/**
+ * Find a slot by resolved binding identity.
+ *
+ * @param self Function checker.
+ * @param symbol Borrowed local symbol.
+ * @return Slot index, or -1 when absent.
+ */
+func sl_binding(self: SliceChecker*, symbol: LocalSymbol*) -> int {
+    for (let i = 0; i < vec_size(self.bindings); i = i + 1) {
+        let candidate = (ptr_vec_get(self.bindings, i) as SliceBinding*).symbol;
+        if (ord(candidate.kind) == ord(symbol.kind) && candidate.decl_id == symbol.decl_id &&
+            candidate.binding_slot == symbol.binding_slot) return i;
+    }
+    return -1;
+}
+
+/**
+ * Find the variable binding selected by expression typing.
+ *
+ * @param self Function checker.
+ * @param expr_id Variable-reference expression.
+ * @return Binding slot, or -1 for a module reference.
+ */
+func sl_expr_binding(self: SliceChecker*, expr_id: ExprId) -> int {
+    let symbol = spm_get((self.result.locals_result as LocalsResult*).expr_bindings,
+        analysis_expr_key(self.env.module_name, expr_id));
+    if (symbol == null) return -1;
+    return sl_binding(self, symbol as LocalSymbol*);
+}
+
+/**
+ * Find storage containing an array, aggregate subobject, or indexed slot.
+ *
+ * Raw-pointer pointees retain their explicit lifetime contract. They cannot
+ * prove that a descriptor may be transferred into caller-owned storage.
+ *
+ * @param self Function checker.
+ * @param state Current origins.
+ * @param expr_id Storage expression.
+ * @return Storage region or conservative external origin.
+ */
+func sl_place(self: SliceChecker*, state: SliceState*, expr_id: ExprId) -> int {
+    let expr = expr_arena_get(self.unit.parse_result.expr_arena, expr_id);
+    match (expr.kind) {
+        EX_VAR_REF => {
+            let index = sl_expr_binding(self, expr_id);
+            if (index < 0) return 0;
+            return (ptr_vec_get(self.bindings, index) as SliceBinding*).region;
+        }
+        EX_PAREN => { return sl_place(self, state, expr.expr_a); }
+        EX_CAST => {
+            let source = sl_type(self, expr.expr_a);
+            if (source != null && ord((source as Type*).kind) == ord(TY_NULLABLE)) return self.temporary_region;
+            return sl_place(self, state, expr.expr_a);
+        }
+        EX_TRY => { return self.temporary_region; }
+        EX_FIELD => {
+            let base = sl_type(self, expr.expr_a);
+            if (base != null && ord((base as Type*).kind) == ord(TY_POINTER)) return -2;
+            return sl_place(self, state, expr.expr_a);
+        }
+        EX_INDEX => {
+            let base2 = sl_type(self, expr.expr_a);
+            if (base2 == null) return -1;
+            if (ord((base2 as Type*).kind) == ord(TY_POINTER)) return -2;
+            if (ord((base2 as Type*).kind) == ord(TY_SLICE)) {
+                return sl_value(self, state, expr.expr_a, base2 as Type*);
+            }
+            return sl_place(self, state, expr.expr_a);
+        }
+        EX_UNARY => {
+            if (expr.text_value == "*") return -2;
+        }
+        _ => {}
+    }
+    return self.temporary_region;
+}
+
+/**
+ * Derive a borrowed value's guarantee under contextual conversion.
+ *
+ * Descriptor arrays enforce containment on every store, including stores
+ * through aliases. Indexed descriptors therefore outlive their storage;
+ * direct slice aliases retain their more precise actual backing origins.
+ *
+ * @param self Function checker.
+ * @param state Current origins.
+ * @param expr_id Value expression.
+ * @param expected Contextual destination type.
+ * @return Backing guarantee, or -1 when no proof is available.
+ */
+func sl_value(self: SliceChecker*, state: SliceState*, expr_id: ExprId, expected: Type*) -> int {
+    if (!type_contains_slice_storage(expected)) return 0;
+    let expr = expr_arena_get(self.unit.parse_result.expr_arena, expr_id);
+    if (ord(expr.kind) == ord(EX_PAREN)) return sl_value(self, state, expr.expr_a, expected);
+    let actual = sl_type(self, expr_id);
+    if (ord(expected.kind) == ord(TY_SLICE) && actual != null && ord((actual as Type*).kind) == ord(TY_ARRAY)) {
+        if (expr_has_side_effects(self.unit.parse_result.expr_arena, expr_id)) return self.temporary_region;
+        if (analysis_has_arc_data(self.result, actual as Type*) && sl_unowned_extraction(self, expr_id)) return -1;
+        return sl_place(self, state, expr_id);
+    }
+    if (ord(expr.kind) == ord(EX_VAR_REF)) {
+        let index = sl_expr_binding(self, expr_id);
+        if (index < 0) return -1;
+        if (ord(expected.kind) == ord(TY_SLICE)) return id_vec_get(state.origins, index);
+        return (ptr_vec_get(self.bindings, index) as SliceBinding*).region;
+    }
+    if (ord(expr.kind) == ord(EX_CALL) && ord(expected.kind) == ord(TY_SLICE) && expr.ids != null) {
+        // Successful typing permits slice results only from the intrinsic,
+        // including qualified dea::slice. Ordinary callable results cannot carry slices.
+        return sl_value(self, state, id_vec_get(expr.ids as VectorBase*, 0), expected);
+    }
+    if (ord(expr.kind) == ord(EX_INDEX) || ord(expr.kind) == ord(EX_FIELD)) {
+        return sl_place(self, state, expr_id);
+    }
+    if (ord(expected.kind) == ord(TY_ARRAY) && expr.ids != null) {
+        let ids = expr.ids as VectorBase*;
+        if (ord(expr.kind) == ord(EX_ARRAY_LITERAL)) {
+            let origin = 0;
+            for (let i = 0; i < vec_size(ids); i = i + 1) {
+                origin = sl_meet_origin(self, origin,
+                    sl_value(self, state, id_vec_get(ids, i), expected.inner as Type*));
+            }
+            return origin;
+        }
+        if (ord(expr.kind) == ord(EX_ARRAY_CONSTRUCTOR) && vec_size(ids) == 1) {
+            let argument = id_vec_get(ids, 0);
+            let argument_type = sl_type(self, argument);
+            if (argument_type != null && type_equals(argument_type as Type*, expected)) {
+                return sl_value(self, state, argument, expected);
+            }
+            return sl_value(self, state, argument, expected.inner as Type*);
+        }
+    }
+    return -1;
+}
+
+/**
+ * Diagnose an invalid transfer once despite fixed-point revisits.
+ *
+ * @param self Function checker.
+ * @param stmt_id Transfer statement.
+ * @param source Backing origin.
+ * @param destination Destination storage region.
+ */
+func sl_check_store(self: SliceChecker*, stmt_id: StmtId, source: int, destination: int) {
+    if (sl_outlives(self, source, destination) || iset_has(self.reported, stmt_id)) return;
+    iset_add(self.reported, stmt_id);
+    let stmt = stmt_arena_get(self.env.stmt_arena, stmt_id);
+    let message = "slice backing storage does not provably outlive the destination binding or storage";
+    if (destination < 0) message = "slice lifetime transfer into caller-owned storage is not provable";
+    diag_error(self.result.diags, "type", "TYP-0818", message, self.unit.path,
+        stmt.span.start_line, stmt.span.start_column, stmt.span.end_line, stmt.span.end_column);
+}
+
+/**
+ * Evaluate compile-time boolean reachability without interpreting local values.
+ *
+ * @param self Function checker.
+ * @param expr_id Condition expression.
+ * @return One for true, zero for false, or -1 for dynamic.
+ */
+func sl_condition(self: SliceChecker*, expr_id: ExprId) -> int {
+    if (expr_id < 0) return -1;
+    let expr = expr_arena_get(self.unit.parse_result.expr_arena, expr_id);
+    if (ord(expr.kind) == ord(EX_BOOL)) {
+        if (expr.bool_value) return 1;
+        return 0;
+    }
+    if (ord(expr.kind) == ord(EX_PAREN)) return sl_condition(self, expr.expr_a);
+    if (ord(expr.kind) == ord(EX_UNARY) && expr.text_value == "!") {
+        let inner = sl_condition(self, expr.expr_a);
+        if (inner >= 0) return 1 - inner;
+    }
+    if (ord(expr.kind) == ord(EX_BINARY)) {
+        let left = sl_condition(self, expr.expr_a);
+        if (expr.text_value == "&&") {
+            if (left == 0) return 0;
+            if (left == 1) return sl_condition(self, expr.expr_b);
+        }
+        if (expr.text_value == "||") {
+            if (left == 1) return 1;
+            if (left == 0) return sl_condition(self, expr.expr_b);
+        }
+    }
+    if (ord(expr.kind) == ord(EX_VAR_REF) && sl_expr_binding(self, expr_id) < 0) {
+        with (let ctx = tr_const_eval_context_create(self.result.driver_state,
+            self.result.signatures as SignatureTables*, self.result.names as NameResolution*, self.result.diags) =>
+            tr_const_eval_context_free(ctx)) {
+            let value = tr_const_eval_expr(ctx, self.module_env, expr_id);
+            if (value != null) {
+                let known = value as ConstValue*;
+                let answer = -1;
+                if (ord(known.kind) == ord(CV_BOOL)) {
+                    answer = 0;
+                    if (known.bool_value) answer = 1;
+                }
+                tr_const_value_free(known);
+                return answer;
+            }
+        }
+    }
+    return -1;
+}
+
+/**
+ * Detect possible early return with short-circuit reachability.
+ *
+ * @param self Function checker.
+ * @param expr_id Expression to inspect.
+ * @return Whether evaluation can propagate a failed `?`.
+ */
+func sl_has_try(self: SliceChecker*, expr_id: ExprId) -> bool {
+    if (expr_id < 0) return false;
+    let expr = expr_arena_get(self.unit.parse_result.expr_arena, expr_id);
+    if (ord(expr.kind) == ord(EX_TRY)) return true;
+    if (sl_has_try(self, expr.expr_a)) return true;
+    if (ord(expr.kind) == ord(EX_BINARY)) {
+        let left = sl_condition(self, expr.expr_a);
+        if ((expr.text_value == "&&" && left == 0) || (expr.text_value == "||" && left == 1)) return false;
+    }
+    if (sl_has_try(self, expr.expr_b) || sl_has_try(self, expr.expr_c)) return true;
+    if (expr.ids != null) {
+        for (let i = 0; i < vec_size(expr.ids as VectorBase*); i = i + 1) {
+            if (sl_has_try(self, id_vec_get(expr.ids as VectorBase*, i))) return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Append a statement on fallthrough while preserving existing exits.
+ *
+ * @param self Function checker.
+ * @param flow Flow updated in place.
+ * @param stmt_id Next statement, or -1 for empty.
+ */
+func sl_append(self: SliceChecker*, flow: SliceFlow*, stmt_id: StmtId) {
+    let added = sl_stmt(self, flow.next, stmt_id);
+    flow.next.reachable = false;
+    sl_merge_flow(self, flow, added);
+    sl_free_flow(added);
+}
+
+/**
+ * Converge loop backedges and expose only reachable exits.
+ *
+ * @param self Function checker.
+ * @param input Loop-entry state after initialization.
+ * @param condition Condition expression.
+ * @param body Body statement.
+ * @param step Update statement, or -1 for while.
+ * @return Owned outgoing flow with loop controls consumed.
+ */
+func sl_loop(self: SliceChecker*, input: SliceState*, condition: ExprId, body: StmtId, step: StmtId) -> SliceFlow* {
+    let result = sl_flow(self);
+    let known = sl_condition(self, condition);
+    let head = sl_clone(input);
+    if (known == 0) {
+        sl_merge(self, result.next, head);
+        sl_free_state(head);
+        return result;
+    }
+    let changed = true;
+    while (changed) {
+        let iteration = sl_stmt(self, head, body);
+        sl_merge(self, result.returns, iteration.returns);
+        sl_merge(self, result.next, iteration.breaks);
+        sl_merge(self, iteration.next, iteration.continues);
+        let saved_temporary = self.temporary_region;
+        let body_scope = lc_func_env_get_block_scope(self.env, body);
+        if (body_scope != null) self.temporary_region = sl_region(self, body_scope as Scope*);
+        let update = sl_stmt(self, iteration.next, step);
+        self.temporary_region = saved_temporary;
+        sl_merge(self, result.returns, update.returns);
+        changed = sl_merge(self, head, update.next);
+        sl_free_flow(update);
+        sl_free_flow(iteration);
+    }
+    if (known < 0) sl_merge(self, result.next, head);
+    if (sl_has_try(self, condition)) sl_merge(self, result.returns, head);
+    sl_free_state(head);
+    return result;
+}
+
+/**
+ * Run cleanup and preserve the incoming exit when cleanup falls through.
+ *
+ * @param self Function checker.
+ * @param output Destination for cleanup outcomes.
+ * @param state Incoming continuation.
+ * @param kind Zero for next, one for return, two for break, three for continue.
+ * @param stmt With statement containing cleanup operations.
+ * @param initialized Header items with registered cleanup.
+ */
+func sl_cleanup(self: SliceChecker*, output: SliceFlow*, state: SliceState*, kind: int,
+                 stmt: StmtNode*, initialized: int) {
+    let flow = sl_flow(self);
+    if (kind == 0) sl_merge(self, flow.next, state);
+    if (kind == 1) sl_merge(self, flow.returns, state);
+    if (kind == 2) sl_merge(self, flow.breaks, state);
+    if (kind == 3) sl_merge(self, flow.continues, state);
+    if (stmt.stmt_b >= 0) {
+        let cleaned = sl_cleanup_all(self, flow, stmt.stmt_b);
+        sl_free_flow(flow);
+        flow = cleaned;
+    } else if (stmt.with_items != null) {
+        for (let i = initialized - 1; i >= 0; i = i - 1) {
+            let item = ptr_vec_get(stmt.with_items as VectorBase*, i) as WithItem*;
+            if (item.has_cleanup) {
+                let cleaned_item = sl_cleanup_all(self, flow, item.cleanup_stmt);
+                sl_free_flow(flow);
+                flow = cleaned_item;
+            }
+        }
+    }
+    sl_merge_flow(self, output, flow);
+    sl_free_flow(flow);
+}
+
+/**
+ * Analyze a statement with restored scopes and separate continuations.
+ *
+ * @param self Function checker.
+ * @param input Incoming state.
+ * @param stmt_id Statement, or -1 for empty.
+ * @return Owned outgoing flow.
+ */
+func sl_stmt(self: SliceChecker*, input: SliceState*, stmt_id: StmtId) -> SliceFlow* {
+    let output = sl_flow(self);
+    if (!input.reachable) return output;
+    if (sim_has((self.result.locals_result as LocalsResult*).dead_statements,
+        analysis_expr_key(self.env.module_name, stmt_id))) return output;
+    if (stmt_id < 0) {
+        sl_merge(self, output.next, input);
+        return output;
+    }
+    let saved_scope = self.scope;
+    let saved_temporary = self.temporary_region;
+    let scope = lc_func_env_get_block_scope(self.env, stmt_id);
+    if (scope != null) {
+        self.scope = scope as Scope*;
+        self.temporary_region = sl_region(self, self.scope);
+    }
+    let stmt = stmt_arena_get(self.env.stmt_arena, stmt_id);
+    sl_merge(self, output.next, input);
+    if (sl_has_try(self, stmt.expr_a) || sl_has_try(self, stmt.expr_b)) sl_merge(self, output.returns, input);
+    match (stmt.kind) {
+        ST_BLOCK => {
+            if (stmt.ids != null) {
+                for (let i = 0; i < vec_size(stmt.ids as VectorBase*); i = i + 1) {
+                    sl_append(self, output, id_vec_get(stmt.ids as VectorBase*, i));
+                }
+            }
+        }
+        ST_LET => {
+            let symbol = spm_get(self.scope.symbols, stmt.name) as LocalSymbol*;
+            let index = sl_binding(self, symbol);
+            let binding = ptr_vec_get(self.bindings, index) as SliceBinding*;
+            if (binding.ty != null && type_contains_slice_storage(binding.ty as Type*)) {
+                let origin = sl_value(self, input, stmt.expr_a, binding.ty as Type*);
+                sl_check_store(self, stmt_id, origin, binding.region);
+                *(vec_get(output.next.origins, index) as int*) = origin;
+            }
+        }
+        ST_ASSIGN => {
+            let ty = sl_type(self, stmt.expr_a);
+            if (ty != null && type_contains_slice_storage(ty as Type*)) {
+                let origin2 = sl_value(self, input, stmt.expr_b, ty as Type*);
+                sl_check_store(self, stmt_id, origin2, sl_place(self, input, stmt.expr_a));
+                let target_id = stmt.expr_a;
+                let target = expr_arena_get(self.unit.parse_result.expr_arena, target_id);
+                while (ord(target.kind) == ord(EX_PAREN)) {
+                    target_id = target.expr_a;
+                    target = expr_arena_get(self.unit.parse_result.expr_arena, target_id);
+                }
+                if (ord(target.kind) == ord(EX_VAR_REF)) {
+                    let index2 = sl_expr_binding(self, target_id);
+                    if (index2 >= 0) *(vec_get(output.next.origins, index2) as int*) = origin2;
+                }
+            }
+        }
+        ST_IF => {
+            output.next.reachable = false;
+            let condition = sl_condition(self, stmt.expr_a);
+            if (condition != 0) {
+                let yes = sl_stmt(self, input, stmt.stmt_a);
+                sl_merge_flow(self, output, yes);
+                sl_free_flow(yes);
+            }
+            if (condition != 1) {
+                let no = sl_stmt(self, input, stmt.stmt_b);
+                sl_merge_flow(self, output, no);
+                sl_free_flow(no);
+            }
+        }
+        ST_WHILE => {
+            let loop = sl_loop(self, input, stmt.expr_a, stmt.stmt_a, -1);
+            output.next.reachable = false;
+            sl_merge_flow(self, output, loop);
+            sl_free_flow(loop);
+        }
+        ST_FOR => {
+            sl_append(self, output, stmt.stmt_a);
+            let loop2 = sl_loop(self, output.next, stmt.expr_a, stmt.stmt_c, stmt.stmt_b);
+            output.next.reachable = false;
+            sl_merge_flow(self, output, loop2);
+            sl_free_flow(loop2);
+        }
+        ST_MATCH => {
+            output.next.reachable = false;
+            let arms = stmt.match_arms as VectorBase*;
+            for (let i2 = 0; i2 < vec_size(arms); i2 = i2 + 1) {
+                let arm = ptr_vec_get(arms, i2) as MatchArm*;
+                let branch = sl_stmt(self, input, arm.body);
+                sl_merge_flow(self, output, branch);
+                sl_free_flow(branch);
+            }
+        }
+        ST_CASE => {
+            output.next.reachable = false;
+            let arms2 = stmt.case_arms as VectorBase*;
+            for (let i3 = 0; i3 < vec_size(arms2); i3 = i3 + 1) {
+                let branch2 = sl_stmt(self, input, (ptr_vec_get(arms2, i3) as CaseArm*).body);
+                sl_merge_flow(self, output, branch2);
+                sl_free_flow(branch2);
+            }
+            if (stmt.case_else != null) {
+                let otherwise = sl_stmt(self, input, (stmt.case_else as CaseElse*).body);
+                sl_merge_flow(self, output, otherwise);
+                sl_free_flow(otherwise);
+            } else {
+                sl_merge(self, output.next, input);
+            }
+        }
+        ST_WITH => {
+            let initialized = 0;
+            if (stmt.with_items != null) {
+                let items = stmt.with_items as VectorBase*;
+                for (let j = 0; j < vec_size(items); j = j + 1) {
+                    let item = ptr_vec_get(items, j) as WithItem*;
+                    let header = sl_stmt(self, output.next, item.init);
+                    let return_cleanups = initialized;
+                    if (ord(stmt_arena_get(self.env.stmt_arena, item.init).kind) == ord(ST_RETURN)) {
+                        return_cleanups = initialized + 1;
+                    }
+                    sl_cleanup(self, output, header.returns, 1, stmt, return_cleanups);
+                    sl_cleanup(self, output, header.breaks, 2, stmt, initialized);
+                    sl_cleanup(self, output, header.continues, 3, stmt, initialized);
+                    output.next.reachable = false;
+                    sl_merge(self, output.next, header.next);
+                    initialized = initialized + 1;
+                    sl_free_flow(header);
+                }
+            }
+            let body = sl_stmt(self, output.next, stmt.stmt_a);
+            output.next.reachable = false;
+            sl_cleanup(self, output, body.next, 0, stmt, initialized);
+            sl_cleanup(self, output, body.returns, 1, stmt, initialized);
+            sl_cleanup(self, output, body.breaks, 2, stmt, initialized);
+            sl_cleanup(self, output, body.continues, 3, stmt, initialized);
+            sl_free_flow(body);
+        }
+        ST_RETURN => {
+            sl_merge(self, output.returns, input);
+            output.next.reachable = false;
+        }
+        ST_BREAK => {
+            sl_merge(self, output.breaks, input);
+            output.next.reachable = false;
+        }
+        ST_CONTINUE => {
+            sl_merge(self, output.continues, input);
+            output.next.reachable = false;
+        }
+        _ => {}
+    }
+    self.scope = saved_scope;
+    self.temporary_region = saved_temporary;
+    return output;
+}
+
+/**
+ * Resolve a binding type after expression typing.
+ *
+ * @param self Function checker.
+ * @param symbol Exact binding identity.
+ * @return Owned type or null for a non-slice pattern binding.
+ */
+func sl_binding_type(self: SliceChecker*, symbol: LocalSymbol*) -> Type*? {
+    let ref: TypeRef*? = null;
+    if (ord(symbol.kind) == ord(LK_PARAM)) ref = (symbol.decl_ptr as Param*).type_ref;
+    if (ord(symbol.kind) == ord(LK_LOCAL)) {
+        let stmt = symbol.decl_ptr as StmtNode*;
+        ref = stmt.type_ref;
+        if (ref == null) {
+            let ty = sl_type(self, stmt.expr_a);
+            if (ty != null) return type_clone(ty as Type*);
+        }
+    }
+    if (ref == null) return null;
+    with (let seen = ss_create() => ss_free(seen)) {
+        return tr_resolve_type_ref(self.result.signatures as SignatureTables*, self.result.names as NameResolution*,
+            self.result.driver_state, self.module_env, ref as TypeRef*, self.result.diags, seen);
+    }
+}
+
+/**
+ * Check borrowed-storage transfers in successfully typed source functions.
+ *
+ * @param result Successful analysis result, updated with lifetime errors.
+ */
+func slice_lifetimes_check(result: AnalysisResult*) {
+    if (analysis_has_errors(result) || result.locals_result == null) return;
+    let all_locals = result.locals_result as LocalsResult*;
+    for (let function_i = 0; function_i < locals_env_count(all_locals); function_i = function_i + 1) {
+        let env = locals_env_get(all_locals, function_i);
+        let self = new SliceChecker(result, env, driver_find_unit(result.driver_state, env.module_name) as DriverUnit*,
+            nr_env_find(result.names as NameResolution*, env.module_name) as ModuleEnv*, ptr_vec_create(8),
+            env.root_scope, 1, iset_create());
+        for (let scope_i = 0; scope_i < vec_size(env.scopes); scope_i = scope_i + 1) {
+            let scope = ptr_vec_get(env.scopes, scope_i) as Scope*;
+            for (let i = 0; i < spm_capacity(scope.symbols); i = i + 1) {
+                if (spm_slot_occupied(scope.symbols, i)) {
+                    let symbol = spm_slot_value(scope.symbols, i) as LocalSymbol*;
+                    ptr_vec_push(self.bindings, new SliceBinding(symbol, scope_i + 1,
+                        sl_binding_type(self, symbol)) as void*);
+                }
+            }
+        }
+        let has_slices = false;
+        for (let type_i = 0; type_i < vec_size(self.bindings); type_i = type_i + 1) {
+            let binding_type = (ptr_vec_get(self.bindings, type_i) as SliceBinding*).ty;
+            if (binding_type != null && type_contains_slice_storage(binding_type as Type*)) has_slices = true;
+        }
+        let initial = sl_state(self, has_slices);
+        for (let binding_i = 0; binding_i < vec_size(self.bindings); binding_i = binding_i + 1) {
+            let binding = ptr_vec_get(self.bindings, binding_i) as SliceBinding*;
+            if (ord(binding.symbol.kind) == ord(LK_PARAM)) {
+                *(vec_get(initial.origins, binding_i) as int*) = -3 - binding_i;
+            }
+        }
+        let flow = sl_stmt(self, initial, env.func_decl.body);
+        sl_free_flow(flow);
+        sl_free_state(initial);
+        for (let free_i = 0; free_i < vec_size(self.bindings); free_i = free_i + 1) {
+            let binding2 = ptr_vec_get(self.bindings, free_i) as SliceBinding*;
+            if (binding2.ty != null) type_free(binding2.ty as Type*);
+            drop binding2;
+        }
+        vec_free(self.bindings);
+        iset_free(self.reported);
+        drop self;
+    }
+}
+
+/**
+ * Apply a cleanup statement to one incoming exit.
+ *
+ * @param self Function checker.
+ * @param output Combined cleanup result.
+ * @param state Incoming continuation.
+ * @param kind Incoming exit kind.
+ * @param stmt_id Cleanup statement.
+ */
+func sl_cleanup_step(self: SliceChecker*, output: SliceFlow*, state: SliceState*, kind: int, stmt_id: StmtId) {
+    let flow = sl_stmt(self, state, stmt_id);
+    if (kind == 0) sl_merge(self, output.next, flow.next);
+    if (kind == 1) sl_merge(self, output.returns, flow.next);
+    if (kind == 2) sl_merge(self, output.breaks, flow.next);
+    if (kind == 3) sl_merge(self, output.continues, flow.next);
+    flow.next.reachable = false;
+    sl_merge_flow(self, output, flow);
+    sl_free_flow(flow);
+}
+
+/**
+ * Run a registered cleanup even after a later cleanup changed the exit kind.
+ *
+ * @param self Function checker.
+ * @param input Incoming continuations.
+ * @param stmt_id Cleanup statement.
+ * @return Owned cleanup continuations.
+ */
+func sl_cleanup_all(self: SliceChecker*, input: SliceFlow*, stmt_id: StmtId) -> SliceFlow* {
+    let output = sl_flow(self);
+    sl_cleanup_step(self, output, input.next, 0, stmt_id);
+    sl_cleanup_step(self, output, input.returns, 1, stmt_id);
+    sl_cleanup_step(self, output, input.breaks, 2, stmt_id);
+    sl_cleanup_step(self, output, input.continues, 3, stmt_id);
+    return output;
+}
+
+/**
+ * Recognize unowned nullable-value extraction temporaries.
+ *
+ * Lowering copies nullable carriers for unwrap/try without owning the copied
+ * payload. Borrowing ARC array elements from that carrier is unprovable when
+ * the original carrier can be replaced. An explicit array value binding uses
+ * the ordinary owning-copy rules and may subsequently be borrowed.
+ *
+ * @param self Function checker.
+ * @param expr_id Array expression or its enclosing subobject expression.
+ * @return Whether an unowned nullable carrier lies on the storage path.
+ */
+func sl_unowned_extraction(self: SliceChecker*, expr_id: ExprId) -> bool {
+    let expr = expr_arena_get(self.unit.parse_result.expr_arena, expr_id);
+    if (ord(expr.kind) == ord(EX_CAST) || ord(expr.kind) == ord(EX_TRY)) {
+        let source = sl_type(self, expr.expr_a);
+        if (source != null && ord((source as Type*).kind) == ord(TY_NULLABLE)) return true;
+    }
+    if (ord(expr.kind) == ord(EX_PAREN) || ord(expr.kind) == ord(EX_FIELD) ||
+        ord(expr.kind) == ord(EX_INDEX) || ord(expr.kind) == ord(EX_CAST)) {
+        return sl_unowned_extraction(self, expr.expr_a);
+    }
+    return false;
+}

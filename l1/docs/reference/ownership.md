@@ -1,6 +1,6 @@
 # L1 Ownership and Memory Management Reference
 
-Version: 2026-10-10
+Version: 2026-10-29
 
 This document describes how ownership works in current Dea/L1 bootstrap builds, covering:
 
@@ -92,6 +92,14 @@ and may not be returned or stored in long-lived locations (see [design-decisions
 slice emits only the descriptor copy. If the compiler materializes a fixed-array rvalue to back a slice, that backing
 temporary is still an owned array and is cleaned up by the normal array rules when its element type transitively
 contains ARC-managed data.
+
+A borrowed slice's backing must outlive its destination binding or storage, including indexed descriptor-array slots. L1
+tracks direct aliases by binding identity and rejects shorter-lived or unprovable transfers before C emission
+(`TYP-0818`). It does not use last-use analysis or permit a temporary invalid assignment followed by restoration.
+Array/nullable/pointer wrappers and imported aliases cannot bypass the containment restrictions. Caller-owned descriptor
+storage requires a separate lifetime proof from callee-local storage. For a nullable ARC array, bind an owning extracted
+array before borrowing it; an unowned extraction carrier does not guarantee payload ownership under later replacement.
+Explicit raw-pointer lifetime responsibilities remain unchanged.
 
 An ordinary variadic call owns a compiler-materialized fixed array containing copies of its trailing arguments. That
 array follows the same recursive retain and cleanup rules as any other `T[N]` value and remains alive through the call;

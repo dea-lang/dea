@@ -6,6 +6,7 @@
 module expr_types.stmt;
 
 import std.hashset;
+import std.hashmap;
 import std.vector;
 import util.intset;
 import util.numbers;
@@ -289,6 +290,10 @@ func etc_const_bool_flow(self: ExpressionTypeChecker*, expr_id: ExprId) -> Const
  * @return Statement flow reported by the checked statement.
  */
 func etc_check_dead_const_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKind {
+    if (self.result.locals_result != null) {
+        sim_put((self.result.locals_result as LocalsResult*).dead_statements,
+            etc_key(self.current_module, stmt_id), 1);
+    }
     let saved_suppress_liveness = self.suppress_liveness_diagnostics;
     let saved_capture = self.loop_flow_capture_stack;
     self.suppress_liveness_diagnostics = true;
