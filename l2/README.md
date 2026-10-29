@@ -1,8 +1,12 @@
 # Dea/L2
 
 L2 owns the former L1 Stage 2 compiler as its canonical `l2c`. The implementation is `.l1`; accepted programs and owned
-stdlib modules are `.l2`, with `.l2m` interfaces. Initial language semantics match the L1 baseline apart from level
-identity. Shared ABI names, including the compatible `l1_real.h` header, remain internal compatibility details.
+stdlib modules are `.l2`, with `.l2m` interfaces. Its initial semantics came from the L1 baseline at the split; later L1
+changes are not inherited automatically. Shared ABI names, including the compatible `l1_real.h` header, remain internal
+compatibility details.
+
+Sustained L2 feature development is deferred until L1 is stable, a baseline is selected, and the L2 phase is explicitly
+started. The compiler and validation workflows below remain available for maintenance. Run these commands from `l2/`.
 
 ```sh
 export L2_BOOTSTRAP_L1C=/absolute/installed-l1/bin/l1c

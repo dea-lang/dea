@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-10-21
+Version: 2026-10-29
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -47,9 +47,9 @@ CI-only normal cases, environment integration, traces, and child fixtures. Slow 
 fixtures exercise accepted L1 programs. Fixture productization and real exact-artifact acceptance remain separate.
 
 `make install` privately builds the canonical installed-mode compiler with verified semantic inputs. `make dist` also
-requires matching strict offline HTML/full PDF. Fresh acceptance of the retargeted artifact remains required; historical
-Stage 2 acceptance is not transferable. See
-[l1/docs/reference/productization-inventory.md](productization-inventory.md).
+requires matching strict offline HTML/full PDF. The canonical L1 artifact passed fresh four-platform acceptance on
+2026-10-11. New artifacts require their own acceptance; neither historical Stage 2 evidence nor compiler CI establishes
+their readiness. See [l1/docs/reference/productization-inventory.md](productization-inventory.md).
 
 ## 1. High-Level Pipeline
 
@@ -78,6 +78,9 @@ locals.l0 -> FunctionEnv per function
   |
   v
 expr_types.l0 -> typed AnalysisResult + semantic diagnostics
+  |
+  v
+slice_lifetimes.l0 -> borrowed-slice backing and destination lifetime validation
   |
   +-- `--emit-interface` --> interface projection + canonical fingerprint --> textual `.l1m`
   |
@@ -109,6 +112,10 @@ expr_types.l0 -> typed AnalysisResult + semantic diagnostics
                                     v
                           host link / optional direct launch
 ```
+
+Slice lifetime validation runs after successful expression typing and rejects invalid or unprovable lifetime transfers
+before interface or C emission. It follows resolved bindings and backing origins through aliases, control flow and
+slice-containing storage. The language contract is recorded in [l1/docs/reference/ownership.md](ownership.md).
 
 The interface-authoritative standalone-link path is:
 

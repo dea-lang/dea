@@ -107,7 +107,16 @@ failure was reproduced before correction. Verification commands and outcomes:
 - `python3 scripts/check_c_docs.py`, ADR Impact, repository-link validation, staged whitespace, and root pre-commit
   passed.
 
-This is a focused CI and test-ownership repair. No compiler behavior, trace execution semantics, runtime flags, or
-artifacts changed, so compiler rebuilds and full trace sweeps are outside local validation. Native Linux, macOS ARM, and
-Windows UCRT64 execution of the new wiring remains hosted validation; no new hosted result is claimed. Completion
-records the implemented local repair and does not authorize a push or workflow dispatch.
+Hosted `Unified CI` verification on 2026-10-29 passed the repository checks, `make -C l0 test-extended`, and
+`make -C l1 test-ci` on all four native platforms:
+
+| Platform       | Selected C compiler                  |
+| -------------- | ------------------------------------ |
+| Linux x86_64   | `/usr/bin/gcc`, Ubuntu GCC 15.2.0    |
+| macOS Intel    | `/usr/bin/clang`, Apple Clang 17.0.0 |
+| macOS ARM      | `/usr/bin/clang`, Apple Clang 21.0.0 |
+| Windows UCRT64 | `/ucrt64/bin/gcc`, MSYS2 GCC 16.2.0  |
+
+Each platform ran both level delegates and the separate repository-check step. L1's tooling gate passed the relocated
+predecessor compatibility checks. Strict L0 and L1 documentation validation and ADR Impact also passed. L2 remained
+disabled. The local successor-denial check above separately establishes L0 test independence.

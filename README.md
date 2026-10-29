@@ -61,7 +61,10 @@ Stability is defined per language level:
 - **Dea/L1 is under active development.** Its current development release is `0.1.0`; it does not promise stable
   language, module-interface, or binary compatibility across future releases.
 - **Dea/L2 is an independent development level.** Its canonical compiler is implemented in L1; it does not yet have a
-  packaged release.
+  packaged release. Sustained L2 feature development is deferred until a stable L1 baseline is selected.
+
+Current source development targets a finite L1 foundation for compilers and tools. See
+[l1/docs/roadmap.md](l1/docs/roadmap.md) for the stabilization boundary and acceptance requirements.
 
 L1 and L2 development does not change L0's stable status. Future breaking changes are documented and versioned within
 the affected level.

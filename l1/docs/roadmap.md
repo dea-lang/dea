@@ -9,8 +9,9 @@ been promoted to initiatives or plans.
 L1 has one canonical L0-implemented compiler, published as the L1 0.1.0 development toolchain. See
 [l1/docs/releases/0.1.0.md](releases/0.1.0.md) for its baseline and compatibility limitations. The former L1 Stage 2 is
 now the L1-implemented L2 compiler. L0 remains the stable release line. The canonical split, fresh four-platform
-artifact acceptance, hosted release-workflow acceptance, and L1 0.1.0 publication are complete. L1 scope is not frozen
-and its feature backlog remains assigned here pending individual decisions.
+artifact acceptance, hosted release-workflow acceptance, and L1 0.1.0 publication are complete for that release
+baseline. Current source development follows the finite stabilization target below. New capabilities require an explicit
+scope amendment; the deferred successor feature plans belong to L2.
 
 ## Current position
 

@@ -1,6 +1,6 @@
 # L1 Installation and Distribution Contract
 
-Version: 2026-10-12
+Version: 2026-10-29
 
 L1 exposes `make install PREFIX=...` and `make list-installed PREFIX=...` for a curated, canonical L0-implemented
 toolchain. Prefix ownership, recoverable payload copying, installed-context launchers, generated provenance, and native
@@ -99,9 +99,9 @@ python3 -I /absolute/evidence/harness/productization_acceptance.py \
   --phase verify --directory /absolute/evidence
 ```
 
-Use native UCRT64 `python` on Windows. The verifier needs only Python's standard library and supported native host
-tools; it does not need the repository, Make, documentation generators, or bootstrap compilers. Select the native
-compiler with `L1_CC`. A combined local run does not establish that the checkout is unavailable.
+Use native Windows CPython from the UCRT64 shell on Windows. The verifier needs only Python's standard library and
+supported native host tools; it does not need the repository, Make, documentation generators, or bootstrap compilers.
+Select the native compiler with `L1_CC`. A combined local run does not establish that the checkout is unavailable.
 
 The manual `L1 Productization Acceptance` workflow in
 [.github/workflows/l1-productization-acceptance.yml][acceptance-workflow] builds one full canonical L1 docs bundle, then
@@ -111,11 +111,12 @@ retain the acceptance report and smoke log; build jobs retain archives and build
 independence when the hosted jobs pass. The workflow has read-only repository permissions and no release, tag, or Pages
 publication steps. It is separate from `test-ci`; running ordinary CI does not run this gate.
 
-Native artifact acceptance on 2026-10-09 validated the former Stage 2 product. It remains historical evidence only. The
-canonical L0-implemented artifact needs fresh native build/verify evidence on all four platforms; compiler CI and local
-combined acceptance do not prove a fresh host without checkout/bootstrap artifacts. The split plan tracks this pending
-release prerequisite. The current contract is
-[l1/docs/decisions/0043-canonical-compiler-toolchain-delivery.md][delivery].
+Canonical L0-implemented artifact acceptance passed on 2026-10-11 on Linux x86_64, macOS Intel, macOS ARM, and Windows
+UCRT64. Separate native build and fresh-runner verification jobs checked the transported artifacts without checkout or
+bootstrap compilers, completing the split's release prerequisite. Native acceptance of the former Stage 2 product on
+2026-10-09 remains historical evidence. New artifacts need their own acceptance; compiler CI and combined local
+acceptance do not establish fresh-host independence. See [l1/docs/project-status.md](../project-status.md) for the
+release baseline. The current contract is [l1/docs/decisions/0043-canonical-compiler-toolchain-delivery.md][delivery].
 
 ## Public install workflow
 

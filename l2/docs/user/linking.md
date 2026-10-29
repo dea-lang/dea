@@ -1,6 +1,6 @@
 # Linking External Native Libraries
 
-Version: 2026-10-10
+Version: 2026-10-29
 
 L2 can combine separately compiled Dea modules, caller-asserted native objects, and external host libraries in
 `--build`, `--run`, and standalone `--link` mode. This is an explicit command-line contract: L2 does not yet have a
@@ -19,14 +19,14 @@ int32_t acme_answer(void);
 
 can be declared in L2 as:
 
-```l1
+```l2
 extern func acme_answer() -> int;
 ```
 
 The declaration must match the real C ABI. L2 does not inspect a header, generate a binding, or verify the native
 symbol. Keep conversions and complex ABI details in a small C shim when the direct L2/C type correspondence is not
-obvious. The planned `extern "C"` and C-string language surface belongs to
-[Initiative 0003](../../../l1/work/initiatives/0003-c-ffi.md); it is not part of the current linking feature.
+obvious. Broader first-class C interoperability is deferred L2 design work; additional `extern "C"` syntax and dedicated
+C-string types have not been adopted. See [l2/docs/roadmap.md](../roadmap.md).
 
 ## Build, Run, and Standalone Link
 

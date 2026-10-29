@@ -33,7 +33,7 @@ The current stack is intentionally layered:
 1. L1 language and compiler
 2. L1 stdlib modules under `compiler/shared/l1/stdlib/`
 3. C runtime boundary through the public `compiler/shared/runtime/include/dea_rt.h` surface and derived native support
-   from a matching managed profile or an explicit runtime-library override
+   from a matching managed profile, a caller-owned explicit profile, or an explicit runtime-library override
 
 This keeps platform-specific behavior concentrated at the runtime boundary instead of leaking into core language
 semantics.
@@ -41,8 +41,10 @@ semantics.
 Standalone `--link` preserves this boundary rather than asking the host linker to discover a runtime by library name.
 For normal compiler families the driver selects the runtime variant and passes its archive by exact path. The ADR-0027
 TinyCC compatibility carve-out instead permits the complete variant-matched raw runtime object set when TinyCC's object
-format is incompatible with the platform archive. Explicit runtime-library overrides take priority and select the
-requested exact archive. This exception does not make raw runtime objects the general public link contract.
+format is incompatible with the platform archive. In managed mode, explicit runtime-library overrides take priority and
+select the requested exact archive. An explicit profile instead supplies its recorded runtime and rejects
+runtime-library overrides. See [l1/docs/reference/explicit-profiles.md](explicit-profiles.md). The TinyCC exception does
+not make raw runtime objects the general public link contract.
 
 ## 3. Portability Policy
 

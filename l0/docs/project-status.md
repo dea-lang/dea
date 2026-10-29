@@ -1,12 +1,12 @@
 # L0 Project Status
 
-Version: 2026-10-26
+Version: 2026-10-29
 
 This document summarizes what is implemented in this repository today. The latest Dea/L0 release is `2.1.1`.
 
 L0 now lives as one language subtree inside the Dea monorepo; monorepo release tags use the `l0-vX.Y.Z` namespace while
-historical pre-monorepo tags remain legacy references. The monorepo also contains the active Dea/L1 bootstrap subtree
-under `l1/`.
+historical pre-monorepo tags remain legacy references. The monorepo also contains the L0-implemented Dea/L1 development
+toolchain and the independent L1-implemented Dea/L2 compiler.
 
 ## Scope and Canonical References
 
@@ -131,6 +131,10 @@ Validation is centered on:
 - workflow/distribution regression tests for build metadata, archives, and release-tag policy,
 - strict docs generation and packaged-reference validation.
 
+L0's suite validates its own sources and artifacts without reading successor files. L1 owns comparisons against the
+supported L0 runtime and trace contracts. Shared tooling checks run separately through root test aggregates and Unified
+CI's repository-check steps. See [MONOREPO.md](../../MONOREPO.md#compiler-ci).
+
 ## Platform Support
 
 The current development support baseline remains:
@@ -154,4 +158,4 @@ These remain true in the current `2.1.1` release:
 3. No address-of (`&`) operator in language semantics.
 4. No generics, traits, or macros.
 5. Reserved/future keywords and operators are lexed for diagnostics and staged evolution.
-6. Bitwise operators, top-level `const`, and further language extensions are deferred to Dea/L1.
+6. Bitwise operators and top-level `const` are available in Dea/L1 and remain outside the L0 language surface.

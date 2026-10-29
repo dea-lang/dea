@@ -1,10 +1,11 @@
 # tree-sitter-dea
 
-[Tree-sitter](https://tree-sitter.github.io/tree-sitter/) grammar for levels L0 and L1 of the
+[Tree-sitter](https://tree-sitter.github.io/tree-sitter/) grammar for levels L0, L1 and L2 of the
 [Dea](https://github.com/dea-lang/dea) programming language.
 
-The grammar name is `dea`. It maps both `.l0` and `.l1` files to one structural parser that accepts the richer L1
-syntactic superset. Hosts should keep their L0 and L1 language identities separate while reusing this parser.
+The grammar name is `dea`. It maps `.l0`, `.l1` and `.l2` files to one structural parser that accepts the richer L1
+syntactic superset, also used by the current L2 baseline. Hosts should keep their L0, L1 and L2 language identities
+separate while reusing this parser.
 
 The Dea compilers remain authoritative. This grammar intentionally favors stable syntax trees and useful recovery while
 code is incomplete; it does not enforce level-specific or semantic restrictions.
@@ -42,16 +43,16 @@ Generated parser sources are checked in so consumers do not need Node.js to buil
 
 ## Source coordinates
 
-Hosts that select parsers by grammar name should map both extensions to `dea`. For example, Neovim can register the
+Hosts that select parsers by grammar name should map all three extensions to `dea`. For example, Neovim can register the
 shared parser for separate filetypes:
 
 ```lua
-vim.treesitter.language.register("dea", { "dea_l0", "dea_l1" })
+vim.treesitter.language.register("dea", { "dea_l0", "dea_l1", "dea_l2" })
 ```
 
-Helix language entries can retain distinct `dea-l0` and `dea-l1` names while setting `grammar = "dea"` on both. Zed
-extensions should likewise register one `dea` grammar and two language configurations. Emacs users can associate both
-major-mode variants with the `dea` grammar in `treesit-language-source-alist`.
+Helix language entries can retain distinct `dea-l0`, `dea-l1` and `dea-l2` names while setting `grammar = "dea"` on
+each. Zed extensions should likewise register one `dea` grammar and three language configurations. Emacs integrations
+can reuse the same grammar for all three extensions.
 
 Remote integrations that support a grammar subdirectory should pin both the monorepo revision and this path:
 

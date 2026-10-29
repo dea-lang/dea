@@ -15,7 +15,7 @@ The example prints greetings in 25 languages in a shuffled order. In native Wind
 `bin\l1-env.cmd` and use `l1c.cmd` with Windows paths. Direct native `bin/l1c.native` execution uses the same
 installed-prefix checks.
 
-## Native output and support
+## Managed native support
 
 Select a compatible C toolchain with `L1_CC`, and select a writable support cache with `--stdlib-cache` or
 `L1_STDLIB_CACHE`. Without an explicit cache selector the compiler uses its per-user cache. The installation contains
@@ -33,6 +33,20 @@ l1c --build /path/to/dea-l1/examples/hello.l1 -o hello
 `--prepare-stdlib --force` replaces the selected profile. Serialize forced preparation and manual cache removal against
 other compiler processes. Native configuration changes select different profiles. Explicit system, runtime, compiler,
 and cache overrides remain authoritative; an unusable explicit cache does not silently select another root.
+
+## Caller-owned native profiles
+
+For a reusable native configuration outside the managed cache, create a profile and select it explicitly:
+
+```bash
+l1c --create-profile -o native-profile
+l1c --build /path/to/dea-l1/examples/hello.l1 --profile native-profile -o hello
+```
+
+`--profile` is available for compile, link, build and run. It uses the profile's bundled providers, headers, runtime,
+compiler and options without cache lookup or automatic repair. Keep the external compiler, SDK and option-referenced
+inputs compatible, and create a new profile when they change. The profile's recorded configuration takes precedence over
+ambient native configuration; conflicting explicit options are rejected.
 
 ## Relocation and repair
 

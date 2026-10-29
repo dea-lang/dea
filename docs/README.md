@@ -6,17 +6,17 @@ Today it contains:
 
 - Dea-wide current-state material, including `project-status.md`
 - Dea-wide normative specifications
-- monorepo layout and shared automation documentation once stabilized
+- monorepo validation, delivery, and automation decisions, indexed in [docs/decisions/INDEX.md](decisions/INDEX.md)
 - Dea-wide reference documents that describe the project as a whole, including the
   [docs/reference/style-guide.md](reference/style-guide.md) code style guide
-- future cross-level design and release-process documents
+- cross-level design and release-process decisions
 
 Existing level-local stable documentation remains in the owning subtree such as `l0/docs/`.
 
 Lifecycle artifacts do not live in `docs/`. Use the sibling `work/` tree instead:
 
 - root `work/` for Dea-wide plans and proposals
-- level-local `work/` trees such as `l0/work/` and `l1/work/` for level-owned plans and proposals
+- level-local `work/` trees such as `l0/work/`, `l1/work/`, and `l2/work/` for level-owned plans and proposals
 
 ## Reference
 
@@ -28,7 +28,8 @@ Examples:
 - the [docs/reference/c-documentation.md](reference/c-documentation.md) C function documentation and extraction
   convention
 - monorepo-wide release/status policy
-- cross-level architecture notes once they exist
+- the canonical compiler lineage recorded in
+  [docs/decisions/0022-single-compiler-level-lineage.md](decisions/0022-single-compiler-level-lineage.md)
 
 Language-specific references live in the owning subtree such as `l0/docs/reference/`.
 
@@ -54,4 +55,4 @@ Each ADR links the decision to the closed plans that shaped it and the current d
 ADRs complement the `design-decisions.md` reference files (stable aggregates) and the closed plans in `work/plans/`
 (execution history); they do not replace either.
 
-Level-specific ADRs live in the owning subtree: `l0/docs/decisions/` and `l1/docs/decisions/`.
+Level-specific ADRs live in the owning subtree: `l0/docs/decisions/`, `l1/docs/decisions/`, and `l2/docs/decisions/`.

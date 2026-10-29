@@ -19,7 +19,7 @@ The recommended Windows path today is:
 - MSYS2 `UCRT64`
 - MinGW-w64 GCC or Clang
 - GNU Make on `PATH`
-- Native Windows CPython 3.14+ and native uv for repository tooling
+- Native Windows CPython 3.14+ for repository tooling; native uv is optional
 
 MSYS2 `MINGW64` is supported as an alternate environment. MSVC-family builds remain outside the validated release
 matrix. Native `cmd.exe` entrypoints are supported; the MSYS2 requirement comes from the supported backend C toolchain,
@@ -87,9 +87,9 @@ Notes:
 For day-to-day development, MSYS2 `UCRT64` bash is the recommended shell. MSYS2 `MINGW64` bash is supported for
 alternate validation.
 
-Install native Windows CPython 3.14+ and native uv separately from the MSYS2 C toolchain. Keep the shared repository
-`.venv` native: Make uses `../.venv/Scripts/python.exe`, not an MSYS2 `bin/python`. For a new environment, Make probes
-`py -3`; override `HOST_PYTHON` or pass a native executable explicitly when needed:
+Install native Windows CPython 3.14+ separately from the MSYS2 C toolchain; native uv is an optional setup accelerator.
+Keep the shared repository `.venv` native: Make uses `../.venv/Scripts/python.exe`, not an MSYS2 `bin/python`. For a new
+environment, Make probes `py -3`; override `HOST_PYTHON` or pass a native executable explicitly when needed:
 
 ```bash
 make venv PYTHON="C:/path with spaces/Python/python.exe"
@@ -144,14 +144,14 @@ layout in detail.
 
 ### Supported workflow
 
-| Scenario                                      | Recommended entry point on Windows            |
-| --------------------------------------------- | --------------------------------------------- |
-| Source-tree Stage 1 from MSYS2 bash           | `./scripts/l0c`                               |
-| Source-tree Stage 1 from `cmd.exe`            | `scripts\\l0c.cmd`                            |
-| Repo-local Stage 1 or Stage 2 from MSYS2 bash | `source build/dea/bin/l0-env.sh` then `l0c`   |
-| Repo-local Stage 1 or Stage 2 from `cmd.exe`  | `call build\\dea\\bin\\l0-env.cmd` then `l0c` |
-| Installed Stage 2 from MSYS2 bash             | `source <PREFIX>/bin/l0-env.sh` then `l0c`    |
-| Installed Stage 2 from `cmd.exe`              | `call <PREFIX>\\bin\\l0-env.cmd` then `l0c`   |
+| Scenario                                      | Recommended entry point on Windows          |
+| --------------------------------------------- | ------------------------------------------- |
+| Source-tree Stage 1 from MSYS2 bash           | `./scripts/l0c`                             |
+| Source-tree Stage 1 from `cmd.exe`            | `scripts\l0c.cmd`                           |
+| Repo-local Stage 1 or Stage 2 from MSYS2 bash | `source build/dea/bin/l0-env.sh` then `l0c` |
+| Repo-local Stage 1 or Stage 2 from `cmd.exe`  | `call build\dea\bin\l0-env.cmd` then `l0c`  |
+| Installed Stage 2 from MSYS2 bash             | `source <PREFIX>/bin/l0-env.sh` then `l0c`  |
+| Installed Stage 2 from `cmd.exe`              | `call <PREFIX>\bin\l0-env.cmd` then `l0c`   |
 
 ## What the Windows targets generate
 
@@ -170,7 +170,7 @@ Important current behavior:
 - `l0c-stage1.cmd` is the Windows batch wrapper.
 - There is no selected `l0c` alias yet.
 
-This target is directly usable from MSYS2 bash or through `build\\...\\bin\\l0c-stage1.cmd` in native Windows shells.
+This target is directly usable from MSYS2 bash or through `build\...\bin\l0c-stage1.cmd` in native Windows shells.
 
 ### `make install-dev-stage2`
 
@@ -207,7 +207,7 @@ Current Windows behavior:
 Practical result:
 
 - In MSYS2 bash, `source build/dea/bin/l0-env.sh` then `l0c ...` works.
-- In `cmd.exe`, `call build\\dea\\bin\\l0-env.cmd` then `l0c ...` works.
+- In `cmd.exe`, `call build\dea\bin\l0-env.cmd` then `l0c ...` works.
 
 ### `make use-dev-stage2`
 
@@ -373,5 +373,5 @@ That is why there is no `l0c.exe` wrapper in the generated layout:
 ## Current limitations
 
 - `l0-env.sh` remains the MSYS2/bash activation story.
-- The source-tree fallback `scripts\\l0c.cmd` still exists for direct Stage 1 use outside the repo-local selected-alias
+- The source-tree fallback `scripts\l0c.cmd` still exists for direct Stage 1 use outside the repo-local selected-alias
   workflow.
