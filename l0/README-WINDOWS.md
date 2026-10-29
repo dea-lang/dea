@@ -19,7 +19,7 @@ The recommended Windows path today is:
 - MSYS2 `UCRT64`
 - MinGW-w64 GCC or Clang
 - GNU Make on `PATH`
-- Native Windows CPython 3.14+ and native uv for repository tooling
+- Native Windows CPython 3.14+ for repository tooling; native uv is optional
 
 MSYS2 `MINGW64` is supported as an alternate environment. MSVC-family builds remain outside the validated release
 matrix. Native `cmd.exe` entrypoints are supported; the MSYS2 requirement comes from the supported backend C toolchain,
@@ -87,9 +87,9 @@ Notes:
 For day-to-day development, MSYS2 `UCRT64` bash is the recommended shell. MSYS2 `MINGW64` bash is supported for
 alternate validation.
 
-Install native Windows CPython 3.14+ and native uv separately from the MSYS2 C toolchain. Keep the shared repository
-`.venv` native: Make uses `../.venv/Scripts/python.exe`, not an MSYS2 `bin/python`. For a new environment, Make probes
-`py -3`; override `HOST_PYTHON` or pass a native executable explicitly when needed:
+Install native Windows CPython 3.14+ separately from the MSYS2 C toolchain; native uv is an optional setup accelerator.
+Keep the shared repository `.venv` native: Make uses `../.venv/Scripts/python.exe`, not an MSYS2 `bin/python`. For a new
+environment, Make probes `py -3`; override `HOST_PYTHON` or pass a native executable explicitly when needed:
 
 ```bash
 make venv PYTHON="C:/path with spaces/Python/python.exe"

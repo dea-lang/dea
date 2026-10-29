@@ -77,9 +77,9 @@ Spawned plan: [process spawning and anonymous pipes].
 ### Phase 3 - Sleep, deadlines, and timeouts (Stdlib Tier 3)
 
 Completed: general time seconds use `long`; `sleep`, `sleep_until`, `deadline_after`, and `remaining` use monotonic
-deadlines with checked arithmetic, structured failures, and caller-controlled interruption/resumption. Native macOS
-Intel and Linux `test-ci` gates passed, including generated L1 traces; native Windows/macOS ARM validation remains
-unverified locally.
+deadlines with checked arithmetic, structured failures, and caller-controlled interruption/resumption. Hosted
+`Unified CI` on 2026-10-29 passed L1 `test-ci` on native Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64,
+including the time runtime tests and canonical time traces with zero leaked object or string pointers.
 
 Spawned plan: [time width, sleep, and deadlines].
 

@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-10-28
+Version: 2026-10-29
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -11,8 +11,8 @@ Installation/distribution and offline HTML/full PDF now target the canonical com
 four-platform exact-artifact acceptance passed on 2026-10-11, including verification without checkout or bootstrap
 artifacts. Stage 2 acceptance remains historical. Hosted snapshot/versioned-release acceptance passed on 2026-10-12.
 [L1 0.1.0](https://github.com/dea-lang/dea/releases/tag/l1-v0.1.0) was published on 2026-10-13 as the canonical
-development toolchain, without freezing its feature scope or promising stable language, module-interface, or binary
-compatibility. See [l1/docs/releases/0.1.0.md](releases/0.1.0.md) for the release baseline. See the shared split plan in
+development toolchain, without promising stable language, module-interface, or binary compatibility. See
+[l1/docs/releases/0.1.0.md](releases/0.1.0.md) for the release baseline. See the shared split plan in
 [work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md](../../work/plans/refactors/closed/2026-10-10-shared-l1-l2-canonical-compiler-split-noref.md).
 
 ## Explicit native profiles
@@ -43,6 +43,12 @@ Use this file as the status snapshot. For implementation details, use:
   contract
 
 The live L1 roadmap lives at [l1/docs/roadmap.md](roadmap.md).
+
+Source development now follows a finite stabilization target for compilers and tools. Dynamic byte buffers, file
+handles, secure entropy and temporary objects, shell-free processes and pipes, typed string formatting, and semantic
+dependency discovery remain planned. General streams, networking, JSON, file watching, concurrency, owned slices, and
+broader language expressiveness are deferred to L2. The current source-tree features below may be newer than the
+published L1 0.1.0 baseline; stabilization also requires public-API acceptance programs and fresh artifact validation.
 
 ## Current Status
 
@@ -178,8 +184,8 @@ The current L1 tree includes:
 
 - L1 stdlib modules under `compiler/shared/l1/stdlib/`
 - runtime sources under `compiler/shared/runtime/`
-- bootstrap-owned public headers under `$L1_BUILD_DIR/include/` and 25 verified bundled `std.*` / `sys.*` semantic
-  interfaces under `$L1_BUILD_DIR/interfaces/`, generated independently of native preparation
+- bootstrap-owned public headers under `$L1_BUILD_DIR/include/` and the complete verified bundled `std.*` / `sys.*`
+  semantic interfaces under `$L1_BUILD_DIR/interfaces/`, generated independently of native preparation
 - one managed native cache, selected by `--stdlib-cache`, `L1_STDLIB_CACHE`, or the context default, with complete
   per-configuration stdlib/runtime profiles and exact copies of the selected bundled interfaces
 - content-sensitive compiler-input and supported-toolchain identities, separate generated-C/runtime options, per-key
@@ -243,6 +249,9 @@ checks, including:
 - fixed-size arrays `T[N]`, non-owning slice views `T[]`, ordered pointer/nullable/array/slice type suffixes, contextual
   array literals and fill constructors, checked array and slice indexing, `len`/`slice`, `sizeof(T[N])`, and `new T[N]`
   / `drop`
+- borrowed-slice lifetime validation after expression typing: backing must outlive destination bindings or storage,
+  including descriptor-array slots; aliases, branches, loops, and cleanup scopes preserve that restriction, with invalid
+  or unprovable transfers rejected before C emission
 - explicit nullability, `T` to `T?` wrapping, integer casts to nullable integer targets, `new` / `drop`, ARC-managed
   `string`, casts, postfix `expr?`, string value comparisons, same-type `T?` equality, same-type pointer identity
   equality, and `is(x, Variant)` enum tag checks
@@ -266,8 +275,8 @@ L0 time is unchanged. See [l1/docs/reference/standard-library.md][stdlib-time].
 
 `std.os` and `sys.os` supply normalized OS errors with captured native domain/code data and concrete read, write, and
 flush results. Additive `std.io` standard-stream result helpers distinguish clean EOF, timeout, interrupted or other
-failure, and successful partial transfers. Existing helpers retain their signatures. File handles, process/network
-consumers, and additional native error domains remain planned. The contract is recorded in
+failure, and successful partial transfers. Existing helpers retain their signatures. File handles and process consumers
+remain planned L1 work; networking is deferred to L2. The contract is recorded in
 [l1/docs/decisions/0045-direct-os-errors-and-io-results.md][os-results].
 
 `std.fs` now supplies structured metadata, native identity, absolute/canonical paths, directory creation/removal,
@@ -297,45 +306,36 @@ The practical local workflow today is:
 make use-dev
 source build/dea/bin/l1-env.sh
 l1c --version
-make runtime
-make test-compiler
-make test-compiler
-make test-compiler-trace
-make test-ci
 make test
-make test-compiler-trace
-make test-compiler-trace-smoke
-make test-compiler-trace-all
-make test-compiler-trace-children
-make test-extended
-make test-ci
 ```
 
-`make use-dev` auto-prepares the default repo-local upstream `../l0/build/dea/bin/l0c-stage2` when needed.
-`make runtime` rebuilds the repo-local runtime archives and public headers used by `--build` / `--run`. The runtime
-archive compiler is controlled by `L1_RUNTIME_CC` (defaulting to `L1_CC`, then `clang` / `gcc` / `cc`, then `CC` as a
-last resort); run `make clean-runtime runtime L1_RUNTIME_CC=<compiler>` when switching runtime compiler families so
-cached runtime objects are rebuilt, or `make clean-all` for the broader repo-local cleanup. The additional repo-local
-tcc object set used by the build driver for tcc links is controlled by `L1_TCC_OBJ_CC` (defaulting to `tcc`, then
-`TCC`). If no `tcc` is available and no explicit `L1_TCC_OBJ_CC` override is set, `make runtime` prints a notice and
-skips the specialized tcc object build. `make test-compiler-trace` runs the default ARC/memory trace suite and skips
-intentionally slow trace cases such as `math_runtime_compile_test`; pass the test name explicitly or use
-`make test-compiler-trace-all` when that slow trace coverage is needed. `make check-examples` adds warning-free
-canonical `--check` coverage for `examples/*.l1`. `make test` runs representative canonical tests, examples, and
-tooling; `test-extended` runs the complete local-normal suite. `test-ci` adds CI-only normal cases, environment checks,
-default traces, and child fixtures. There is no L1 fixed-point or stage-parity gate. Linux Docker defaults to supported
-GCC. Validated Debian Clang 14/15 support persistent managed preparation through owned empty configurations and fresh
-configuration-selection evidence; modern Clang and Apple Clang retain capability-based isolation. Child trace fixtures
-are analyzed separately, and failures retain evidence. Product artifact acceptance remains a distinct gate.
+`make use-dev` auto-prepares the default repo-local upstream `../l0/build/dea/bin/l0c-stage2` when needed. Use focused
+selectors such as `make test-compiler TESTS="parser_test"` when working on one subsystem, and choose the broader or
+trace gates below as needed. `make runtime` rebuilds developer runtime archives and public headers for local tests.
+Ordinary `--build` / `--run` prepare matching native support through managed profiles instead. The runtime archive
+compiler is controlled by `L1_RUNTIME_CC` (defaulting to `L1_CC`, then `clang` / `gcc` / `cc`, then `CC` as a last
+resort); run `make clean-runtime runtime L1_RUNTIME_CC=<compiler>` when switching runtime compiler families so cached
+runtime objects are rebuilt, or `make clean-all` for the broader repo-local cleanup. The additional repo-local tcc
+object set is controlled by `L1_TCC_OBJ_CC` (defaulting to `tcc`, then `TCC`). If no `tcc` is available and no explicit
+`L1_TCC_OBJ_CC` override is set, `make runtime` prints a notice and skips the specialized tcc object build.
+`make test-compiler-trace` runs the default ARC/memory trace suite and skips intentionally slow trace cases such as
+`math_runtime_compile_test`; pass the test name explicitly or use `make test-compiler-trace-all` when that slow trace
+coverage is needed. `make check-examples` adds warning-free canonical `--check` coverage for `examples/*.l1`.
+`make test` runs representative canonical tests, examples, and tooling; `test-extended` runs the complete local-normal
+suite. `test-ci` adds CI-only normal cases, environment checks, default traces, and child fixtures. There is no L1
+fixed-point or stage-parity gate. Linux Docker defaults to supported GCC. Validated Debian Clang 14/15 support
+persistent managed preparation through owned empty configurations and fresh configuration-selection evidence; modern
+Clang and Apple Clang retain capability-based isolation. Child trace fixtures are analyzed separately, and failures
+retain evidence. Product artifact acceptance remains a distinct gate.
 
 Validation is currently centered on:
 
-- automated CI via `.github/workflows/ci.yml`, which routes L1-relevant `push`/`pull_request` changes into the reusable
-  `l1-ci.yml` workflow; `workflow_dispatch` remains available for platform selection, manual C compiler selection, and
-  explicit Make-target selection. Hosted CI defaults to `make test-ci`, which runs full normal suites with CI-only
-  cases, environment/bootstrap integration, default trace suites, and child fixtures on Linux, macOS, and Windows. Each
-  selected compiler is applied to `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC`, and the resolved executable plus version is
-  logged before the Make target runs.
+- automated CI via `.github/workflows/ci.yml`, which routes L1 and affected predecessor/shared changes to the
+  `.github/actions/l1-ci` delegate; `workflow_dispatch` remains available for platform selection, manual C compiler
+  selection, and explicit Make-target selection. Hosted CI defaults to `make test-ci`, which runs full normal suites
+  with CI-only cases, environment/bootstrap integration, default trace suites, and child fixtures on Linux, macOS, and
+  Windows. Each selected compiler is applied to `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC`, and the resolved executable plus
+  version is logged before the Make target runs.
 
 - `make test-compiler` and the `.l0` implementation tests under `compiler/tests/`
 
@@ -352,6 +352,9 @@ Validation is currently centered on:
 - `make check-examples` for warning-free canonical compiler `--check` coverage across `examples/*.l1`
 
 - `make test-env` for generated launcher and environment-stackability coverage
+
+- `make test-tooling` for L1 tooling and explicit predecessor-compatibility checks; shared repository checks run
+  separately through root aggregates or Unified CI's repository steps
 
 - `make test` as the fast local gate with representative compiler checks, examples, and inexpensive tooling regressions
 
@@ -381,12 +384,13 @@ bootstrap path:
 
 These remain true today:
 
-1. The former Stage 2 implementation/review evidence belongs to the transplanted L2 lineage. L1 now has one canonical
-   compiler; fresh retargeted artifact acceptance is required independently of that historical evidence.
+1. L1 compiler validation and artifact acceptance are separate gates. Canonical artifact acceptance passed for the
+   published baseline; newer artifacts need fresh verification independently of compiler CI and historical Stage 2
+   evidence.
 2. Standalone linking consumes explicit object paths plus derived sibling interfaces; it does not discover implicit Dea
    objects, compile sources, or infer external-library dependencies from modules or manifests.
-3. Fixed-size arrays `T[N]` and escape-restricted non-owning slices `T[]` are implemented; owning dynamic buffers,
-   shared buffers, and general escape-capable slices are not language features.
+3. Fixed-size arrays `T[N]` and lifetime-checked borrowed slices `T[]` are implemented. Opaque dynamic byte buffers
+   remain planned library work; owned slices and escaping buffer views are deferred to L2.
 4. Address-of (`&`) and generics are not part of the current active language surface.
 
 [explicit-profiles]: reference/explicit-profiles.md

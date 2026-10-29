@@ -162,8 +162,8 @@ For Windows-specific setup, generated launchers, MSYS2 bash usage, and native `c
 [l0/README-WINDOWS.md](README-WINDOWS.md).
 
 If you prefer to manage the environment manually, `uv sync --all-groups` from the monorepo root is the recommended
-direct command (the repo is a single `uv` workspace; the root `pyproject.toml` declares `l0/` and `l1/` as members and
-owns the dev/docs dependency groups, and there is one `./.venv` plus one `./uv.lock` at the root). A plain
+direct command (the repo is a single `uv` workspace; the root `pyproject.toml` declares `l0/`, `l1/`, and `l2/` as
+members and owns the dev/docs dependency groups, and there is one `./.venv` plus one `./uv.lock` at the root). A plain
 `python3 -m venv ./.venv` workflow at the root also works.
 
 For an optional reproducible Linux test environment, use the explicit Docker wrapper:
@@ -172,8 +172,9 @@ For an optional reproducible Linux test environment, use the explicit Docker wra
 make docker CMD=test-extended
 ```
 
-The image builds from the monorepo root and includes L1 sources and vendored tools used by L0's runtime compatibility,
-source-selection, and documentation tests. Host virtual environments and build outputs are excluded.
+The image builds from the monorepo root and includes the registered level sources, shared tooling, and vendored
+documentation tools. L0 validation does not read successor sources; L1 owns predecessor compatibility checks and the
+root repository gate owns shared checks. Host virtual environments and build outputs are excluded.
 
 For normal developer use, install the repo-local switchable `l0c` alias, choose the stage you want, and source the
 generated environment script:

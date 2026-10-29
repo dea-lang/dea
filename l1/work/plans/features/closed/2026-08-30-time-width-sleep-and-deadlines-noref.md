@@ -3,7 +3,7 @@
 ## Widen time seconds and add sleep and deadlines
 
 - Date: 2026-08-30
-- Last reviewed: 2026-10-28
+- Last reviewed: 2026-10-29
 - Status: Completed
 - Title: Widen L1 time seconds and add monotonic sleep, deadline, and timeout helpers
 - Kind: Feature
@@ -275,8 +275,11 @@ preparation, and traced generated programs. L0 time remains unchanged. Commands 
 - `python3 scripts/check_c_docs.py` and targeted checks for all three new C/header fixtures passed. ADR Impact, staged
   whitespace, Markdown formatting, and root pre-commit checks complete the local closure gate.
 
-Native Windows and macOS ARM execution remain unverified locally. No path-text comparison changed. No release,
-publication, remote push, or hosted workflow dispatch is part of this implementation.
+Hosted `Unified CI` verification on 2026-10-29 passed `make -C l1 test-ci` on native Linux x86_64 (`/usr/bin/gcc`,
+Ubuntu GCC 15.2.0), macOS Intel (`/usr/bin/clang`, Apple Clang 17.0.0), macOS ARM (`/usr/bin/clang`, Apple Clang
+21.0.0), and Windows UCRT64 (`/ucrt64/bin/gcc`, MSYS2 GCC 16.2.0). `time_runtime_test.py` and `time_test` passed on
+every platform, and each canonical `time_test` trace reported zero leaked object or string pointers. The full normal,
+canonical trace, and child trace gates passed on all four platforms.
 
 [apple-sleep]: https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/nanosleep.2.html
 [compiler-support]: ../../../../compiler/support/compiler_support.c

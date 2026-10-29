@@ -24,6 +24,11 @@ broader set of numeric types, arrays and slices, and a module system that suppor
 facilities make it practical to build the next compiler level and larger systems programs without treating every build
 as a single compilation unit.
 
+The current development target is a finite, useful L1 for compilers and tools. Typed string formatting, dynamic byte
+buffers, file handles, secure entropy and temporary objects, shell-free processes and pipes, and semantic dependency
+discovery remain planned stabilization work. Generic streams, networking, JSON, file watching, concurrency, and broader
+language features are deferred to L2. See [l1/docs/roadmap.md](docs/roadmap.md) for the boundary and acceptance gates.
+
 The language keeps explicit types, familiar control flow, nullable values, and deterministic resource management.
 Strings use automatic reference counting (ARC); non-owning slices provide views into existing storage. Language
 semantics aim to avoid undefined behavior, rejecting invalid operations statically where possible and checking them at
@@ -39,14 +44,17 @@ language and runtime rationale.
   declarations and dependencies.
 - Separate compilation produces an object and its sibling interface. Build tools can reuse those pairs without
   recompiling provider sources.
-- Fixed-size arrays `T[N]` and non-owning slices `T[]` support checked indexing, `len`, and `slice`. Slices are
-  escape-restricted views; general owning dynamic buffers and escape-capable slices remain outside the current language.
+- Fixed-size arrays `T[N]` and non-owning slices `T[]` support checked indexing, `len`, and `slice`. Slices are borrowed
+  views whose backing must outlive the destination binding or storage; unprovable transfers are rejected. Owned slices
+  and escaping buffer views remain deferred to L2.
 - `T?` expresses nullability. Structs, enums, and `match` support explicit data modeling and variant handling.
 - Signed and unsigned integer types, bitwise operations, `float`, and `double` support numeric and systems code.
 - ARC-managed strings, `new` / `drop`, and `with` / `cleanup` provide explicit ownership and cleanup facilities.
 - Function pointers and L1-defined variadic functions support indirect calls and typed argument packs.
 
-The standard library covers I/O, strings, paths, filesystems, time, randomness, containers, and numeric helpers. See
+The standard library covers I/O, strings, paths, filesystem metadata and mutations, owned directory traversal, wide time
+values and monotonic sleep/deadlines, pseudorandom generation, containers, and numeric helpers. These source-tree
+capabilities may be newer than the published development release. See
 [l1/docs/reference/grammar.md](docs/reference/grammar.md),
 [l1/docs/reference/ownership.md](docs/reference/ownership.md), and
 [l1/docs/reference/standard-library.md](docs/reference/standard-library.md) for the language and library contracts.
@@ -62,10 +70,10 @@ You need Python 3.14 or newer, Make, a supported C compiler/linker and host tool
 Use a supported GCC toolchain or capability-verified Clang/Apple Clang. Validated Debian Clang 14/15 support managed
 preparation through an isolated empty configuration; modern Clang uses `--no-default-config`. See
 [l1/docs/reference/stdlib-preparation.md](docs/reference/stdlib-preparation.md) for reuse requirements and tested scope.
-Windows development uses the MSYS2 UCRT64 shell and C toolchain, with native CPython for the shared uv environment and
-repository tooling. `L0_CC` selects the C compiler used while building L1 through L0; `L1_CC` selects it for L1 native
-program builds and defaults `L1_RUNTIME_CC`. See [l1/AGENTS.md](AGENTS.md) for the full compiler-selection requirements
-and [l0/README.md](../l0/README.md) for L0 setup.
+Windows development uses the MSYS2 UCRT64 shell and C toolchain, with native CPython for the shared Python environment
+and repository tooling. `L0_CC` selects the C compiler used while building L1 through L0; `L1_CC` selects it for L1
+native program builds and defaults `L1_RUNTIME_CC`. See [l1/AGENTS.md](AGENTS.md) for the full compiler-selection
+requirements and [l0/README.md](../l0/README.md) for L0 setup.
 
 Select an existing L0 Stage 2 compiler by absolute path, then build and activate L1:
 
@@ -172,6 +180,10 @@ Ownership, runtime, and generated-cleanup changes also need relevant trace valid
 `make test-compiler-trace TESTS="lexer_test"` for that test's trace run. Actual distribution acceptance is a separate
 `make test-productization-acceptance` gate; ordinary compiler tests do not establish it. Follow
 [l1/AGENTS.md](AGENTS.md) and [AGENTS.md](../AGENTS.md) for change-specific validation and contribution requirements.
+
+`make test-tooling` includes L1's compatibility checks against L0. Shared repository checks run separately from the
+repository root with `.venv/bin/python -m pytest -q -n 0 scripts/tests`, or through root `make test` and
+`make test-extended`. Root aggregates also enter L2 and require an explicit compatible `L2_BOOTSTRAP_L1C`.
 
 ## Documentation and direction
 

@@ -1,6 +1,6 @@
 # Linking External Native Libraries
 
-Version: 2026-10-10
+Version: 2026-10-29
 
 L1 can combine separately compiled Dea modules, caller-asserted native objects, and external host libraries in
 `--build`, `--run`, and standalone `--link` mode. This is an explicit command-line contract: L1 does not yet have a
@@ -25,8 +25,9 @@ extern func acme_answer() -> int;
 
 The declaration must match the real C ABI. L1 does not inspect a header, generate a binding, or verify the native
 symbol. Keep conversions and complex ABI details in a small C shim when the direct L1/C type correspondence is not
-obvious. The planned `extern "C"` and C-string language surface belongs to
-[Initiative 0003](../../work/initiatives/0003-c-ffi.md); it is not part of the current linking feature.
+obvious. L1 stabilization retains this binding model. Additional `extern "C"` syntax, dedicated C-string types, and
+broader first-class C interoperability remain deferred design work; no specific replacement syntax is adopted. See
+[l1/docs/roadmap.md](../roadmap.md) for the language boundary.
 
 ## Build, Run, and Standalone Link
 

@@ -14,7 +14,11 @@ workflows use `build`, `use-dev`, and `test-compiler`; the stage commands below 
 - **L0** is stable; its current release is `2.1.1`.
 - **L1** is under active development; `0.1.0` is its current development release and does not promise stable language,
   module-interface, or binary compatibility across future releases.
-- **L2** is an independent development level with a canonical compiler implemented in L1.
+- **L2** has an independent canonical compiler implemented in L1. Sustained feature development and catch-up have not
+  started; both await selection of a stable L1 baseline and explicit activation.
+
+L1's finite stabilization target is recorded in [l1/docs/roadmap.md](l1/docs/roadmap.md). New capabilities require an
+explicit scope amendment; correctness fixes within the selected contracts remain stabilization work.
 
 Language, compiler CLI, and runtime changes must be documented and versioned within the affected level;
 backward-incompatible changes are not introduced silently into an existing release line. L0 changes must preserve Stage
@@ -45,10 +49,10 @@ monorepo is a single `uv` workspace; level-local `make venv` targets delegate to
 when on `PATH`; when absent, `make venv` falls back to `python -m venv` plus `pip install` of the same dependency-group
 specifiers.
 
-On Windows, install native CPython and native uv, then run Make from MSYS2 with the supported C toolchain. The shared
-environment uses `.venv/Scripts/python.exe`. Set `HOST_PYTHON` to the native executable or pass an explicit quoted
-`PYTHON` path to `make venv`; Make forwards that choice to uv. MSYS2 Python is confined to a separate temporary full
-Stage 1 compatibility pass. See [MONOREPO.md](MONOREPO.md#windows-python-environments) for CI provisioning and
+On Windows, install native CPython and optionally native uv, then run Make from MSYS2 with the supported C toolchain.
+The shared environment uses `.venv/Scripts/python.exe`. Set `HOST_PYTHON` to the native executable or pass an explicit
+quoted `PYTHON` path to `make venv`; Make forwards that choice to uv. MSYS2 Python is confined to a separate temporary
+full Stage 1 compatibility pass. See [MONOREPO.md](MONOREPO.md#windows-python-environments) for CI provisioning and
 manual-lane policy.
 
 ### Pre-commit hooks
@@ -59,14 +63,16 @@ After running `make venv`, install the monorepo hooks once from the repository r
 uv run --group dev pre-commit install -c .pre-commit-config.yaml
 ```
 
-Three hooks run on every commit:
+The root pre-commit configuration defines four hooks, applied to the relevant staged files:
 
-- **mdformat** -- auto-formats all `.md` files (line wrap 120, numbered lists, GitHub Flavored Markdown). If it
+- **mdformat**: auto-formats maintained `.md` files (line wrap 120, numbered lists, GitHub Flavored Markdown). If it
   reformats a file, stage the changes and commit again.
-- **copyright-headers** -- checks that tracked `.c`, `.h`, `.l0`, `.l1`, `.l2`, `.py`, `.sh` files have a copyright
-  notice in the first 80 lines.
-- **adr-impact** -- validates every active plan and initiative plus any added, renamed, or modified closed lifecycle
+- **copyright-headers**: checks that tracked `.c`, `.h`, `.l0`, `.l1`, `.l2`, `.py`, `.sh` files have a copyright notice
+  in the first 80 lines.
+- **adr-impact**: validates every active plan and initiative plus any added, renamed, or modified closed lifecycle
   document against the staged `## ADR Impact` contract. It also enforces same-change ADR and index evidence at closure.
+- **c-function-docs**: validates maintained C function contracts, matching header briefs, comment spacing, and Javadoc
+  autobrief when C sources or the checker change.
 
 ### Building the compiler(s)
 
@@ -139,6 +145,19 @@ of routinely running the entire CI suite. L2 isolation and L1 artifact acceptanc
 
 L0's `make triple-test` is a focused test for its triple-bootstrap process, validating the compiler's ability to build
 itself and produce a stable artifact. L1 and L2 each have one canonical compiler and no triple-bootstrap target.
+
+A level's suite validates that level without reading successor source or artifacts. L1 owns its explicit compatibility
+checks against L0. Shared tooling tests run separately from the repository root:
+
+```bash
+.venv/bin/python -m pytest -q -n 0 scripts/tests
+```
+
+Use `.venv/Scripts/python.exe` on Windows. Root `make test` and `make test-extended` run these checks once before the
+level gates; both require an explicit compatible `L2_BOOTSTRAP_L1C` when entering L2. Unified CI runs repository checks
+separately and selects the changed level plus affected downstream consumers of compiler, runtime, and build inputs.
+Successor-only changes do not select predecessor compiler suites. L2 remains disabled by default in Unified CI. See
+[MONOREPO.md](MONOREPO.md#compiler-ci) for routing and manual controls.
 
 ### Smoke test
 
