@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-11-05
+Version: 2026-11-09
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -546,7 +546,14 @@ surface:
 - stdout and stderr expose the same one-value numeric families, with newline variants using the existing `printl_*` /
   `err_printl_*` naming pattern
 - pair-print helpers are not expanded cartesian-style for every numeric type; callers can compose labels with
-  single-value print helpers
+  single-value print helpers or explicit `std.format::format` templates
+
+Typed formatting uses the existing `std.types::Value` enum and L1 variadic arguments. The bounded template grammar
+returns an ordinary ARC string or a structured formatting error with byte/argument coordinates. Integer magnitudes
+handle signed minima, and real output uses deterministic round-trip precision independent of locale. Formatting and
+concrete output remain separate; generic writers belong to L2. See
+[l1/docs/decisions/0054-typed-string-formatting.md][typed-formatting] and
+[l1/docs/reference/standard-library.md](standard-library.md#stdformat).
 
 Current stdin token policy keeps parsing layered:
 
@@ -799,3 +806,4 @@ See [l1/docs/decisions/0050-wide-time-and-monotonic-deadlines.md][time-width] an
 [os-results]: ../decisions/0045-direct-os-errors-and-io-results.md
 [time-sleep]: ../decisions/0051-explicit-sleep-interruption-and-restart.md
 [time-width]: ../decisions/0050-wide-time-and-monotonic-deadlines.md
+[typed-formatting]: ../decisions/0054-typed-string-formatting.md

@@ -1,0 +1,274 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/**
+ * Deterministic real-number conversion used by std.format.
+ *
+ * Binary significands are expanded exactly into decimal digits before integer
+ * ties-to-even rounding. No host decimal formatter, locale, or ambient rounding
+ * mode participates in the conversion.
+ */
+module std.format_real;
+
+import std.real;
+import std.string;
+import std.text;
+import std.vector;
+
+/**
+ * Reads one little-endian decimal digit.
+ *
+ * @param digits The owned decimal digit vector, borrowed for this operation.
+ * @param index The valid digit index.
+ * @return The digit in the range zero through nine.
+ */
+func _fr_digit(digits: VectorBase*, index: int) -> int {
+    let slot = vec_get(digits, index) as byte*;
+    return (*slot) as int;
+}
+
+/**
+ * Replaces one little-endian decimal digit.
+ *
+ * @param digits The decimal digit vector to update.
+ * @param index The valid digit index.
+ * @param value The replacement digit in the range zero through nine.
+ */
+func _fr_set_digit(digits: VectorBase*, index: int, value: int) {
+    let slot = vec_get(digits, index) as byte*;
+    *slot = value as byte;
+}
+
+/**
+ * Appends a new most-significant decimal digit.
+ *
+ * @param digits The decimal digit vector to extend.
+ * @param value The new digit in the range zero through nine.
+ */
+func _fr_push_digit(digits: VectorBase*, value: int) {
+    let slot = vec_push(digits) as byte*;
+    *slot = value as byte;
+}
+
+/**
+ * Multiplies a nonnegative decimal integer by a small positive factor.
+ *
+ * @param digits The little-endian decimal integer to update.
+ * @param factor Two or five, keeping every intermediate value within int range.
+ */
+func _fr_multiply(digits: VectorBase*, factor: int) {
+    let carry = 0;
+    let size = vec_size(digits);
+    for (let i = 0; i < size; i = i + 1) {
+        let product = _fr_digit(digits, i) * factor + carry;
+        _fr_set_digit(digits, i, product % 10);
+        carry = product / 10;
+    }
+    if (carry != 0) {
+        _fr_push_digit(digits, carry);
+    }
+}
+
+/**
+ * Rounds an exact decimal integer to the requested number of significant digits.
+ *
+ * Discarded places are zeroed, preserving the integer's decimal scale. Halfway
+ * values round to an even retained digit. A carry may append one leading digit.
+ *
+ * @param digits The nonzero little-endian decimal integer to update.
+ * @param precision The positive number of significant digits to retain.
+ */
+func _fr_round(digits: VectorBase*, precision: int) {
+    let cut = vec_size(digits) - precision;
+    if (cut <= 0) {
+        return;
+    }
+    let discarded = _fr_digit(digits, cut - 1);
+    let round_up = discarded > 5;
+    if (discarded == 5) {
+        round_up = _fr_digit(digits, cut) % 2 != 0;
+        for (let i = 0; i < cut - 1; i = i + 1) {
+            if (_fr_digit(digits, i) != 0) {
+                round_up = true;
+            }
+        }
+    }
+    for (let i = 0; i < cut; i = i + 1) {
+        _fr_set_digit(digits, i, 0);
+    }
+    if (round_up) {
+        let index = cut;
+        while (index < vec_size(digits) && _fr_digit(digits, index) == 9) {
+            _fr_set_digit(digits, index, 0);
+            index = index + 1;
+        }
+        if (index == vec_size(digits)) {
+            _fr_push_digit(digits, 1);
+        } else {
+            _fr_set_digit(digits, index, _fr_digit(digits, index) + 1);
+        }
+    }
+}
+
+/**
+ * Appends a canonical signed scientific exponent.
+ *
+ * @param output The destination character buffer.
+ * @param exponent The decimal exponent, in the finite binary64 range.
+ */
+func _fr_append_exponent(output: CharBuffer*, exponent: int) {
+    cb_append(output, 'e' as byte);
+    if (exponent < 0) {
+        cb_append(output, '-' as byte);
+        exponent = -exponent;
+    } else {
+        cb_append(output, '+' as byte);
+    }
+    if (exponent < 10) {
+        cb_append(output, '0' as byte);
+    }
+    cb_append_int(output, exponent);
+}
+
+/**
+ * Emits a nonzero rounded decimal integer using general-format notation.
+ *
+ * @param digits The rounded little-endian decimal integer.
+ * @param scale The power of ten multiplying the integer.
+ * @param precision The significant-digit limit selecting fixed or scientific form.
+ * @param negative Whether to prefix a minus sign.
+ * @return An ordinary ARC string with redundant fractional zeros removed.
+ */
+func _fr_render(digits: VectorBase*, scale: int, precision: int, negative: bool) -> string {
+    let high = vec_size(digits) - 1;
+    let low = 0;
+    while (low < high && _fr_digit(digits, low) == 0) {
+        low = low + 1;
+    }
+    let exponent = high + scale;
+    let count = high - low + 1;
+    with (let output = cb_create() => cb_free(output)) {
+        if (negative) {
+            cb_append(output, '-' as byte);
+        }
+        if (exponent < -4 || exponent >= precision) {
+            cb_append(output, digit_to_char(_fr_digit(digits, high)));
+            if (count > 1) {
+                cb_append(output, '.' as byte);
+                for (let i = high - 1; i >= low; i = i - 1) {
+                    cb_append(output, digit_to_char(_fr_digit(digits, i)));
+                }
+            }
+            _fr_append_exponent(output, exponent);
+        } else if (exponent < 0) {
+            cb_append_s(output, "0.");
+            for (let i = 0; i < -exponent - 1; i = i + 1) {
+                cb_append(output, '0' as byte);
+            }
+            for (let i = high; i >= low; i = i - 1) {
+                cb_append(output, digit_to_char(_fr_digit(digits, i)));
+            }
+        } else {
+            let places = count;
+            if (places < exponent + 1) {
+                places = exponent + 1;
+            }
+            for (let i = 0; i < places; i = i + 1) {
+                if (i == exponent + 1) {
+                    cb_append(output, '.' as byte);
+                }
+                if (i < count) {
+                    cb_append(output, digit_to_char(_fr_digit(digits, high - i)));
+                } else {
+                    cb_append(output, '0' as byte);
+                }
+            }
+        }
+        return cb_to_string(output);
+    }
+}
+
+/**
+ * Converts a binary64 value at a specified round-trip decimal precision.
+ *
+ * Finite nonzero inputs are decomposed without rounding into an integer
+ * significand times a power of two. Negative binary powers become powers of
+ * five and a decimal scale, so subsequent conversion uses only exact integers.
+ *
+ * @param value The value to format, including a losslessly widened binary32 value.
+ * @param precision Nine for binary32 or seventeen for binary64.
+ * @return Canonical general-format text, preserving negative zero.
+ */
+func _fr_general(value: double, precision: int) -> string {
+    if (is_nan_d(value)) {
+        return "nan";
+    }
+    let negative = signbit_d(value);
+    if (is_inf_d(value)) {
+        if (negative) { return "-inf"; }
+        return "inf";
+    }
+    if (value == 0.0) {
+        if (negative) { return "-0"; }
+        return "0";
+    }
+    if (negative) {
+        value = -value;
+    }
+    let parts = frexp_d(value);
+    let significand = ldexp_d(parts.significand, 53) as ulong;
+    let exponent = parts.exp - 53;
+    while (significand % (2 as ulong) == (0 as ulong)) {
+        significand = significand / (2 as ulong);
+        exponent = exponent + 1;
+    }
+    with (let digits = vec_create(sizeof(byte), 32) => vec_free(digits)) {
+        while (significand != (0 as ulong)) {
+            _fr_push_digit(digits, (significand % (10 as ulong)) as int);
+            significand = significand / (10 as ulong);
+        }
+        let scale = 0;
+        if (exponent < 0) {
+            scale = exponent;
+            for (let i = 0; i < -exponent; i = i + 1) {
+                _fr_multiply(digits, 5);
+            }
+        } else {
+            for (let i = 0; i < exponent; i = i + 1) {
+                _fr_multiply(digits, 2);
+            }
+        }
+        _fr_round(digits, precision);
+        return _fr_render(digits, scale, precision, negative);
+    }
+}
+
+/**
+ * Formats a float with nine significant digits and round-trip precision.
+ *
+ * Uses fixed notation for decimal exponents from -4 through 8 and scientific
+ * notation otherwise, after ties-to-even rounding. Fractional trailing zeros
+ * are omitted. NaN and infinities are nan, inf, and -inf; negative zero is -0.
+ *
+ * @param value The binary32 value to format.
+ * @return A locale-independent ordinary ARC string.
+ */
+func format_real_f(value: float) -> string {
+    return _fr_general(value as double, 9);
+}
+
+/**
+ * Formats a double with seventeen significant digits and round-trip precision.
+ *
+ * Uses fixed notation for decimal exponents from -4 through 16 and scientific
+ * notation otherwise, after ties-to-even rounding. Fractional trailing zeros
+ * are omitted. NaN and infinities are nan, inf, and -inf; negative zero is -0.
+ *
+ * @param value The binary64 value to format.
+ * @return A locale-independent ordinary ARC string.
+ */
+func format_real_d(value: double) -> string {
+    return _fr_general(value, 17);
+}

@@ -3,7 +3,7 @@
 ## Audit standard-library capability coverage
 
 - Date: 2026-08-30
-- Last reviewed: 2026-10-29
+- Last reviewed: 2026-11-05
 - Status: Draft
 - Title: Document portable systems capability and C99 coverage for the L1 standard library
 - Kind: Feature
@@ -78,8 +78,9 @@ scope in the current stdlib plans.
    termination are assessed against current L1 behavior.
 2. Standard I/O gaps link to Initiative 0005 rather than promise a `stdio.h` clone.
 3. Ambient `errno` is classified as replaced by direct structured errors.
-4. C variadic formatting is replaced by the selected typed-string design, but typed formatting remains planned until its
-   public implementation and tests land. Generic writer integration is deferred to L2.
+4. C variadic formatting is replaced by implemented `std.format` typed string formatting. Record its bounded grammar,
+   explicit `Value...` arguments, deterministic real output, and structured errors. Generic writer integration is
+   deferred to L2.
 5. Locale/wide-character mirrors, safe signal handlers, and `setjmp`/`longjmp` remain unsupported unless a concrete
    future workload justifies them.
 6. Complex arithmetic and floating-environment control remain low-priority gaps rather than implied requirements.

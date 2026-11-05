@@ -1,6 +1,6 @@
 # The L1 Standard Library
 
-Version: 2026-11-06
+Version: 2026-11-09
 
 The standard library provides ergonomic L1 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -17,8 +17,8 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
                              v
 +---------------------------------------------------------+
 |                      std.* Modules                      |
-| array, assert, bytes, dir, fs, hashmap, hashset, io,    |
-| integer, linear_map, optional, os, path, rand, real,    |
+| array, assert, bytes, dir, format, fs, hashmap, hashset, |
+| integer, io, linear_map, optional, os, path, rand, real, |
 | string, system, text, time, types, unit, vector         |
 +---------------------------------------------------------+
                              |
@@ -117,6 +117,70 @@ with (let buf = bytes::create() => bytes::free(buf)) {
 ```
 
 See [l1/docs/decisions/0052-owned-dynamic-byte-buffers.md][byte-buffer-decision] for the ownership and copying decision.
+
+### `std.format`
+
+`format(template: string, args: Value...) -> FormatResult` formats explicit `std.types::Value` arguments into an
+ordinary ARC string. It performs no output. Pass the result to a concrete string-output or file API; existing `std.io`
+print helpers remain supported.
+
+| Type              | Definition                                                                |
+| ----------------- | ------------------------------------------------------------------------- |
+| `FormatResult`    | `FormatOk(value: string)` or `FormatErr(error: FormatError)`              |
+| `FormatError`     | `struct { kind: FormatErrorKind; offset: int; argument_index: int; }`     |
+| `FormatErrorKind` | `InvalidTemplate`, `MissingArgument`, `ExtraArgument`, `InvalidSpecifier` |
+
+The grammar accepts only sequential fields and brace escapes. Every field consumes exactly one argument; `{{` and `}}`
+emit literal braces without consuming an argument. Width, precision, positions, names, and implicit conversion into
+`Value` are unsupported.
+
+| Field           | Accepted `Value` payload                | Output                                                                                     |
+| --------------- | --------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `{}`            | Every primitive or optional variant     | Integers in decimal, booleans as `true`/`false`, strings unchanged, reals in general form. |
+| `{:d}`          | Every integer width, signed or unsigned | Decimal.                                                                                   |
+| `{:x}` / `{:X}` | Every integer width, signed or unsigned | Lowercase / uppercase hexadecimal without a prefix.                                        |
+| `{:b}`          | Every integer width, signed or unsigned | Binary without a prefix.                                                                   |
+| `{:s}`          | String                                  | Original bytes, including embedded NUL.                                                    |
+| `{:g}`          | Float or double                         | Locale-independent general form.                                                           |
+
+Optional variants accept the same specifiers as their underlying type. A present optional formats its payload; an absent
+compatible optional emits `null`. An incompatible specifier remains an error even when the optional is absent. Booleans
+use `{}` only. Signed integers use a leading minus and the magnitude in every base, including signed minimum values;
+radix formatting does not expose a two's-complement bit pattern.
+
+Real formatting rounds the exact binary value to 9 significant decimal digits for `float` and 17 for `double`, with
+nearest rounding and ties to even. It uses fixed notation when the rounded decimal exponent is at least -4 and less than
+the precision; otherwise it uses scientific notation with lowercase `e`, an explicit exponent sign, and at least two
+exponent digits. Trailing fractional zeros and an unnecessary decimal point are removed. Zero is `0`, negative zero is
+`-0`, and special values are `nan`, `inf`, and `-inf`. This is round-trip precision, not a shortest-decimal contract,
+and does not depend on the ambient locale or floating-point rounding mode.
+
+Errors are returned without a partial output string. Processing is left to right. A malformed field, unsupported format
+syntax, or unmatched brace yields `InvalidTemplate`; field syntax is checked before checking argument availability. A
+valid field without a value yields `MissingArgument`; a valid specifier with the wrong value type is `InvalidSpecifier`.
+After a valid template is consumed, leftover values yield `ExtraArgument`.
+
+Both coordinates are zero-based. `offset` is the field's opening brace or the unmatched closing brace; for extra
+arguments it is the template byte length. `argument_index` is the next argument to consume, or the first unused argument
+for `ExtraArgument`. Offsets count bytes, including embedded NUL and multibyte text.
+
+```dea
+module format_doc_example;
+
+import std.format;
+import std.io;
+import std.types;
+
+func main() {
+    match (format("{} {:X} {}", String("count"), Int(42), Bool(true))) {
+        FormatOk(text) => { printl_s(text); } // count 2A true
+        FormatErr(error) => { err_printl_s("format failed"); }
+    }
+}
+```
+
+Allocation failure follows the existing fatal stdlib allocation policy. Formatting errors are library results, not
+compiler diagnostic codes. See [l1/docs/decisions/0054-typed-string-formatting.md][typed-formatting].
 
 ### `std.fs`
 
@@ -1033,3 +1097,4 @@ These are runtime-backed hash externs declared directly in `sys.hash`.
 [os-results]: ../decisions/0045-direct-os-errors-and-io-results.md
 [time-sleep]: ../decisions/0051-explicit-sleep-interruption-and-restart.md
 [time-width]: ../decisions/0050-wide-time-and-monotonic-deadlines.md
+[typed-formatting]: ../decisions/0054-typed-string-formatting.md

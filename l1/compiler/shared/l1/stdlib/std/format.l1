@@ -1,0 +1,192 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/**
+ * Typed, locale-independent formatting into ordinary ARC strings.
+ * Output remains the responsibility of concrete stream and file APIs.
+ */
+module std.format;
+
+import std.types;
+import std.string;
+import std.text;
+import std.format_real;
+
+/**
+ * Distinguishes malformed templates, arity errors, and incompatible value types.
+ */
+enum FormatErrorKind {
+    InvalidTemplate;
+    MissingArgument;
+    ExtraArgument;
+    InvalidSpecifier;
+}
+
+/**
+ * A formatting failure with zero-based template byte offset and argument index.
+ * The offset identifies the opening brace or unmatched closing brace, or the
+ * template length for extra arguments. The index identifies the next argument.
+ */
+struct FormatError {
+    kind: FormatErrorKind;
+    offset: int;
+    argument_index: int;
+}
+
+/**
+ * Either a complete formatted string or a structured failure without partial output.
+ */
+enum FormatResult {
+    FormatOk(value: string);
+    FormatErr(error: FormatError);
+}
+
+/**
+ * Classifies a primitive or optional value for specifier compatibility.
+ *
+ * @param value The value, including its optional type when absent.
+ * @return One for integers, two for booleans, three for strings, or four for reals.
+ */
+func _format_kind(value: Value) -> int {
+    match (value) {
+        Bool(x) => { return 2; }
+        Tiny(x) => { return 1; }
+        Byte(x) => { return 1; }
+        Short(x) => { return 1; }
+        UShort(x) => { return 1; }
+        Int(x) => { return 1; }
+        UInt(x) => { return 1; }
+        Long(x) => { return 1; }
+        ULong(x) => { return 1; }
+        Float(x) => { return 4; }
+        Double(x) => { return 4; }
+        String(x) => { return 3; }
+        OptBool(x) => { return 2; }
+        OptTiny(x) => { return 1; }
+        OptByte(x) => { return 1; }
+        OptShort(x) => { return 1; }
+        OptUShort(x) => { return 1; }
+        OptInt(x) => { return 1; }
+        OptUInt(x) => { return 1; }
+        OptLong(x) => { return 1; }
+        OptULong(x) => { return 1; }
+        OptFloat(x) => { return 4; }
+        OptDouble(x) => { return 4; }
+        OptString(x) => { return 3; }
+    }
+}
+
+/**
+ * Renders a compatible value using existing integer and deterministic real helpers.
+ *
+ * @param value The explicitly typed value to render.
+ * @param spec Zero for default formatting, or a recognized specifier byte.
+ * @return The rendered bytes, or null if the specifier is incompatible.
+ */
+func _format_value(value: Value, spec: byte) -> string? {
+    let kind = _format_kind(value);
+    if (spec != 0) {
+        if (spec == 's') {
+            if (kind != 3) { return null; }
+        } else if (spec == 'g') {
+            if (kind != 4) { return null; }
+        } else {
+            if (kind != 1) { return null; }
+        }
+    }
+    let unwrapped = get_opt_value(value);
+    if (unwrapped == null) { return "null"; }
+    let base = 10;
+    if (spec == 'x' || spec == 'X') { base = 16; }
+    if (spec == 'b') { base = 2; }
+    let rendered = "";
+    match (unwrapped as Value) {
+        Bool(x) => { rendered = bool_to_string(x); }
+        Tiny(x) => { rendered = int_to_string_base(x as int, base); }
+        Byte(x) => { rendered = byte_to_string_base(x, base); }
+        Short(x) => { rendered = int_to_string_base(x as int, base); }
+        UShort(x) => { rendered = uint_to_string_base(x as uint, base); }
+        Int(x) => { rendered = int_to_string_base(x, base); }
+        UInt(x) => { rendered = uint_to_string_base(x, base); }
+        Long(x) => { rendered = long_to_string_base(x, base); }
+        ULong(x) => { rendered = ulong_to_string_base(x, base); }
+        Float(x) => { rendered = format_real_f(x); }
+        Double(x) => { rendered = format_real_d(x); }
+        String(x) => { rendered = x; }
+        _ => { return null; }
+    }
+    if (spec == 'X') { return to_upper_s(rendered); }
+    return rendered;
+}
+
+/**
+ * Formats sequential typed values into an ordinary ARC string.
+ * Accepts {}, {:d}, {:x}, {:X}, {:b}, {:s}, {:g}, and escaped {{ or }}.
+ * Integer specifiers require integers, s requires strings, and g requires reals.
+ * Optional values retain their base type for compatibility; absent values render
+ * as null. Default formatting accepts every Value variant. Strings retain bytes.
+ * Each field consumes exactly one argument. Errors are reported left to right;
+ * a field's grammar is checked before its argument, and extra arguments last.
+ *
+ * @param template Byte string containing literals, escaped braces, and fields.
+ * @param args Explicit Value arguments, optionally supplied through a spread.
+ * @return The complete string, or an error with byte offset and argument index.
+ */
+func format(template: string, args: Value...) -> FormatResult {
+    let size = len_s(template);
+    let index = 0;
+    let argument = 0;
+    let literal_start = 0;
+    with (let output = cb_create() => cb_free(output)) {
+        while (index < size) {
+            let ch = char_at_s(template, index);
+            if (ch != '{' && ch != '}') {
+                index = index + 1;
+                continue;
+            }
+            cb_append_slice(output, template, literal_start, index - literal_start);
+            if (size - index >= 2 && char_at_s(template, index + 1) == ch) {
+                cb_append(output, ch);
+                index = index + 2;
+                literal_start = index;
+                continue;
+            }
+            if (ch == '}') {
+                return FormatErr(FormatError(InvalidTemplate, index, argument));
+            }
+            let spec: byte = 0;
+            let field_size = 2;
+            if (size - index >= 2 && char_at_s(template, index + 1) == '}') {
+                // Default field.
+            } else if (size - index >= 4 && char_at_s(template, index + 1) == ':'
+                       && char_at_s(template, index + 3) == '}') {
+                spec = char_at_s(template, index + 2);
+                if (spec != 'd' && spec != 'x' && spec != 'X' && spec != 'b'
+                    && spec != 's' && spec != 'g') {
+                    return FormatErr(FormatError(InvalidTemplate, index, argument));
+                }
+                field_size = 4;
+            } else {
+                return FormatErr(FormatError(InvalidTemplate, index, argument));
+            }
+            if (argument >= len(args)) {
+                return FormatErr(FormatError(MissingArgument, index, argument));
+            }
+            let rendered = _format_value(args[argument], spec);
+            if (rendered == null) {
+                return FormatErr(FormatError(InvalidSpecifier, index, argument));
+            }
+            cb_append_s(output, rendered as string);
+            argument = argument + 1;
+            index = index + field_size;
+            literal_start = index;
+        }
+        if (argument < len(args)) {
+            return FormatErr(FormatError(ExtraArgument, size, argument));
+        }
+        cb_append_slice(output, template, literal_start, size - literal_start);
+        return FormatOk(cb_to_string(output));
+    }
+}

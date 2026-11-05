@@ -1,0 +1,26 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module format_test;
+
+import std.assert;
+import std.io;
+import std.vector;
+import l1c_lib;
+import support.driver_inputs;
+
+/**
+ * Compile and execute typed formatting through the actual L1 stdlib.
+ */
+func main() {
+    with (let args = dti_native_argv(8) => sv_free(args)) {
+        sv_push(args, "--run");
+        sv_push(args, "--project-root");
+        sv_push(args, "compiler/tests/fixtures/driver");
+        sv_push(args, "format_main");
+        assert(run_with_argv(args) == 0, "generated L1 typed formatting consumer");
+    }
+    printl_s("format_test: all tests passed");
+}

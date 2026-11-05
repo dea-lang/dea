@@ -57,7 +57,7 @@ MATH_RUNTIME_FIXTURE_DIR = TESTS_DIR / "fixtures" / "math_runtime"
 PREPARATION_SUPPORT_TESTS = frozenset({
     "l1c_lib_test", "link_driver_test", "math_runtime_compile_test",
     "mul_runtime_compile_test", "preparation_test", "slice_trace_test",
-    "filesystem_runtime_test", "directory_runtime_test", "dependency_report_test",
+    "filesystem_runtime_test", "directory_runtime_test", "dependency_report_test", "format_test",
 })
 
 
@@ -136,6 +136,10 @@ CHILD_TRACE_FIXTURES = (
     ChildTraceFixture(
         5, "bytes_main", TESTS_DIR / "fixtures/bytes/bytes_main.l1",
         "bytes_test.py", frozenset({"mem", "arc"}),
+    ),
+    ChildTraceFixture(
+        6, "format_main", TESTS_DIR / "fixtures/driver/format_main.l1",
+        "format_test", frozenset({"mem", "arc"}),
     ),
 )
 

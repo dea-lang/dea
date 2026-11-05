@@ -52,11 +52,12 @@ Use this file as the status snapshot. For implementation details, use:
 The live L1 roadmap lives at [l1/docs/roadmap.md](roadmap.md).
 
 Source development follows a finite stabilization target for compilers and tools. Opaque dynamic byte buffers are
-implemented in `std.bytes`, and semantic dependency discovery is implemented through `--scan-deps`. File handles, secure
-entropy and temporary objects, shell-free processes and pipes, and typed string formatting remain planned. General
-streams, networking, JSON, file watching, concurrency, owned slices, and broader language expressiveness are deferred to
-L2. The current source-tree features below may be newer than the published L1 0.1.0 baseline; stabilization also
-requires public-API acceptance programs and fresh artifact validation.
+implemented in `std.bytes`, and semantic dependency discovery is implemented through `--scan-deps`. Typed string
+formatting is implemented through `std.format`, with explicit `Value...` arguments, structured errors, and
+locale-independent ARC string output. File handles, secure entropy and temporary objects, and shell-free processes and
+pipes remain planned. General streams, networking, JSON, file watching, concurrency, owned slices, and broader language
+expressiveness are deferred to L2. The current source-tree features below may be newer than the published L1 0.1.0
+baseline; stabilization also requires public-API acceptance programs and fresh artifact validation.
 
 ## Current Status
 

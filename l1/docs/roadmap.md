@@ -402,6 +402,10 @@ file-watch design, and concurrency now belong to L2.
 
 ## Completed standalone plans
 
+- Feature [l1/work/plans/features/closed/2026-08-30-typed-formatting-noref.md][typed-formatting] adds `std.format` with
+  explicit `Value...` arguments, a bounded sequential-field grammar, structured errors, and locale-independent
+  integer/real output in ordinary ARC strings. Existing print helpers remain available; generic writers belong to L2.
+
 - Bug Fix [l1/work/plans/bug-fixes/closed/2026-10-29-borrowed-slice-escape-noref.md][slice-safety] enforces
   backing-lifetime and containment rules before C emission. Native `make test-ci` passed on Linux, macOS Intel, macOS
   ARM, and Windows UCRT64, including canonical and child trace checks.
@@ -443,9 +447,6 @@ file-watch design, and concurrency now belong to L2.
 
 ## Active standalone plans
 
-- Feature [l1/work/plans/features/2026-08-30-typed-formatting-noref.md][typed-formatting] is the Stdlib Tier 2
-  replacement for the combinatorial print-helper surface, using explicit `Value` arguments and L1 variadics to return
-  ordinary ARC strings. Generic writer integration belongs to L2.
 - Feature [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] is the
   Stdlib Tier 2 audit that records portable systems capability and C99-family coverage without promising literal C99 API
   parity. It is meant to run after the main stdlib additions land and to be completed before declaring L1 stable;
@@ -459,7 +460,6 @@ design investigation.
 
 | Readiness    | Plan                                                                                               | Remaining gate                                                                        |
 | ------------ | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| ready        | [l1/work/plans/features/2026-08-30-typed-formatting-noref.md][typed-formatting]                    | Implement the bounded grammar and existing `Value` policies recorded in its plan.     |
 | almost-ready | [l1/work/plans/features/2026-08-30-file-handles-and-random-access-noref.md][plan-files]            | Explicit handle cleanup contract; public buffers are complete.                        |
 | ready        | [l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][plan-entropy]                       | Public buffers and checked indexing/ranges are implemented.                           |
 | not-ready    | [l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md][plan-temp]     | File handles and entropy.                                                             |
@@ -531,8 +531,10 @@ backlog does not imply missing work where L1 already has a narrower surface.
 - L2 JSON is tracked by Initiative [l2/work/initiatives/0002-data-format-modules.md][data-formats]. IFF scope selection
   is deferred to L2 under [2026-08-30-iff-scope-and-format-selection-noref][iff-scope].
 - L2 safe concurrency design is tracked by Initiative [l2/work/initiatives/0003-safe-concurrency.md][safe-concurrency].
-- Typed formatting is tracked by Feature [2026-08-30-typed-formatting-noref][typed-formatting], and the portable
-  capability/C99-family matrix by Feature [2026-08-30-standard-library-capability-coverage-noref][stdlib-coverage].
+- Typed formatting is complete in
+  [l1/work/plans/features/closed/2026-08-30-typed-formatting-noref.md][typed-formatting]. The portable
+  capability/C99-family matrix remains tracked by Feature
+  [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage].
 
 ### Runtime
 
@@ -660,7 +662,7 @@ update to be promoted to an initiative or plan:
 [symbol-linkage]: ../work/plans/features/closed/2026-04-24-lbi-symbol-mangling-and-linkage-noref.md
 [toplet-diagnostic-recovery]: ../work/plans/bug-fixes/closed/2026-06-19-stage1-toplet-diagnostic-recovery-noref.md
 [toplet-initializer-typing]: ../work/plans/bug-fixes/closed/2026-06-18-stage1-toplet-initializer-typing-noref.md
-[typed-formatting]: ../work/plans/features/2026-08-30-typed-formatting-noref.md
+[typed-formatting]: ../work/plans/features/closed/2026-08-30-typed-formatting-noref.md
 [unified-lbi-mangling]: ../work/plans/refactors/closed/2026-05-11-unified-lbi-mangling-noref.md
 [variadic-functions]: ../work/plans/features/closed/2026-04-22-variadic-functions-noref.md
 [virtual-module]: ../work/plans/features/closed/2026-04-03-dea-virtual-module-noref.md

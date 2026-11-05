@@ -1,0 +1,268 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module format_main;
+
+import std.assert;
+import std.format;
+import std.integer;
+import std.io;
+import std.real;
+import std.string;
+import std.text;
+import std.types;
+
+/**
+ * Unwrap a successful format result for fixture assertions.
+ *
+ * @param result The result under test.
+ * @return The ordinary ARC string on success.
+ */
+func formatted(result: FormatResult) -> string {
+    match (result) {
+        FormatOk(value) => { return value; }
+        FormatErr(error) => { assert(false, "unexpected formatting error"); }
+    }
+    return "";
+}
+
+/**
+ * Compare exact output bytes while exercising variadic forwarding.
+ *
+ * @param template The template under test.
+ * @param expected The required output bytes.
+ * @param args The explicitly typed formatting values.
+ */
+func expect(template: string, expected: string, args: Value...) {
+    let actual = formatted(format(template, args...));
+    assert(actual == expected, "format output: " + template + " expected " + expected + " got " + actual);
+}
+
+/**
+ * Map error variants to scalar tags without requiring enum equality.
+ *
+ * @param kind The error variant to identify.
+ * @return A distinct tag for each formatting error kind.
+ */
+func error_tag(kind: FormatErrorKind) -> int {
+    match (kind) {
+        InvalidTemplate => { return 1; }
+        MissingArgument => { return 2; }
+        ExtraArgument => { return 3; }
+        InvalidSpecifier => { return 4; }
+    }
+}
+
+/**
+ * Check every field of a structured formatting error.
+ *
+ * @param template The invalid template or invocation.
+ * @param kind The expected error category.
+ * @param offset The expected zero-based template byte offset.
+ * @param argument_index The expected zero-based argument index.
+ * @param args The explicitly typed formatting values.
+ */
+func expect_error(template: string, kind: FormatErrorKind, offset: int, argument_index: int, args: Value...) {
+    match (format(template, args...)) {
+        FormatOk(value) => { assert(false, "expected formatting error: " + template); }
+        FormatErr(error) => {
+            assert(error_tag(error.kind) == error_tag(kind), "format error kind: " + template);
+            assert(error.offset == offset, "format error byte offset: " + template);
+            assert(error.argument_index == argument_index, "format error argument index: " + template);
+        }
+    }
+}
+
+/**
+ * Check literal braces, sequential fields, binary strings, and spread arguments.
+ */
+func test_templates_and_strings() {
+    expect("", "");
+    expect("plain text", "plain text");
+    expect("{{}}", "{}");
+    expect("{{{{}}}}", "{{}}");
+    expect("{{{}}}", "{42}", Int(42));
+    expect("a{}b{}c", "a1b2c", Int(1), Int(2));
+    expect("{}:{}", ":{}", String(""), String("{}"));
+    expect("{:s}", "{{raw}}", String("{{raw}}"));
+    let values: Value[3] = [String("owned" + " string"), Int(-12), Bool(true)];
+    expect("{} {} {}", "owned string -12 true", values...);
+    let view = slice(values);
+    assert(formatted(format("{} {} {}", view...)) == "owned string -12 true", "slice spread");
+    match (values[0]) {
+        String(value) => { assert(value == "owned string", "format must retain caller arguments"); }
+        _ => { assert(false, "format changed caller value"); }
+    }
+    with (let bytes = cb_create() => cb_free(bytes)) {
+        cb_append(bytes, 65 as byte);
+        cb_append(bytes, 0 as byte);
+        cb_append(bytes, 255 as byte);
+        let payload = cb_to_string(bytes);
+        let output = formatted(format("x{:s}y", String(payload)));
+        assert(len_s(output) == 5, "embedded NUL length");
+        assert(char_at_s(output, 0) == 'x' && char_at_s(output, 4) == 'y', "binary string framing");
+        assert(char_at_s(output, 1) == 65 && char_at_s(output, 2) == 0 && char_at_s(output, 3) == 255,
+            "binary string bytes");
+        expect(payload + "{}", payload + "7", Int(7));
+        expect_error(payload + "{", InvalidTemplate, 3, 0);
+    }
+}
+
+/**
+ * Cover every primitive Value variant and signed-magnitude radix boundaries.
+ */
+func test_primitive_values() {
+    expect("{} {}", "true false", Bool(true), Bool(false));
+    expect("{} {} {} {}", "-128 255 -32768 65535", Tiny(-128), Byte(255), Short(-32768), UShort(65535));
+    expect("{} {}", "-2147483648 4294967295", Int(int_min()), UInt(uint_max()));
+    expect("{} {}", "-9223372036854775808 18446744073709551615", Long(long_min()), ULong(ulong_max()));
+    expect("{} {} {}", "1.25 -2.5 text", Float(1.25f), Double(-2.5), String("text"));
+    expect("{:d} {:d} {:d} {:d}", "-128 255 -32768 65535", Tiny(-128), Byte(255), Short(-32768), UShort(65535));
+    expect("{:x} {:X} {:b}", "-80 FF -1000000000000000", Tiny(-128), Byte(255), Short(-32768));
+    expect("{:x} {:X} {:b}", "ffff 0 0", UShort(65535), Int(0), ULong(0));
+    expect("{:x} {:X}", "-80000000 FFFFFFFF", Int(int_min()), UInt(uint_max()));
+    expect("{:x} {:X}", "-8000000000000000 FFFFFFFFFFFFFFFF", Long(long_min()), ULong(ulong_max()));
+    expect("{:b}", "-1000000000000000000000000000000000000000000000000000000000000000", Long(long_min()));
+    expect("{:b}", "1111111111111111111111111111111111111111111111111111111111111111", ULong(ulong_max()));
+    expect("{:d} {:d}", "-9223372036854775808 18446744073709551615", Long(long_min()), ULong(ulong_max()));
+    expect("{:x} {:X}", "-2a -2A", Int(-42), Long(-42));
+}
+
+/**
+ * Cover every present and absent optional Value without implicit conversions.
+ */
+func test_optional_values() {
+    expect("{} {} {} {} {} {}", "true -128 255 -32768 65535 -2147483648",
+        OptBool(true), OptTiny(-128), OptByte(255), OptShort(-32768), OptUShort(65535), OptInt(int_min()));
+    expect("{} {} {} {} {} {}", "4294967295 -9223372036854775808 18446744073709551615 1.25 -2.5 optional",
+        OptUInt(uint_max()), OptLong(long_min()), OptULong(ulong_max()), OptFloat(1.25f), OptDouble(-2.5),
+        OptString("opt" + "ional"));
+    expect("{} {} {} {} {} {}", "null null null null null null",
+        OptBool(null), OptTiny(null), OptByte(null), OptShort(null), OptUShort(null), OptInt(null));
+    expect("{} {} {} {} {} {}", "null null null null null null",
+        OptUInt(null), OptLong(null), OptULong(null), OptFloat(null), OptDouble(null), OptString(null));
+    expect("{:d} {:x} {:X} {:b}", "-128 ff -8000 1111111111111111",
+        OptTiny(-128), OptByte(255), OptShort(-32768), OptUShort(65535));
+    expect("{:d} {:x} {:X} {:b}", "-2147483648 ffffffff -8000000000000000 1111111111111111111111111111111111111111111111111111111111111111",
+        OptInt(int_min()), OptUInt(uint_max()), OptLong(long_min()), OptULong(ulong_max()));
+    expect("{:g} {:g} {:s}", "1.25 -2.5 optional", OptFloat(1.25f), OptDouble(-2.5), OptString("optional"));
+    expect("{:d} {:x} {:X} {:b} {:d} {:x} {:X} {:b}", "null null null null null null null null",
+        OptTiny(null), OptByte(null), OptShort(null), OptUShort(null), OptInt(null), OptUInt(null), OptLong(null), OptULong(null));
+    expect("{:g} {:g} {:s}", "null null null", OptFloat(null), OptDouble(null), OptString(null));
+}
+
+/**
+ * Check real edge values and exact 9/17 significant-digit general formatting.
+ */
+func test_real_values() {
+    expect("{} {} {} {}", "0 -0 0 -0", Float(0.0f), Float(-0.0f), Double(0.0), Double(-0.0));
+    expect("{:g} {:g} {:g} {:g}", "0 -0 0 -0", Float(0.0f), Float(-0.0f), Double(0.0), Double(-0.0));
+    expect("{} {} {}", "nan inf -inf", Float(NAN_F), Float(INFINITY_F), Float(-INFINITY_F));
+    expect("{:g} {:g} {:g}", "nan inf -inf", Double(NAN), Double(INFINITY), Double(-INFINITY));
+    expect("{} {}", "0.100000001 0.10000000000000001", Float(0.1f), Double(0.1));
+    expect("{} {}", "1.00000012 1.0000000000000002",
+        Float(next_after_f(1.0f, 2.0f)), Double(next_after_d(1.0, 2.0)));
+    expect("{:g} {:g}", "1.40129846e-45 4.9406564584124654e-324",
+        Float(ldexp_f(1.0f, -149)), Double(ldexp_d(1.0, -1074)));
+    expect("{} {}", "1.17549435e-38 2.2250738585072014e-308",
+        Float(ldexp_f(1.0f, -126)), Double(ldexp_d(1.0, -1022)));
+    expect("{} {}", "3.40282347e+38 1.7976931348623157e+308",
+        Float(next_after_f(INFINITY_F, 0.0f)), Double(next_after_d(INFINITY, 0.0)));
+    expect("{} {}", "-1.40129846e-45 -4.9406564584124654e-324",
+        Float(-ldexp_f(1.0f, -149)), Double(-ldexp_d(1.0, -1074)));
+    expect("{} {} {}", "100000000 1e+09 1e+10", Float(100000000.0f), Float(1000000000.0f), Float(10000000000.0f));
+    expect("{} {} {} {}", "0.0001 1.0000000000000001e-05 10000000000000000 1e+17",
+        Double(0.0001), Double(0.00001), Double(10000000000000000.0), Double(100000000000000000.0));
+    expect("{} {}", "1.23456788 1.2345678901234567", Float(1.23456789f), Double(1.2345678901234567));
+    expect("{} {}", "0.000122070312 0.000366210938", Float(ldexp_f(1.0f, -13)), Float(ldexp_f(3.0f, -13)));
+    expect("{} {}", "2.9802322387695312e-08 8.9406967163085938e-08",
+        Double(ldexp_d(1.0, -25)), Double(ldexp_d(3.0, -25)));
+    expect("{} {}", "10000000000000002 10000000000000004",
+        Double(10000000000000002.0), Double(10000000000000004.0));
+}
+
+/**
+ * Check malformed grammar, arity, specifier typing, and error precedence.
+ */
+func test_errors() {
+    expect_error("{", InvalidTemplate, 0, 0);
+    expect_error("}", InvalidTemplate, 0, 0);
+    expect_error("a}b", InvalidTemplate, 1, 0);
+    expect_error("{{}", InvalidTemplate, 2, 0);
+    expect_error("{x}", InvalidTemplate, 0, 0);
+    expect_error("{:}", InvalidTemplate, 0, 0);
+    expect_error("{:q}", InvalidTemplate, 0, 0, Int(1));
+    expect_error("{:d", InvalidTemplate, 0, 0, Int(1));
+    expect_error("{:dd}", InvalidTemplate, 0, 0, Int(1));
+    expect_error("{0}", InvalidTemplate, 0, 0, Int(1));
+    expect_error("{name}", InvalidTemplate, 0, 0, Int(1));
+    expect_error("{:02d}", InvalidTemplate, 0, 0, Int(1));
+    expect_error("{:.2g}", InvalidTemplate, 0, 0, Double(1.0));
+    expect_error("{} {", InvalidTemplate, 3, 1, Int(1));
+    expect_error("{} }", InvalidTemplate, 3, 1, Int(1));
+    expect_error("{:q}", InvalidTemplate, 0, 0);
+    expect_error("{}", MissingArgument, 0, 0);
+    expect_error("{} {}", MissingArgument, 3, 1, Int(1));
+    expect_error("{:d}", MissingArgument, 0, 0);
+    expect_error("", ExtraArgument, 0, 0, Int(1));
+    expect_error("plain", ExtraArgument, 5, 0, String("extra"));
+    expect_error("{}", ExtraArgument, 2, 1, Int(1), Int(2));
+    expect_error("{{}}", ExtraArgument, 4, 0, Int(1));
+    expect_error("{:d}", InvalidSpecifier, 0, 0, Bool(true));
+    expect_error("{:b}", InvalidSpecifier, 0, 0, Bool(false));
+    expect_error("{:x}", InvalidSpecifier, 0, 0, Float(1.0f));
+    expect_error("{:X}", InvalidSpecifier, 0, 0, Double(1.0));
+    expect_error("{:s}", InvalidSpecifier, 0, 0, Int(1));
+    expect_error("{:g}", InvalidSpecifier, 0, 0, UInt(1));
+    expect_error("{} {:g}", InvalidSpecifier, 3, 1, Int(1), String("2.0"));
+    expect_error("{:d}", InvalidSpecifier, 0, 0, OptBool(null));
+    expect_error("{:s}", InvalidSpecifier, 0, 0, OptInt(null));
+    expect_error("{:g}", InvalidSpecifier, 0, 0, OptString(null));
+    expect_error("{:x}", InvalidSpecifier, 0, 0, OptFloat(null));
+    expect_error("{:g}", InvalidSpecifier, 0, 0, OptLong(1));
+    with (let prefix = cb_create() => cb_free(prefix)) {
+        cb_append(prefix, 195 as byte);
+        cb_append(prefix, 169 as byte);
+        expect_error(cb_to_string(prefix) + "{}", MissingArgument, 2, 0);
+    }
+}
+
+/**
+ * Exercise repeated success/error cleanup and concrete migrated print calls.
+ */
+func test_lifetimes_and_output() {
+    for (let i = 0; i < 30; i = i + 1) {
+        let owned = "value=" + int_to_string(i);
+        expect("[{}]", "[" + owned + "]", String(owned));
+        expect_error("{} {:d}", InvalidSpecifier, 3, 1, String(owned), OptString(owned));
+        expect_error("{} {}", MissingArgument, 3, 1, OptString(owned));
+        expect_error("{}", ExtraArgument, 2, 1, OptString(owned), String(owned));
+    }
+    let strings = formatted(format("{} {}", String("name:"), String("Ada")));
+    let integer = formatted(format("{} {}", String("count:"), Int(42)));
+    let boolean = formatted(format("{} {}", Int(7), Bool(true)));
+    assert(strings == "name: Ada" && integer == "count: 42" && boolean == "7 true", "legacy print layouts");
+    printl_ss("name:", "Ada");
+    printl_s(strings);
+    printl_si("count:", 42);
+    printl_s(integer);
+    printl_ib(7, true);
+    printl_s(boolean);
+}
+
+/**
+ * Execute all typed formatting cases in an actual L1 target program.
+ *
+ * @return Zero after every assertion succeeds.
+ */
+func main() -> int {
+    test_templates_and_strings();
+    test_primitive_values();
+    test_optional_values();
+    test_real_values();
+    test_errors();
+    test_lifetimes_and_output();
+    return 0;
+}
