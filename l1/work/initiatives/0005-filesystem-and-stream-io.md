@@ -1,12 +1,12 @@
 # L1 Initiative 0005 - Filesystem and Stream I/O
 
-- Version: 2026-10-29
+- Version: 2026-11-05
 - Status: Active
 - Kind: Initiative
 - Open plans:
-  - `l1/work/plans/features/2026-08-30-dynamic-byte-buffers-noref.md`
   - `l1/work/plans/features/2026-08-30-file-handles-and-random-access-noref.md`
 - Closed plans:
+  - `l1/work/plans/features/closed/2026-08-30-dynamic-byte-buffers-noref.md`
   - `l1/work/plans/features/closed/2026-08-30-filesystem-mutations-and-directory-traversal-noref.md`
   - `l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md`
   - `l1/work/plans/features/closed/2026-08-30-wide-filesystem-metadata-noref.md`
@@ -44,7 +44,8 @@ shared-private-code extraction are not completion requirements for this initiati
 - `std.fs::FileInfo` and `sys.rt::RtFileInfo` use `long?` for file size and modification seconds; normalized nanoseconds
   remain `int?`.
 - Whole-file helpers are necessarily bounded by the `int` length of a Dea string.
-- `ByteArray` is fixed-sized, and general mutable growth is exposed only through lower-level `VectorBase` operations.
+- `std.bytes` provides opaque owned dynamic byte buffers with checked growth, copying append/conversion, zeroing resize,
+  and explicit `free` cleanup. No borrowed storage views escape. Fixed `ByteArray` remains available.
 - New filesystem APIs return captured `std.os` errors directly; legacy convenience helpers retain nullable results.
 
 ## Decisions and invariants
@@ -77,12 +78,12 @@ shared-private-code extraction are not completion requirements for this initiati
 
 Spawned plans: [OS errors and I/O results] and [wide filesystem metadata].
 
-### Phase 1 - Dynamic binary buffers (Stdlib Tier 1)
+### Phase 1 - Dynamic binary buffers (Stdlib Tier 1, complete)
 
-- Add a public growable byte buffer with reserve, resize, indexed access, copying append from borrowed slices, and
-  explicit string conversion.
+- Delivered `std.bytes::ByteBuffer` with checked reserve/resize/indexing, borrowed-slice and self-buffer copying append,
+  byte-exact string conversion, and opaque exactly-once cleanup.
 
-Spawned plan: [dynamic byte buffers].
+Closed plan: [dynamic byte buffers].
 
 ### Phase 2 - File handles and complete file I/O (Stdlib Tier 1)
 
@@ -155,7 +156,7 @@ Closed plan: [filesystem mutations and directory traversal].
 
 ## References
 
-[dynamic byte buffers]: ../plans/features/2026-08-30-dynamic-byte-buffers-noref.md
+[dynamic byte buffers]: ../plans/features/closed/2026-08-30-dynamic-byte-buffers-noref.md
 [file handles and random access]: ../plans/features/2026-08-30-file-handles-and-random-access-noref.md
 [filesystem mutations and directory traversal]: ../plans/features/closed/2026-08-30-filesystem-mutations-and-directory-traversal-noref.md
 [l1 roadmap]: ../../docs/roadmap.md

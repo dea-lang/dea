@@ -23,7 +23,7 @@
 - Related:
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
   - `l1/work/plans/features/2026-08-30-file-handles-and-random-access-noref.md`
-  - `l1/work/plans/features/2026-08-30-dynamic-byte-buffers-noref.md`
+  - `l1/work/plans/features/closed/2026-08-30-dynamic-byte-buffers-noref.md`
 - Repro: `make -C l2 test-compiler TESTS="stream_test analysis_trace_test l2c_lib_test"`
 
 ## Summary

@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-10-29
+Version: 2026-11-05
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -235,6 +235,12 @@ Array lengths resolve to concrete values before signature and backend lowering.
 Array indexing is safe: generated code evaluates the base and index once, checks `index < 0 || index >= N`, and calls
 `_rt_panic_oob(index, N)` on failure. Raw pointer indexing has no source-level upper bound; checked builds may still
 catch invalid allocation/range/provenance at runtime, while unchecked builds trust the `unsafe func` contract.
+
+`std.bytes` supplies opaque owned dynamic binary buffers separately from language arrays. Checked `int` lengths,
+explicit cleanup, copied borrowed inputs, and byte-exact string conversion preserve the public ownership boundary.
+Capacity growth is checked; shrinking and clearing retain storage and resize zeroes newly visible bytes. Buffers expose
+no escaping views. See [l1/docs/decisions/0052-owned-dynamic-byte-buffers.md][byte-buffer-decision] and
+[l1/docs/reference/standard-library.md][byte-buffer-library].
 
 ## 7.2 Slice Policy
 
@@ -782,6 +788,8 @@ source falls back to wall time. Scheduler latency has no hard upper bound.
 See [l1/docs/decisions/0050-wide-time-and-monotonic-deadlines.md][time-width] and
 [l1/docs/decisions/0051-explicit-sleep-interruption-and-restart.md][time-sleep].
 
+[byte-buffer-decision]: ../decisions/0052-owned-dynamic-byte-buffers.md
+[byte-buffer-library]: standard-library.md#stdbytes
 [filesystem-contract]: filesystem.md
 [filesystem-identity]: ../decisions/0047-followed-native-filesystem-identity.md
 [filesystem-replacement]: ../decisions/0049-filesystem-replacement-and-no-replace-capability.md
