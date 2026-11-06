@@ -69,10 +69,10 @@ l1c --prepare-stdlib --c-compiler clang
 l1c --build --c-compiler clang --no-auto-prepare app.l1 -o app
 ```
 
-Build/run/link automatically reuse or prepare matching support. Cache hits are quiet. Actual preparation and corruption
-recovery go to stderr; increasing `-v` exposes selection, commands, identity observations, memo decisions, and artifact
-validation. Native compiler warnings and errors remain visible, including warnings from successful preparation between
-its start and finish messages.
+Build/run/link automatically reuse or prepare matching support. Cache hits emit no preparation progress. Actual
+preparation and corruption recovery go to stderr; increasing `-v` exposes selection, commands, identity observations,
+memo decisions, and artifact validation. Compiler and native toolchain warnings and errors remain visible. Diagnostics
+may precede or follow preparation progress, appear between its start and finish messages, or occur on a cache hit.
 
 | Control               | Scope and meaning                                                                                                   |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------- |
