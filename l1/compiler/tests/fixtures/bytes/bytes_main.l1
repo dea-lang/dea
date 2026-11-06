@@ -23,7 +23,7 @@ func check_growth() {
             "resize preserves initialized prefix and zeros allocated tail");
     }
     with (let buf = bytes::create() => bytes::free(buf)) {
-        assert(bytes::len(buf) == 0 && bytes::capacity(buf) == 0, "empty buffer");
+        assert(bytes::size(buf) == 0 && bytes::capacity(buf) == 0, "empty buffer");
         assert(bytes::to_string(buf) == "", "empty string copy");
         bytes::reserve(buf, 0);
         let growths = 0;
@@ -31,15 +31,15 @@ func check_growth() {
             let previous = bytes::capacity(buf);
             bytes::append_byte(buf, (i % 256) as byte);
             if (bytes::capacity(buf) != previous) { growths = growths + 1; }
-            assert(bytes::len(buf) == i + 1, "append length");
-            assert(bytes::capacity(buf) >= bytes::len(buf), "capacity covers length");
+            assert(bytes::size(buf) == i + 1, "append length");
+            assert(bytes::capacity(buf) >= bytes::size(buf), "capacity covers length");
         }
         assert(growths <= 14, "append growth must be amortized");
-        for (let i = 0; i < bytes::len(buf); i = i + 1) {
+        for (let i = 0; i < bytes::size(buf); i = i + 1) {
             assert(bytes::get(buf, i) == (i % 256) as byte, "growth preserves bytes");
         }
         bytes::reserve(buf, 8193);
-        assert(bytes::len(buf) == 4096 && bytes::capacity(buf) >= 8193, "reserve preserves length");
+        assert(bytes::size(buf) == 4096 && bytes::capacity(buf) >= 8193, "reserve preserves length");
         let reserved = bytes::capacity(buf);
         bytes::reserve(buf, 2);
         bytes::resize(buf, 3);
@@ -52,7 +52,7 @@ func check_growth() {
         bytes::set(buf, 0, 255 as byte);
         assert(bytes::get(buf, 0) == 255 as byte, "set byte");
         bytes::clear(buf);
-        assert(bytes::len(buf) == 0 && bytes::capacity(buf) == reserved, "clear reuses capacity");
+        assert(bytes::size(buf) == 0 && bytes::capacity(buf) == reserved, "clear reuses capacity");
         bytes::resize(buf, 4);
         assert(bytes::to_string(buf) == "\0\0\0\0", "clear then resize zeros bytes");
         bytes::resize(buf, 0);
@@ -71,7 +71,7 @@ func check_copying() {
         let other = bytes::create() => bytes::free(other),
         let empty = bytes::create() => bytes::free(empty)
     ) {
-        assert(bytes::len(buf) == 0 && bytes::capacity(buf) == 2, "reserved constructor");
+        assert(bytes::size(buf) == 0 && bytes::capacity(buf) == 2, "reserved constructor");
         bytes::append_range(buf, input, 1, 3);
         input[1] = 'x';
         assert(bytes::get(buf, 0) == 0 as byte, "slice input is copied");
@@ -107,7 +107,7 @@ func binary_copy() -> string {
         for (let i = 0; i < 256; i = i + 1) { bytes::append_byte(buf, i as byte); }
         let original = bytes::to_string(buf);
         with (let copy = bytes::from_string(original) => bytes::free(copy)) {
-            assert(bytes::len(copy) == 256, "binary string length");
+            assert(bytes::size(copy) == 256, "binary string length");
             for (let i = 0; i < 256; i = i + 1) {
                 assert(bytes::get(copy, i) == i as byte, "all byte values survive conversion");
             }

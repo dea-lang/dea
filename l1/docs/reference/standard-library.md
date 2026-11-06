@@ -1,6 +1,6 @@
 # The L1 Standard Library
 
-Version: 2026-11-05
+Version: 2026-11-06
 
 The standard library provides ergonomic L1 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -72,9 +72,12 @@ abstraction used by existing containers and raw-memory helpers; it is not the re
 ### `std.bytes`
 
 `ByteBuffer` is an opaque owned growable binary buffer. Lengths, capacities, indexes, and transfer counts are `int`. Use
-`import std.bytes as bytes;` and qualified calls such as `bytes::len(buf)`; `dea::len` remains the intrinsic for
-strings, arrays, and slices. The current compiler reports `RES-0021` when the module's `len` shadows the implicit
-prelude name; qualified calls remain unambiguous.
+`import std.bytes as bytes;` and qualified calls such as `bytes::size(buf)`. The size is the number of initialized
+logical bytes, while capacity counts reserved byte slots. The name follows the existing container `size` convention;
+`dea::len` remains the intrinsic for strings, arrays, and slices.
+
+The former `std.bytes::len` name has no compatibility alias. Existing callers must use `size` and rebuild dependent
+compiled artifacts against the updated module interface.
 
 | Type/Function   | Signature                                                                 | Contract                                                                                   |
 | --------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
@@ -82,7 +85,7 @@ prelude name; qualified calls remain unambiguous.
 | `create`        | `func() -> ByteBuffer*`                                                   | Empty buffer with zero logical capacity.                                                   |
 | `with_capacity` | `func(initial_capacity: int) -> ByteBuffer*`                              | Empty buffer with exactly the requested nonnegative capacity.                              |
 | `free`          | `func(self: ByteBuffer*) -> void`                                         | Consume the buffer and its storage exactly once.                                           |
-| `len`           | `func(self: ByteBuffer*) -> int`                                          | Number of initialized logical bytes.                                                       |
+| `size`          | `func(self: ByteBuffer*) -> int`                                          | Number of initialized logical bytes.                                                       |
 | `capacity`      | `func(self: ByteBuffer*) -> int`                                          | Reserved byte slots, at least the logical length.                                          |
 | `reserve`       | `func(self: ByteBuffer*, total_capacity: int) -> void`                    | Ensure at least this total capacity; preserve length and contents.                         |
 | `resize`        | `func(self: ByteBuffer*, new_length: int) -> void`                        | Zero every newly visible byte, including bytes discarded by earlier shrinking or clearing. |

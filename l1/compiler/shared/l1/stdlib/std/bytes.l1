@@ -10,7 +10,7 @@
  */
 module std.bytes;
 
-export opaque { ByteBuffer }, create, with_capacity, free, len, capacity,
+export opaque { ByteBuffer }, create, with_capacity, free, size, capacity,
     reserve, resize, clear, get, set, append_byte, append_range, append_buffer,
     to_string, from_string;
 
@@ -73,7 +73,7 @@ func free(self: ByteBuffer*) {
  * @param self Live buffer to inspect.
  * @return Nonnegative logical length.
  */
-func len(self: ByteBuffer*) -> int {
+func size(self: ByteBuffer*) -> int {
     return self._length;
 }
 
@@ -81,7 +81,7 @@ func len(self: ByteBuffer*) -> int {
  * Return the number of reserved byte slots.
  *
  * @param self Live buffer to inspect.
- * @return Capacity, at least len(self).
+ * @return Capacity, at least size(self).
  */
 func capacity(self: ByteBuffer*) -> int {
     return self._capacity;
@@ -139,7 +139,7 @@ func clear(self: ByteBuffer*) {
  * Require a logical byte index, independently of reserved capacity.
  *
  * @param self Live buffer to inspect.
- * @param index Index that must be in [0, len(self)).
+ * @param index Index that must be in [0, size(self)).
  */
 func _check_index(self: ByteBuffer*, index: int) {
     assert(index >= 0 && index < self._length, "std.bytes: index out of bounds");
@@ -149,7 +149,7 @@ func _check_index(self: ByteBuffer*, index: int) {
  * Read one logical byte, terminating on an invalid index.
  *
  * @param self Live buffer to inspect.
- * @param index Index in [0, len(self)).
+ * @param index Index in [0, size(self)).
  * @return A copy of the selected byte.
  */
 func get(self: ByteBuffer*, index: int) -> byte {
@@ -161,7 +161,7 @@ func get(self: ByteBuffer*, index: int) -> byte {
  * Replace one logical byte, terminating on an invalid index.
  *
  * @param self Live buffer to modify.
- * @param index Index in [0, len(self)).
+ * @param index Index in [0, size(self)).
  * @param value Byte to store.
  */
 func set(self: ByteBuffer*, index: int, value: byte) {

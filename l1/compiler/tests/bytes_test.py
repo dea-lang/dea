@@ -163,7 +163,7 @@ func main() {
             buf._capacity = int_max() / 2 + 1;
             fault = 3;
             reserve(buf, buf._capacity + 1);
-            assert(capacity(buf) == int_max() && len(buf) == 0, "saturated capacity");
+            assert(capacity(buf) == int_max() && size(buf) == 0, "saturated capacity");
             let before = allocation_calls;
             reserve(buf, int_max());
             assert(allocation_calls == before, "no allocation for sufficient capacity");
@@ -184,36 +184,41 @@ func main() {
 '''
 
 
-def require_opacity(work: Path) -> None:
-    """Reject layout access through both source imports and generated interfaces.
+def require_public_interface(work: Path) -> None:
+    """Check the public size API and opacity through source and interface imports.
 
     Args:
         work: Temporary consumer and interface directory.
 
     Raises:
-        AssertionError: An opaque operation succeeds or the interface leaks storage.
+        AssertionError: The public API, diagnostic, or opacity contract fails.
     """
     compiler = compiler_path()
     source_args = ["--no-managed-stdlib", "--sys-root", str(L1_ROOT / "compiler/shared/l1/stdlib")]
     interfaces = work / "interfaces"
     (interfaces / "std").mkdir(parents=True)
     interface = interfaces / "std/bytes.l1m"
-    require_success([str(compiler), *source_args, "--emit-interface", "std.bytes", "-o", str(interface)], timeout=120)
+    emitted = require_success(
+        [str(compiler), *source_args, "--emit-interface", "std.bytes", "-o", str(interface)], timeout=120,
+    )
+    assert "[RES-0021]" not in emitted.stderr, emitted.stderr
     text = interface.read_text(encoding="utf-8")
+    assert "func size(" in text and "func len(" not in text, text
     assert "opaque struct ByteBuffer;" in text, text
     assert "struct ByteBuffer {" not in text, text
     assert "func _check_index(" not in text and "func _append_length(" not in text, text
-    for label, operation in (
-        ("field", "let hidden = buf._data;"),
-        ("size", "let size = sizeof(bytes::ByteBuffer);"),
-        ("drop", "drop buf;"),
-        ("construct", "let forged = new bytes::ByteBuffer();"),
-        ("dereference", "let copied = *buf;"),
+    for label, operation, diagnostic in (
+        ("field", "let hidden = buf._data;", "RES-0038"),
+        ("layout_size", "let size = sizeof(bytes::ByteBuffer);", "RES-0038"),
+        ("drop", "drop buf;", "RES-0038"),
+        ("construct", "let forged = new bytes::ByteBuffer();", "RES-0038"),
+        ("dereference", "let copied = *buf;", "RES-0038"),
+        ("legacy_len", "let old = bytes::len(buf);", "TYP-0154"),
     ):
         name = f"buffer_{label}"
         (work / f"{name}.l1").write_text(
             f"module {name};\nimport std.bytes as bytes;\n"
-            "/**\n * Attempt an operation requiring hidden buffer layout.\n */\n"
+            "/**\n * Attempt an operation outside the public buffer API.\n */\n"
             f"func main() {{ let buf = bytes::create(); {operation} bytes::free(buf); }}\n",
             encoding="utf-8",
         )
@@ -223,7 +228,8 @@ def require_opacity(work: Path) -> None:
                 "--gen", name, "-o", str(work / f"{name}.c"),
             ], cwd=L1_ROOT, capture_output=True, text=True, timeout=120, check=False)
             assert completed.returncode == 1, (name, completed.stdout, completed.stderr)
-            assert "[RES-0038]" in completed.stderr, (name, completed.stderr)
+            assert f"[{diagnostic}]" in completed.stderr, (name, completed.stderr)
+            assert "[RES-0021]" not in completed.stderr, (name, completed.stderr)
 
 
 def main() -> int:
@@ -254,7 +260,7 @@ def main() -> int:
             for case in ("overflow_byte", "overflow_buffer", "overflow_range"):
                 require_failure(limits, case, "length overflow")
             print(f"bytes_test: {mode} PASS")
-        require_opacity(work)
+        require_public_interface(work)
     print("bytes_test: PASS")
     return 0
 
