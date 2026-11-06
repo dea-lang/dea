@@ -29,7 +29,7 @@
 - Related:
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
   - `l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md`
-  - `l1/work/plans/features/2026-08-30-dynamic-byte-buffers-noref.md`
+  - `l1/work/plans/features/closed/2026-08-30-dynamic-byte-buffers-noref.md`
 - Repro: `make -C l1 test-compiler TESTS="file_runtime_test l0c_lib_test analysis_trace_test"`
 
 ## Summary

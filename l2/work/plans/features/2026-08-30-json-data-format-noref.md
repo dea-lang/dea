@@ -24,7 +24,7 @@
   - `l2/compiler/tests/analysis_trace_test.l1`
 - Related:
   - `l2/work/initiatives/0002-data-format-modules.md`
-  - `l1/work/plans/features/2026-08-30-dynamic-byte-buffers-noref.md`
+  - `l1/work/plans/features/closed/2026-08-30-dynamic-byte-buffers-noref.md`
   - `l2/work/plans/features/2026-08-30-streams-and-buffering-noref.md`
 - Repro: `make -C l2 test-compiler TESTS="json_test analysis_trace_test"`
 

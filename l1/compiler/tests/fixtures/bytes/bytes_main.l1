@@ -1,0 +1,152 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module bytes_main;
+
+import std.bytes as bytes;
+import std.array;
+import std.assert;
+import std.io;
+
+/**
+ * Exercise logical length, checked storage growth, initialization, and reuse.
+ */
+func check_growth() {
+    with (let resized = bytes::with_capacity(1) => bytes::free(resized)) {
+        bytes::resize(resized, 4);
+        assert(bytes::to_string(resized) == "\0\0\0\0", "resize grows an empty buffer");
+        bytes::set(resized, 3, 'X');
+        bytes::resize(resized, 12);
+        assert(bytes::get(resized, 3) == 'X' && bytes::get(resized, 11) == 0 as byte,
+            "resize preserves initialized prefix and zeros allocated tail");
+    }
+    with (let buf = bytes::create() => bytes::free(buf)) {
+        assert(bytes::size(buf) == 0 && bytes::capacity(buf) == 0, "empty buffer");
+        assert(bytes::to_string(buf) == "", "empty string copy");
+        bytes::reserve(buf, 0);
+        let growths = 0;
+        for (let i = 0; i < 4096; i = i + 1) {
+            let previous = bytes::capacity(buf);
+            bytes::append_byte(buf, (i % 256) as byte);
+            if (bytes::capacity(buf) != previous) { growths = growths + 1; }
+            assert(bytes::size(buf) == i + 1, "append length");
+            assert(bytes::capacity(buf) >= bytes::size(buf), "capacity covers length");
+        }
+        assert(growths <= 14, "append growth must be amortized");
+        for (let i = 0; i < bytes::size(buf); i = i + 1) {
+            assert(bytes::get(buf, i) == (i % 256) as byte, "growth preserves bytes");
+        }
+        bytes::reserve(buf, 8193);
+        assert(bytes::size(buf) == 4096 && bytes::capacity(buf) >= 8193, "reserve preserves length");
+        let reserved = bytes::capacity(buf);
+        bytes::reserve(buf, 2);
+        bytes::resize(buf, 3);
+        assert(bytes::capacity(buf) == reserved, "shrink preserves capacity");
+        bytes::resize(buf, 4100);
+        assert(bytes::get(buf, 2) == 2 as byte, "shrink preserves prefix");
+        for (let i = 3; i < 4100; i = i + 1) {
+            assert(bytes::get(buf, i) == 0 as byte, "resize zeros discarded and new bytes");
+        }
+        bytes::set(buf, 0, 255 as byte);
+        assert(bytes::get(buf, 0) == 255 as byte, "set byte");
+        bytes::clear(buf);
+        assert(bytes::size(buf) == 0 && bytes::capacity(buf) == reserved, "clear reuses capacity");
+        bytes::resize(buf, 4);
+        assert(bytes::to_string(buf) == "\0\0\0\0", "clear then resize zeros bytes");
+        bytes::resize(buf, 0);
+        bytes::append_byte(buf, 'R');
+        assert(bytes::to_string(buf) == "R", "append after resize to zero");
+    }
+}
+
+/**
+ * Copy borrowed stack slices and buffers, including reallocating self-append.
+ */
+func check_copying() {
+    let input: byte[5] = ['A', 0 as byte, 255 as byte, 'Z', '!'];
+    with (
+        let buf = bytes::with_capacity(2) => bytes::free(buf),
+        let other = bytes::create() => bytes::free(other),
+        let empty = bytes::create() => bytes::free(empty)
+    ) {
+        assert(bytes::size(buf) == 0 && bytes::capacity(buf) == 2, "reserved constructor");
+        bytes::append_range(buf, input, 1, 3);
+        input[1] = 'x';
+        assert(bytes::get(buf, 0) == 0 as byte, "slice input is copied");
+        assert(bytes::get(buf, 1) == 255 as byte && bytes::get(buf, 2) == 'Z', "slice subrange");
+        let first = bytes::to_string(buf);
+        bytes::append_buffer(buf, buf);
+        assert(bytes::to_string(buf) == first + first, "self append across growth");
+        bytes::reserve(buf, 64);
+        let second = bytes::to_string(buf);
+        bytes::append_buffer(buf, buf);
+        assert(bytes::to_string(buf) == second + second, "self append without growth");
+        bytes::append_buffer(other, buf);
+        bytes::set(buf, 0, 'Q');
+        assert(bytes::get(other, 0) == 0 as byte, "buffer copy is independent");
+        let before = bytes::to_string(other);
+        bytes::append_buffer(other, empty);
+        bytes::append_buffer(empty, empty);
+        bytes::append_range(other, input, 5, 0);
+        bytes::append_range(other, slice(input, 5, 0), 0, 0);
+        assert(bytes::to_string(other) == before, "empty appends preserve bytes");
+        bytes::append_range(other, slice(input, 3, 2), 0, 2);
+        assert(bytes::to_string(other) == before + "Z!", "borrowed slice subrange");
+    }
+}
+
+/**
+ * Return an owned byte-exact string after its source buffer has been freed.
+ *
+ * @return All 256 byte values, copied through buffer and string storage.
+ */
+func binary_copy() -> string {
+    with (let buf = bytes::create() => bytes::free(buf)) {
+        for (let i = 0; i < 256; i = i + 1) { bytes::append_byte(buf, i as byte); }
+        let original = bytes::to_string(buf);
+        with (let copy = bytes::from_string(original) => bytes::free(copy)) {
+            assert(bytes::size(copy) == 256, "binary string length");
+            for (let i = 0; i < 256; i = i + 1) {
+                assert(bytes::get(copy, i) == i as byte, "all byte values survive conversion");
+            }
+            bytes::clear(buf);
+            bytes::set(copy, 255, 0 as byte);
+            assert(dea::len(original) == 256, "original string remains owned");
+        }
+        return original;
+    }
+}
+
+/**
+ * Exercise early-return cleanup and the independently retained fixed ByteArray.
+ *
+ * @return The independent copied string after buffer cleanup.
+ */
+func early_copy() -> string {
+    with (
+        let fixed = ba_create(1) => ba_free(fixed),
+        let buf = bytes::from_string("temporary" + " bytes") => bytes::free(buf),
+        let empty = bytes::from_string("") => bytes::free(empty)
+    ) {
+        ba_set(fixed, 0, 'F');
+        bytes::append_byte(empty, ba_get(fixed, 0));
+        assert(bytes::to_string(empty) == "F", "fixed ByteArray remains usable");
+        return bytes::to_string(buf);
+    }
+}
+
+/**
+ * Validate the public API through an actual L1 target program.
+ */
+func main() {
+    check_growth();
+    check_copying();
+    let binary = binary_copy();
+    with (let again = bytes::from_string(binary) => bytes::free(again)) {
+        assert(bytes::get(again, 255) == 255 as byte, "string survives source mutation and cleanup");
+    }
+    assert(early_copy() == "temporary bytes", "with cleanup on return");
+    printl_s("bytes_main: PASS");
+}

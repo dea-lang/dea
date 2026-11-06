@@ -1,6 +1,6 @@
 # The L1 Standard Library
 
-Version: 2026-10-29
+Version: 2026-11-06
 
 The standard library provides ergonomic L1 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -17,9 +17,9 @@ For canonical ownership behavior around `new`/`drop`, ARC strings, and container
                              v
 +---------------------------------------------------------+
 |                      std.* Modules                      |
-| array, assert, fs, hashmap, hashset, io, linear_map,    |
-| integer, optional, os, path, rand, real, string, system,|
-| text, time, types, unit, vector                         |
+| array, assert, bytes, dir, fs, hashmap, hashset, io,    |
+| integer, linear_map, optional, os, path, rand, real,    |
+| string, system, text, time, types, unit, vector         |
 +---------------------------------------------------------+
                              |
                              v
@@ -68,6 +68,55 @@ abstraction used by existing containers and raw-memory helpers; it is not the re
 | `ba_set`      | `func(self: ByteArray*, index: int, value: byte) -> void`             | Stores one byte with bounds checking.              |
 | `ba_zap`      | `func(self: ByteArray*, index: int) -> void`                          | Zeroes one byte slot with bounds checking.         |
 | `ba_free`     | `func(self: ByteArray*) -> void`                                      | Frees the wrapper and its backing storage.         |
+
+### `std.bytes`
+
+`ByteBuffer` is an opaque owned growable binary buffer. Lengths, capacities, indexes, and transfer counts are `int`. Use
+`import std.bytes as bytes;` and qualified calls such as `bytes::size(buf)`. The size is the number of initialized
+logical bytes, while capacity counts reserved byte slots. The name follows the existing container `size` convention.
+
+| Type/Function   | Signature                                                                 | Contract                                                                                   |
+| --------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `ByteBuffer`    | Opaque struct, used through `ByteBuffer*`                                 | No public layout, raw storage, or borrowed views.                                          |
+| `create`        | `func() -> ByteBuffer*`                                                   | Empty buffer with zero logical capacity.                                                   |
+| `with_capacity` | `func(initial_capacity: int) -> ByteBuffer*`                              | Empty buffer with exactly the requested nonnegative capacity.                              |
+| `free`          | `func(self: ByteBuffer*) -> void`                                         | Consume the buffer and its storage exactly once.                                           |
+| `size`          | `func(self: ByteBuffer*) -> int`                                          | Number of initialized logical bytes.                                                       |
+| `capacity`      | `func(self: ByteBuffer*) -> int`                                          | Reserved byte slots, at least the logical length.                                          |
+| `reserve`       | `func(self: ByteBuffer*, total_capacity: int) -> void`                    | Ensure at least this total capacity; preserve length and contents.                         |
+| `resize`        | `func(self: ByteBuffer*, new_length: int) -> void`                        | Zero every newly visible byte, including bytes discarded by earlier shrinking or clearing. |
+| `clear`         | `func(self: ByteBuffer*) -> void`                                         | Set length to zero and retain capacity; does not securely erase storage.                   |
+| `get`           | `func(self: ByteBuffer*, index: int) -> byte`                             | Read a checked logical index.                                                              |
+| `set`           | `func(self: ByteBuffer*, index: int, value: byte) -> void`                | Write a checked logical index.                                                             |
+| `append_byte`   | `func(self: ByteBuffer*, value: byte) -> void`                            | Append one byte with amortized capacity growth.                                            |
+| `append_range`  | `func(self: ByteBuffer*, source: byte[], start: int, count: int) -> void` | Copy a checked source subrange synchronously; never retain the borrowed slice.             |
+| `append_buffer` | `func(self: ByteBuffer*, source: ByteBuffer*) -> void`                    | Copy all source bytes; self-append is supported across growth.                             |
+| `to_string`     | `func(self: ByteBuffer*) -> string`                                       | Return an independent ARC string copy of every logical byte.                               |
+| `from_string`   | `func(value: string) -> ByteBuffer*`                                      | Return a new owned buffer copying every string byte.                                       |
+
+Negative sizes, invalid indexes/ranges, append length overflow, and allocation failure terminate execution. These
+library checks also apply under `--unchecked`. A source range starts between zero and the source slice's length,
+inclusive; its nonnegative count cannot exceed the remaining bytes from that start. Growth checks additions before
+allocation, doubles capacity when possible, and saturates at the largest `int`. Shrinking and clearing retain capacity.
+String conversions preserve embedded NUL and non-UTF-8 bytes without validation or implicit text conversion.
+
+Each constructor returns one cleanup obligation. Pointer copies borrow the same resource; they do not create owners.
+Call `bytes::free` exactly once, normally through `with`; all buffer aliases then expire. Returned string copies remain
+valid independently. The buffer uses the existing checked allocation/runtime primitives privately, without exposing
+`VectorBase`. `std.array::ByteArray` and its standard-stream helpers remain available.
+
+```dea
+import std.bytes as bytes;
+
+with (let buf = bytes::create() => bytes::free(buf)) {
+    let input: byte[3] = ['A', 0 as byte, 'B'];
+    bytes::append_range(buf, input, 0, 3);
+    bytes::append_buffer(buf, buf);
+    let copied = bytes::to_string(buf); // Six bytes, including both NUL bytes.
+}
+```
+
+See [l1/docs/decisions/0052-owned-dynamic-byte-buffers.md][byte-buffer-decision] for the ownership and copying decision.
 
 ### `std.fs`
 
@@ -979,6 +1028,7 @@ These are runtime-backed hash externs declared directly in `sys.hash`.
 | `rt_hash_ptr`        | `func(ptr: void*) -> int`             | Hashes a non-null raw pointer value.                      |
 | `rt_hash_opt_ptr`    | `func(opt: void*?) -> int`            | Hashes a present optional raw pointer.                    |
 
+[byte-buffer-decision]: ../decisions/0052-owned-dynamic-byte-buffers.md
 [filesystem]: filesystem.md
 [os-results]: ../decisions/0045-direct-os-errors-and-io-results.md
 [time-sleep]: ../decisions/0051-explicit-sleep-interruption-and-restart.md

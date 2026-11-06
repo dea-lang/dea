@@ -1,6 +1,6 @@
 # L1 Initiative 0011 - Stabilization for Compilers and Tools
 
-- Version: 2026-10-29
+- Version: 2026-11-05
 - Status: Active
 - Kind: Initiative
 - Open plans:
@@ -24,7 +24,7 @@ membership entries. Compiler migration away from private native helpers is separ
 | Gate                                            | Owning work                                                                                 | Status                                           |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | Borrowed-slice safety                           | [l1/work/plans/bug-fixes/closed/2026-10-29-borrowed-slice-escape-noref.md][slices]          | Complete; native CI passed on all four platforms |
-| Dynamic byte buffers and files                  | [l1/work/initiatives/0005-filesystem-and-stream-io.md][files]                               | Planned                                          |
+| Dynamic byte buffers and files                  | [l1/work/initiatives/0005-filesystem-and-stream-io.md][files]                               | Byte buffers complete; files planned             |
 | Entropy, temporary objects, processes and pipes | [l1/work/initiatives/0006-process-and-host-services.md][process]                            | Planned                                          |
 | Typed string formatting                         | [l1/work/plans/features/2026-08-30-typed-formatting-noref.md][format]                       | Planned                                          |
 | Semantic dependency discovery                   | [l1/work/initiatives/0010-explicit-profiles-and-composable-builds.md][profiles]             | Planned                                          |
@@ -35,7 +35,8 @@ membership entries. Compiler migration away from private native helpers is separ
 ## Delivery sequence
 
 1. Record the boundary and correct borrowed-slice escapes in L1 (complete).
-2. Deliver opaque byte buffers, then file handles and entropy, then temporary objects and process/pipe support.
+2. Opaque byte buffers are complete. Deliver file handles and entropy next, then temporary objects and process/pipe
+   support.
 3. Deliver typed string formatting and semantic dependency discovery independently when their own contracts are settled.
 4. Exercise source indexing, explicit child execution with file-routed capture, and bounded-memory binary copying.
 5. Reconcile the capability audit and documentation, complete native compiler validation and fresh L1 artifact

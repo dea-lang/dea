@@ -53,3 +53,4 @@
 | [l1/docs/decisions/0049-filesystem-replacement-and-no-replace-capability.md](0049-filesystem-replacement-and-no-replace-capability.md)           | Filesystem Replacement and No-Replace Capability               | Accepted               |
 | [l1/docs/decisions/0050-wide-time-and-monotonic-deadlines.md](0050-wide-time-and-monotonic-deadlines.md)                                         | Wide Time and Monotonic Deadlines                              | Accepted               |
 | [l1/docs/decisions/0051-explicit-sleep-interruption-and-restart.md](0051-explicit-sleep-interruption-and-restart.md)                             | Explicit Sleep Interruption and Restart                        | Accepted               |
+| [l1/docs/decisions/0052-owned-dynamic-byte-buffers.md](0052-owned-dynamic-byte-buffers.md)                                                       | Owned Dynamic Byte Buffers                                     | Accepted               |

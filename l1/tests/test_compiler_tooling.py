@@ -274,29 +274,38 @@ class StdinForwardingToolingTests(unittest.TestCase):
             self.probe.require_run_stdin_forwarding()
         return run
 
-    def test_cold_preparation_accepts_intervening_diagnostics(self):
-        """Cold warnings preserve stdin; the warm invocation bypasses preparation."""
-        for diagnostics in ("", "runtime.c: warning: compiler diagnostic\n  source excerpt\n"):
-            with self.subTest(diagnostics=diagnostics):
-                cold = subprocess.CompletedProcess([], 0, self.stdout, self.preparing + diagnostics + self.prepared)
-                run = self.run_probe(cold)
-                self.assertEqual(run.call_count, 2)
-                cold_call, warm_call = run.call_args_list
-                self.assertNotIn("--no-auto-prepare", cold_call.args[0])
-                self.assertIn("--no-auto-prepare", warm_call.args[0])
-                for invocation in (cold_call, warm_call):
-                    self.assertEqual(invocation.kwargs["input"], ",alpha beta;gamma")
+    def test_preparation_accepts_compiler_diagnostics(self):
+        """Cold and warm diagnostics preserve stdin and preparation progress checks."""
+        diagnostics = "runtime.c: warning: compiler diagnostic\n  source excerpt\n"
+        for cold_stderr in (
+            self.preparing + self.prepared,
+            diagnostics + self.preparing + self.prepared,
+            self.preparing + diagnostics + self.prepared,
+            self.preparing + self.prepared + diagnostics,
+            diagnostics + self.preparing + diagnostics + self.prepared + diagnostics,
+        ):
+            for warm_stderr in ("", diagnostics):
+                with self.subTest(cold_stderr=cold_stderr, warm_stderr=warm_stderr):
+                    cold = subprocess.CompletedProcess([], 0, self.stdout, cold_stderr)
+                    warm = subprocess.CompletedProcess([], 0, self.stdout, warm_stderr)
+                    run = self.run_probe(cold, warm)
+                    self.assertEqual(run.call_count, 2)
+                    cold_call, warm_call = run.call_args_list
+                    self.assertNotIn("--no-auto-prepare", cold_call.args[0])
+                    self.assertIn("--no-auto-prepare", warm_call.args[0])
+                    for invocation in (cold_call, warm_call):
+                        self.assertEqual(invocation.kwargs["input"], ",alpha beta;gamma")
 
     def test_forwarding_rejects_program_and_preparation_failures(self):
-        """Warnings do not relax program outcomes or progress-message boundaries."""
+        """Warnings do not relax program outcomes or cold and warm progress rules."""
         valid_cold = subprocess.CompletedProcess([], 0, self.stdout, self.preparing + self.prepared)
         invalid_cold = [
             subprocess.CompletedProcess([], 1, self.stdout, self.preparing + self.prepared),
             subprocess.CompletedProcess([], 0, "wrong stdout\n", self.preparing + self.prepared),
             *[subprocess.CompletedProcess([], 0, self.stdout, stderr) for stderr in (
                 "", self.preparing, self.prepared, self.prepared + self.preparing,
-                "warning before preparation\n" + self.preparing + self.prepared,
-                self.preparing + self.prepared + "warning after preparation\n",
+                self.preparing + self.preparing + self.prepared,
+                self.preparing + self.prepared + self.prepared,
             )],
         ]
         for cold in invalid_cold:
@@ -305,7 +314,11 @@ class StdinForwardingToolingTests(unittest.TestCase):
         for warm in (
             subprocess.CompletedProcess([], 1, self.stdout, ""),
             subprocess.CompletedProcess([], 0, "wrong stdout\n", ""),
-            subprocess.CompletedProcess([], 0, self.stdout, "warm diagnostic\n"),
+            *[subprocess.CompletedProcess([], 0, self.stdout, stderr) for stderr in (
+                self.preparing, self.prepared, self.preparing + self.prepared,
+                "warm diagnostic\n" + self.preparing + "another diagnostic\n",
+                "warm diagnostic\n" + self.prepared + "another diagnostic\n",
+            )],
         ):
             with self.subTest(warm=warm), self.assertRaises(AssertionError):
                 self.run_probe(valid_cold, warm)

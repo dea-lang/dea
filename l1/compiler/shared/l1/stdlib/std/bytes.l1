@@ -1,0 +1,269 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/**
+ * Owned growable binary buffers with checked lengths and explicit copying.
+ * Invalid sizes, ranges, length overflow, and allocation failure terminate
+ * execution. No operation exposes storage or returns a borrowed view.
+ */
+module std.bytes;
+
+export opaque { ByteBuffer }, create, with_capacity, free, size, capacity,
+    reserve, resize, clear, get, set, append_byte, append_range, append_buffer,
+    to_string, from_string;
+
+import sys.memory;
+import sys.rt;
+import std.assert;
+import std.integer;
+
+/**
+ * Owns one raw allocation; aliases borrow the owner's single cleanup obligation.
+ */
+struct ByteBuffer {
+    _data: void*;
+    _length: int;
+    _capacity: int;
+}
+
+/**
+ * Create an empty buffer with the requested capacity.
+ * A zero capacity retains one physical byte without making it accessible.
+ * Negative capacity and allocation failure terminate execution.
+ * Release the result exactly once with free, optionally through with cleanup.
+ *
+ * @param initial_capacity Nonnegative number of byte slots to reserve.
+ * @return A new independently owned buffer with length zero.
+ */
+func with_capacity(initial_capacity: int) -> ByteBuffer* {
+    assert(initial_capacity >= 0, "std.bytes: negative capacity");
+    let physical = initial_capacity;
+    if (physical == 0) { physical = 1; }
+    let data = rt_alloc(physical);
+    assert(data != null, "std.bytes: allocation failed");
+    return new ByteBuffer(data as void*, 0, initial_capacity);
+}
+
+/**
+ * Create an empty buffer with zero logical capacity.
+ * Allocation failure terminates execution.
+ *
+ * @return A new buffer to release exactly once with free.
+ */
+func create() -> ByteBuffer* {
+    return with_capacity(0);
+}
+
+/**
+ * Release a buffer and its backing allocation exactly once.
+ * All aliases expire; copying a buffer pointer never creates another owner.
+ *
+ * @param self Live buffer whose ownership is consumed.
+ */
+func free(self: ByteBuffer*) {
+    rt_free(self._data);
+    drop self;
+}
+
+/**
+ * Return the number of initialized logical bytes.
+ *
+ * @param self Live buffer to inspect.
+ * @return Nonnegative logical length.
+ */
+func size(self: ByteBuffer*) -> int {
+    return self._length;
+}
+
+/**
+ * Return the number of reserved byte slots.
+ *
+ * @param self Live buffer to inspect.
+ * @return Capacity, at least size(self).
+ */
+func capacity(self: ByteBuffer*) -> int {
+    return self._capacity;
+}
+
+/**
+ * Reserve at least the requested total capacity without changing logical bytes.
+ * Growth doubles capacity when possible and saturates at int_max without
+ * overflowing. Negative capacity and allocation failure terminate execution.
+ *
+ * @param self Live buffer to grow.
+ * @param total_capacity Nonnegative minimum total capacity, not extra space.
+ */
+func reserve(self: ByteBuffer*, total_capacity: int) {
+    assert(total_capacity >= 0, "std.bytes: negative capacity");
+    if (total_capacity <= self._capacity) { return; }
+    let grown = int_max();
+    if (self._capacity <= int_max() / 2) { grown = self._capacity * 2; }
+    if (grown < total_capacity) { grown = total_capacity; }
+    let data = rt_realloc(self._data, grown);
+    assert(data != null, "std.bytes: allocation failed");
+    self._data = data as void*;
+    self._capacity = grown;
+}
+
+/**
+ * Change logical length, zeroing every newly visible byte.
+ * Shrinking preserves capacity; later growth never reveals discarded bytes.
+ * Negative length and allocation failure terminate execution.
+ *
+ * @param self Live buffer to resize.
+ * @param new_length Nonnegative desired logical length.
+ */
+func resize(self: ByteBuffer*, new_length: int) {
+    assert(new_length >= 0, "std.bytes: negative length");
+    reserve(self, new_length);
+    if (new_length > self._length) {
+        let start = rt_array_element(self._data, 1, self._length);
+        rt_memset(start, 0, new_length - self._length);
+    }
+    self._length = new_length;
+}
+
+/**
+ * Clear logical contents while preserving capacity for reuse.
+ * This operation does not securely erase the backing allocation.
+ *
+ * @param self Live buffer to clear.
+ */
+func clear(self: ByteBuffer*) {
+    self._length = 0;
+}
+
+/**
+ * Require a logical byte index, independently of reserved capacity.
+ *
+ * @param self Live buffer to inspect.
+ * @param index Index that must be in [0, size(self)).
+ */
+func _check_index(self: ByteBuffer*, index: int) {
+    assert(index >= 0 && index < self._length, "std.bytes: index out of bounds");
+}
+
+/**
+ * Read one logical byte, terminating on an invalid index.
+ *
+ * @param self Live buffer to inspect.
+ * @param index Index in [0, size(self)).
+ * @return A copy of the selected byte.
+ */
+func get(self: ByteBuffer*, index: int) -> byte {
+    _check_index(self, index);
+    return *(rt_array_element(self._data, 1, index) as byte*);
+}
+
+/**
+ * Replace one logical byte, terminating on an invalid index.
+ *
+ * @param self Live buffer to modify.
+ * @param index Index in [0, size(self)).
+ * @param value Byte to store.
+ */
+func set(self: ByteBuffer*, index: int, value: byte) {
+    _check_index(self, index);
+    let slot = rt_array_element(self._data, 1, index) as byte*;
+    *slot = value;
+}
+
+/**
+ * Check an append length before any allocation or arithmetic can overflow.
+ *
+ * @param self Live buffer with a nonnegative logical length.
+ * @param count Nonnegative number of bytes to append.
+ * @return The representable combined length, otherwise terminate execution.
+ */
+func _append_length(self: ByteBuffer*, count: int) -> int {
+    assert(count >= 0 && count <= int_max() - self._length, "std.bytes: length overflow");
+    return self._length + count;
+}
+
+/**
+ * Append a single byte, growing capacity if needed.
+ * Length overflow and allocation failure terminate execution.
+ *
+ * @param self Live destination buffer.
+ * @param value Byte to append.
+ */
+func append_byte(self: ByteBuffer*, value: byte) {
+    let needed = _append_length(self, 1);
+    reserve(self, needed);
+    let slot = rt_array_element(self._data, 1, self._length) as byte*;
+    *slot = value;
+    self._length = needed;
+}
+
+/**
+ * Copy a checked range from a borrowed slice into the buffer.
+ * The slice is consumed synchronously and never retained. No public buffer
+ * operation exposes a slice of its storage. Invalid ranges, length overflow,
+ * and allocation failure terminate execution, including invalid empty ranges.
+ *
+ * @param self Live destination buffer.
+ * @param source Borrowed bytes whose storage remains live throughout the call.
+ * @param start Nonnegative source offset, at most dea::len(source).
+ * @param count Nonnegative count, at most dea::len(source) - start.
+ */
+func append_range(self: ByteBuffer*, source: byte[], start: int, count: int) {
+    let source_length = dea::len(source);
+    assert(start >= 0 && start <= source_length, "std.bytes: source range out of bounds");
+    assert(count >= 0 && count <= source_length - start, "std.bytes: source range out of bounds");
+    let needed = _append_length(self, count);
+    if (count == 0) { return; }
+    reserve(self, needed);
+    for (let i = 0; i < count; i = i + 1) {
+        let slot = rt_array_element(self._data, 1, self._length + i) as byte*;
+        *slot = source[start + i];
+    }
+    self._length = needed;
+}
+
+/**
+ * Append a copy of all logical source bytes, including self-append.
+ * Source storage is read after reserve so a moved self allocation stays valid.
+ * Length overflow and allocation failure terminate execution.
+ *
+ * @param self Live destination buffer.
+ * @param source Live source, permitted to alias self.
+ */
+func append_buffer(self: ByteBuffer*, source: ByteBuffer*) {
+    let count = source._length;
+    let needed = _append_length(self, count);
+    if (count == 0) { return; }
+    reserve(self, needed);
+    let dest = rt_array_element(self._data, 1, self._length);
+    rt_memcpy(dest, source._data, count);
+    self._length = needed;
+}
+
+/**
+ * Copy all logical bytes into an independently owned ARC string.
+ * Embedded NUL and non-UTF-8 bytes are preserved without text validation.
+ * Allocation failure terminates execution.
+ *
+ * @param self Live source buffer.
+ * @return A string copy unaffected by later buffer mutation or cleanup.
+ */
+func to_string(self: ByteBuffer*) -> string {
+    return rt_string_from_byte_array(self._data as byte*, self._length);
+}
+
+/**
+ * Copy all string bytes into a new independently owned buffer.
+ * Embedded NUL and non-UTF-8 bytes are preserved without text validation.
+ * Allocation failure terminates execution.
+ *
+ * @param value String whose bytes are copied synchronously.
+ * @return A new buffer to release exactly once with free.
+ */
+func from_string(value: string) -> ByteBuffer* {
+    let count = dea::len(value);
+    let self = with_capacity(count);
+    if (count > 0) { rt_memcpy(self._data, rt_string_bytes_ptr(value) as void*, count); }
+    self._length = count;
+    return self;
+}

@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-10-29
+Version: 2026-11-05
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -14,6 +14,10 @@ baseline. Current source development follows the finite stabilization target bel
 scope amendment; the deferred successor feature plans belong to L2.
 
 ## Current position
+
+- `std.bytes` provides opaque owned dynamic byte buffers with checked growth, logical bounds, zeroing resize, copying
+  slice/buffer append, and byte-exact string conversion. Cleanup is explicit; no operation returns a storage view. See
+  [l1/work/plans/features/closed/2026-08-30-dynamic-byte-buffers-noref.md][plan-buffers].
 
 - The canonical `.l0` implementation lives under `compiler/src/`; its support and tests are level-owned.
 
@@ -372,8 +376,8 @@ file-watch design, and concurrency now belong to L2.
 
 - [l1/work/initiatives/0003-c-ffi.md][c-ffi] remains on hold. Broader first-class C interoperability is deferred to L2;
   the existing L1 history is preserved.
-- [l1/work/initiatives/0005-filesystem-and-stream-io.md][filesystem-io] retains dynamic byte buffers and concrete file
-  handles. OS errors, wide metadata, path operations, and directory traversal are complete. Streams and file watching
+- [l1/work/initiatives/0005-filesystem-and-stream-io.md][filesystem-io] retains concrete file handles. Dynamic byte
+  buffers, OS errors, wide metadata, path operations, and directory traversal are complete. Streams and file watching
   moved to L2.
 - [l1/work/initiatives/0006-process-and-host-services.md][host-services] retains entropy, temporary objects, shell-free
   processes, and anonymous pipes. Time/deadline work is complete. Process output uses explicit files/pipes; concurrent
@@ -451,17 +455,16 @@ Readiness is independent of lifecycle status. `ready` means implementation can b
 immediate prerequisite remains; `not-ready` means required foundations have not landed; `speculative` means unresolved
 design investigation.
 
-| Readiness    | Plan                                                                                               | Remaining gate                                                                                                                                       |
-| ------------ | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ready        | [l1/work/plans/features/2026-10-21-semantic-dependency-discovery-noref.md][dependency-discovery]   | Profile phases A through C are complete.                                                                                                             |
-| ready        | [l1/work/plans/features/2026-08-30-typed-formatting-noref.md][typed-formatting]                    | Implement the bounded grammar and existing `Value` policies recorded in its plan.                                                                    |
-| ready        | [l1/work/plans/features/2026-08-30-dynamic-byte-buffers-noref.md][plan-buffers]                    | The L1 [l1/work/plans/bug-fixes/closed/2026-10-29-borrowed-slice-escape-noref.md][slice-safety] correction is complete; returned views are excluded. |
-| almost-ready | [l1/work/plans/features/2026-08-30-file-handles-and-random-access-noref.md][plan-files]            | Public buffers and explicit handle cleanup contract.                                                                                                 |
-| almost-ready | [l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][plan-entropy]                       | Public buffer-plus-range operations.                                                                                                                 |
-| not-ready    | [l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md][plan-temp]     | File handles and entropy.                                                                                                                            |
-| not-ready    | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | Concrete file/buffer ownership; capture deferral is settled.                                                                                         |
-| not-ready    | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                                                                                                                |
-| not-ready    | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.                                                                                                  |
+| Readiness    | Plan                                                                                               | Remaining gate                                                                        |
+| ------------ | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| ready        | [l1/work/plans/features/2026-10-21-semantic-dependency-discovery-noref.md][dependency-discovery]   | Profile phases A through C are complete.                                              |
+| ready        | [l1/work/plans/features/2026-08-30-typed-formatting-noref.md][typed-formatting]                    | Implement the bounded grammar and existing `Value` policies recorded in its plan.     |
+| almost-ready | [l1/work/plans/features/2026-08-30-file-handles-and-random-access-noref.md][plan-files]            | Explicit handle cleanup contract; public buffers are complete.                        |
+| ready        | [l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][plan-entropy]                       | Public buffers and checked indexing/ranges are implemented.                           |
+| not-ready    | [l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md][plan-temp]     | File handles and entropy.                                                             |
+| not-ready    | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | Concrete file ownership; public buffers are complete and capture deferral is settled. |
+| not-ready    | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                                                 |
+| not-ready    | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.                                   |
 
 The [work/plans/features/closed/2026-10-29-l1-stabilization-boundary-noref.md][boundary-plan] coordinates plan ownership
 and roadmap changes.
@@ -497,10 +500,10 @@ backlog does not imply missing work where L1 already has a narrower surface.
   marker shipped under Initiative [0004-array-primitives-and-unsafe-marker][arrays-unsafe]. First-class,
   escape-restricted slice types `T[]`, `len`, and `slice` shipped through Feature
   [2026-05-19-stage1-slices-len-slice-intrinsics-noref][stage1-slices]. Dynamic buffers, shared buffers, address-of
-  (`&`), and broader pointer arithmetic were separate backlog items. Public dynamic byte buffers are now tracked by
-  Initiative [0005-filesystem-and-stream-io][filesystem-io]; shared buffers, address-of, and broader pointer arithmetic
-  remain unpromoted. Current `std.array` / `std.vector` storage remains the library-level dynamic/container layer rather
-  than a replacement for `T[N]` or `T[]`.
+  (`&`), and broader pointer arithmetic were separate backlog items. Opaque dynamic byte buffers are implemented in
+  `std.bytes` under Initiative [0005-filesystem-and-stream-io][filesystem-io]; shared buffers, address-of, and broader
+  pointer arithmetic remain unpromoted. `std.bytes`, `std.array`, and `std.vector` remain library-level containers,
+  separate from `T[N]` and `T[]`.
 - Anonymous embedded struct members remain unresolved design work tracked by Proposal
   [anonymous-embedded-struct-members][embedded-members]. `_ : StructType` is a candidate syntax, but construction,
   access, type conversion, ownership, layout, ABI, and interface semantics are not accepted. This proposal does not
@@ -517,9 +520,9 @@ backlog does not imply missing work where L1 already has a narrower surface.
 
 - Filesystem, directory, byte-buffer, and file-handle work is tracked by Initiative
   [0005-filesystem-and-stream-io][filesystem-io]. Whole-file `std.fs::read_file` / `std.fs::write_file` and stdin/stdout
-  byte helpers, structured standard-stream results, complete path operations, and owned streaming directory traversal
-  form the implemented baseline. Atomic no-replace rename is deferred; stateful file handles remain planned; streams and
-  file watching are L2-owned.
+  byte helpers, structured standard-stream results, complete path operations, owned streaming directory traversal, and
+  opaque dynamic byte buffers form the implemented baseline. Atomic no-replace rename is deferred; stateful file handles
+  remain planned; streams and file watching are L2-owned.
 - Secure entropy, temporary objects, process spawning, anonymous pipes, and scheduling-time helpers are tracked by
   Initiative [0006-process-and-host-services][host-services].
 - L2 blocking TCP, UDP, and DNS are tracked by Initiative
@@ -614,7 +617,7 @@ update to be promoted to an initiative or plan:
 [os-results]: decisions/0045-direct-os-errors-and-io-results.md
 [parenthesized-casted-place-arc]: ../../work/plans/bug-fixes/closed/2026-08-21-shared-parenthesized-casted-place-arc-classification-noref.md
 [per-module-generated-c]: ../work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md
-[plan-buffers]: ../work/plans/features/2026-08-30-dynamic-byte-buffers-noref.md
+[plan-buffers]: ../work/plans/features/closed/2026-08-30-dynamic-byte-buffers-noref.md
 [plan-entropy]: ../work/plans/features/2026-08-30-secure-os-entropy-noref.md
 [plan-files]: ../work/plans/features/2026-08-30-file-handles-and-random-access-noref.md
 [plan-process]: ../work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md

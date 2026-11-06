@@ -1,6 +1,6 @@
 # L1 Ownership and Memory Management Reference
 
-Version: 2026-10-29
+Version: 2026-11-05
 
 This document describes how ownership works in current Dea/L1 bootstrap builds, covering:
 
@@ -184,6 +184,19 @@ exactly once, including when its source is itself an unwrap or identity-cast cha
 preserve its temporary ownership.
 
 ## 6. Container Ownership Contracts
+
+### `std.bytes` / `ByteBuffer`
+
+- `create`, `with_capacity`, and `from_string` return opaque owned pointers; release each exactly once with
+  `bytes::free`, normally through `with` cleanup.
+- Pointer copies share one cleanup obligation. They do not retain the buffer or permit a second `free`; all aliases
+  expire at cleanup. Callers cannot construct, dereference, inspect, or directly `drop` the opaque pointee.
+- `append_range` copies borrowed input synchronously, and `append_buffer` copies source contents, including self-append
+  across reallocation. Neither operation stores borrowed input or returns a view.
+- `to_string` returns an independent ARC string, and `from_string` copies without retaining its input. Both preserve
+  arbitrary bytes. Buffer mutation and cleanup cannot invalidate string copies.
+- Shrink and clear retain capacity; later resize zeroes newly visible bytes. Clear is not secure erasure. Invalid
+  sizes/ranges, length overflow, and allocation failure terminate execution rather than returning a partial result.
 
 ### `std.vector` / `StringVector`
 

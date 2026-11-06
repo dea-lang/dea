@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-10-29
+Version: 2026-11-05
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -44,11 +44,12 @@ Use this file as the status snapshot. For implementation details, use:
 
 The live L1 roadmap lives at [l1/docs/roadmap.md](roadmap.md).
 
-Source development now follows a finite stabilization target for compilers and tools. Dynamic byte buffers, file
-handles, secure entropy and temporary objects, shell-free processes and pipes, typed string formatting, and semantic
-dependency discovery remain planned. General streams, networking, JSON, file watching, concurrency, owned slices, and
-broader language expressiveness are deferred to L2. The current source-tree features below may be newer than the
-published L1 0.1.0 baseline; stabilization also requires public-API acceptance programs and fresh artifact validation.
+Source development follows a finite stabilization target for compilers and tools. Opaque dynamic byte buffers are
+implemented in `std.bytes`. File handles, secure entropy and temporary objects, shell-free processes and pipes, typed
+string formatting, and semantic dependency discovery remain planned. General streams, networking, JSON, file watching,
+concurrency, owned slices, and broader language expressiveness are deferred to L2. The current source-tree features
+below may be newer than the published L1 0.1.0 baseline; stabilization also requires public-API acceptance programs and
+fresh artifact validation.
 
 ## Current Status
 
@@ -389,8 +390,9 @@ These remain true today:
    evidence.
 2. Standalone linking consumes explicit object paths plus derived sibling interfaces; it does not discover implicit Dea
    objects, compile sources, or infer external-library dependencies from modules or manifests.
-3. Fixed-size arrays `T[N]` and lifetime-checked borrowed slices `T[]` are implemented. Opaque dynamic byte buffers
-   remain planned library work; owned slices and escaping buffer views are deferred to L2.
+3. Fixed-size arrays `T[N]`, lifetime-checked borrowed slices `T[]`, and opaque dynamic byte buffers in `std.bytes` are
+   implemented. Buffers provide checked growth, copying append/conversion, and explicit cleanup; owned slices and
+   escaping buffer views are deferred to L2.
 4. Address-of (`&`) and generics are not part of the current active language surface.
 
 [explicit-profiles]: reference/explicit-profiles.md
