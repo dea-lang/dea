@@ -252,14 +252,18 @@ def require_run_stdin_forwarding() -> None:
             )
             assert completed.returncode == 0, completed.stdout + completed.stderr
             assert completed.stdout == "\nalpha\nbeta\ngamma\n", completed.stdout
+            # Compiler and native diagnostics may precede or follow preparation.
+            # Check its progress protocol separately from the child's exact I/O.
+            progress = [
+                line for line in completed.stderr.splitlines()
+                if line.startswith(("Preparing stdlib and runtime with ", "Prepared stdlib and runtime with "))
+            ]
             if warm:
-                assert completed.stderr == "", completed.stderr
+                assert progress == [], completed.stderr
             else:
-                lines = completed.stderr.splitlines()
-                # Native toolchain diagnostics may appear between preparation messages.
-                assert len(lines) >= 2, completed.stderr
-                assert lines[0].startswith("Preparing stdlib and runtime with "), completed.stderr
-                assert lines[-1].startswith("Prepared stdlib and runtime with "), completed.stderr
+                assert len(progress) == 2, completed.stderr
+                assert progress[0].startswith("Preparing stdlib and runtime with "), completed.stderr
+                assert progress[1].startswith("Prepared stdlib and runtime with "), completed.stderr
 
 
 def require_wide_filesystem_metadata() -> None:

@@ -3,7 +3,7 @@
 ## Add mutable dynamic byte buffers
 
 - Date: 2026-11-05
-- Last reviewed: 2026-11-05
+- Last reviewed: 2026-11-06
 - Status: Completed
 - Title: Add a public mutable dynamic byte-buffer module
 - Kind: Feature
@@ -16,6 +16,8 @@
 - Test modules:
   - `l1/compiler/tests/bytes_test.py`
   - `l1/compiler/tests/fixtures/bytes/bytes_main.l1`
+  - `l1/compiler/tests/io_runtime_test.py`
+  - `l1/compiler/tests/l1c_child_trace_runner_test.py`
   - `l1/compiler/scripts/test_runner_common.py`
 - Related:
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
@@ -70,6 +72,13 @@ Passed from `l1/`, with `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC` explicitly selecti
   `build/dea/bin/l1c --project-root compiler/tests/fixtures/bytes --run bytes_main`, prepared the stdlib/runtime and
   passed.
 - `make test-docgen docs`: 114 documentation tests and strict reference generation passed.
+- `../.venv/bin/python compiler/tests/l1c_child_trace_runner_test.py`: the default child registry, byte-buffer selector,
+  normal test owner, and required memory/ARC families passed.
+- The standalone `io_runtime_test.require_run_stdin_forwarding()` check passed for cold preparation and warm reuse.
+  Preparation assertions permit compiler diagnostics, including the documented `std.bytes` prelude-shadow warning, while
+  retaining exact program output, successful exit, ordered cold progress, and absent warm progress. Temporary probes
+  confirmed that missing, repeated, or reversed preparation messages, failed execution, and incorrect stdout remain
+  rejected. Hosted validation of these assertion repairs remains pending.
 
 Behavioral coverage includes zero capacity, amortized repeated growth, retained capacity, shrink/regrow initialization,
 checked indexing and source ranges, independent source copies, self-append with and without relocation, every byte

@@ -37,9 +37,18 @@ def test_selection_and_commands(root: Path) -> None:
 
     fixtures = runner.select_child_fixtures([])
     require(
-        [case.name for case in fixtures] == ["math_int_trace_main", "wide_math_main", "os_error_main", "filesystem_main", "directory_main"],
+        [case.name for case in fixtures] == [
+            "math_int_trace_main", "wide_math_main", "os_error_main", "filesystem_main", "directory_main", "bytes_main",
+        ],
         "wrong default children",
     )
+    byte_fixtures = runner.select_child_fixtures(["bytes_main.l1", "bytes_main"])
+    require(len(byte_fixtures) == 1 and byte_fixtures[0].name == "bytes_main",
+            "byte-buffer child selector did not deduplicate")
+    require(byte_fixtures[0].parent_test == "bytes_test.py",
+            "byte-buffer child lost its normal test owner")
+    require(byte_fixtures[0].required_families == frozenset({"mem", "arc"}),
+            "byte-buffer child must require memory and ARC events")
     require(
         [case.name for case in runner.select_child_fixtures(["wide_math_main.l1", "wide_math_main"])]
         == ["wide_math_main"], "child selector did not deduplicate",
