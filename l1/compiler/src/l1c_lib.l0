@@ -25,6 +25,7 @@ import build_driver;
 import preparation;
 import preparation.consumer;
 import compile_driver;
+import dependency_report;
 import link_driver;
 import build_info;
 
@@ -878,6 +879,9 @@ func run_with_argv(argv: StringVector*) -> int {
         with (let diags = diag_create() => diag_free(diags)) {
             if (!pr_profile_select(opts, diags)) {
                 dp_print_collector(diags);
+                if (ord(opts.mode) == ord(CM_SCAN_DEPS) && opts.output != null) {
+                    err_printl_s("Dependency scan failed; do not consume a previous report at: " + (opts.output as string));
+                }
                 pr_profile_release(opts);
                 cli_options_free(opts);
                 cli_parse_result_free(parsed);
@@ -887,6 +891,9 @@ func run_with_argv(argv: StringVector*) -> int {
 
         let rc = 1;
         match (opts.mode) {
+            CM_SCAN_DEPS => {
+                rc = dep_cmd_scan(opts, cfg);
+            }
             CM_CREATE_PROFILE => {
                 rc = pr_cmd_create_profile(opts, cfg);
             }
@@ -928,6 +935,9 @@ func run_with_argv(argv: StringVector*) -> int {
             }
         }
 
+        if (rc != 0 && ord(opts.mode) == ord(CM_SCAN_DEPS) && opts.output != null) {
+            err_printl_s("Dependency scan failed; do not consume a previous report at: " + (opts.output as string));
+        }
         pr_profile_release(opts);
         cli_options_free(opts);
         cli_parse_result_free(parsed);

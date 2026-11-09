@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-10-29
+Version: 2026-11-05
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -405,6 +405,26 @@ diagnostic.
 |            | `L1C-2197` |            | L1 only | Reserved for explicit profile artifacts                                                                                       |
 |            | `L1C-2198` |            | L1 only | Reserved for explicit profile artifacts                                                                                       |
 |            | `L1C-2199` |            | L1 only | Reserved for explicit profile artifacts                                                                                       |
+|            | `L1C-2200` |            | L1 only | Invalid semantic dependency-discovery CLI or artifact mapping configuration                                                   |
+|            | `L1C-2201` |            | L1 only | Invalid dependency-report provider/output mapping or conflicting/protected input/output path                                  |
+|            | `L1C-2202` |            | L1 only | Dependency-report serialization or publication failed                                                                         |
+|            | `L1C-2203` |            | L1 only | Reserved for semantic dependency discovery                                                                                    |
+|            | `L1C-2204` |            | L1 only | Reserved for semantic dependency discovery                                                                                    |
+|            | `L1C-2205` |            | L1 only | Reserved for semantic dependency discovery                                                                                    |
+|            | `L1C-2206` |            | L1 only | Reserved for semantic dependency discovery                                                                                    |
+|            | `L1C-2207` |            | L1 only | Reserved for semantic dependency discovery                                                                                    |
+|            | `L1C-2208` |            | L1 only | Reserved for semantic dependency discovery                                                                                    |
+|            | `L1C-2209` |            | L1 only | Reserved for semantic dependency discovery                                                                                    |
+|            | `L1C-2210` |            | L1 only | Reserved for semantic dependency discovery                                                                                    |
+|            | `L1C-2211` |            | L1 only | Reserved for semantic dependency discovery                                                                                    |
+|            | `L1C-2212` |            | L1 only | Reserved for semantic dependency discovery                                                                                    |
+|            | `L1C-2213` |            | L1 only | Reserved for semantic dependency discovery                                                                                    |
+|            | `L1C-2214` |            | L1 only | Reserved for semantic dependency discovery                                                                                    |
+|            | `L1C-2215` |            | L1 only | Reserved for semantic dependency discovery                                                                                    |
+|            | `L1C-2216` |            | L1 only | Reserved for semantic dependency discovery                                                                                    |
+|            | `L1C-2217` |            | L1 only | Reserved for semantic dependency discovery                                                                                    |
+|            | `L1C-2218` |            | L1 only | Reserved for semantic dependency discovery                                                                                    |
+|            | `L1C-2219` |            | L1 only | Reserved for semantic dependency discovery                                                                                    |
 | `L0C-9510` | `L1C-9510` | `L2C-9510` | All     | Requested CLI mode is not implemented in the current compiler stage                                                           |
 | `L0C-9511` | `L1C-9511` | `L2C-9511` | All     | Cannot write an output file                                                                                                   |
 | `L0C-9512` |            |            | L0 only | Compiler temporary source cleanup failed and the retained path was reported                                                   |

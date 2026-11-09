@@ -551,6 +551,45 @@ def test_linux_temp_action_requires_runner_storage(tmp_path, runner_temp):
     assert not output.exists()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Exercise the MSYS2 action with portable POSIX command fixtures")
+def test_l1_windows_dependency_make_uses_the_msys2_executable(tmp_path):
+    """Pin the MSYS2 executable despite unrelated Make tools on inherited PATH."""
+    steps = workflow(".github/actions/l1-ci/action.yml")["runs"]["steps"]
+    setup = step(steps, "Select MSYS2 Make for L1 dependency composition")
+    assert setup["if"] == "runner.os == 'Windows'"
+    assert setup["shell"] == "msys2 {0}"
+    run = step(steps, "Run L1 Make target (Windows)")
+    assert steps.index(setup) < steps.index(run)
+    assert run["env"]["LC_ALL"] == "C.UTF-8"
+    tools = tmp_path / "tool bin"
+    tools.mkdir()
+    selected = tools / "selected make.exe"
+    selected.write_text('#!/bin/sh\ntest "$1" = --version || exit 1\nprintf "GNU Make 4.4.1\\n"\n')
+    unrelated = tools / "gmake"
+    unrelated.write_text('#!/bin/sh\necho "wrong Make selected" >&2\nexit 1\n')
+    cygpath = tools / "cygpath"
+    cygpath.write_text('''#!/bin/sh
+if [ "$1" = -m ] && [ "$2" = /usr/bin/make.exe ]; then
+    printf '%s\\n' "$FIXTURE_MAKE"
+elif [ "$1" = -u ] && [ "$2" = "$GITHUB_ENV" ]; then
+    printf '%s\\n' "$FIXTURE_ENV"
+else
+    exit 1
+fi
+''')
+    for executable in (selected, unrelated, cygpath):
+        executable.chmod(0o755)
+    output = tmp_path / "github environment"
+    env = {**os.environ, "PATH": str(tools) + os.pathsep + os.environ["PATH"],
+           "GITHUB_ENV": r"D:\runner temp\github env", "FIXTURE_ENV": str(output), "FIXTURE_MAKE": str(selected)}
+    result = subprocess.run(["bash", "-eu", "-o", "pipefail", "-c", setup["run"]],
+                            env=env, capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert output.read_text() == f"DEA_TEST_MAKE={selected}\n"
+    assert f"L1 dependency Make: {selected}" in result.stdout
+    assert "GNU Make 4.4.1" in result.stdout
+
+
 def test_workflow_handoffs_and_isolation_are_wired():
     unified = workflow(".github/workflows/ci.yml")
     assert unified["env"]["L2_CI_DEFAULT_ENABLED"] == "false"

@@ -1,6 +1,6 @@
 # Dea Compiler CLI Contract
 
-Version: 2026-10-19
+Version: 2026-11-05
 
 This document defines the shared command-line contract for Dea compilers. It covers behavior common to the current L0
 Stage 1, L0 Stage 2, canonical L1, and canonical L2 implementations. A level may add a documented mode or option without
@@ -22,6 +22,9 @@ their identifiers and meanings. L2's implementation `.l1` files and upstream `.l
 never accepted L2 source programs. L2 accepts only `.l2` source-file suffixes; extensionless logical module names remain
 valid. It owns its target stdlib/runtime inputs. L2 installation and release productization are not provided by the
 split.
+
+L1 `--scan-deps`, `--artifact-root`, and explicit profile operations are L1-only extensions; they are not part of the
+initial L2 contract.
 
 ## 1. Operating Model
 
@@ -54,6 +57,33 @@ The dump modes are developer-facing; their text formats are not stable interface
 and L2 compilers implement the endpoint-rollback compile-only artifact set in section 7 and additionally implements
 `--emit-interface` / `-Gi`, which emits the target module's textual `.l1m` interface. The canonical L1 and L2 compilers
 also implement the standalone `--link` / `-k` mode in section 8 and target-free `--prepare-stdlib` in section 9.
+
+### L1 semantic dependency discovery
+
+`l1c --scan-deps MODULE --artifact-root BUILD [-Rp SOURCE]... [-Rs SYSTEM]... [-I PREBUILT]... [--profile PROFILE] [-o REPORT]`
+analyzes one source target and emits a P1689R5 JSON document (`version: 1`, `revision: 0`). The required
+`--artifact-root PATH` maps dotted source-module names to future `.o` and `.l1m` companions. It never adds an input root
+or creates those artifacts. This primary mode has no short alias.
+
+Without `-o`, the document goes to stdout; with `-o`, the exact path receives the report after successful analysis and
+serialization. Diagnostics and progress use stderr. Argument errors exit 2; analysis or publication failures exit 1.
+Report publication must not overwrite selected source, interface, or profile inputs. Consumers must require a successful
+fresh scan before using a report.
+
+The requested target stays source-backed. Imports retain ordered interface-first selection and source fallback. Explicit
+`-I` roots precede profile or bundled semantic interfaces. `--profile` selects the verified explicit inventory without
+host-tool probes or managed cache access; scans never construct native support. This does not extend profile selection
+to `--check`, `--gen`, or `--emit-interface`. Native compilation/link options and `--keep-c` are invalid for scans.
+
+Each source-backed module produces one dependency-first rule with a working-directory context, `primary-output`, sibling
+interface `outputs`, one `provides` description, and complete `requires` interface prerequisites. Requirements include
+closure through prebuilt and graph-loaded link-only providers. Prebuilt providers have no fabricated compilation rule;
+virtual modules impose no filesystem obligation. Core P1689 fields contain all scheduling facts. Optional `_dea_`
+annotations are explanatory and may be discarded. `.l1m` remains authoritative for linking and lifecycle semantics.
+
+Use separate discovery and compilation inputs: discovery sees intentional prebuilt roots; compilation appends a
+validated generated-interface root. The external Make adapter, filename subset, freshness and locking requirements are
+documented in [l1/docs/reference/dependency-discovery.md](../../../l1/docs/reference/dependency-discovery.md).
 
 ### L1 generated-C mode
 
@@ -111,9 +141,10 @@ The current shared option surface is:
 - repeatable project and system roots through `--project-root` / `-Rp` and `--sys-root` / `-Rs`; L1 `--link` rejects
   both because it consumes objects without resolving source
 - repeatable compile/generated-C interface paths through `--interface-path` / `-I`; L1 consumes them in declaration
-  order for build, run, compile-only, generated-C, and standalone-link modes, while L0 retains the syntax for its
-  reserved compile mode
-- `--output` / `-o` for artifact-producing modes; L1 also accepts it with `--compile`, `--emit-interface`, and `--link`
+  order for build, run, compile-only, generated-C, standalone-link, and semantic-discovery modes, while L0 retains the
+  syntax for its reserved compile mode
+- `--output` / `-o` for artifact-producing modes; L1 also accepts it with `--compile`, `--emit-interface`, `--link`, and
+  `--scan-deps`
 - `--c-compiler` / `-Cc`, `--c-options` / `-Co`, and `--runtime-include` / `-Ri` for build/run, L1 compile-only, and L1
   standalone linking and preparation; in standalone link mode, C options configure the wrapper and managed bundled
   generated C, and are not forwarded as final host-link words. Runtime implementation C has separate compiler-owned
@@ -133,9 +164,9 @@ The current shared option surface is:
   `--link-arg ARGUMENT` / `--link-arg=ARGUMENT` / `-Cl ARGUMENT` / `-Cl=ARGUMENT`
 
 Using a mode-scoped option with an incompatible mode is a CLI argument error. In L1, interface paths are valid with
-`--build`, `--run`, `--compile`, `--gen`, and `--link`; in L0 they remain valid only with the reserved `--compile` mode.
-Incompatible interface-path uses produce `L0C-2031` or `L1C-2031`; L1 external-link controls outside `--build`, `--run`,
-and `--link` produce `L1C-2070`.
+`--build`, `--run`, `--compile`, `--gen`, `--link`, and `--scan-deps`; in L0 they remain valid only with the reserved
+`--compile` mode. Incompatible interface-path uses produce `L0C-2031` or `L1C-2031`; L1 external-link controls outside
+`--build`, `--run`, and `--link` produce `L1C-2070`.
 
 The conventional driver spellings `-g` and `-S` remain reserved for debug information and assembly output; syntactically
 complete uses produce `L0C-2032` or `L1C-2032`. L0 also recognizes `-L` and `-l` as reserved and reports `L0C-2032`,
@@ -435,17 +466,19 @@ profile, project cache, ABI compatibility inference, host-ID binding or cross-ho
 
 ## 10. L1 Explicit Profile Extension
 
-L1 adds target-free `--create-profile -o PATH` and the single selector `--profile PATH` for compile, link, build and
-run. Creation requires exactly one nonempty new output directory and accepts preparation compiler/options, public
-headers, generated-C and runtime controls. It rejects another mode, a profile selector, source/project/interface roots,
-runtime library replacement, link/program operands, cache controls, `--no-auto-prepare`, `--force` and `--keep-c`.
+L1 adds target-free `--create-profile -o PATH` and the single selector `--profile PATH` for compile, link, build, run
+and semantic dependency discovery. Creation requires exactly one nonempty new output directory and accepts preparation
+compiler/options, public headers, generated-C and runtime controls. It rejects another mode, a profile selector,
+source/project/interface roots, runtime library replacement, link/program operands, cache controls, `--no-auto-prepare`,
+`--force` and `--keep-c`.
 
-Selection reads exactly the named artifact, restores its locked native/codegen configuration and uses its inventory for
-bundled providers, headers and runtime support. Omitted settings inherit the profile; redundant explicit settings must
-normalize to the recorded values; conflicts fail before native work. Explicit project and `-I` provider precedence and
-final-link operands retain their ordinary meanings. Explicit `--sys-root`, `--runtime-include`, `--runtime-lib`,
-`--no-managed-stdlib` and `--stdlib-cache` conflict with selection. Ambient native/system/runtime/cache defaults are
-ignored. `--no-auto-prepare` is redundant in build/run/link and remains invalid in compile-only mode.
+Selection reads exactly the named artifact. Native modes restore its locked native/codegen configuration and use its
+inventory for bundled providers, headers and runtime support; dependency scans select only the verified semantic
+inventory. Omitted settings inherit the profile; redundant explicit settings must normalize to the recorded values;
+conflicts fail before native work. Explicit project and `-I` provider precedence and final-link operands retain their
+ordinary meanings. Explicit `--sys-root`, `--runtime-include`, `--runtime-lib`, `--no-managed-stdlib` and
+`--stdlib-cache` conflict with selection. Ambient native/system/runtime/cache defaults are ignored. `--no-auto-prepare`
+is redundant in build/run/link and remains invalid in compile-only and dependency-scan modes.
 
 The caller owns external compiler/SDK/environment stability. No managed freshness discovery, cache lookup, lock,
 preparation, repair, fallback or memo write occurs during selection. CLI misuse exits 2; construction/validation or

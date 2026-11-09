@@ -25,6 +25,7 @@ enum CliMode {
     CM_TYPE;
     CM_PREPARE_STDLIB;
     CM_CREATE_PROFILE;
+    CM_SCAN_DEPS;
 }
 
 /**
@@ -102,6 +103,7 @@ struct CliOptions {
     trace_memory_supplied: bool;
     unchecked_supplied: bool;
     check_basic_supplied: bool;
+    artifact_root: string?; /* Planned scan outputs only; never an input root. */
 }
 
 /**
@@ -219,7 +221,8 @@ func cli_options_create() -> CliOptions* {
         false,
         false,
         false,
-        false
+        false,
+        null
     );
 }
 
@@ -349,6 +352,7 @@ func cli_mode_flag(mode: CliMode) -> string {
         CM_TYPE => { return "--type"; }
         CM_PREPARE_STDLIB => { return "--prepare-stdlib"; }
         CM_CREATE_PROFILE => { return "--create-profile"; }
+        CM_SCAN_DEPS => { return "--scan-deps"; }
     }
 }
 
@@ -373,5 +377,6 @@ func cli_mode_name(mode: CliMode) -> string {
         CM_TYPE => { return "type"; }
         CM_PREPARE_STDLIB => { return "prepare-stdlib"; }
         CM_CREATE_PROFILE => { return "create-profile"; }
+        CM_SCAN_DEPS => { return "scan-deps"; }
     }
 }

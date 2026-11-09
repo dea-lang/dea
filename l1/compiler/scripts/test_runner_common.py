@@ -57,7 +57,7 @@ MATH_RUNTIME_FIXTURE_DIR = TESTS_DIR / "fixtures" / "math_runtime"
 PREPARATION_SUPPORT_TESTS = frozenset({
     "l1c_lib_test", "link_driver_test", "math_runtime_compile_test",
     "mul_runtime_compile_test", "preparation_test", "slice_trace_test",
-    "filesystem_runtime_test", "directory_runtime_test",
+    "filesystem_runtime_test", "directory_runtime_test", "dependency_report_test",
 })
 
 

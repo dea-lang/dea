@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-11-05
+Version: 2026-11-09
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -383,8 +383,10 @@ file-watch design, and concurrency now belong to L2.
   processes, and anonymous pipes. Time/deadline work is complete. Process output uses explicit files/pipes; concurrent
   in-memory capture is deferred.
 - [l1/work/initiatives/0010-explicit-profiles-and-composable-builds.md][explicit-profiles] has completed phases A
-  through C. [l1/work/plans/features/2026-10-21-semantic-dependency-discovery-noref.md][dependency-discovery] owns Phase
-  D's P1689R5 report and external Make adapter. Compiler build conversion remains separate adoption work.
+  through C and implements Phase D's P1689R5 report and external Make adapter in
+  [l1/work/plans/features/closed/2026-10-21-semantic-dependency-discovery-noref.md][dependency-discovery].
+  Cross-platform exhaustive validation remains an initiative completion gate. Compiler build conversion remains separate
+  adoption work.
 - [l1/work/initiatives/0011-l1-stabilization.md][stabilization] coordinates the capability target and acceptance without
   duplicating existing feature ownership.
 
@@ -457,7 +459,6 @@ design investigation.
 
 | Readiness    | Plan                                                                                               | Remaining gate                                                                        |
 | ------------ | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| ready        | [l1/work/plans/features/2026-10-21-semantic-dependency-discovery-noref.md][dependency-discovery]   | Profile phases A through C are complete.                                              |
 | ready        | [l1/work/plans/features/2026-08-30-typed-formatting-noref.md][typed-formatting]                    | Implement the bounded grammar and existing `Value` policies recorded in its plan.     |
 | almost-ready | [l1/work/plans/features/2026-08-30-file-handles-and-random-access-noref.md][plan-files]            | Explicit handle cleanup contract; public buffers are complete.                        |
 | ready        | [l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][plan-entropy]                       | Public buffers and checked indexing/ranges are implemented.                           |
@@ -579,7 +580,7 @@ update to be promoted to an initiative or plan:
 [cross-platform-ci]: ../work/plans/bug-fixes/closed/2026-07-26-stage1-cross-platform-ci-regressions-noref.md
 [cstr-proposal]: ../work/proposals/cstr-and-c-string-guards.md
 [data-formats]: ../../l2/work/initiatives/0002-data-format-modules.md
-[dependency-discovery]: ../work/plans/features/2026-10-21-semantic-dependency-discovery-noref.md
+[dependency-discovery]: ../work/plans/features/closed/2026-10-21-semantic-dependency-discovery-noref.md
 [design-decisions]: reference/design-decisions.md
 [embedded-members]: ../work/proposals/anonymous-embedded-struct-members.md
 [env-text-reassessment]: ../work/plans/refactors/closed/2026-09-15-native-identity-environment-text-reassessment-noref.md

@@ -1,11 +1,11 @@
 # L1 Initiative 0010 - Explicit Profiles and Composable Builds
 
-- Version: 2026-10-21
+- Version: 2026-11-09
 - Status: In progress
 - Kind: Initiative
-- Open plans:
-  - `l1/work/plans/features/2026-10-21-semantic-dependency-discovery-noref.md`
+- Open plans: None
 - Closed plans:
+  - `l1/work/plans/features/closed/2026-10-21-semantic-dependency-discovery-noref.md`
   - `l1/work/plans/refactors/closed/2026-10-21-managed-profile-client-integration-noref.md`
   - `l1/work/plans/bug-fixes/closed/2026-10-19-explicit-profile-review-gaps-noref.md`
   - `l1/work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md`
@@ -27,8 +27,8 @@ This initiative records the direction agreed in the September 30 design discussi
 on October 1. Phase A is complete: the internal constructor accepts frozen inputs and a caller-owned destination. Phase
 B implements the public artifact contract and exact compile/link/build/run selection. Phase C is complete: managed,
 command-private and explicit creation share configuration projection, and managed/public readers share payload checks
-under separate authority. Phase D is drafted as a P1689R5 dependency report followed by an external Make adapter, with
-separate discovery and compilation inputs.
+under separate authority. Phase D implements a P1689R5 dependency report and external Make adapter with separate
+discovery and compilation inputs. Initiative closure awaits the required exhaustive native-platform evidence.
 
 ## Compiler-lineage placement
 
@@ -54,11 +54,10 @@ paired-stage compatibility scenarios now refer to canonical L1 producer/consumer
     mutation can be detected without observation. Existing managed guarantees remain in force.
 - Decision: Choose the minimum dependency-discovery interface needed for external orchestration.
   - Scope: L1
-  - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
-  - Rationale: The Phase D feature plan selects P1689R5 scheduling facts and an external Make consumer, retaining
-    existing provider authority through separate discovery and compilation inputs. The new ADR is shared with that plan
-    and will record the delivered contract at closure.
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0053-semantic-dependency-reports-and-external-make-composition.md`
+  - Rationale: The Phase D ADR records P1689R5 scheduling facts, external Make composition and existing provider
+    authority through separate discovery and compilation inputs.
 
 ## Current State
 
@@ -69,8 +68,8 @@ in [l1/docs/reference/architecture.md][architecture] and [l1/docs/reference/stdl
 The compiler already has per-module generation, `.o + .l1m` compile-only output, standalone verified linking and a
 source-graph build/run pipeline. Managed preparation already produces complete internal native profiles. Explicit
 profiles now provide a public artifact boundary independent of the cache's identity, location and selection machinery.
-Phase C shares construction inputs and payload mechanics while retaining managed policy. Phase D will expose semantic
-dependency information.
+Phase C shares construction inputs and payload mechanics while retaining managed policy. Phase D exposes semantic
+dependency information through `--scan-deps`.
 
 `--prepare-stdlib` explicitly prewarms a persistently reusable managed entry. It is not a caller-directed artifact
 constructor. Automatic build/run/link can instead construct fresh command-private support when persistent reuse is
@@ -150,8 +149,8 @@ not a machine-readable API, and no public print/export mode is required by the f
 
 ### Phase D: Expose only the missing semantic dependency information
 
-Drafted in [l1/work/plans/features/2026-10-21-semantic-dependency-discovery-noref.md][dependency-plan]. Produce a
-neutral P1689R5 scheduling report through the existing resolver and graph order, then add an external Make adapter.
+Implemented in [l1/work/plans/features/closed/2026-10-21-semantic-dependency-discovery-noref.md][dependency-plan]. A
+neutral P1689R5 scheduling report uses the existing resolver and graph order; an external Make adapter consumes it.
 Essential scheduling information belongs in core fields; Dea annotations must remain optional. Distinguish first-build
 discovery from compilation-time reporting of actual consumed interfaces, which is deferred from the initial conservative
 adapter.
@@ -170,8 +169,8 @@ rebuild dependency signature. Timestamp-only Make rules will still rebuild consu
 republished with a new timestamp; solving that is separate from merely emitting a depfile.
 
 Use a small external Make fixture to demonstrate discovery, dependency-ordered compile calls and standalone linking. Do
-not serialize every native command into a new build-plan execution language. P1689R5 is selected for the report; CLI
-spellings and the adapter contract are proposed defaults in the draft plan, not shipped behavior.
+not serialize every native command into a new build-plan execution language. The delivered CLI and adapter contract are
+documented in [l1/docs/reference/dependency-discovery.md][dependency-discovery].
 
 ## CLI Migration Policy
 
@@ -208,8 +207,9 @@ become their prerequisite or claim their results.
 
 The first two plans may close without waiting for Phases C and D. The initiative closes only after all four phases are
 implemented: the construction boundary, explicit artifacts, managed integration and semantic dependency discovery.
-Deferring a required phase leaves the initiative active. Phases A through C are complete; implement and verify the
-bounded Phase D draft for semantic dependency discovery and external Make composition.
+Deferring a required phase leaves the initiative active. Phases A through D are implemented. Complete L1 `test-ci`
+evidence on Linux x86_64, macOS Intel/ARM64 and Windows UCRT64 remains required before initiative closure; simulated
+path checks do not replace native-platform execution.
 
 Completion also requires both the manual composition fixture and the dependency-discovery integration fixture to pass,
 every ADR Impact record to be resolved, and roadmap, initiative membership and current CLI/reference documentation to
@@ -220,13 +220,14 @@ A valid completion must demonstrate the same program behavior, provider authorit
 module-C identity through explicit and managed composition. Do not require byte-identical native executables across
 arbitrary host toolchains or identical retention inventories when one workflow consumes prebuilt providers.
 
-Maintain [l1/docs/roadmap.md][roadmap] and the parent/open/closed links as each child plan advances. Phases A through C
-record their implementation and verification in their respective closed plans; Phase D is unimplemented. Drafting and
-local implementation do not authorize remote writes, releases or workflow dispatches.
+Maintain [l1/docs/roadmap.md][roadmap] and the parent/open/closed links as each child plan advances. The child plans
+record implementation and verification for their respective phases. Drafting and local implementation do not authorize
+remote writes, releases or workflow dispatches.
 
 [architecture]: ../../docs/reference/architecture.md
 [boundary-plan]: ../plans/refactors/closed/2026-09-30-profile-construction-boundary-noref.md
-[dependency-plan]: ../plans/features/2026-10-21-semantic-dependency-discovery-noref.md
+[dependency-discovery]: ../../docs/reference/dependency-discovery.md
+[dependency-plan]: ../plans/features/closed/2026-10-21-semantic-dependency-discovery-noref.md
 [efficiency-plan]: ../plans/features/closed/2026-09-24-preparation-reuse-efficiency-noref.md
 [managed-client-plan]: ../plans/refactors/closed/2026-10-21-managed-profile-client-integration-noref.md
 [preparation]: ../../docs/reference/stdlib-preparation.md

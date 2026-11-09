@@ -1,6 +1,6 @@
 # L1 Separate Compilation, Build, Run, and Standalone Linking
 
-Version: 2026-10-19
+Version: 2026-11-05
 
 This document describes the implemented Dea/L1 canonical compiler path from per-module generated C and one-module
 compilation to an interface-authoritative executable. It is the current behavioral reference for `l1c --gen`,
@@ -31,6 +31,15 @@ The caller maintains the external compiler, SDK, environment and option-referenc
 when those assumptions change. This opt-in stability contract is separate from managed automatic freshness. The
 versioned format, option restrictions, publication ownership and compatibility rules are specified in
 [l1/docs/reference/explicit-profiles.md][explicit-profiles].
+
+## Semantic dependency discovery
+
+`--scan-deps MODULE --artifact-root BUILD` projects the canonical source/interface graph into P1689R5 compile rules. It
+uses source fallback for discovery while preserving authoritative interface selection, includes all interface
+prerequisites needed by strict compile-only analysis, and performs no native preparation or host-tool probing. Explicit
+profiles supply their verified semantic inventory. The separate external Make adapter owns scheduling, freshness and
+generated-root collision checks; `.l1m` remains link authority. See
+[l1/docs/reference/dependency-discovery.md][dependency-discovery].
 
 ## 1. Implemented Workflow
 
@@ -322,6 +331,7 @@ dependencies must be supplied by the CLI or an invoking build tool.
 [architecture]: architecture.md
 [backend]: c-backend-design.md
 [cli]: ../../../docs/specs/compiler/cli-contract.md
+[dependency-discovery]: dependency-discovery.md
 [diagnostics]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
 [explicit-profiles]: explicit-profiles.md
 [interface-format]: ../specs/compiler/module-interface-format.md

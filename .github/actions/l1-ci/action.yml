@@ -25,6 +25,25 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Prepare GNU Make for L1 dependency composition
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        if ! command -v gmake >/dev/null 2>&1; then
+          brew install make
+        fi
+        gmake --version
+        printf 'DEA_TEST_MAKE=%s\n' "$(command -v gmake)" >> "$GITHUB_ENV"
+
+    - name: Select MSYS2 Make for L1 dependency composition
+      if: runner.os == 'Windows'
+      shell: msys2 {0}
+      run: |
+        dependency_make="$(cygpath -m /usr/bin/make.exe)"
+        printf 'L1 dependency Make: %s\n' "$dependency_make"
+        "$dependency_make" --version
+        printf 'DEA_TEST_MAKE=%s\n' "$dependency_make" >> "$(cygpath -u "$GITHUB_ENV")"
+
     - name: Show selected L1 toolchain
       if: runner.os != 'Windows'
       shell: bash
@@ -94,6 +113,7 @@ runs:
       if: runner.os == 'Windows'
       shell: msys2 {0}
       env:
+        LC_ALL: C.UTF-8
         L0_CC: ${{ inputs.c_compiler }}
         L1_CC: ${{ inputs.c_compiler }}
         L1_RUNTIME_CC: ${{ inputs.c_compiler }}

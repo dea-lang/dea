@@ -24,10 +24,10 @@ broader set of numeric types, arrays and slices, and a module system that suppor
 facilities make it practical to build the next compiler level and larger systems programs without treating every build
 as a single compilation unit.
 
-The current development target is a finite, useful L1 for compilers and tools. Typed string formatting, dynamic byte
-buffers, file handles, secure entropy and temporary objects, shell-free processes and pipes, and semantic dependency
-discovery remain planned stabilization work. Generic streams, networking, JSON, file watching, concurrency, and broader
-language features are deferred to L2. See [l1/docs/roadmap.md](docs/roadmap.md) for the boundary and acceptance gates.
+The current development target is a finite, useful L1 for compilers and tools. Typed string formatting, file handles,
+secure entropy and temporary objects, and shell-free processes and pipes remain planned stabilization work. Generic
+streams, networking, JSON, file watching, concurrency, and broader language features are deferred to L2. See
+[l1/docs/roadmap.md](docs/roadmap.md) for the boundary and acceptance gates.
 
 The language keeps explicit types, familiar control flow, nullable values, and deterministic resource management.
 Strings use automatic reference counting (ARC); non-owning slices provide views into existing storage. Language
@@ -133,6 +133,10 @@ l1c --run -Rp examples slices
 [l1/examples/hello.l1](examples/hello.l1) prints multilingual greetings using arrays and randomness;
 [l1/examples/slices.l1](examples/slices.l1) demonstrates slice views and shared mutations. For a small incremental build
 that reuses a separately compiled module, follow [l1/examples/make/README.md](examples/make/README.md).
+
+Semantic dependency discovery uses `l1c --scan-deps MODULE --artifact-root BUILD`. The compiler emits P1689R5; an
+optional external GNU Make adapter schedules paired object/interface actions. See
+[l1/docs/reference/dependency-discovery.md](docs/reference/dependency-discovery.md).
 
 ## Compiler architecture and source layout
 

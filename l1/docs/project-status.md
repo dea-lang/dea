@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-11-05
+Version: 2026-11-09
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -21,6 +21,13 @@ development toolchain, without promising stable language, module-interface, or b
 `--profile PATH`, using its exact providers, copied public headers/runtime inputs and locked native configuration
 without managed selection or automatic preparation. The caller maintains external compiler/SDK/environment stability.
 The artifact and compatibility contract is [l1/docs/reference/explicit-profiles.md][explicit-profiles].
+
+## Semantic dependency discovery
+
+`--scan-deps MODULE --artifact-root BUILD` emits deterministic P1689R5 future compile requirements using the canonical
+resolver. It supports explicit profile semantics without native preparation. An optional GNU Make adapter demonstrates
+clean and incremental external composition with separate discovery and compilation roots. See
+[l1/docs/reference/dependency-discovery.md](reference/dependency-discovery.md).
 
 ## Scope and Canonical References
 
@@ -45,11 +52,11 @@ Use this file as the status snapshot. For implementation details, use:
 The live L1 roadmap lives at [l1/docs/roadmap.md](roadmap.md).
 
 Source development follows a finite stabilization target for compilers and tools. Opaque dynamic byte buffers are
-implemented in `std.bytes`. File handles, secure entropy and temporary objects, shell-free processes and pipes, typed
-string formatting, and semantic dependency discovery remain planned. General streams, networking, JSON, file watching,
-concurrency, owned slices, and broader language expressiveness are deferred to L2. The current source-tree features
-below may be newer than the published L1 0.1.0 baseline; stabilization also requires public-API acceptance programs and
-fresh artifact validation.
+implemented in `std.bytes`, and semantic dependency discovery is implemented through `--scan-deps`. File handles, secure
+entropy and temporary objects, shell-free processes and pipes, and typed string formatting remain planned. General
+streams, networking, JSON, file watching, concurrency, owned slices, and broader language expressiveness are deferred to
+L2. The current source-tree features below may be newer than the published L1 0.1.0 baseline; stabilization also
+requires public-API acceptance programs and fresh artifact validation.
 
 ## Current Status
 

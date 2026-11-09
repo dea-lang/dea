@@ -441,11 +441,15 @@ func pr_profile_select(opts: CliOptions*, diags: DiagCollector*) -> bool {
     let context = l1c_profile_load(rt_string_bytes_ptr(path), len_s(path));
     opts.profile_context = context;
     let native_payloads = 1;
-    if (ord(opts.mode) == ord(CM_COMPILE)) { native_payloads = 0; }
+    if (ord(opts.mode) == ord(CM_COMPILE) || ord(opts.mode) == ord(CM_SCAN_DEPS)) { native_payloads = 0; }
     if (l1c_prep_error_code(context) != 0 || !pr_profile_matches(context, opts) ||
         l1c_profile_verify(context, native_payloads) != 1) {
         pr_report_error(context, diags);
         return false;
+    }
+    if (ord(opts.mode) == ord(CM_SCAN_DEPS)) {
+        opts.profile_modules = pr_get(context, "modules");
+        return true;
     }
     let temp_parent = cfs_select_temp_parent(diags);
     if (temp_parent == null) { return false; }

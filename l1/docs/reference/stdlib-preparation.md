@@ -1,6 +1,6 @@
 # L1 Bundled Interfaces and Native Preparation
 
-Version: 2026-10-25
+Version: 2026-11-05
 
 L1 supplies bundled semantic interfaces with the toolchain and derives native stdlib/runtime support when a command
 needs it. Preparation covers only compiler-owned `std.*` and `sys.*` modules and runtime implementation sources.
@@ -26,6 +26,15 @@ The caller maintains the external compiler, SDK, environment and option-referenc
 when those assumptions change. This opt-in stability contract is separate from managed automatic freshness. The
 versioned format, option restrictions, publication ownership and compatibility rules are specified in
 [l1/docs/reference/explicit-profiles.md][explicit-profiles].
+
+## Semantic dependency discovery
+
+`--scan-deps MODULE --artifact-root BUILD` projects the canonical source/interface graph into P1689R5 compile rules. It
+uses source fallback for discovery while preserving authoritative interface selection, includes all interface
+prerequisites needed by strict compile-only analysis, and performs no native preparation or host-tool probing. Explicit
+profiles supply their verified semantic inventory. The separate external Make adapter owns scheduling, freshness and
+generated-root collision checks; `.l1m` remains link authority. See
+[l1/docs/reference/dependency-discovery.md][dependency-discovery].
 
 ## Bootstrap and semantic discovery
 
@@ -431,6 +440,7 @@ users compiling outside `l1c` arrange their own matching runtime.
 
 [cli]: ../../../docs/specs/compiler/cli-contract.md
 [delivery-contract]: productization-inventory.md
+[dependency-discovery]: dependency-discovery.md
 [explicit-profiles]: explicit-profiles.md
 [legacy-clang-plan]: ../../work/plans/bug-fixes/closed/2026-09-27-legacy-clang-preparation-compatibility-noref.md
 [productization]: ../../work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md

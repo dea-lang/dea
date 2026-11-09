@@ -1,7 +1,7 @@
 # ADR-0003: Shared CLI Contract
 
 - Decision date: 2026-03-12
-- Last edited: 2026-10-19
+- Last edited: 2026-11-05
 - Status: Accepted
 
 ## Context
@@ -54,7 +54,9 @@ arguments, while levels without an external-link capability may retain the share
 `-vv...` is a valid short-option cluster.
 
 L1 additionally defines target-free `--create-profile -o PATH` and `--profile PATH` for compile/link/build/run. They
-preserve shared mode and exit-code meanings and do not add these operations to L0 or L2.
+preserve shared mode and exit-code meanings and do not add these operations to L0 or L2. L1 also defines
+`--scan-deps MODULE --artifact-root BUILD`, with optional `--profile`, to emit semantic P1689R5 dependencies. The
+artifact root maps future outputs without changing resolution inputs; scans do not perform native preparation.
 
 ## Rationale
 
@@ -72,6 +74,8 @@ preserve shared mode and exit-code meanings and do not add these operations to L
 - Long option names and level-scoped environment variables remain stable across the migration.
 
 ## Related Plans
+
+- [l1/work/plans/features/closed/2026-10-21-semantic-dependency-discovery-noref.md][dependency-plan]
 
 - [l1/work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md][explicit-profile-plan]
 
@@ -119,5 +123,6 @@ preserve shared mode and exit-code meanings and do not add these operations to L
 
 - [l1/docs/user/linking.md](../../l1/docs/user/linking.md): L1 external-library option workflows
 
+[dependency-plan]: ../../l1/work/plans/features/closed/2026-10-21-semantic-dependency-discovery-noref.md
 [explicit-profile-plan]: ../../l1/work/plans/features/closed/2026-09-30-explicit-profile-artifacts-noref.md
 [explicit-profiles]: ../../l1/docs/reference/explicit-profiles.md

@@ -1,6 +1,6 @@
 # L1 Explicit Profile Artifacts
 
-Version: 2026-10-19
+Version: 2026-11-05
 
 An explicit profile supplies one complete native configuration: bundled `.l1m + .o` providers, copied public headers and
 one runtime variant. The caller owns its directory and external toolchain stability. Creation and selection are
@@ -18,23 +18,25 @@ l1c --run app --project-root src --profile build/profile
 ```
 
 Compile imported application providers in dependency order. The compiler still verifies interface fingerprints, graph
-requirements, entry selection and lifecycle order. A script choosing that order is not a dependency scanner.
+requirements, entry selection and lifecycle order. Use `--scan-deps` to discover that order before generated interfaces
+exist; see [l1/docs/reference/dependency-discovery.md][dependency-discovery].
 
 `--create-profile` accepts no target and requires exactly one nonempty output. It accepts the preparation compiler, C
 options, public-header override and generated-C/runtime checking controls. It rejects source/project/interface roots,
 runtime-library replacement, link operands, program arguments, `--profile`, cache controls, `--no-auto-prepare`,
 `--force` and `--keep-c`. Construction requires an invocable supported compiler, not persistent reuse eligibility.
 
-`--profile PATH` is valid only for compile, link, build and run. Relative paths resolve from the invocation directory.
-Selection uses exactly that artifact or fails, without repair or fallback. The profile restores its absolute compiler,
-ordered generated-C options and codegen/runtime settings, ignoring ambient `L1_CC`, `L1_CFLAGS`, `L1_SYSTEM`,
-`L1_RUNTIME_INCLUDE`, `L1_RUNTIME_LIB`, runtime lookup under `L1_BUILD_DIR` and cache variables. Explicit conflicting
-settings fail before compilation. Redundant explicit settings must normalize to the recorded configuration.
+`--profile PATH` is valid for compile, link, build, run and semantic dependency discovery (`--scan-deps`). Relative
+paths resolve from the invocation directory. Selection uses exactly that artifact or fails, without repair or fallback.
+For native modes, the profile restores its absolute compiler, ordered generated-C options and codegen/runtime settings,
+ignoring ambient `L1_CC`, `L1_CFLAGS`, `L1_SYSTEM`, `L1_RUNTIME_INCLUDE`, `L1_RUNTIME_LIB`, runtime lookup under
+`L1_BUILD_DIR` and cache variables. Explicit conflicting settings fail before compilation. Redundant explicit settings
+must normalize to the recorded configuration.
 
 Explicit `--sys-root`, `--runtime-include`, `--runtime-lib`, `--no-managed-stdlib` and `--stdlib-cache` are incompatible
-with selection. `--no-auto-prepare` is redundant in build/run/link and remains invalid in compile-only mode. Project
-sources and explicit `-I` retain their existing precedence. The profile inventory supplies the bundled tier without
-probing the original bundled sources. Missing providers fail instead of falling back.
+with selection. `--no-auto-prepare` is redundant in build/run/link and remains invalid in compile-only and
+dependency-scan modes. Project sources and explicit `-I` retain their existing precedence. The profile inventory
+supplies the bundled tier without probing the original bundled sources. Missing providers fail instead of falling back.
 
 CLI misuse exits 2; construction, validation and publication failures exit 1; success exits 0. Progress and native
 diagnostics use stderr. Ordinary commands without a selector retain the managed behavior documented in
@@ -121,5 +123,6 @@ Digests detect damage relative to a trusted manifest. They do not authenticate a
 symbols or establish agreement between opaque objects and semantic interfaces. The boundary remains
 [l1/docs/decisions/0030-authoritative-module-interfaces-and-opaque-native-link-inputs.md][native-adr].
 
+[dependency-discovery]: dependency-discovery.md
 [native-adr]: ../decisions/0030-authoritative-module-interfaces-and-opaque-native-link-inputs.md
 [preparation]: stdlib-preparation.md

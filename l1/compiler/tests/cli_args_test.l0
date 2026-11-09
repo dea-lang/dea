@@ -1792,9 +1792,62 @@ func test_profile_selector_value_and_control_validation() {
 }
 
 /**
+ * Verify the scanner accepts only semantic inputs and an explicit output mapping.
+ */
+func test_dependency_scan_options() {
+    with (let argv = sv_create(12) => sv_free(argv)) {
+        sv_push(argv, "--scan-deps"); sv_push(argv, "app.main");
+        sv_push(argv, "--artifact-root"); sv_push(argv, "future outputs");
+        sv_push(argv, "-Iprebuilt"); sv_push(argv, "--profile=profile");
+        sv_push(argv, "-o"); sv_push(argv, "report.json");
+        let parsed = cli_parse(argv);
+        assert(!diag_has_errors(parsed.diags), "scan must accept semantic profile, interface roots and report output");
+        let opts = parsed.options as CliOptions*;
+        assert(ord(opts.mode) == ord(CM_SCAN_DEPS), "scan mode must be explicit");
+        assert(opts.artifact_root as string == "future outputs", "mapping root must preserve spaces");
+        assert(sv_size(opts.interface_paths) == 1, "mapping must not become an interface input");
+        assert(cli_mode_flag(opts.mode) == "--scan-deps" && cli_mode_name(opts.mode) == "scan-deps", "scan mode names");
+        cli_parse_result_free(parsed);
+    }
+    with (let flags = sv_create(12) => sv_free(flags)) {
+        sv_push(flags, "--keep-c"); sv_push(flags, "--c-compiler=clang");
+        sv_push(flags, "--c-options=-O2"); sv_push(flags, "--runtime-include=headers");
+        sv_push(flags, "--runtime-lib=runtime"); sv_push(flags, "--trace-arc");
+        sv_push(flags, "--no-auto-prepare"); sv_push(flags, "--stdlib-cache=cache");
+        sv_push(flags, "--artifact-root=duplicate"); sv_push(flags, "--build");
+        for (let i = 0; i < sv_size(flags); i = i + 1) {
+            with (let argv2 = sv_create(4) => sv_free(argv2)) {
+                sv_push(argv2, "--scan-deps"); sv_push(argv2, "app");
+                sv_push(argv2, "--artifact-root=build"); sv_push(argv2, sv_get(flags, i));
+                let parsed2 = cli_parse(argv2);
+                assert(diag_has_errors(parsed2.diags), "scan must reject " + sv_get(flags, i));
+                cli_parse_result_free(parsed2);
+            }
+        }
+    }
+    with (let missing = sv_create(2) => sv_free(missing)) {
+        sv_push(missing, "--scan-deps"); sv_push(missing, "app");
+        let parsed3 = cli_parse(missing);
+        assert(cli_result_has_code(parsed3, "L1C-2200"), "scan requires mapping root");
+        cli_parse_result_free(parsed3);
+        sv_push(missing, "--artifact-root=");
+        let parsed4 = cli_parse(missing);
+        assert(cli_result_has_code(parsed4, "L1C-2200"), "scan rejects empty mapping root");
+        cli_parse_result_free(parsed4);
+    }
+    with (let other = sv_create(3) => sv_free(other)) {
+        sv_push(other, "--compile"); sv_push(other, "app"); sv_push(other, "--artifact-root=build");
+        let parsed5 = cli_parse(other);
+        assert(cli_result_has_code(parsed5, "L1C-2200"), "mapping option is scan-only");
+        cli_parse_result_free(parsed5);
+    }
+}
+
+/**
  * Main entry point for the module.
  */
 func main() {
+    test_dependency_scan_options();
     test_default_mode_build();
     test_create_profile_mode();
     test_create_profile_output_and_target_validation();

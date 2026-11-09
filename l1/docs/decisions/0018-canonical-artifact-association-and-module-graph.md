@@ -1,7 +1,7 @@
 # ADR-0018: Canonical Artifact Association and Module Graph
 
 - Decision date: 2026-07-19
-- Last edited: 2026-08-30
+- Last edited: 2026-11-05
 - Status: Accepted
 
 ## Context
@@ -67,16 +67,26 @@ imports without deriving lifecycle edges from `require` or `link`.
 
 ## Related Plans
 
+- [l1/work/plans/features/closed/2026-10-21-semantic-dependency-discovery-noref.md][dependency-plan]
+
 - [l1/work/initiatives/closed/0001-separate-compilation-and-linking.md](../../work/initiatives/closed/0001-separate-compilation-and-linking.md):
   completed separate-compilation and external-linking initiative
+
 - [l1/work/plans/bug-fixes/closed/2026-07-20-stage1-module-graph-invariant-hardening-noref.md](../../work/plans/bug-fixes/closed/2026-07-20-stage1-module-graph-invariant-hardening-noref.md):
   hardened canonical identity, node-less failures, and dependency-view separation
+
 - [l1/work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md][generated-c-foundation]
+
 - [l1/work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md][interface-authority]
+
 - [l1/work/plans/features/closed/2026-07-17-separate-compilation-artifact-layout-and-module-graph-noref.md][graph-plan]
+
 - [l1/work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md][fingerprints]
+
 - [l1/work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md][compile-only]
+
 - [l1/work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md][object-metadata]
+
 - [l1/work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md][build-run]
 
 ## Current Docs
@@ -89,6 +99,7 @@ imports without deriving lifecycle edges from `require` or `link`.
 [architecture]: ../reference/architecture.md
 [build-run]: ../../work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [compile-only]: ../../work/plans/features/closed/2026-07-17-compile-only-artifact-production-noref.md
+[dependency-plan]: ../../work/plans/features/closed/2026-10-21-semantic-dependency-discovery-noref.md
 [diagnostic-catalog]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
 [fingerprints]: ../../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [generated-c-foundation]: ../../work/plans/features/closed/2026-08-21-per-module-generated-c-foundation-noref.md

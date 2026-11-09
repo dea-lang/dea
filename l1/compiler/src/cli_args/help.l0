@@ -64,6 +64,7 @@ func cli_print_usage(to_stderr: bool) {
     cli_print_line(to_stderr, "           [--all-modules] [--include-eof]");
     cli_print_line(to_stderr, "           [--no-managed-stdlib]");
     cli_print_line(to_stderr, "           targets [targets ...]");
+    cli_print_line(to_stderr, "       l1c --scan-deps MODULE --artifact-root PATH [-I PREBUILT]... [-o REPORT]");
     cli_print_line(to_stderr, "       l1c --prepare-stdlib [--force] [--stdlib-cache DIR]");
     cli_print_line(to_stderr, "       l1c --create-profile [--c-compiler C_COMPILER] [--c-options C_OPTIONS] -o PATH");
     cli_print_line(to_stderr, "       l1c -k DEA_OBJECT... [-Cf C_OBJECT]... [-l LIBRARY]... [-L LIBRARY_PATH]...");
@@ -83,6 +84,11 @@ func cli_print_help() {
     cli_print_line(false, "                        Dea object paths with '--link'");
     cli_print_blank_line(false);
     cli_print_line(false, "options:");
+    cli_print_line(false, "  --scan-deps           Discover semantic dependencies as P1689R5 JSON (version 1,");
+    cli_print_line(false, "                        revision 0), without native tools or cache preparation");
+    cli_print_line(false, "  --artifact-root PATH  Required future .o/.l1m mapping for --scan-deps; never adds");
+    cli_print_line(false, "                        an input root or creates native outputs. JSON goes to");
+    cli_print_line(false, "                        stdout, or the exact -o REPORT file after success.");
     cli_print_line(false, "  --prepare-stdlib      Prepare reusable bundled native modules and matching runtime");
     cli_print_line(false, "                        (primary mode; accepts no source target)");
     cli_print_line(false, "  --create-profile      Create one complete caller-owned profile at a new '-o PATH'");
@@ -93,7 +99,7 @@ func cli_print_help() {
     cli_print_line(false, "                        and link inputs, program arguments, --stdlib-cache,");
     cli_print_line(false, "                        --no-auto-prepare, --force and --keep-c; never overwrites");
     cli_print_line(false, "  --profile PATH        Select exactly one nonempty caller-owned profile root");
-    cli_print_line(false, "                        (valid in: '--build', '--compile', '--link', '--run')");
+    cli_print_line(false, "                        (valid in: '--build', '--compile', '--link', '--run', '--scan-deps')");
     cli_print_line(false, "                        Read-only, exact selection; no cache lookup or repair.");
     cli_print_line(false, "                        Inherits the recorded compiler, C options and codegen/");
     cli_print_line(false, "                        runtime settings; redundant explicit settings must match.");
@@ -134,7 +140,7 @@ func cli_print_help() {
     cli_print_line(false, "  --ast                 Pretty-print the AST");
     cli_print_line(false, "  --sym, --symbols      Dump module-level symbols");
     cli_print_line(false, "  --type, --types       Dump resolved types");
-    cli_print_line(false, "  --output, -o OUTPUT   Output path (valid in: '--build', '--compile', '--create-profile', '--emit-interface', '--gen', '--link', '--run')");
+    cli_print_line(false, "  --output, -o OUTPUT   Output path (valid in: '--build', '--compile', '--create-profile', '--emit-interface', '--gen', '--link', '--run', '--scan-deps')");
     cli_print_line(false, "  -Cf, --foreign-object C_OBJECT");
     cli_print_line(false, "                        Assert one host-compatible relocatable native object");
     cli_print_line(false, "                        and add it in encounter order (repeatable; valid in:");
@@ -166,7 +172,7 @@ func cli_print_help() {
     cli_print_line(false, "                        appended after env options unless --profile is selected; e.g. -Co=\"-Og -DDEBUG\")");
     cli_print_line(false, "  -I, --interface-path INTERFACE_PATH");
     cli_print_line(false, "                        Add an interface search path (repeatable; valid in:");
-    cli_print_line(false, "                        '--build', '--compile', '--gen', '--link', '--run';");
+    cli_print_line(false, "                        '--build', '--compile', '--gen', '--link', '--run', '--scan-deps';");
     cli_print_line(false, "                        searched in declaration order)");
     cli_print_line(false, "  --runtime-include, -Ri RUNTIME_INCLUDE");
     cli_print_line(false, "                        Path to Dea runtime headers such as `dea_rt.h`");

@@ -61,8 +61,11 @@ run from the root under `scripts/tests/`, separately from level aggregates.
 
 `test` is the fast local gate; `test-extended` runs the complete normal compiler suite, examples, and tooling. `test-ci`
 includes CI-only normal cases and applicable environment, trace, and child-fixture gates. Use focused selectors when
-changing one subsystem. Dedicated trace discovery has a separate slow-case policy: slow cases are explicit or in
-`test-compiler-trace-all`. CI-only classification in normal discovery does not suppress dedicated trace coverage.
+changing one subsystem. The dependency-composition integration requires GNU Make 4.3 or newer (`gmake` on macOS;
+`DEA_TEST_MAKE` selects it for both compiler integration and adapter tests). Use MSYS2's `/usr/bin/make.exe` with a
+UTF-8 locale on Windows for recipe paths. L1 CI provisions GNU Make on macOS and pins MSYS2 Make on Windows. Dedicated
+trace discovery has a separate slow-case policy: slow cases are explicit or in `test-compiler-trace-all`. CI-only
+classification in normal discovery does not suppress dedicated trace coverage.
 
 `test-productization` checks fixture-based installation, inventory/recovery, installed startup, archives, and atomic
 results. Its native startup fixture selects `L1_RUNTIME_CC`, then `L1_CC`, or defaults to TinyCC/GCC/Clang/cc
@@ -85,8 +88,9 @@ support.
 Fresh native artifact acceptance is required on Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64. Report pending
 platform/hosted evidence explicitly. Hosted releases remain separate work and require normal authorization gates. L1 is
 not frozen and its feature plans are not automatically migrated to L2. Explicit profile creation, compile/link/build/run
-selection and shared managed-client construction/validation are implemented in L1; dependency discovery remains a later
-initiative phase. L2 adoption requires a separately scoped change.
+selection and shared managed-client construction/validation are implemented in L1; `--scan-deps` and the optional
+external Make adapter implement dependency discovery. Initiative closure still requires its cross-platform exhaustive
+validation evidence. L2 adoption requires a separately scoped change.
 
 ## Documentation Link Style
 

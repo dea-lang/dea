@@ -20,6 +20,79 @@ from build_l1c import (L1BuildLayout, build_compiler, compiler_build_options,
                       host_compiler, write_compiler_wrapper, write_env_script)
 import run_tests as normal_runner
 import run_trace_tests as trace_runner
+import make_test_support
+
+
+class MakeSelectionTests(unittest.TestCase):
+    """Protect explicit Make selection and platform-specific fallback order."""
+
+    def test_platform_preference(self):
+        """Windows chooses environment Make before a separate native gmake."""
+        for windows, preferred in ((True, "make"), (False, "gmake")):
+            executable = str(Path.cwd() / "make tools" / preferred)
+            with self.subTest(windows=windows), patch.dict(os.environ, {}, clear=True), \
+                    patch.object(make_test_support.shutil, "which", return_value=executable) as which, \
+                    patch.object(make_test_support.subprocess, "run", return_value=
+                                 subprocess.CompletedProcess([], 0, "GNU Make 4.4.1\n", "")) as run:
+                self.assertEqual(make_test_support.find_gnu_make(windows=windows), executable)
+                which.assert_called_once_with(preferred)
+                self.assertEqual(run.call_args.args[0], [executable, "--version"])
+
+    def test_explicit_selection_has_no_fallback(self):
+        """Both platform policies honor the configured executable exactly."""
+        selected = str(Path.cwd() / "selected make" / "make.exe")
+        for windows in (True, False):
+            with self.subTest(windows=windows), patch.dict(os.environ, {"DEA_TEST_MAKE": selected}, clear=True), \
+                    patch.object(make_test_support.shutil, "which", return_value=selected) as which, \
+                    patch.object(make_test_support.subprocess, "run", return_value=
+                                 subprocess.CompletedProcess([], 0, "GNU Make 4.3\n", "")):
+                self.assertEqual(make_test_support.find_gnu_make(windows=windows), selected)
+                which.assert_called_once_with(selected)
+
+    def test_old_implicit_version_falls_back(self):
+        """Unsupported default versions do not hide a compatible second candidate."""
+        for windows, order in ((True, ["make", "gmake"]), (False, ["gmake", "make"])):
+            paths = [str(Path.cwd() / "make tools" / name) for name in order]
+            results = [subprocess.CompletedProcess([], 0, "GNU Make 4.2.1\n", ""),
+                       subprocess.CompletedProcess([], 0, "GNU Make 4.4.1\n", "")]
+            with self.subTest(windows=windows), patch.dict(os.environ, {}, clear=True), \
+                    patch.object(make_test_support.shutil, "which", side_effect=paths) as which, \
+                    patch.object(make_test_support.subprocess, "run", side_effect=results):
+                self.assertEqual(make_test_support.find_gnu_make(windows=windows), paths[1])
+                self.assertEqual([call.args[0] for call in which.call_args_list], order)
+
+    def test_missing_implicit_candidates_return_none(self):
+        """Optional adapter tests can report the absence of supported Make."""
+        with patch.dict(os.environ, {}, clear=True), \
+                patch.object(make_test_support.shutil, "which", return_value=None), \
+                patch.object(make_test_support.subprocess, "run") as run:
+            self.assertIsNone(make_test_support.find_gnu_make(windows=True))
+            run.assert_not_called()
+
+    def test_invalid_explicit_selection_fails_clearly(self):
+        """Missing, incompatible, and failing explicit tools cannot silently fall back."""
+        selected = str(Path.cwd() / "selected make" / "make.exe")
+        cases = [
+            (None, subprocess.CompletedProcess([], 0, "GNU Make 4.4.1\n", "")),
+            (selected, subprocess.CompletedProcess([], 0, "GNU Make 4.2.1\n", "")),
+            (selected, subprocess.CompletedProcess([], 0, "unrelated build tool\n", "")),
+            (selected, subprocess.CompletedProcess([], 1, "GNU Make 4.4.1\n", "")),
+            (selected, OSError("cannot execute selected tool")),
+            (selected, subprocess.TimeoutExpired([selected, "--version"], 10)),
+        ]
+        for resolved, result in cases:
+            with self.subTest(resolved=resolved, result=result), \
+                    patch.dict(os.environ, {"DEA_TEST_MAKE": selected}, clear=True), \
+                    patch.object(make_test_support.shutil, "which", return_value=resolved) as which, \
+                    patch.object(make_test_support.subprocess, "run", side_effect=[result]):
+                with self.assertRaisesRegex(ValueError, "DEA_TEST_MAKE=.*GNU Make 4.3 or newer"):
+                    make_test_support.find_gnu_make(windows=True)
+                which.assert_called_once_with(selected)
+        with patch.dict(os.environ, {"DEA_TEST_MAKE": ""}, clear=True), \
+                patch.object(make_test_support.shutil, "which") as which:
+            with self.assertRaisesRegex(ValueError, "DEA_TEST_MAKE=''"):
+                make_test_support.find_gnu_make(windows=False)
+            which.assert_not_called()
 
 class CompilerToolingTests(unittest.TestCase):
     """Protect bootstrap isolation and focused validation coverage."""

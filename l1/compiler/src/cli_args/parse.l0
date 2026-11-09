@@ -150,6 +150,13 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
     let is_create = ord(mode) == ord(CM_CREATE_PROFILE);
     let is_prepare = ord(mode) == ord(CM_PREPARE_STDLIB) || is_create;
     let is_link = ord(mode) == ord(CM_LINK);
+    let is_scan = ord(mode) == ord(CM_SCAN_DEPS);
+    if (is_scan && opts.artifact_root == null) {
+        cli_emit_error(diags, "L1C-2200", "mode '--scan-deps' requires '--artifact-root PATH'");
+    }
+    if (!is_scan && opts.artifact_root != null) {
+        cli_emit_error(diags, "L1C-2200", "option '--artifact-root' is valid only with mode: --scan-deps");
+    }
     let is_build_run = ord(mode) == ord(CM_BUILD) || ord(mode) == ord(CM_RUN);
     if (is_create) {
         cli_validate_create_profile_flags(opts, diags);
@@ -194,15 +201,15 @@ func cli_validate_mode_scoped_flags(opts: CliOptions*, diags: DiagCollector*) {
 
     if (!is_create && sv_size(opts.interface_paths) > 0 &&
         ord(mode) != ord(CM_COMPILE) &&
-        ord(mode) != ord(CM_GEN) && !is_build_run && !is_link) {
+        ord(mode) != ord(CM_GEN) && !is_build_run && !is_link && !is_scan) {
         cli_emit_error(diags, "L1C-2031",
-            "option '--interface-path' is valid only with modes: --build, --compile, --gen, --link, --run");
+            "option '--interface-path' is valid only with modes: --build, --compile, --gen, --link, --run, --scan-deps");
     }
 
-    if (!is_create && opts.output != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
+    if (!is_create && !is_scan && opts.output != null && ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
         ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_LINK) &&
         ord(mode) != ord(CM_GEN) && ord(mode) != ord(CM_EMIT_INTERFACE)) {
-        cli_emit_error(diags, "L1C-2010", "option '--output' is valid only with modes: --build, --compile, --emit-interface, --gen, --link, --run");
+        cli_emit_error(diags, "L1C-2010", "option '--output' is valid only with modes: --build, --compile, --emit-interface, --gen, --link, --run, --scan-deps");
     }
 
     if (!is_create && opts.keep_c && ord(mode) != ord(CM_BUILD) &&
@@ -351,8 +358,8 @@ func cli_validate_profile_selection_flags(opts: CliOptions*, diags: DiagCollecto
     let mode = opts.mode;
     if (ord(mode) != ord(CM_BUILD) && ord(mode) != ord(CM_RUN) &&
         ord(mode) != ord(CM_COMPILE) && ord(mode) != ord(CM_LINK) &&
-        ord(mode) != ord(CM_CREATE_PROFILE)) {
-        cli_emit_error(diags, "L1C-2180", "option '--profile' is valid only with modes: --build, --compile, --link, --run");
+        ord(mode) != ord(CM_CREATE_PROFILE) && ord(mode) != ord(CM_SCAN_DEPS)) {
+        cli_emit_error(diags, "L1C-2180", "option '--profile' is valid only with modes: --build, --compile, --link, --run, --scan-deps");
     }
     if (ord(mode) == ord(CM_CREATE_PROFILE)) { return; }
     if (sv_size(opts.sys_roots) > 0 || opts.runtime_include != null ||

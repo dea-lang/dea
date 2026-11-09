@@ -1,0 +1,474 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module dependency_report;
+
+import std.fs;
+import std.hashset;
+import std.io;
+import std.string;
+import std.system;
+import std.text;
+import std.time;
+import std.vector;
+import analysis;
+import build_driver;
+import cli_args.model;
+import compiler_filesystem;
+import diag_print;
+import driver.state;
+import module_graph;
+import module_graph.order;
+import preparation;
+import preparation.consumer;
+import source_paths;
+import sem_context;
+import util.diag;
+import util.log;
+import util.strings;
+
+/**
+ * Return whether one byte is a separator under the selected native path rules.
+ *
+ * @param ch Path byte to inspect.
+ * @param windows Whether native Windows rules apply.
+ * @return Whether the byte separates path components.
+ */
+func dep_path_separator(ch: byte, windows: bool) -> bool {
+    return ch == '/' || (windows && ch == '\\');
+}
+
+/**
+ * Return the final component boundary without treating POSIX backslashes as separators.
+ *
+ * @param path Nonempty native path.
+ * @param windows Whether native Windows rules apply.
+ * @return Index of the final separator, or negative one.
+ */
+func dep_last_separator(path: string, windows: bool) -> int {
+    let last = -1;
+    for (let i = 0; i < len_s(path); i = i + 1) {
+        if (dep_path_separator(char_at_s(path, i), windows)) { last = i; }
+    }
+    return last;
+}
+
+/**
+ * Find a native path's parent while preserving drive roots and literal backslashes.
+ *
+ * @param path Nonempty path with no trailing separator except a filesystem root.
+ * @param windows Whether native Windows rules apply.
+ * @return Parent directory spelling.
+ */
+func dep_path_parent(path: string, windows: bool) -> string {
+    let last = dep_last_separator(path, windows);
+    if (last < 0) { return "."; }
+    if (last == 0) { return slice_s(path, 0, 1); }
+    if (windows && last == 2 && char_at_s(path, 1) == ':') { return slice_s(path, 0, 3); }
+    return slice_s(path, 0, last);
+}
+
+/**
+ * Resolve aliases in existing ancestors of a future native output.
+ *
+ * @param path Absolute native path.
+ * @param windows Whether native Windows rules apply.
+ * @return Canonical ancestor plus future components, or null on inspection failure.
+ */
+func dep_future_path(path: string, windows: bool) -> string? {
+    let kind = cfs_path_kind_follow(path);
+    if (kind < 0) { return null; }
+    if (kind != CFS_PATH_ABSENT) { return cfs_canonical_existing_path(path); }
+    if (cfs_path_kind(path) != CFS_PATH_ABSENT) { return null; }
+    let ancestor = dep_path_parent(path, windows);
+    if (ancestor == path) { return null; }
+    let base = slice_s(path, dep_last_separator(path, windows) + 1, len_s(path));
+    let resolved = dep_future_path(ancestor, windows);
+    if (resolved == null) { return null; }
+    if (base == "." || len_s(base) == 0) { return resolved; }
+    if (base == "..") { return dep_path_parent(resolved as string, windows); }
+    return cfs_join_child(resolved as string, base);
+}
+
+/**
+ * Identify actual-host Windows rules through the native join boundary.
+ *
+ * @return True only when the native ABI treats backslash as a separator.
+ */
+func dep_windows_host() -> bool {
+    return cfs_join_child("x\\", "y") == "x\\y";
+}
+
+/**
+ * Detect a Windows path whose meaning depends on a drive-specific current directory.
+ *
+ * @param path Native path to inspect.
+ * @param windows Whether native Windows rules apply.
+ * @return Whether a drive-relative path must be frozen before JSON publication.
+ */
+func dep_drive_relative(path: string, windows: bool) -> bool {
+    return windows && len_s(path) >= 2 && char_at_s(path, 1) == ':' &&
+        (len_s(path) == 2 || !dep_path_separator(char_at_s(path, 2), true));
+}
+
+/**
+ * Preserve selected path spelling except for ambiguous Windows drive-relative paths.
+ *
+ * @param path Selected native input or caller output mapping.
+ * @return Transport spelling with invocation-time meaning, or null on native failure.
+ */
+func dep_report_path(path: string) -> string? {
+    if (dep_drive_relative(path, dep_windows_host())) { return cfs_absolute_path(path); }
+    return path;
+}
+
+/**
+ * Verify every existing ancestor of a future output is a directory.
+ *
+ * @param path Absolute future output parent.
+ * @param windows Whether native Windows separators apply.
+ * @return Whether missing components can be created without replacing an object or alias.
+ */
+func dep_output_parent_valid(path: string, windows: bool) -> bool {
+    let kind = cfs_path_kind_follow(path);
+    if (kind == CFS_PATH_DIRECTORY) { return true; }
+    if (kind != CFS_PATH_ABSENT || cfs_path_kind(path) != CFS_PATH_ABSENT) { return false; }
+    let ancestor = dep_path_parent(path, windows);
+    if (ancestor == path) { return false; }
+    return dep_output_parent_valid(ancestor, windows);
+}
+
+/**
+ * Compare two canonical future output spellings using native separator rules.
+ *
+ * Windows and Darwin case variants are conservatively rejected as ambiguous ownership.
+ * This is an output-ownership restriction, not a filesystem-identity claim.
+ *
+ * @param left First canonical candidate.
+ * @param right Second canonical candidate.
+ * @param windows Whether backslashes are native path separators.
+ * @param case_insensitive Whether case variants have ambiguous output ownership.
+ * @return Whether the candidates have indistinguishable output ownership.
+ */
+func dep_output_names_equal(left: string, right: string, windows: bool, case_insensitive: bool) -> bool {
+    if (len_s(left) != len_s(right)) { return false; }
+    for (let i = 0; i < len_s(left); i = i + 1) {
+        let a = char_at_s(left, i);
+        let b = char_at_s(right, i);
+        if (windows) {
+            if (a == '\\') { a = '/'; }
+            if (b == '\\') { b = '/'; }
+        }
+        if (case_insensitive) {
+            a = to_lower(a);
+            b = to_lower(b);
+        }
+        if (a != b) { return false; }
+    }
+    return true;
+}
+
+/**
+ * Map a source module to its two planned outputs with actual-host joining.
+ *
+ * @param artifact_root Caller-supplied destination root, never an input root.
+ * @param module_name Canonical dotted module name validated by resolution.
+ * @return Owned artifact association, or null for an invalid canonical name.
+ */
+func dep_artifacts(artifact_root: string, module_name: string) -> ModuleArtifactPaths*? {
+    let stem = sp_module_relstem(module_name);
+    if (stem == null) { return null; }
+    let path = cfs_join_child(artifact_root, stem as string);
+    return new ModuleArtifactPaths(path + ".c", path + ".o", path + ".l1m");
+}
+
+/**
+ * Collect every graph-loaded prerequisite, including prebuilt lifecycle and link closure.
+ *
+ * @param graph Resolved canonical module graph.
+ * @param node Module whose future strict compilation needs the closure.
+ * @param visited Receiving set, including this node and non-filesystem nodes.
+ */
+func dep_collect_requirements(graph: ModuleGraph*, node: ModuleGraphNode*, visited: StringSet*) {
+    if (!ss_add(visited, node.module_name)) { return; }
+    for (let i = 0; i < mg_node_direct_import_count(node); i = i + 1) {
+        let provider = mg_find_node(graph, mg_node_direct_import_get(node, i));
+        if (provider != null) { dep_collect_requirements(graph, provider as ModuleGraphNode*, visited); }
+    }
+    for (let i2 = 0; i2 < mg_node_interface_import_count(node); i2 = i2 + 1) {
+        let provider2 = mg_find_node(graph, mg_node_interface_import_get(node, i2));
+        if (provider2 != null) { dep_collect_requirements(graph, provider2 as ModuleGraphNode*, visited); }
+    }
+    for (let i3 = 0; i3 < mg_node_dependency_count(node); i3 = i3 + 1) {
+        let provider3 = mg_find_node(graph, mg_node_dependency_get(node, i3).provider_module);
+        if (provider3 != null) { dep_collect_requirements(graph, provider3 as ModuleGraphNode*, visited); }
+    }
+}
+
+/**
+ * Return the selected or planned interface for one real provider.
+ *
+ * @param node Selected graph node.
+ * @param artifact_root Caller-selected future output root.
+ * @return Interface path, or null for virtual or registry-only providers.
+ */
+func dep_interface_path(node: ModuleGraphNode*, artifact_root: string) -> string? {
+    if (ord(node.origin.kind) == ord(MOK_INTERFACE)) { return node.origin.path; }
+    if (ord(node.origin.kind) != ord(MOK_SOURCE)) { return null; }
+    let artifacts = dep_artifacts(artifact_root, node.module_name);
+    if (artifacts == null) { return null; }
+    let path = (artifacts as ModuleArtifactPaths*).interface_path;
+    mg_artifacts_free(artifacts);
+    return path;
+}
+
+/**
+ * Reject a planned output that aliases another output or a selected input.
+ *
+ * @param graph Retained selected inputs.
+ * @param path Future output to validate without creating it.
+ * @param previous Previously validated canonical future output paths.
+ * @param diags Receives ownership or path inspection failures.
+ * @return Whether the output has a unique, non-input owner.
+ */
+func dep_validate_output(graph: ModuleGraph*, path: string, previous: StringVector*, diags: DiagCollector*) -> bool {
+    let windows = dep_windows_host();
+    let case_insensitive = windows || cfs_host_is_darwin();
+    let absolute = cfs_absolute_path(path);
+    let kind = cfs_path_kind(path);
+    if (absolute == null || (kind != CFS_PATH_ABSENT && kind != CFS_PATH_REGULAR) ||
+        !dep_output_parent_valid(dep_path_parent(absolute as string, windows), windows)) {
+        cli_emit_error(diags, "L1C-2201", "dependency output has a non-regular destination or non-directory ancestor: " + path);
+        return false;
+    }
+    let canonical: string? = null;
+    if (absolute != null) { canonical = dep_future_path(absolute as string, windows); }
+    if (canonical == null) {
+        cli_emit_error(diags, "L1C-2201", "cannot establish dependency output ownership: " + path);
+        return false;
+    }
+    for (let i = 0; i < sv_size(previous); i = i + 1) {
+        if (dep_output_names_equal(canonical as string, sv_get(previous, i), windows, case_insensitive) ||
+            (cfs_path_kind_follow(path) != CFS_PATH_ABSENT && cfs_same_file(path, sv_get(previous, i)) == 1)) {
+            cli_emit_error(diags, "L1C-2201", "conflicting dependency output ownership: " + path);
+            return false;
+        }
+    }
+    with (let nodes = mg_nodes_sorted(graph) => vec_free(nodes)) {
+        for (let i2 = 0; i2 < vec_size(nodes); i2 = i2 + 1) {
+            let node = (*(vec_get(nodes, i2) as void**)) as ModuleGraphNode*;
+            if (node.origin.path == null) { continue; }
+            let input = node.origin.path as string;
+            let input_key = cfs_canonical_existing_path(input);
+            if (input_key == null || dep_output_names_equal(canonical as string, input_key as string, windows, case_insensitive) ||
+                (cfs_path_kind_follow(path) != CFS_PATH_ABSENT && cfs_same_file(path, input) != 0)) {
+                cli_emit_error(diags, "L1C-2201", "dependency output conflicts with selected input: " + input);
+                return false;
+            }
+        }
+    }
+    sv_push(previous, canonical as string);
+    return true;
+}
+
+/**
+ * Serialize a successfully analyzed graph using P1689R5 core scheduling fields.
+ *
+ * @param graph Complete selected graph, retained independently of this projection.
+ * @param entry Canonical target module for dependency-first traversal.
+ * @param artifact_root Future output mapping root.
+ * @param working_directory Absolute invocation directory for relative paths.
+ * @param diags Receives report path or ordering diagnostics.
+ * @return One complete UTF-8 JSON document, or null without a partial report.
+ */
+func dep_serialize(graph: ModuleGraph*, entry: string, artifact_root: string,
+    working_directory: string, diags: DiagCollector*) -> string? {
+    let mapping = dep_report_path(artifact_root);
+    if (mapping == null) {
+        cli_emit_error(diags, "L1C-2202", "cannot freeze dependency output mapping path");
+        return null;
+    }
+    let ordered_opt = mg_dependency_order(graph, entry, diags);
+    if (ordered_opt == null) { return null; }
+    with (let ordered = ordered_opt as VectorBase* => vec_free(ordered),
+          let outputs = sv_create(8) => sv_free(outputs),
+          let sb = sb_create() => sb_free(sb)) {
+        sb_append(sb, "{\"version\":1,\"revision\":0,\"rules\":[");
+        let first = true;
+        for (let i = 0; i < vec_size(ordered); i = i + 1) {
+            let node = (*(vec_get(ordered, i) as void**)) as ModuleGraphNode*;
+            if (ord(node.origin.kind) == ord(MOK_REGISTRY)) {
+                cli_emit_error(diags, "L1C-2201", "dependency reporting requires filesystem-backed providers: " + node.module_name);
+                return null;
+            }
+            if (ord(node.origin.kind) != ord(MOK_SOURCE)) { continue; }
+            let artifacts_opt = dep_artifacts(mapping as string, node.module_name);
+            if (artifacts_opt == null || node.origin.path == null) {
+                mg_artifacts_free(artifacts_opt);
+                cli_emit_error(diags, "L1C-2201", "source module has no valid dependency output mapping: " + node.module_name);
+                return null;
+            }
+            with (let artifacts = artifacts_opt as ModuleArtifactPaths* => mg_artifacts_free(artifacts)) {
+                if (!dep_validate_output(graph, artifacts.object_path, outputs, diags) ||
+                    !dep_validate_output(graph, artifacts.interface_path, outputs, diags)) { return null; }
+                if (!first) { sb_append(sb, ","); }
+                first = false;
+                sb_append(sb, "{\"work-directory\":" + pr_json_string(working_directory));
+                sb_append(sb, ",\"primary-output\":" + pr_json_string(artifacts.object_path));
+                sb_append(sb, ",\"outputs\":[" + pr_json_string(artifacts.interface_path) + "]");
+                sb_append(sb, ",\"provides\":[{\"logical-name\":" + pr_json_string(node.module_name));
+                let source_path = dep_report_path(node.origin.path as string);
+                if (source_path == null) {
+                    cli_emit_error(diags, "L1C-2202", "cannot freeze selected dependency source path");
+                    return null;
+                }
+                sb_append(sb, ",\"source-path\":" + pr_json_string(source_path as string));
+                sb_append(sb, ",\"compiled-module-path\":" + pr_json_string(artifacts.interface_path) + "}]");
+                sb_append(sb, ",\"requires\":[");
+                with (let requirements = ss_create() => ss_free(requirements)) {
+                    dep_collect_requirements(graph, node, requirements);
+                    let first_requirement = true;
+                    for (let req_i = 0; req_i < vec_size(ordered); req_i = req_i + 1) {
+                        let required = (*(vec_get(ordered, req_i) as void**)) as ModuleGraphNode*;
+                        if (required.module_name == node.module_name || !ss_has(requirements, required.module_name)) { continue; }
+                        let interface_path = dep_interface_path(required, mapping as string);
+                        if (interface_path == null) { continue; }
+                        interface_path = dep_report_path(interface_path as string);
+                        if (interface_path == null) {
+                            cli_emit_error(diags, "L1C-2202", "cannot freeze selected dependency interface path");
+                            return null;
+                        }
+                        if (!first_requirement) { sb_append(sb, ","); }
+                        first_requirement = false;
+                        sb_append(sb, "{\"logical-name\":" + pr_json_string(required.module_name));
+                        sb_append(sb, ",\"compiled-module-path\":" + pr_json_string(interface_path as string) + "}");
+                    }
+                }
+                sb_append(sb, "]}");
+            }
+        }
+        sb_append(sb, "]}\n");
+        let result = sb_to_string(sb);
+        if (!us_is_valid_utf8(result)) {
+            cli_emit_error(diags, "L1C-2202", "dependency report paths are not valid UTF-8");
+            return null;
+        }
+        return result;
+    }
+}
+
+/**
+ * Publish a complete report from an exclusive sibling workspace with rollback.
+ *
+ * @param path Validated report destination; its parent must already exist.
+ * @param report Complete serialized report bytes.
+ * @param diags Receives publication or cleanup failures.
+ * @return Success only after complete publication and workspace cleanup.
+ */
+func dep_publish(path: string, report: string, diags: DiagCollector*) -> bool {
+    let frozen = dep_report_path(path);
+    if (frozen == null) {
+        cli_emit_error(diags, "L1C-2202", "cannot freeze dependency report output path");
+        return false;
+    }
+    path = frozen as string;
+    let output_parent = dep_path_parent(path, dep_windows_host());
+    let kind = cfs_path_kind(path);
+    if (cfs_path_kind_follow(output_parent) != CFS_PATH_DIRECTORY ||
+        (kind != CFS_PATH_ABSENT && kind != CFS_PATH_REGULAR)) {
+        cli_emit_error(diags, "L1C-2202", "report output requires an existing directory and an absent or regular destination: " + path);
+        return false;
+    }
+    let seconds = 0;
+    let nanoseconds = 0;
+    let now = wall_now();
+    if (now != null) { seconds = (now as WallTime).sec; nanoseconds = (now as WallTime).nsec; }
+    let workspace_opt = cfs_workspace_create_for_identity(output_parent, "deps", get_pid(), seconds, nanoseconds, diags);
+    if (workspace_opt == null) { return false; }
+    with (let workspace = workspace_opt as CompilerWorkspace* => cfs_workspace_free(workspace)) {
+        let staged = cfs_workspace_child(workspace, "report.json");
+        let backup = cfs_workspace_child(workspace, "previous.json");
+        let ok = write_file(staged, report) != null;
+        let backed_up = false;
+        if (ok && kind == CFS_PATH_REGULAR) {
+            backed_up = cfs_rename_absent(path, backup) == 1;
+            ok = backed_up;
+        }
+        if (ok) { ok = cfs_rename_absent(staged, path) == 1; }
+        if (!ok) {
+            if (backed_up && cfs_rename_absent(backup, path) != 1) {
+                cli_emit_error(diags, "L1C-2202", "cannot restore previous dependency report; retained at: " + backup);
+                return false;
+            }
+            cli_emit_error(diags, "L1C-2202", "cannot publish dependency report: " + path);
+        }
+        let cleaned = cfs_workspace_cleanup(workspace, diags);
+        return ok && cleaned;
+    }
+}
+
+/**
+ * Analyze source fallback and expose semantic scheduling without native preparation.
+ *
+ * @param opts Validated scan options and optional selected profile.
+ * @param cfg Diagnostic logging configuration; progress remains on stderr.
+ * @return Zero only for a complete report; one for analysis or publication failure.
+ */
+func dep_cmd_scan(opts: CliOptions*, cfg: LogConfig*) -> int {
+    with (let diags = diag_create() => diag_free(diags),
+          let managed = mp_create(opts, cfg, false) => mp_free(managed)) {
+        let prepared = bd_prepare_input(opts, diags, cfg);
+        if (prepared == null) { dp_print_collector(diags); return 1; }
+        let prep = prepared as BuildPreparedInput*;
+        let entry = prep.entry_module;
+        let result = mp_analyze(managed, prep.search_paths, entry, MRP_ALLOW_SOURCE_FALLBACK, null);
+        bd_prepared_input_free(prep);
+        prepared = null;
+        if (analysis_diag_count(result) > 0) {
+            dp_print_collector_with_sources(result.diags, analysis_source_names(result), analysis_source_texts(result));
+        }
+        if (analysis_has_errors(result)) { analysis_result_free(result); return 1; }
+        let working_directory = cfs_canonical_existing_path(".");
+        if (working_directory == null) {
+            cli_emit_error(diags, "L1C-2202", "cannot determine dependency report working directory");
+            analysis_result_free(result);
+            dp_print_collector(diags);
+            return 1;
+        }
+        let graph = driver_graph(result.driver_state);
+        let report = dep_serialize(graph, entry, opts.artifact_root as string, working_directory as string, diags);
+        let ok = report != null;
+        if (ok && (opts.output != null || opts.profile != null)) {
+            with (let outputs = sv_create(8) => sv_free(outputs),
+                  let nodes = mg_nodes_sorted(graph) => vec_free(nodes)) {
+                for (let i = 0; i < vec_size(nodes); i = i + 1) {
+                    let node = (*(vec_get(nodes, i) as void**)) as ModuleGraphNode*;
+                    if (ord(node.origin.kind) != ord(MOK_SOURCE)) { continue; }
+                    let artifacts = dep_artifacts(opts.artifact_root as string, node.module_name) as ModuleArtifactPaths*;
+                    ok = pr_profile_output(opts, artifacts.object_path, diags) &&
+                        pr_profile_output(opts, artifacts.interface_path, diags);
+                    if (ok && opts.output != null) {
+                        ok = dep_validate_output(graph, artifacts.object_path, outputs, diags) &&
+                            dep_validate_output(graph, artifacts.interface_path, outputs, diags);
+                    }
+                    mg_artifacts_free(artifacts);
+                    if (!ok) { break; }
+                }
+                if (ok && opts.output != null) {
+                    ok = dep_validate_output(graph, opts.output as string, outputs, diags) &&
+                        pr_profile_output(opts, opts.output as string, diags);
+                }
+            }
+        }
+        if (ok) {
+            if (opts.output != null) { ok = dep_publish(opts.output as string, report as string, diags); }
+            else { print_s(report as string); }
+        }
+        analysis_result_free(result);
+        dp_print_collector(diags);
+        if (!ok) { return 1; }
+        return 0;
+    }
+}

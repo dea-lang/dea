@@ -1,0 +1,168 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module dependency_report_test;
+
+import std.assert;
+import std.fs;
+import std.hashset;
+import std.io;
+import std.string;
+import std.vector;
+import compiler_filesystem;
+import cli_args.model;
+import dependency_report;
+import module_graph;
+import preparation;
+import util.diag;
+import util.log;
+
+/**
+ * Verify synthetic Windows separators independently of actual-host paths.
+ */
+func test_dependency_path_rules() {
+    assert(dep_path_parent("/tmp/literal\\name/report.json", false) == "/tmp/literal\\name", "POSIX literal backslash parent");
+    assert(dep_path_parent("/tmp/literal\\name.json", false) == "/tmp", "POSIX backslash is not a separator");
+    assert(dep_path_parent("C:\\build dir/mixed\\report.json", true) == "C:\\build dir/mixed", "Windows mixed separators");
+    assert(dep_path_parent("C:\\report.json", true) == "C:\\", "Windows drive root");
+    assert(dep_path_parent("\\\\host\\share\\report.json", true) == "\\\\host\\share", "Windows UNC parent");
+    assert(dep_output_names_equal("C:\\build dir\\A.l1m", "c:/build dir/a.l1m", true, true), "Windows ambiguous output ownership");
+    assert(!dep_output_names_equal("C:\\build dir\\A.l1m", "c:/other/a.l1m", true, true), "different Windows path");
+    assert(!dep_output_names_equal("/tmp/a\\b", "/tmp/a/b", false, false), "POSIX literal backslash identity");
+    assert(!dep_output_names_equal("/tmp/A", "/tmp/a", false, false), "POSIX case remains significant");
+    assert(dep_output_names_equal("/tmp/A", "/tmp/a", false, true), "Darwin output names reject case ambiguity");
+    assert(!dep_output_names_equal("/tmp/a\\b", "/tmp/a/b", false, true), "Darwin case policy retains literal backslashes");
+    assert(dep_drive_relative("C:build", true) && dep_drive_relative("C:", true), "Windows per-drive cwd requires freezing");
+    assert(!dep_drive_relative("C:\\build", true) && !dep_drive_relative("C:/build", true), "Windows absolute drive paths");
+    assert(!dep_drive_relative("C:build", false), "POSIX colon filename has ordinary relative meaning");
+    assert(pr_json_string("a\"b\\c\n") == "\"a\\\"b\\\\c\\u000a\"", "JSON encoding must be independent of native paths");
+}
+
+/**
+ * Verify requirements preserve prebuilt link closure and exact duplicate imports.
+ */
+func test_dependency_closure() {
+    with (let graph = mg_create() => mg_free(graph),
+          let visited = ss_create() => ss_free(visited),
+          let diags = diag_create() => diag_free(diags)) {
+        let app = mg_node_from_source("app", "app.l1", null);
+        let facade = mg_node_from_interface("facade", "facade.l1m",
+            mg_artifacts_from_interface("facade", "facade.l1m", diags) as ModuleArtifactPaths*);
+        let hidden = mg_node_from_source("hidden", "hidden.l1", null);
+        let virtual_node = mg_node_virtual("virtual");
+        mg_node_add_direct_import(app, "facade");
+        mg_node_add_direct_import(app, "facade");
+        mg_node_add_dependency(facade, MDK_LINK, "hidden", "value", "fingerprint");
+        mg_node_add_direct_import(hidden, "virtual");
+        assert(mg_add_node(graph, app) && mg_add_node(graph, facade) && mg_add_node(graph, hidden) &&
+            mg_add_node(graph, virtual_node), "graph owns unique nodes");
+        dep_collect_requirements(graph, app, visited);
+        assert(ss_has(visited, "facade") && ss_has(visited, "hidden") && ss_has(visited, "virtual"), "full graph closure");
+        assert(mg_node_direct_import_count(app) == 2, "projection must retain exact resolver imports");
+        assert(dep_interface_path(virtual_node, "build") == null, "virtual modules have no artifact obligation");
+        assert(dep_interface_path(hidden, "build") as string == "build/hidden.l1m", "source gets planned interface");
+        assert(dep_interface_path(facade, "build") as string == "facade.l1m", "prebuilt retains selected interface");
+    }
+}
+
+/**
+ * Exercise complete serialization, protected paths, and report publication through owned files.
+ */
+func test_dependency_report_projection_and_publication() {
+    with (let diags = diag_create() => diag_free(diags)) {
+        let workspace = cfs_workspace_create("deps-test", diags) as CompilerWorkspace*;
+        let app_path = cfs_workspace_child(workspace, "app.l1");
+        let provider_path = cfs_workspace_child(workspace, "provider.l1");
+        let interface_path = cfs_workspace_child(workspace, "prebuilt.l1m");
+        let report_path = cfs_workspace_child(workspace, "report.json");
+        assert(write_file(app_path, "module app;") != null, "write app input");
+        assert(write_file(provider_path, "module provider;") != null, "write provider input");
+        assert(write_file(interface_path, "module prebuilt;") != null, "write selected interface input");
+        with (let graph = mg_create() => mg_free(graph)) {
+            let app = mg_node_from_source("app", app_path, null);
+            let provider = mg_node_from_source("provider", provider_path, null);
+            let prebuilt = mg_node_from_interface("prebuilt", interface_path,
+                mg_artifacts_from_interface("prebuilt", interface_path, diags) as ModuleArtifactPaths*);
+            mg_node_add_direct_import(app, "prebuilt");
+            mg_node_add_dependency(prebuilt, MDK_LINK, "provider", "value", "fingerprint");
+            assert(mg_add_node(graph, app) && mg_add_node(graph, provider) && mg_add_node(graph, prebuilt), "projection graph");
+            let artifact_root = cfs_join_child(workspace.root, "future outputs");
+            let cwd = cfs_canonical_existing_path(".") as string;
+            let report = dep_serialize(graph, "app", artifact_root, cwd, diags);
+            assert(report != null && !diag_has_errors(diags), "successful projection");
+            let json = report as string;
+            assert(starts_with_s(json, "{\"version\":1,\"revision\":0,\"rules\":["), "P1689R5 revision is pinned");
+            assert(find_s(json, "\"logical-name\":\"provider\"") < find_s(json, "\"logical-name\":\"app\""), "source provider precedes consumer through prebuilt link edge");
+            assert(contains_s(json, "\"compiled-module-path\":" + pr_json_string(interface_path)), "selected prebuilt requirement");
+            assert(dep_serialize(graph, "app", artifact_root, cwd, diags) as string == json, "stable complete report bytes");
+            assert(cfs_path_kind(artifact_root) == CFS_PATH_ABSENT, "report must create no future artifact root");
+            assert(dep_publish(report_path, json, diags), "publish complete report");
+            assert(read_file(report_path) as string == json, "exact report publication bytes");
+            assert(dep_publish(report_path, json, diags), "replace previous complete report");
+            with (let invalid = diag_create() => diag_free(invalid)) {
+                assert(dep_serialize(graph, "app", app_path, cwd, invalid) == null, "regular file cannot be an output root");
+                assert(dep_serialize(graph, "app", app_path + "/nested", cwd, invalid) == null, "file cannot be an intermediate output ancestor");
+                let registry = mg_node_from_registry("registry");
+                assert(mg_add_node(graph, registry), "own registry node");
+                mg_node_add_direct_import(app, "registry");
+                assert(dep_serialize(graph, "app", artifact_root, cwd, invalid) == null, "registry origins require an external artifact contract");
+            }
+            with (let outputs = sv_create(2) => sv_free(outputs),
+                  let rejected = diag_create() => diag_free(rejected)) {
+                assert(!dep_validate_output(graph, app_path, outputs, rejected), "protect selected source input");
+                assert(!dep_validate_output(graph, interface_path, outputs, rejected), "protect selected interface input");
+                assert(dep_validate_output(graph, report_path, outputs, rejected), "independent output has one owner");
+                assert(!dep_validate_output(graph, report_path, outputs, rejected), "reject duplicate output ownership");
+            }
+        }
+        assert(cfs_workspace_cleanup(workspace, diags), "clean owned test files");
+        cfs_workspace_free(workspace);
+    }
+}
+
+/**
+ * Exercise owned command analysis and every report exit without invoking native tools.
+ */
+func test_dependency_scan_command_cleanup() {
+    with (let diags = diag_create() => diag_free(diags),
+          let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+          let opts = cli_options_create() => cli_options_free(opts)) {
+        let workspace = cfs_workspace_create("deps-command-test", diags) as CompilerWorkspace*;
+        let app_path = cfs_workspace_child(workspace, "app.l1");
+        let model_path = cfs_workspace_child(workspace, "model.l1");
+        let report_path = cfs_workspace_child(workspace, "report.json");
+        assert(write_file(app_path, "module app; import model; func value() -> int { return model_value(); }") != null, "command app source");
+        assert(write_file(model_path, "module model; func model_value() -> int { return 7; }") != null, "command provider source");
+        opts.mode = CM_SCAN_DEPS;
+        opts.entry_target = "app";
+        opts.artifact_root = cfs_join_child(workspace.root, "future");
+        opts.output = report_path;
+        opts.no_managed_stdlib = true;
+        sv_push(opts.project_roots, workspace.root);
+        assert(dep_cmd_scan(opts, cfg) == 0, "successful command owns and releases the source graph");
+        let previous = read_file(report_path) as string;
+        assert(write_file(model_path, "module model; func model_value() -> int { return missing_name; }") != null, "invalid provider source");
+        assert(dep_cmd_scan(opts, cfg) == 1, "analysis failure releases partial graph and diagnostics");
+        assert(read_file(report_path) as string == previous, "analysis failure preserves prior complete bytes");
+        assert(write_file(model_path, "module model; func model_value() -> int { return 7; }") != null, "restore provider source");
+        opts.output = cfs_join_child(workspace.root, "missing/report.json");
+        assert(dep_cmd_scan(opts, cfg) == 1, "publication failure releases a complete graph and report buffer");
+        opts.output = app_path;
+        assert(dep_cmd_scan(opts, cfg) == 1, "protected source report output fails without publication");
+        assert(cfs_workspace_cleanup(workspace, diags), "clean command fixtures");
+        cfs_workspace_free(workspace);
+    }
+}
+
+/**
+ * Run the dependency report unit tests.
+ */
+func main() {
+    test_dependency_scan_command_cleanup();
+    test_dependency_path_rules();
+    test_dependency_closure();
+    test_dependency_report_projection_and_publication();
+    printl_s("dependency_report_test: all tests passed");
+}

@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-10-29
+Version: 2026-11-05
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -35,6 +35,15 @@ The caller maintains the external compiler, SDK, environment and option-referenc
 when those assumptions change. This opt-in stability contract is separate from managed automatic freshness. The
 versioned format, option restrictions, publication ownership and compatibility rules are specified in
 [l1/docs/reference/explicit-profiles.md][explicit-profiles].
+
+## Semantic dependency discovery
+
+`--scan-deps MODULE --artifact-root BUILD` projects the canonical source/interface graph into P1689R5 compile rules. It
+uses source fallback for discovery while preserving authoritative interface selection, includes all interface
+prerequisites needed by strict compile-only analysis, and performs no native preparation or host-tool probing. Explicit
+profiles supply their verified semantic inventory. The separate external Make adapter owns scheduling, freshness and
+generated-root collision checks; `.l1m` remains link authority. See
+[l1/docs/reference/dependency-discovery.md][dependency-discovery].
 
 ## Canonical Compiler Development
 
@@ -521,4 +530,5 @@ public runtime or standard library.
 - `--compile`, `--link`, `--build`, `--run`, and `--prepare-stdlib` require a host C99 toolchain.
 - Local bootstrap builds use `../l0/build/dea/bin/l0c-stage2` by default unless overridden with `L1_BOOTSTRAP_L0C`.
 
+[dependency-discovery]: dependency-discovery.md
 [explicit-profiles]: explicit-profiles.md

@@ -7,3 +7,7 @@ and runners live in `support/`, `tests/`, and `scripts/`. Target stdlib/runtime 
 Run `make build`, `make test-compiler TESTS="parser_test"`, and appropriate `test-compiler-trace` from `l1/`. See
 [l1/AGENTS.md](../AGENTS.md) for the explicit upstream toolchain and validation contract. The compiler has no
 intra-level stage selection or self-bootstrap requirement.
+
+`--scan-deps MODULE --artifact-root BUILD` emits semantic P1689R5 dependencies without invoking native tools. The report
+and optional Make adapter are documented in
+[l1/docs/reference/dependency-discovery.md](../docs/reference/dependency-discovery.md).

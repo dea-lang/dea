@@ -73,6 +73,7 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
         let entry_option_count = 0;
         let output_option_count = 0;
         let profile_option_count = 0;
+        let artifact_root_count = 0;
         while (i < cli_end) {
             let token = sv_get(argv, i);
 
@@ -83,6 +84,32 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
             }
             if (token == "--no-auto-prepare") {
                 (opts as CliOptions*).no_auto_prepare = true;
+                i = i + 1;
+                continue;
+            }
+            if (token == "--scan-deps") {
+                cli_try_set_mode(opts as CliOptions*, diags as DiagCollector*, CM_SCAN_DEPS);
+                i = i + 1;
+                continue;
+            }
+            if (token == "--artifact-root" || starts_with_s(token, "--artifact-root=")) {
+                artifact_root_count = artifact_root_count + 1;
+                let value: string? = null;
+                if (token == "--artifact-root") {
+                    value = cli_require_next_value(argv, i, token, diags as DiagCollector*);
+                    if (value != null) { i = i + 1; }
+                } else {
+                    value = slice_s(token, len_s("--artifact-root="), len_s(token));
+                }
+                if (artifact_root_count > 1) {
+                    cli_emit_error(diags as DiagCollector*, "L1C-2200", "option '--artifact-root' may be provided at most once");
+                } else if (value != null) {
+                    if (is_empty_s(value as string)) {
+                        cli_emit_error(diags as DiagCollector*, "L1C-2200", "option '--artifact-root' requires a nonempty path");
+                    } else {
+                        (opts as CliOptions*).artifact_root = value;
+                    }
+                }
                 i = i + 1;
                 continue;
             }
@@ -814,6 +841,11 @@ func cli_parse(argv: StringVector*) -> CliParseResult* {
                 "L1C-2023",
                 "arguments after '--' are valid only with '--run'"
             );
+        }
+
+        if (ord(parsed_opts.mode) == ord(CM_SCAN_DEPS) &&
+            (output_option_count > 1 || (parsed_opts.output != null && is_empty_s(parsed_opts.output as string)))) {
+            cli_emit_error(diags as DiagCollector*, "L1C-2200", "mode '--scan-deps' accepts at most one nonempty report output");
         }
 
         cli_validate_mode_scoped_flags(opts as CliOptions*, diags as DiagCollector*);
