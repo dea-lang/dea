@@ -3,7 +3,7 @@
 ## Add file handles and complete file I/O
 
 - Date: 2026-08-30
-- Last reviewed: 2026-10-29
+- Last reviewed: 2026-11-09
 - Status: Draft
 - Title: Add opaque file handles, incremental transfers, random access, and synchronization
 - Kind: Feature
@@ -23,19 +23,21 @@
   - `l1/docs/reference/standard-library.md`
   - `l1/docs/reference/design-decisions.md`
 - Test modules:
-  - `l1/compiler/tests/file_runtime_test.l0`
-  - `l1/compiler/tests/l0c_lib_test.l0`
+  - `l1/compiler/tests/file_runtime_test.py` (planned harness for actual `.l1` target programs)
+  - `l1/compiler/tests/l1c_lib_test.l0`
   - `l1/compiler/tests/analysis_trace_test.l0`
 - Related:
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
   - `l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md`
   - `l1/work/plans/features/closed/2026-08-30-dynamic-byte-buffers-noref.md`
-- Repro: `make -C l1 test-compiler TESTS="file_runtime_test l0c_lib_test analysis_trace_test"`
+- Repro: `make -C l1 test-compiler TESTS="file_runtime_test.py l1c_lib_test analysis_trace_test"` (after implementation)
 
 ## Summary
 
 Add the first stateful file API to L1. `std.file` owns opaque file handles and exposes incremental sequential I/O,
 64-bit positioning, positional I/O, append, truncate, flush, and durability requests through structured results.
+
+The ownership and I/O choices below are settled; implementation and native validation remain pending.
 
 ## Stdlib-First Direction and Reference Material
 
@@ -47,8 +49,10 @@ this plan; L2 can adopt L1 stdlib through separate follow-up work once the APIs 
 
 ## Public Surface
 
-- Types: `File`, `OpenOptions`, `AccessMode`, `CreateMode`, `SeekOrigin`, and `FileOffset` as a `long` alias.
-- Lifetime: `open`, `close`.
+- Types: opaque `File`, `OpenFileResult`, `CloseResult`, `OpenOptions`, `AccessMode`, `CreateMode`, `SeekOrigin`, and
+  `FileOffset` as a `long` alias.
+- Lifetime: `open` returns `OpenFileResult`; `close(file: File*) -> CloseResult`;
+  `free_open_file_result(result: OpenFileResult) -> CloseResult`.
 - Transfers: `read_some`, `read_exact`, `write_some`, `write_all`.
 - Positioning: `seek`, `position`, `read_at`, `write_at`.
 - Extent: `size`, `truncate`.
@@ -58,28 +62,63 @@ this plan; L2 can adopt L1 stdlib through separate follow-up work once the APIs 
 Transfers take an opaque `ByteBuffer*` plus a checked start/count range; they never require a returned slice. Buffer
 starts, lengths, and per-call counts are `int`; file sizes, positions, and positional offsets are `long`.
 
+## Ownership and Cleanup
+
+1. `OpenFileResult` owns either one file wrapper or an open failure. Copies share a single cleanup obligation; extracted
+   `File*` pointers borrow it. L1 does not enforce unique ownership through its type system.
+2. `close` retires the public handle on its first attempt, including on failure, but preserves the wrapper. Store the
+   first `CloseResult`, including its captured `OsError`; repeated calls return that result without another native close
+   attempt. Unlike the private directory close helper, a repeated failed close does not become success.
+3. Ordinary operations on a closed but live wrapper return `InvalidHandle`. After final cleanup, every borrowed alias is
+   invalid; there is no recoverable closed-handle guarantee for a destroyed wrapper.
+4. `free_open_file_result` closes an open file, destroys its wrapper, and returns the close outcome. For an already
+   closed file it destroys the wrapper and returns the saved outcome. A failed-open variant needs no cleanup and returns
+   success. Successful ownership is consumed exactly once, including when closing fails; destruction is not idempotent.
+5. Register result-level cleanup with `with` before matching success or failure. Explicitly close and inspect the result
+   when successful completion depends on closing. Cleanup returns an outcome for the caller to handle; it does not
+   automatically propagate an error or replace a primary operation failure.
+6. Keep native descriptors/handles and their runtime representation private. Follow each supported host's documented
+   close-failure semantics; do not unconditionally retry an interrupted native close, risk closing a reused descriptor,
+   or claim that every close failure proves native release. Public logical retirement and native release are distinct.
+
+The result-level owner follows
+[l1/docs/decisions/0046-filesystem-paths-and-owned-directory-traversal.md][directory-ownership]. The separate public
+close operation and saved close outcome are deliberate file-specific choices. Record these decisions in a new L1 ADR
+when implementation closes this plan.
+
 ## Required Semantics
 
-1. `read_at` and `write_at` do not mutate the shared cursor.
-2. Append requests real host append behavior rather than `seek(end)` followed by write.
-3. Non-seekable handles return `NotSeekable`.
-4. Child-process inheritance is disabled by default.
-5. Close failures are observable and repeated or post-close operations have defined results.
-6. Partial transfers remain successful; exact/all helpers loop or return the terminal failure with documented progress.
-7. `flush` concerns runtime/language buffering, while `sync_data` and `sync_all` request distinct host durability
-   levels.
-8. No public operation exposes the native handle representation.
-9. Handle metadata is obtained from the open native handle, not by resolving its original path again. Renaming or
-   replacing that path cannot redirect the query to another object. Coordinate the metadata record and result shape with
-   the path-level filesystem plan and preserve unavailable-field and host-error distinctions.
+1. Use direct native file operations without a library buffer. OS caching still applies. `flush` validates the live
+   handle and succeeds without additional work; it does not request durability.
+2. `sync_data` requests data synchronization as a minimum guarantee and may perform stronger full synchronization when a
+   host lacks a distinct data-only operation. `sync_all` additionally requests associated metadata synchronization.
+   Document actual host guarantees and return `Unsupported` when the requested minimum cannot be provided.
+3. `read_at` and `write_at` do not mutate the shared cursor. Non-seekable handles return `NotSeekable`.
+4. Append uses real host append behavior, not `seek(end)` followed by write. Reject `write_at` on an append handle with
+   `InvalidInput` before transferring bytes. Native append guarantees apply per underlying write; a multi-call
+   `write_all` does not promise one atomic append.
+5. Validate read and write start/count ranges against `bytes::size`, following the existing asserted buffer-range
+   convention. Callers resize destinations before reading. Reads preserve logical size on success, EOF, and failure;
+   their results report the number of bytes filled. Do not expose backing storage or return views.
+6. Reuse the direct error and transfer conventions in
+   [l1/docs/decisions/0045-direct-os-errors-and-io-results.md][io-results]: EOF is distinct from failure, zero-length
+   reads do not probe EOF, positive partial transfers succeed, and interruptions return without implicit retry.
+   `read_exact` and `write_all` loop over successful partial transfers and report accumulated progress when interrupted,
+   reaching EOF early, or failing. A positive-length write that makes zero progress must terminate with an error rather
+   than loop indefinitely.
+7. Child-process inheritance is disabled by default. No public operation exposes the native handle representation.
+8. Handle metadata is obtained from the open native handle, not by resolving its original path again. Renaming or
+   replacing that path cannot redirect the query to another object. Reuse the path-level metadata record and preserve
+   unavailable-field and host-error distinctions.
 
 ## Implementation Phases
 
-1. Settle ownership, explicit close, cleanup integration, and runtime handle representation.
+1. Implement the result-owned opaque wrapper, saved close outcome, private native representation, and scoped cleanup.
 2. Implement open/close and sequential partial/exact/all transfers.
 3. Add `long` seek, position, size, truncate, and opened-object metadata.
-4. Add positional reads/writes and true append tests.
-5. Add flush/data-sync/full-sync behavior and cross-platform capability reporting.
+4. Add cursor-independent positional reads/writes, true append, and append-handle positional-write rejection.
+5. Add no-buffer flush, data/full synchronization, documented stronger fallbacks, and cross-platform capability
+   reporting.
 6. Add trace, failure-injection, large sparse-file, and stable-doc coverage.
 
 ## Non-Goals
@@ -88,23 +127,44 @@ starts, lengths, and per-call counts are `int`; file sizes, positions, and posit
 - asynchronous or evented I/O
 - changing container lengths to `long`
 - exposing `FILE*`, file descriptors, or Win32 handles
+- library buffering, automatic read-buffer growth, or positional writes through append handles
+- new language ownership features or automatic error propagation from cleanup
 - silently closing an independently owned endpoint through an adapter
 - L2 compiler migration, bootstrap changes, or removal of compiler-private support
 
 ## ADR Impact
 
-- Decision: Finalize file-handle ownership, explicit close, cleanup integration, and post-close behavior.
-  - Scope: L1
-  - Disposition: Pending
-  - ADR: None
-  - Rationale: The API must make close failures visible without permitting use-after-close or double-close ownership
-    ambiguity.
-- Decision: Define true append, cursor-independent positional I/O, and distinct flush/data-sync/full-sync operations.
+- Decision: Use result-owned file wrappers with separate close/destruction and a repeatable first close outcome.
   - Scope: L1
   - Disposition: New ADR
   - ADR: `l1/docs/decisions/`
-  - Rationale: These distinctions materially affect concurrent append behavior, shared cursors, and durability
-    guarantees across supported hosts.
+  - Rationale: Result-level cleanup establishes one owner before fallible work, while a live closed wrapper preserves
+    error inspection and defined post-close behavior until final destruction.
+- Decision: Use direct native file I/O without library buffering and make flush a live-handle check.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: Native operations support positional access, append, partial-transfer reporting, and future process
+    routing without a second buffering state to coordinate.
+- Decision: Preserve native append and cursor-independent positional I/O by rejecting positional writes on append
+  handles.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: Host append descriptors do not uniformly honor positional-write offsets; rejecting the combination keeps
+    both public contracts portable without promising whole-operation append atomicity.
+- Decision: Define data and full synchronization as minimum guarantees that permit stronger host operations.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: Hosts without separate data-only synchronization can satisfy the request through full synchronization;
+    lack of the minimum guarantee remains observable rather than a silent success.
+- Decision: Transfer only within pre-sized byte-buffer ranges without changing logical size or exposing storage.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: Explicit sizing separates allocation from I/O and makes partial progress and destination contents
+    predictable across EOF, interruption, and failure.
 - Decision: Bind file metadata queries to the opened object independently of later path replacement.
   - Scope: L1
   - Disposition: New ADR
@@ -114,14 +174,28 @@ starts, lengths, and per-call counts are `int`; file sizes, positions, and posit
 
 ## Verification Criteria
 
-1. Large sparse files can be traversed and modified through `long` offsets with `int`-sized buffers.
-2. EOF, short transfer, interrupted operation, invalid handle, and non-seekable results remain distinct.
-3. Positional I/O leaves the shared cursor unchanged.
-4. Append behavior is atomic to the degree promised by the selected host contract.
-5. Close and synchronization failures are observable in deterministic tests.
-6. Normal and traced runtime symbol manifests remain complete.
-7. Where host sharing rules permit, rename the opened path or replace it with another object and verify handle metadata
-   still describes the original object while path metadata describes the current name. State host limitations and cover
-   closed handles, unavailable fields, and injected metadata failures.
+01. Large sparse files can be traversed and modified through `long` offsets with `int`-sized buffers.
+02. EOF, short transfer, interrupted operation, invalid handle, and non-seekable results remain distinct.
+03. Positional I/O leaves the shared cursor unchanged. Append-handle `write_at` fails before writing; ordinary append
+    follows the selected host contract without extending atomicity to a multi-call `write_all`.
+04. Repeated close returns the first success or captured failure with no additional native close attempt. Live aliases
+    observe `InvalidHandle` after close. Result cleanup releases the wrapper exactly once after explicit close, close
+    failure, normal scope exit, and early exits; failed-open cleanup succeeds without native work. Verify alias expiry
+    under supported checked-runtime lifetime validation and do not treat destruction as repeatable.
+05. Deterministic failure injection covers close, interruption, and synchronization failures, partial transfers before
+    terminal failure or early EOF, and zero-progress writes. Confirm exact/all helpers retain progress and do not spin.
+06. Normal and traced runtime symbol manifests remain complete.
+07. Where host sharing rules permit, rename the opened path or replace it with another object and verify handle metadata
+    still describes the original object while path metadata describes the current name. State host limitations and cover
+    closed handles, unavailable fields, and injected metadata failures.
+08. Pre-sized read/write ranges reject invalid bounds, preserve logical size, and handle zero-length and exact-boundary
+    transfers. Verify the reported prefix after short reads and terminal outcomes without exposing buffer storage.
+09. `flush` performs no durability request and rejects a closed handle. Verify stronger `sync_data` fallbacks, full-sync
+    requests, and unsupported minimum guarantees independently of host timing.
+10. Exercise actual `.l1` consumers and resource traces on Linux x86_64, macOS Intel/ARM, and Windows UCRT64. Record
+    unavailable native evidence separately from simulated platform checks; no implementation validation is claimed by
+    this draft.
 
+[directory-ownership]: ../../../docs/decisions/0046-filesystem-paths-and-owned-directory-traversal.md
+[io-results]: ../../../docs/decisions/0045-direct-os-errors-and-io-results.md
 [platform-support]: ../../../compiler/support/preparation/platform.h
