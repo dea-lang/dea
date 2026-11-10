@@ -1,6 +1,6 @@
 # L1 Initiative 0005 - Filesystem and Stream I/O
 
-- Version: 2026-11-05
+- Version: 2026-11-10
 - Status: Active
 - Kind: Initiative
 - Open plans:
@@ -40,7 +40,8 @@ shared-private-code extraction are not completion requirements for this initiati
   comparator/default sorting through `sys.fs`.
 - `std.io` exposes standard-stream byte transfers whose buffer indexes and counts are `int`. Additive result helpers use
   shared `std.os` errors and distinguish EOF, timeout, failure, and successful partial transfer.
-- L1 has no general file-handle API, so there is no legacy 32-bit offset contract to preserve.
+- `std.file` provides opaque result-owned handles with direct transfers, `long` offsets, opened-object metadata,
+  explicit close/destruction, and native synchronization. Exhaustive native validation remains pending.
 - `std.fs::FileInfo` and `sys.rt::RtFileInfo` use `long?` for file size and modification seconds; normalized nanoseconds
   remain `int?`.
 - Whole-file helpers are necessarily bounded by the `int` length of a Dea string.
@@ -85,12 +86,13 @@ Spawned plans: [OS errors and I/O results] and [wide filesystem metadata].
 
 Closed plan: [dynamic byte buffers].
 
-### Phase 2 - File handles and complete file I/O (Stdlib Tier 1)
+### Phase 2 - File handles and complete file I/O (Stdlib Tier 1, implemented; native CI pending)
 
-- Add open/close, sequential reads and writes, seek and position, positional I/O, append, truncate, flush, and durable
-  synchronization.
+- Implement open/close, partial and exact/all transfers, wide seek/position, cursor-preserving positional I/O, native
+  append, truncate, no-buffer flush, and data/full synchronization.
 - Query metadata through the opened file rather than looking up its original path again.
-- Define closed-handle behavior, close-error reporting, and non-inheritance by child processes.
+- Preserve the first close outcome while the wrapper is live; consume the result-level owner exactly once at cleanup.
+- Complete exhaustive native CI validation before closing the file plan and this initiative.
 
 Spawned plan: [file handles and random access].
 
@@ -147,12 +149,41 @@ Closed plan: [filesystem mutations and directory traversal].
   - ADR: `l1/docs/decisions/0045-direct-os-errors-and-io-results.md`
   - Rationale: Files, processes, and sockets need portable branching without discarding native diagnostic codes or
     consulting ambient `errno` after the operation.
-- Decision: Finalize file-handle ownership, close behavior, append atomicity, buffering, and synchronization semantics.
+- Decision: Use result-owned file wrappers with separate close/destruction and a repeatable first close outcome.
   - Scope: L1
-  - Disposition: Pending
-  - ADR: None
-  - Rationale: The initiative fixes the required distinctions, while the file-handle plan must settle exact lifetime and
-    durability behavior against the supported host implementations.
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: Result cleanup establishes one owner, while a live closed wrapper preserves error inspection until final
+    destruction.
+- Decision: Use direct native file I/O without library buffering and make flush a live-handle check.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: Native operations support partial and positional transfers without a second buffering state.
+- Decision: Preserve native append and cursor-independent positional I/O by rejecting positional writes on append
+  handles.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: Host append operations do not uniformly honor positional offsets; rejecting the combination retains both
+    portable contracts.
+- Decision: Define data and full synchronization as minimum guarantees that permit stronger host operations.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: Stronger native synchronization can satisfy a missing data-only operation, while an unavailable minimum
+    remains observable.
+- Decision: Transfer only within pre-sized byte-buffer ranges without changing logical size or exposing storage.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: Explicit sizing separates allocation from I/O and preserves bounded progress reporting on terminal
+    outcomes.
+- Decision: Bind file metadata queries to the opened object independently of later path replacement.
+  - Scope: L1
+  - Disposition: New ADR
+  - ADR: `l1/docs/decisions/`
+  - Rationale: A path lookup can observe a replacement object and cannot establish the opened object's metadata.
 
 ## References
 

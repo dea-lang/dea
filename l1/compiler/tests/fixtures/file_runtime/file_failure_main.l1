@@ -1,0 +1,202 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module file_failure_main;
+
+import std.file;
+import std.os;
+import std.bytes as bytes;
+import std.fs as fs;
+import std.assert;
+import std.system as system;
+import std.io;
+import file_main as check;
+
+/**
+ * Select native faults and reset independent primitive counters.
+ *
+ * @param mode Fault scenario for subsequent native calls.
+ */
+extern func file_probe_config(mode: int);
+
+/**
+ * Read one native invocation counter.
+ *
+ * @param which Counter selector: read, write, close, sync or metadata.
+ * @return Number of primitive calls since the last configuration.
+ */
+extern func file_probe_calls(which: int) -> int;
+
+/**
+ * Read the native code selected by the current scenario.
+ *
+ * @return Expected native error code captured by the runtime.
+ */
+extern func file_probe_error() -> int;
+
+/**
+ * Read the native error domain selected by the host fixture.
+ *
+ * @return Errno (1) on POSIX or Win32 (2) on Windows.
+ */
+extern func file_probe_domain() -> int;
+
+/**
+ * Require preserved native error data and a selected normalized category.
+ *
+ * @param error Public captured error.
+ * @param expected Required runtime category tag.
+ */
+func captured(error: OsError, expected: int) {
+    check::kind(error, expected);
+    let raw = _os_error_to_rt(error);
+    assert(raw.domain == file_probe_domain() && raw.native_code == file_probe_error() as long, "captured native code and domain");
+}
+
+/**
+ * Exercise partial progress, terminal failure, and cleanup through public L1 APIs.
+ *
+ * @return Zero when all injected boundaries pass with balanced resource traces.
+ */
+func main() -> int {
+    let path = system::argv(1);
+    file_probe_config(0);
+    with (
+        let owned = open(path, OpenOptions(ReadWrite, CreateOrTruncate, false)) => check::closed(free_open_file_result(owned)),
+        let source = bytes::from_string("abcd") => bytes::free(source),
+        let destination = bytes::from_string("------") => bytes::free(destination)
+    ) {
+        let file = check::borrowed(owned);
+        check::written(write_all(file, source, 0, 4), 4);
+        check::offset(seek(file, 0 as long, FromStart));
+        file_probe_config(12);
+        match (read_exact(file, destination, 1, 4)) {
+            ReadComplete(count) => { assert(count == 4, "short reads complete the requested range"); }
+            _ => { assert(false, "successful short-read loop failed"); }
+        }
+        assert(file_probe_calls(0) == 4 && check::offset(position(file)) == 4 as long,
+            "successful exact read advances its cursor and stops after completion");
+        assert(bytes::to_string(destination) == "-abcd-" && bytes::size(destination) == 6,
+            "successful exact read advances the nonzero buffer start without changing surrounding bytes");
+        file_probe_config(0);
+        check::offset(seek(file, 0 as long, FromStart));
+        file_probe_config(13);
+        check::written(write_all(file, source, 1, 3), 3);
+        assert(file_probe_calls(1) == 3 && check::offset(position(file)) == 3 as long,
+            "successful complete write advances its cursor and stops after completion");
+        assert(fs::read_file(path) == ("bcdd" as string?), "short writes advance the nonzero source start");
+        file_probe_config(0);
+        check::offset(seek(file, 0 as long, FromStart));
+        check::written(write_all(file, source, 0, 4), 4);
+        for (let i = 0; i < bytes::size(destination); i = i + 1) { bytes::set(destination, i, '-'); }
+        for (let mode = 1; mode <= 3; mode = mode + 1) {
+            check::offset(seek(file, 0 as long, FromStart));
+            let fault = 1;
+            if (mode == 2) { fault = 8; }
+            if (mode == 3) { fault = 9; }
+            file_probe_config(fault);
+            match (read_exact(file, destination, 1, 4)) {
+                ReadExactFailed(count, error) => { assert(mode == 1 && count == 2, "interrupted read progress"); captured(error, 6); }
+                ReadExactEof(count) => { assert(mode == 2 && count == 2, "early EOF progress"); }
+                ReadExactTimedOut(count, error) => { assert(mode == 3 && count == 2, "timed-out read progress"); captured(error, 9); }
+                _ => { assert(false, "injected exact read succeeded"); }
+            }
+            assert(file_probe_calls(0) == 2, "exact read stops at terminal outcome without retry");
+            assert(bytes::size(destination) == 6 && bytes::to_string(destination) == "-ab---", "exact read preserves untouched storage and size");
+        }
+        for (let mode = 1; mode <= 2; mode = mode + 1) {
+            file_probe_config(0);
+            check::offset(seek(file, 0 as long, FromStart));
+            let fault = 2;
+            if (mode == 2) { fault = 10; }
+            file_probe_config(fault);
+            match (write_all(file, source, 0, 4)) {
+                WriteAllFailed(count, error) => { assert(mode == 1 && count == 2, "failed write progress"); captured(error, 18); }
+                WriteAllTimedOut(count, error) => { assert(mode == 2 && count == 2, "timed-out write progress"); captured(error, 9); }
+                _ => { assert(false, "injected complete write succeeded"); }
+            }
+            assert(file_probe_calls(1) == 2, "complete write stops after terminal result");
+        }
+        file_probe_config(3);
+        match (write_all(file, source, 0, 4)) {
+            WriteAllFailed(count, error) => { assert(count == 0, "zero-progress count"); check::kind(error, 14); }
+            _ => { assert(false, "zero-progress write must fail"); }
+        }
+        assert(file_probe_calls(1) == 1, "zero-progress write does not spin");
+        if (file_probe_domain() == 2) {
+            let cursor = check::offset(position(file));
+            file_probe_config(1);
+            match (read_at(file, destination, 1, 4, 0 as long)) {
+                Read(count) => { assert(count == 2, "overlapped read completes partial native progress"); }
+                _ => { assert(false, "overlapped partial read failed"); }
+            }
+            match (read_at(file, destination, 3, 2, 2 as long)) {
+                ReadFailed(error) => { captured(error, 6); }
+                _ => { assert(false, "overlapped read interruption failed"); }
+            }
+            assert(file_probe_calls(0) == 2 && check::offset(position(file)) == cursor,
+                "overlapped read success and failure preserve the sequential cursor without retry");
+            file_probe_config(2);
+            match (write_at(file, source, 0, 4, 0 as long)) {
+                Written(count) => { assert(count == 2, "overlapped write completes partial native progress"); }
+                _ => { assert(false, "overlapped partial write failed"); }
+            }
+            match (write_at(file, source, 2, 2, 2 as long)) {
+                WriteFailed(error) => { captured(error, 18); }
+                _ => { assert(false, "overlapped write failure was lost"); }
+            }
+            assert(file_probe_calls(1) == 2 && check::offset(position(file)) == cursor,
+                "overlapped write success and failure preserve the sequential cursor without retry");
+        }
+        file_probe_config(5);
+        match (flush(file)) { Flushed => {} _ => { assert(false, "flush must not synchronize"); } }
+        assert(file_probe_calls(3) == 0, "flush only validates live handle");
+        match (sync_data(file)) { FsFailed(error) => { captured(error, 14); } _ => { assert(false, "data synchronization failure"); } }
+        match (sync_all(file)) { FsFailed(error) => { captured(error, 14); } _ => { assert(false, "full synchronization failure"); } }
+        assert(file_probe_calls(3) == 2, "one host sync per request, including stronger fallback");
+        file_probe_config(6);
+        match (sync_data(file)) { FsFailed(error) => { captured(error, 10); } _ => { assert(false, "unsupported minimum synchronization"); } }
+        file_probe_config(7);
+        match (metadata(file)) { MetadataFailed(error) => { captured(error, 2); } _ => { assert(false, "metadata injection"); } }
+        assert(file_probe_calls(4) == 1, "one handle metadata query");
+        file_probe_config(11);
+        match (metadata(file)) { FoundMetadata(info) => { assert(info.size == null, "unavailable metadata size stays absent"); } _ => { assert(false, "unavailable metadata field is not lookup failure"); } }
+        match (size(file)) { FileOffsetFailed(error) => { check::kind(error, 10); } _ => { assert(false, "unavailable size result"); } }
+        file_probe_config(0);
+    }
+    let expected_closes = 1;
+    if (file_probe_domain() == 2) { expected_closes = 2; }
+    assert(file_probe_calls(2) == expected_closes, "normal scoped cleanup closes each native endpoint once");
+    file_probe_config(0);
+    assert(check::early_size(path) == 4 as long, "early return preserves value");
+    assert(file_probe_calls(2) == 1, "early return closes once");
+    let owned = open(path, OpenOptions(ReadOnly, OpenExisting, false));
+    let file = check::borrowed(owned);
+    if (file_probe_domain() == 2) {
+        with (let destination = bytes::from_string("-") => bytes::free(destination)) {
+            match (read_at(file, destination, 0, 1, 0 as long)) {
+                Read(count) => { assert(count == 1, "prepare positional endpoint before close failure"); }
+                _ => { assert(false, "positional endpoint preparation failed"); }
+            }
+        }
+    }
+    file_probe_config(4);
+    match (close(file)) { CloseFailed(error) => { captured(error, 14); } _ => { assert(false, "first failed close"); } }
+    match (close(file)) { CloseFailed(error) => { captured(error, 14); } _ => { assert(false, "saved failed close"); } }
+    match (position(file)) { FileOffsetFailed(error) => { check::kind(error, 5); } _ => { assert(false, "closed wrapper remains retired"); } }
+    match (free_open_file_result(owned)) { CloseFailed(error) => { captured(error, 14); } _ => { assert(false, "cleanup preserves first close error"); } }
+    assert(file_probe_calls(2) == expected_closes, "failed closes are attempted once per native endpoint without retry");
+    check::closed(free_open_file_result(OpenFileFailed(OsError(InvalidInput, Runtime, 0 as long))));
+    assert(file_probe_calls(2) == expected_closes, "failed-open cleanup owns no native endpoint");
+    file_probe_config(0);
+    let direct = open(path, OpenOptions(ReadOnly, OpenExisting, false));
+    check::borrowed(direct);
+    file_probe_config(4);
+    match (free_open_file_result(direct)) { CloseFailed(error) => { captured(error, 14); } _ => { assert(false, "direct cleanup reports close failure"); } }
+    assert(file_probe_calls(2) == 1, "direct cleanup consumes failed close exactly once");
+    file_probe_config(0);
+    check::ok(fs::remove_file(path));
+    printl_s("file_failure_main: PASS");
+    return 0;
+}

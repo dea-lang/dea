@@ -3,8 +3,8 @@
 ## Add file handles and complete file I/O
 
 - Date: 2026-08-30
-- Last reviewed: 2026-11-09
-- Status: Draft
+- Last reviewed: 2026-11-10
+- Status: In progress
 - Title: Add opaque file handles, incremental transfers, random access, and synchronization
 - Kind: Feature
 - Priority: High
@@ -13,31 +13,33 @@
 - Subsystem: Stdlib / runtime / filesystem I/O
 - Modules:
   - `l1/compiler/shared/l1/stdlib/std/file.l1`
-  - `l1/compiler/shared/l1/stdlib/std/os.l1`
   - `l1/compiler/shared/l1/stdlib/std/bytes.l1`
   - `l1/compiler/shared/l1/stdlib/sys/fs.l1`
   - `l1/compiler/shared/runtime/include/dea_rt.h`
   - `l1/compiler/shared/runtime/src/dea_rt_io.c`
+  - `l1/compiler/shared/runtime/internal/dea_rt_file.h`
   - `l1/compiler/shared/runtime/dea_rt.symbols`
   - `l1/compiler/shared/runtime/dea_rt_traced.symbols`
   - `l1/docs/reference/standard-library.md`
   - `l1/docs/reference/design-decisions.md`
 - Test modules:
-  - `l1/compiler/tests/file_runtime_test.py` (planned harness for actual `.l1` target programs)
-  - `l1/compiler/tests/l1c_lib_test.l0`
-  - `l1/compiler/tests/analysis_trace_test.l0`
+  - `l1/compiler/tests/file_runtime_test.py`
+  - `l1/compiler/tests/fixtures/file_runtime/`
+  - `l1/compiler/scripts/test_runner_common.py`
+  - `l1/compiler/tests/l1c_child_trace_runner_test.py`
 - Related:
   - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
   - `l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md`
   - `l1/work/plans/features/closed/2026-08-30-dynamic-byte-buffers-noref.md`
-- Repro: `make -C l1 test-compiler TESTS="file_runtime_test.py l1c_lib_test analysis_trace_test"` (after implementation)
+- Repro: From `l1/`, run `make test-compiler TESTS="file_runtime_test.py runtime_symbol_manifest_test.py"`.
 
 ## Summary
 
 Add the first stateful file API to L1. `std.file` owns opaque file handles and exposes incremental sequential I/O,
 64-bit positioning, positional I/O, append, truncate, flush, and durability requests through structured results.
 
-The ownership and I/O choices below are settled; implementation and native validation remain pending.
+The ownership and I/O choices below are implemented and local validation has passed. The plan remains open for
+exhaustive native CI evidence and the corresponding ADR closure records.
 
 ## Stdlib-First Direction and Reference Material
 
@@ -111,15 +113,54 @@ when implementation closes this plan.
    replacing that path cannot redirect the query to another object. Reuse the path-level metadata record and preserve
    unavailable-field and host-error distinctions.
 
-## Implementation Phases
+## Implementation and Local Verification
 
-1. Implement the result-owned opaque wrapper, saved close outcome, private native representation, and scoped cleanup.
-2. Implement open/close and sequential partial/exact/all transfers.
-3. Add `long` seek, position, size, truncate, and opened-object metadata.
-4. Add cursor-independent positional reads/writes, true append, and append-handle positional-write rejection.
-5. Add no-buffer flush, data/full synchronization, documented stronger fallbacks, and cross-platform capability
-   reporting.
-6. Add trace, failure-injection, large sparse-file, and stable-doc coverage.
+Implemented `std.file`, its `sys.fs` transports, and synchronous checked buffer bridges without returning storage views.
+The native implementation shares existing filesystem path/error helpers in the I/O translation unit. POSIX uses native
+descriptors and `pread`/`pwrite`; Windows retains a synchronous primary handle and lazily reopens the same object with
+overlapped I/O for cursor-independent positional transfers. Both runtime symbol manifests include the new exports.
+
+Local validation ran on macOS Intel using `/usr/bin/clang`, Apple Clang 17.0.0, with `--no-default-config` support
+verified. An explicitly selected upstream L0 Stage 2 compiler built canonical L1 and all 32 bundled interfaces. Test
+commands selected that compiler through `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC`.
+
+Passed from `l1/`:
+
+- `make test`: the fast local gate, including compiler smoke tests, examples, documentation tests, tooling, and
+  fixture-based productization tests.
+- `../.venv/bin/python compiler/tests/file_runtime_test.py`: actual public consumers in checked, basic, and unchecked
+  modes; logical bounds; source/interface opacity; checked alias expiry; native and public L1 sparse offsets above 4
+  GiB; non-seekable FIFO operations; first positional transfers after rename and path replacement; opened-object
+  metadata; and resource traces. Hooks cover successful repeated short transfers with nonzero buffer starts, partial
+  progress before EOF/interruption/timeout, no-space and zero-progress writes, missing/error metadata, synchronization
+  failure and unsupported outcomes, and explicit or cleanup-triggered close failure.
+- `make test-compiler TESTS="file_runtime_test.py bytes_test.py os_runtime_test.py io_runtime_test.py runtime_symbol_manifest_test.py l1c_child_trace_runner_test.py"`:
+  all six focused regressions passed. The common trace-runner regression also passed.
+- `../.venv/bin/python compiler/scripts/run_trace_tests.py --children file_main`: the actual file consumer passed with
+  both required memory/ARC event families and zero leaked object or string pointers.
+- `make docs`: strict reference generation passed, including the new stdlib and native declarations. The cleanup example
+  in the library reference also passed an actual L1 source check.
+
+Root ADR Impact, copyright, whitespace, and explicit C-contract checks passed, including the newly added implementation
+header and native fixtures.
+
+Independent review covered every new runtime and public file function, buffer bridges, error conversions, and direct
+callers. It found no confirmed implementation defect. Coverage now includes successful multi-call transfers, first
+positional access after rename, and public L1 wide offsets. The native probe also passed with MacPorts GCC 15.3.0 at
+`/opt/local/bin/gcc-mp-15`, through `file_runtime_test.require_native`.
+
+After the review changes, rebuilt all local runtime variants and reran the file, symbol-manifest, and file child-trace
+checks successfully.
+
+Windows fixtures check both handles for disabled inheritance, non-seekable `NUL` operations, captured Win32 domains and
+codes, real overlapped partial completions followed by injected terminal errors, and first-error preservation when both
+native closes fail. The same injected public-API fixture is selected on Windows and POSIX; Windows no longer skips
+failure coverage. These conditional branches await native Windows CI and are not claimed as locally executed.
+
+Remaining CI work: `make test-extended` / `make test-ci`, exhaustive traces and children, and native Linux x86_64, macOS
+ARM, and Windows UCRT64 execution. These longer gates were deliberately left to CI. Windows API review and conditional
+fixtures do not establish native Windows execution. Close this plan and record its atomic ADR decisions only after the
+remaining evidence is available.
 
 ## Non-Goals
 
@@ -193,8 +234,8 @@ when implementation closes this plan.
 09. `flush` performs no durability request and rejects a closed handle. Verify stronger `sync_data` fallbacks, full-sync
     requests, and unsupported minimum guarantees independently of host timing.
 10. Exercise actual `.l1` consumers and resource traces on Linux x86_64, macOS Intel/ARM, and Windows UCRT64. Record
-    unavailable native evidence separately from simulated platform checks; no implementation validation is claimed by
-    this draft.
+    unavailable native evidence separately from simulated platform checks; local evidence is recorded above and the
+    remaining native CI gate is open.
 
 [directory-ownership]: ../../../docs/decisions/0046-filesystem-paths-and-owned-directory-traversal.md
 [io-results]: ../../../docs/decisions/0045-direct-os-errors-and-io-results.md

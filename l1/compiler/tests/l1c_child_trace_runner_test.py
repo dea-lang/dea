@@ -39,7 +39,7 @@ def test_selection_and_commands(root: Path) -> None:
     require(
         [case.name for case in fixtures] == [
             "math_int_trace_main", "wide_math_main", "os_error_main", "filesystem_main", "directory_main", "bytes_main",
-            "format_main",
+            "format_main", "file_main",
         ],
         "wrong default children",
     )
@@ -50,6 +50,11 @@ def test_selection_and_commands(root: Path) -> None:
             "byte-buffer child lost its normal test owner")
     require(byte_fixtures[0].required_families == frozenset({"mem", "arc"}),
             "byte-buffer child must require memory and ARC events")
+    file_fixtures = runner.select_child_fixtures(["file_main.l1", "file_main"])
+    require(len(file_fixtures) == 1 and file_fixtures[0].parent_test == "file_runtime_test.py",
+            "file child selector must deduplicate and retain its normal test owner")
+    require(file_fixtures[0].required_families == frozenset({"mem", "arc"}),
+            "file child must require memory and ARC events")
     require(
         [case.name for case in runner.select_child_fixtures(["wide_math_main.l1", "wide_math_main"])]
         == ["wide_math_main"], "child selector did not deduplicate",

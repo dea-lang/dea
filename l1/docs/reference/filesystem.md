@@ -1,11 +1,11 @@
-# Filesystem Paths, Mutation, and Directory Traversal
+# Filesystem Paths, File Handles, and Directory Traversal
 
-Version: 2026-10-24
+Version: 2026-11-10
 
 `std.fs` provides path operations with direct `std.os::OsError` results, backed by `sys.fs` and the L1 runtime.
-`std.dir` owns streaming directory cursors. The signatures and result constructors are listed in
-[l1/docs/reference/standard-library.md][stdlib]. Compiler-private support remains separate reference material; this
-surface does not change the L0 bootstrap boundary or migrate L2 consumers.
+`std.file` owns stateful file handles and `std.dir` owns streaming directory cursors. The signatures and result
+constructors are listed in [l1/docs/reference/standard-library.md][stdlib]. Compiler-private support remains separate
+reference material; this surface does not change the L0 bootstrap boundary or migrate L2 consumers.
 
 ## Path representation and resolution
 
@@ -47,6 +47,54 @@ value outside its field's representable range remains unavailable, never narrowe
 precision, including supported pre-epoch values. POSIX uses native nanosecond metadata. Non-regular-object sizes have
 host-defined meaning. Legacy `FileInfo` and nullable whole-file convenience APIs remain available; Windows `stat` now
 uses the same wide handle metadata. Whole-file strings remain bounded by `INT32_MAX` bytes.
+
+## File handles, ownership, and transfers
+
+`std.file::open` follows the path and returns an owning `OpenFileResult`. Its `File*` payload borrows the result's
+single cleanup obligation. Register `free_open_file_result` with `with` before matching success or failure. Copies do
+not create new owners. Failed opens need no cleanup; successful result cleanup closes if necessary, destroys the
+wrapper, and returns the close outcome. Allocation of the Dea wrapper follows the existing fatal allocation policy.
+
+`close` logically retires a handle on its first attempt, including failure, while preserving the wrapper and the first
+captured outcome. Repeated calls return that outcome without another native close. Ordinary operations on a closed live
+wrapper return `InvalidHandle`; after final cleanup every borrowed alias expires. Cleanup is not idempotent and does not
+automatically propagate an error. Explicitly close and inspect its result when closing determines success, while
+retaining any primary I/O failure separately. Native close failure does not necessarily prove resource release.
+Interrupted POSIX close is not retried because a released descriptor might already have been reused.
+
+`OpenOptions` chooses access, creation, and append independently. Read-only access requires `OpenExisting` and no
+append. `CreateNew` uses exclusive creation; `CreateOrTruncate` truncates an existing object or creates a new one. POSIX
+creation mode is `0666` filtered by the process umask; Windows uses inherited security defaults. Native handles are
+non-inheritable. Path encoding, embedded-NUL rejection, and symbolic-link following match the path API.
+
+Reads and writes use checked ranges within the logical size of an opaque `std.bytes::ByteBuffer`; callers resize read
+destinations first. Invalid ranges terminate execution in every runtime mode, including invalid empty ranges. The
+buffer's size never changes during I/O. The reported prefix contains transferred bytes, and no backing pointer or view
+is returned. Single attempts report successful partial transfers, EOF, timeout, or captured errors. Valid zero-length
+sequential transfers on live handles succeed without probing EOF; positional transfers still check offsets, seekability,
+and append restrictions. `read_exact` and `write_all` loop only over successful progress and retain accumulated counts
+on terminal outcomes. Interruptions return without implicit retry; zero-progress writes become `IoError`.
+
+Offsets and extents are signed 64-bit `long`; buffer ranges and per-call counts are `int`. Seeking beyond EOF does not
+extend the file; truncation changes its extent without requiring a correspondingly large buffer. Truncation and
+positional I/O preserve the sequential cursor. Non-seekable objects return `NotSeekable` for positional operations.
+Append uses native host append behavior, never a seek-to-end followed by write; each native write has the host's append
+guarantee, while `write_all` may require multiple writes and is not one atomic append. `write_at` on an append handle
+returns `InvalidInput` before transferring bytes. Like `std.io`, file writes retain the host's POSIX `SIGPIPE` policy
+for non-regular destinations; this API does not introduce the future pipe module's signal-handling contract.
+
+`metadata(file)` queries the opened object, so renaming or replacing its original path does not redirect the query. It
+returns the same `std.fs::MetadataResult` and nullable wide fields as path metadata. The Windows implementation permits
+native read/write/delete sharing; filesystem and host restrictions can still prevent a rename or replacement.
+
+## File synchronization
+
+Direct file I/O has no library buffer. `flush` only validates a live handle and succeeds without a host synchronization
+call. `sync_data` requests data synchronization; `sync_all` includes associated metadata. macOS uses the stronger
+`fsync` operation for both. Other supported POSIX hosts use `fdatasync` for data and `fsync` for all; Windows uses
+`FlushFileBuffers` for both and requires write access. Successful synchronization reflects the host and filesystem
+contract, not a stronger guarantee about storage hardware, parent-directory entries, or survival of every power failure.
+An unavailable required minimum returns `Unsupported`.
 
 ## Mutations and failure behavior
 

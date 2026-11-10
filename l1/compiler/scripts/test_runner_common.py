@@ -141,6 +141,10 @@ CHILD_TRACE_FIXTURES = (
         6, "format_main", TESTS_DIR / "fixtures/driver/format_main.l1",
         "format_test", frozenset({"mem", "arc"}),
     ),
+    ChildTraceFixture(
+        7, "file_main", TESTS_DIR / "fixtures/file_runtime/file_main.l1",
+        "file_runtime_test.py", frozenset({"mem", "arc"}),
+    ),
 )
 
 

@@ -1,6 +1,6 @@
 # The L1 Standard Library
 
-Version: 2026-11-09
+Version: 2026-11-10
 
 The standard library provides ergonomic L1 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -226,6 +226,60 @@ The structured surface is additive:
 `FsResult` is `FsOk` or `FsFailed(OsError)`. Every path argument is a `string`. Failure is returned with its saved
 native domain/code; missing identity inputs never become a successful `false`. See
 [l1/docs/reference/filesystem.md][filesystem] for link policies, Windows root rules, replacement and failure behavior.
+
+### `std.file`
+
+Opaque `File` handles provide direct native I/O without library buffering. Import the module with an alias, such as
+`import std.file as file;`, to distinguish its operations from path and buffer helpers. `FileOffset` aliases `long`;
+buffer starts, lengths, and individual transfer counts remain `int`.
+
+`OpenOptions(access, create, append)` selects `ReadOnly`, `WriteOnly`, or `ReadWrite`; `OpenExisting`, `OpenOrCreate`,
+`CreateNew`, or `CreateOrTruncate`; and native append behavior. Creation and truncation require write access. Paths use
+the same encoding and validation rules as `std.fs`, follow symbolic links, and open without child-process inheritance.
+
+| Function                                                                                  | Result                   | Contract                                                                                                                |
+| ----------------------------------------------------------------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `open(path: string, options: OpenOptions)`                                                | `OpenFileResult`         | `OpenedFile(File*)` or `OpenFileFailed(OsError)`; a successful result owns one cleanup obligation.                      |
+| `close(file: File*)`                                                                      | `CloseResult`            | `Closed` or `CloseFailed(OsError)`; retire the handle and save the first outcome, preserving the wrapper.               |
+| `free_open_file_result(result: OpenFileResult)`                                           | `CloseResult`            | Close if necessary, destroy the wrapper exactly once, and return the saved close outcome; failed opens return `Closed`. |
+| `read_some(file, buffer, start, count)` / `read_at(file, buffer, start, count, offset)`   | `std.os::ReadResult`     | One native attempt; positive partial progress succeeds, EOF is distinct, and positional reads preserve the cursor.      |
+| `write_some(file, buffer, start, count)` / `write_at(file, buffer, start, count, offset)` | `std.os::WriteResult`    | One native attempt; positional writes preserve the cursor and reject append handles before transferring bytes.          |
+| `read_exact(file, buffer, start, count)`                                                  | `ReadExactResult`        | Loop over successful partial reads, retaining total progress on EOF, timeout, or failure.                               |
+| `write_all(file, buffer, start, count)`                                                   | `WriteAllResult`         | Loop over successful partial writes, retaining total progress on timeout or failure; zero progress is an error.         |
+| `seek(file, offset, origin)` / `position(file)` / `size(file)`                            | `OffsetResult`           | `FileOffsetValue(long)` or `FileOffsetFailed(OsError)`; `origin` is `FromStart`, `FromCurrent`, or `FromEnd`.           |
+| `truncate(file, size: long)`                                                              | `std.fs::FsResult`       | Set the extent without changing the cursor.                                                                             |
+| `metadata(file)`                                                                          | `std.fs::MetadataResult` | Query the opened object even after its original path is renamed or replaced.                                            |
+| `flush(file)`                                                                             | `std.os::FlushResult`    | Validate the live handle; no library buffer exists and no durability request is made.                                   |
+| `sync_data(file)` / `sync_all(file)`                                                      | `std.fs::FsResult`       | Request data synchronization or data plus associated metadata; stronger host synchronization is permitted.              |
+
+Transfer parameters are `File*`, `std.bytes::ByteBuffer*`, `start: int`, and `count: int`; positional offsets are
+`FileOffset`. Callers resize read destinations first. Bounds are checked against logical size, including zero-length
+ranges, and invalid ranges terminate execution in every runtime mode. Reads preserve buffer size on every outcome; only
+the reported prefix contains transferred bytes. No operation exposes buffer storage or retains it after return.
+
+`ReadExactResult` is `ReadComplete(count)`, `ReadExactEof(count)`, `ReadExactTimedOut(count, error)`, or
+`ReadExactFailed(count, error)`. `WriteAllResult` is `WriteComplete(count)`, `WriteAllTimedOut(count, error)`, or
+`WriteAllFailed(count, error)`. Counts include all completed attempts. Interruptions return immediately with accumulated
+progress; helpers do not implicitly retry them. Valid zero-length sequential transfers on live handles succeed without
+probing EOF. Positional transfers still check offsets, seekability, and append restrictions.
+
+Register cleanup on the result before inspecting its variant:
+
+```dea
+with (let result = file::open(path, file::OpenOptions(file::ReadOnly, file::OpenExisting, false))
+      => file::free_open_file_result(result)) {
+    match (result) {
+        OpenedFile(handle) => { /* Use the borrowed handle. */ }
+        OpenFileFailed(error) => { /* Inspect the captured error. */ }
+    }
+}
+```
+
+Result copies share one cleanup obligation. Repeated `close` calls return the first outcome, including failures, without
+another native close attempt. Other operations on a closed but live wrapper return `InvalidHandle`; after cleanup every
+borrowed alias expires. Cleanup does not automatically propagate its result. Explicitly close and inspect the outcome
+when successful completion depends on closing. See [l1/docs/reference/filesystem.md][filesystem] for native append,
+synchronization, and close-failure limits.
 
 ### `std.dir`
 

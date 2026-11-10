@@ -588,6 +588,32 @@ struct __deaM3sys2fsS9RtDirNext {
 };
 #endif
 
+#ifndef DEA_DEFINED___deaM3sys2fsS10RtFileOpen
+#define DEA_DEFINED___deaM3sys2fsS10RtFileOpen
+
+/**
+ * Owned native file wrapper or a captured open failure.
+ */
+struct __deaM3sys2fsS10RtFileOpen {
+    dea_bool ok;
+    void *handle;
+    struct __deaM3sys2osS9RtOsError error;
+};
+#endif
+
+#ifndef DEA_DEFINED___deaM3sys2fsS12RtFileOffset
+#define DEA_DEFINED___deaM3sys2fsS12RtFileOffset
+
+/**
+ * Wide file offset or extent with an independent success flag.
+ */
+struct __deaM3sys2fsS12RtFileOffset {
+    dea_bool ok;
+    dea_long value;
+    struct __deaM3sys2osS9RtOsError error;
+};
+#endif
+
 /* Public metadata transport, with shared input validation. */
 struct __deaM3sys2fsS12RtFsMetadata rt_fs_metadata(dea_string path, dea_bool follow);
 
@@ -629,6 +655,51 @@ struct __deaM3sys2fsS9RtDirNext rt_dir_next(void *handle);
 
 /* Consume a valid cursor exactly once, including when native close fails. */
 struct __deaM3sys2fsS10RtFsStatus rt_dir_close(void *handle);
+
+/* Open a non-inherited native file with explicit access and creation policy. */
+struct __deaM3sys2fsS10RtFileOpen rt_file_open(dea_string path, dea_int access, dea_int create, dea_bool append);
+
+/* Retire the handle on its first close attempt and preserve the captured result. */
+struct __deaM3sys2fsS10RtFsStatus rt_file_close(void *handle);
+
+/* Close if needed and destroy a file wrapper exactly once. */
+struct __deaM3sys2fsS10RtFsStatus rt_file_free(void *handle);
+
+/* Read once at the sequential cursor, preserving successful partial transfers. */
+struct __deaM3sys2osS10RtIoResult rt_file_read(void *handle, void *buffer, dea_int count);
+
+/* Write once at the sequential cursor or through native append semantics. */
+struct __deaM3sys2osS10RtIoResult rt_file_write(void *handle, void *buffer, dea_int count);
+
+/* Read once at a wide offset without changing the sequential cursor. */
+struct __deaM3sys2osS10RtIoResult rt_file_read_at(void *handle, void *buffer, dea_int count, dea_long offset);
+
+/* Write once at a wide offset without changing the sequential cursor. */
+struct __deaM3sys2osS10RtIoResult rt_file_write_at(void *handle, void *buffer, dea_int count, dea_long offset);
+
+/* Move the sequential cursor relative to the start, current position, or end. */
+struct __deaM3sys2fsS12RtFileOffset rt_file_seek(void *handle, dea_long offset, dea_int origin);
+
+/* Query the sequential cursor without moving it. */
+struct __deaM3sys2fsS12RtFileOffset rt_file_position(void *handle);
+
+/* Query metadata for the opened object independently of its former path. */
+struct __deaM3sys2fsS12RtFsMetadata rt_file_metadata(void *handle);
+
+/* Query the opened object's wide byte extent without moving its cursor. */
+struct __deaM3sys2fsS12RtFileOffset rt_file_size(void *handle);
+
+/* Set the file extent without changing its sequential cursor. */
+struct __deaM3sys2fsS10RtFsStatus rt_file_truncate(void *handle, dea_long size);
+
+/* Validate an open handle without issuing a durability or buffering operation. */
+struct __deaM3sys2fsS10RtFsStatus rt_file_flush(void *handle);
+
+/* Synchronize data at minimum, using full synchronization where required. */
+struct __deaM3sys2fsS10RtFsStatus rt_file_sync_data(void *handle);
+
+/* Synchronize file data and its associated metadata through the host operation. */
+struct __deaM3sys2fsS10RtFsStatus rt_file_sync_all(void *handle);
 
 /* =========================================================================
  * Runtime function declarations

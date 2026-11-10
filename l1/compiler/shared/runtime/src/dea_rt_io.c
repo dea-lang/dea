@@ -110,6 +110,9 @@ extern void DEA_RUNTIME_OS_CLEARERR(FILE *stream);
 /* Path services share this translation unit and the existing runtime ABI. */
 #include "../internal/dea_rt_fs.h"
 
+/* Stateful file operations reuse the direct filesystem transports. */
+#include "../internal/dea_rt_file.h"
+
 /* =========================================================================
  * Runtime support for file I/O and metadata, stdin/stdout/stderr stream I/O,
  * formatted printing of dea values (strings, integers, floats, booleans),

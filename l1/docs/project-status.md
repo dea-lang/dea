@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-11-09
+Version: 2026-11-10
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -54,10 +54,12 @@ The live L1 roadmap lives at [l1/docs/roadmap.md](roadmap.md).
 Source development follows a finite stabilization target for compilers and tools. Opaque dynamic byte buffers are
 implemented in `std.bytes`, and semantic dependency discovery is implemented through `--scan-deps`. Typed string
 formatting is implemented through `std.format`, with explicit `Value...` arguments, structured errors, and
-locale-independent ARC string output. File handles, secure entropy and temporary objects, and shell-free processes and
-pipes remain planned. General streams, networking, JSON, file watching, concurrency, owned slices, and broader language
-expressiveness are deferred to L2. The current source-tree features below may be newer than the published L1 0.1.0
-baseline; stabilization also requires public-API acceptance programs and fresh artifact validation.
+locale-independent ARC string output. `std.file` implements opaque result-owned handles, direct bounded transfers, wide
+positioning, opened-object metadata, and synchronization; exhaustive native validation remains pending. Secure entropy,
+temporary objects, and shell-free processes and pipes remain planned. General streams, networking, JSON, file watching,
+concurrency, owned slices, and broader language expressiveness are deferred to L2. The current source-tree features
+below may be newer than the published L1 0.1.0 baseline; stabilization also requires public-API acceptance programs and
+fresh artifact validation.
 
 ## Current Status
 
@@ -284,9 +286,9 @@ L0 time is unchanged. See [l1/docs/reference/standard-library.md][stdlib-time].
 
 `std.os` and `sys.os` supply normalized OS errors with captured native domain/code data and concrete read, write, and
 flush results. Additive `std.io` standard-stream result helpers distinguish clean EOF, timeout, interrupted or other
-failure, and successful partial transfers. Existing helpers retain their signatures. File handles and process consumers
-remain planned L1 work; networking is deferred to L2. The contract is recorded in
-[l1/docs/decisions/0045-direct-os-errors-and-io-results.md][os-results].
+failure, and successful partial transfers. Existing helpers retain their signatures. `std.file` consumes these attempt
+results and adds exact/all transfers with accumulated progress. Process consumers remain planned L1 work; networking is
+deferred to L2. The contract is recorded in [l1/docs/decisions/0045-direct-os-errors-and-io-results.md][os-results].
 
 `std.fs` now supplies structured metadata, native identity, absolute/canonical paths, directory creation/removal,
 rename/replace, exclusive copying, and working-directory operations. `std.dir` provides owned streaming cursors,

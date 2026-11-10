@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-11-09
+Version: 2026-11-10
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -752,8 +752,9 @@ positive partial transfers succeed. Interrupted operations return without an imp
 
 Additive `std.io` standard-stream result helpers establish the first consumer while preserving the existing nullable,
 sentinel, and void APIs. They retain asserted byte-array range checks. Writes count acceptance by C stdio, flush reports
-delayed output errors, and neither operation requests filesystem durability or changes `SIGPIPE` policy. File-handle
-ownership, exact/all transfer result APIs, process spawning, and networking remain separate work.
+delayed output errors, and neither operation requests filesystem durability or changes `SIGPIPE` policy. `std.file` uses
+the common attempt results and adds exact/all results that retain accumulated progress on terminal outcomes. Process
+spawning and networking remain separate work.
 
 See [l1/docs/decisions/0045-direct-os-errors-and-io-results.md][os-results].
 
@@ -773,6 +774,25 @@ See [l1/docs/reference/filesystem.md][filesystem-contract] and
 [l1/docs/decisions/0047-followed-native-filesystem-identity.md][filesystem-identity],
 [l1/docs/decisions/0048-absolute-anchoring-and-existing-path-canonicalization.md][filesystem-resolution], and
 [l1/docs/decisions/0049-filesystem-replacement-and-no-replace-capability.md][filesystem-replacement].
+
+## Owned File Handles and Direct Transfers
+
+`std.file::OpenFileResult` owns an opaque wrapper. Copies share one cleanup obligation; extracted pointers borrow it.
+`close` retires the handle and preserves its first outcome, including failure, until result-level cleanup destroys the
+wrapper. Repeated close is stable; destruction is exactly once. A live closed wrapper returns `InvalidHandle` for
+ordinary operations, while aliases expire after destruction. Logical retirement does not establish native release when
+the host reports a close failure, and interrupted close is never blindly retried.
+
+Transfers operate synchronously within pre-sized `std.bytes::ByteBuffer` ranges and preserve logical size. No storage
+view escapes. One native attempt preserves partial success and explicit EOF; exact/all helpers accumulate progress and
+stop on interruption, EOF, timeout, failure, or a zero-progress write. File offsets and extents use `long` independently
+of `int` buffer ranges. Positional I/O preserves the shared cursor, native append is used without a seek/write
+emulation, and append handles reject positional writes. Metadata is bound to the opened object rather than its path.
+
+The native file API has no library buffer: `flush` only validates liveness. `sync_data` and `sync_all` request minimum
+data and metadata guarantees and may use stronger host synchronization. An unavailable minimum is `Unsupported`. Native
+handles remain private and non-inheritable. See [l1/docs/reference/filesystem.md][filesystem-contract] and
+[l1/docs/reference/standard-library.md][file-library].
 
 ## Wide Time, Monotonic Deadlines, and Explicit Sleep Interruption
 
@@ -797,6 +817,7 @@ See [l1/docs/decisions/0050-wide-time-and-monotonic-deadlines.md][time-width] an
 
 [byte-buffer-decision]: ../decisions/0052-owned-dynamic-byte-buffers.md
 [byte-buffer-library]: standard-library.md#stdbytes
+[file-library]: standard-library.md#stdfile
 [filesystem-contract]: filesystem.md
 [filesystem-identity]: ../decisions/0047-followed-native-filesystem-identity.md
 [filesystem-replacement]: ../decisions/0049-filesystem-replacement-and-no-replace-capability.md

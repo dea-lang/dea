@@ -1,0 +1,263 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module file_main;
+
+import std.file;
+import std.os;
+import std.fs as fs;
+import std.bytes as bytes;
+import std.assert;
+import std.system as system;
+import std.text;
+import std.io;
+
+/**
+ * Require a successful close or result cleanup.
+ *
+ * @param result Cleanup outcome to inspect.
+ */
+func closed(result: CloseResult) {
+    match (result) { Closed => {} CloseFailed(error) => { assert(false, error_message(error)); } }
+}
+
+/**
+ * Require successful filesystem mutation or synchronization.
+ *
+ * @param result Operation outcome to inspect.
+ */
+func ok(result: fs::FsResult) {
+    match (result) { FsOk => {} FsFailed(error) => { assert(false, error_message(error)); } }
+}
+
+/**
+ * Extract a required offset while retaining the error on failure.
+ *
+ * @param result Offset operation outcome.
+ * @return Successful offset.
+ */
+func offset(result: OffsetResult) -> long {
+    match (result) {
+        FileOffsetValue(value) => { return value; }
+        FileOffsetFailed(error) => { assert(false, error_message(error)); return 0 as long; }
+    }
+}
+
+/**
+ * Borrow a successful file without acquiring another cleanup obligation.
+ *
+ * @param result Live result whose ownership remains with the caller.
+ * @return Borrowed file pointer.
+ */
+func borrowed(result: OpenFileResult) -> File* {
+    match (result) {
+        OpenedFile(value) => { return value; }
+        OpenFileFailed(error) => {
+            assert(false, error_message(error));
+            let absent: File*? = null;
+            return absent as File*;
+        }
+    }
+}
+
+/**
+ * Require an exact successful write count.
+ *
+ * @param result Complete-write outcome.
+ * @param expected Required transferred count.
+ */
+func written(result: WriteAllResult, expected: int) {
+    match (result) {
+        WriteComplete(count) => { assert(count == expected, "complete write count"); }
+        _ => { assert(false, "complete write failed"); }
+    }
+}
+
+/**
+ * Require a captured normalized category independently of host code spelling.
+ *
+ * @param error Captured error.
+ * @param expected Required stable runtime category tag.
+ */
+func kind(error: OsError, expected: int) {
+    assert(_os_error_to_rt(error).kind == expected, error_message(error));
+}
+
+/**
+ * Return through scoped result cleanup.
+ *
+ * @param path Existing fixture file.
+ * @return Its byte length before closing.
+ */
+func early_size(path: string) -> long {
+    with (let result = open(path, OpenOptions(ReadOnly, OpenExisting, false)) => closed(free_open_file_result(result))) {
+        return offset(size(borrowed(result)));
+    }
+}
+
+/**
+ * Perform the first positional operation only after the opened file is renamed.
+ *
+ * @param root Owned fixture directory in which both path spellings are created.
+ */
+func positional_after_rename(root: string) {
+    let path = root + "/late positional";
+    let moved = root + "/late positional moved";
+    assert(fs::write_file(path, "original") != null, "late positional input");
+    with (
+        let owned = open(path, OpenOptions(ReadWrite, OpenExisting, false)) => closed(free_open_file_result(owned)),
+        let data = bytes::from_string("--------") => bytes::free(data),
+        let source = bytes::from_string("X") => bytes::free(source)
+    ) {
+        let file = borrowed(owned);
+        offset(seek(file, 2 as long, FromStart));
+        ok(fs::rename(path, moved));
+        assert(fs::write_file(path, "replacement") != null, "late positional replacement");
+        match (read_at(file, data, 0, 8, 0 as long)) {
+            Read(count) => { assert(count == 8 && bytes::to_string(data) == "original", "first positional read retains object identity"); }
+            _ => { assert(false, "first positional read after rename failed"); }
+        }
+        assert(offset(position(file)) == 2 as long, "late positional read preserves cursor");
+        match (write_at(file, source, 0, 1, 1 as long)) {
+            Written(count) => { assert(count == 1, "late positional write count"); }
+            _ => { assert(false, "late positional write failed"); }
+        }
+        assert(offset(position(file)) == 2 as long, "late positional write preserves cursor");
+        assert(fs::read_file(moved) == ("oXiginal" as string?), "late positional write uses original object");
+        assert(fs::read_file(path) == ("replacement" as string?), "late positional write leaves replacement unchanged");
+    }
+}
+
+/**
+ * Exercise public transfers, cursors, ownership, metadata and option failures.
+ *
+ * @return Zero after all public-contract assertions pass.
+ */
+func main() -> int {
+    let root = "build/l1-files-" + int_to_string(system::get_pid());
+    if (system::argc() > 2) { root = system::argv(2); }
+    ok(fs::create_dir(root));
+    let path = root + "/binary space café";
+    let options = OpenOptions(ReadWrite, CreateNew, false);
+    with (
+        let owned = open(path, options) => closed(free_open_file_result(owned)),
+        let src = bytes::create() => bytes::free(src),
+        let dest = bytes::with_capacity(16) => bytes::free(dest)
+    ) {
+        let file = borrowed(owned);
+        bytes::append_byte(src, 0 as byte);
+        bytes::append_byte(src, 255 as byte);
+        bytes::append_byte(src, 'A');
+        bytes::append_byte(src, 'Z');
+        bytes::resize(dest, 6);
+        let mode = "normal";
+        if (system::argc() > 1) { mode = system::argv(1); }
+        if (mode == "negative_start") { read_some(file, dest, -1, 1); }
+        if (mode == "negative_count") { write_some(file, src, 0, -1); }
+        if (mode == "past_end") { read_at(file, dest, 5, 2, 0 as long); }
+        if (mode == "empty_past_end") { write_at(file, src, 5, 0, 0 as long); }
+        if (mode == "range_overflow") { read_exact(file, dest, 1, 2147483647); }
+        if (mode == "capacity_only") { bytes::clear(dest); read_some(file, dest, 0, 1); }
+        if (mode == "write_all_range") { write_all(file, src, 4, 1); }
+        if (mode == "expired_alias") { closed(free_open_file_result(owned)); position(file); assert(false, "expired alias accepted"); }
+        written(write_all(file, src, 0, 4), 4);
+        assert(offset(position(file)) == 4 as long && offset(size(file)) == 4 as long, "write extent and cursor");
+        match (read_some(file, dest, 6, 0)) { Read(count) => { assert(count == 0, "zero read"); } _ => { assert(false, "zero read probed EOF"); } }
+        match (read_exact(file, dest, 6, 0)) { ReadComplete(count) => { assert(count == 0, "zero exact read"); } _ => { assert(false, "zero exact read probed EOF"); } }
+        written(write_all(file, src, 4, 0), 0);
+        match (read_some(file, dest, 0, 1)) { Eof => {} _ => { assert(false, "EOF distinct from failure"); } }
+        match (read_at(file, dest, 1, 4, 0 as long)) { Read(count) => { assert(count == 4, "positional read"); } _ => { assert(false, "positional read failed"); } }
+        assert(offset(position(file)) == 4 as long, "read_at preserves cursor");
+        assert(bytes::size(dest) == 6 && bytes::get(dest, 2) == 255 as byte && bytes::get(dest, 5) == 0 as byte,
+            "read preserves logical size and untouched suffix");
+        match (write_at(file, src, 2, 2, 0 as long)) { Written(count) => { assert(count == 2, "positional write"); } _ => { assert(false, "positional write failed"); } }
+        assert(offset(position(file)) == 4 as long, "write_at preserves cursor");
+        assert(offset(seek(file, 0 as long, FromStart)) == 0 as long, "seek start");
+        match (read_exact(file, dest, 0, 4)) { ReadComplete(count) => { assert(count == 4 && bytes::get(dest, 3) == 'Z', "successful exact read"); } _ => { assert(false, "successful exact read failed"); } }
+        offset(seek(file, 0 as long, FromStart));
+        match (read_exact(file, dest, 0, 6)) {
+            ReadExactEof(count) => { assert(count == 4, "partial exact EOF retains progress"); }
+            _ => { assert(false, "exact EOF result"); }
+        }
+        assert(bytes::size(dest) == 6 && bytes::get(dest, 0) == 'A' && bytes::get(dest, 1) == 'Z', "exact read bytes");
+        assert(offset(seek(file, -1 as long, FromEnd)) == 3 as long, "seek from end");
+        assert(offset(seek(file, -2 as long, FromCurrent)) == 1 as long, "relative seek");
+        match (seek(file, -1 as long, FromStart)) { FileOffsetFailed(error) => { kind(error, 4); } _ => { assert(false, "negative offset"); } }
+        match (read_at(file, dest, 0, 1, -1 as long)) { ReadFailed(error) => { kind(error, 4); } _ => { assert(false, "negative positional read"); } }
+        ok(truncate(file, 2 as long));
+        assert(offset(position(file)) == 1 as long && offset(size(file)) == 2 as long, "truncate preserves cursor");
+        match (metadata(file)) {
+            FoundMetadata(info) => {
+                assert(info.size == (2 as long?) && info.mtime_sec != null, "opened metadata");
+                match (info.file_type) { RegularFile => {} _ => { assert(false, "opened type"); } }
+            }
+            _ => { assert(false, "opened metadata failed"); }
+        }
+        ok(fs::rename(path, root + "/original"));
+        assert(fs::write_file(path, "replacement") != null, "replacement path fixture");
+        match (metadata(file)) { FoundMetadata(info) => { assert(info.size == (2 as long?), "metadata follows opened object"); } _ => { assert(false, "renamed metadata"); } }
+        match (fs::metadata(path)) { FoundMetadata(info) => { assert(info.size == (11 as long?), "path metadata sees replacement"); } _ => { assert(false, "replacement metadata"); } }
+        match (flush(file)) { Flushed => {} _ => { assert(false, "unbuffered flush"); } }
+        ok(sync_data(file));
+        ok(sync_all(file));
+        closed(close(file));
+        closed(close(file));
+        match (read_some(file, dest, 0, 0)) { ReadFailed(error) => { kind(error, 5); } _ => { assert(false, "closed zero read"); } }
+        match (write_some(file, src, 0, 0)) { WriteFailed(error) => { kind(error, 5); } _ => { assert(false, "closed zero write"); } }
+        match (position(file)) { FileOffsetFailed(error) => { kind(error, 5); } _ => { assert(false, "closed position"); } }
+        match (metadata(file)) { MetadataFailed(error) => { kind(error, 5); } _ => { assert(false, "closed metadata"); } }
+        match (flush(file)) { FlushFailed(error) => { kind(error, 5); } _ => { assert(false, "closed flush"); } }
+        match (sync_all(file)) { FsFailed(error) => { kind(error, 5); } _ => { assert(false, "closed synchronization"); } }
+    }
+    with (
+        let owned = open(path, OpenOptions(WriteOnly, OpenExisting, true)) => closed(free_open_file_result(owned)),
+        let src = bytes::from_string("!") => bytes::free(src)
+    ) {
+        let file = borrowed(owned);
+        offset(seek(file, 0 as long, FromStart));
+        written(write_all(file, src, 0, 1), 1);
+        assert(offset(size(file)) == 12 as long, "native append ignores cursor");
+        assert(offset(position(file)) == 12 as long, "append cursor follows native end");
+        match (read_some(file, src, 0, 1)) { ReadFailed(error) => {} _ => { assert(false, "write-only read succeeded"); } }
+        match (write_at(file, src, 0, 1, 0 as long)) { WriteFailed(error) => { kind(error, 4); } _ => { assert(false, "append positional write rejected"); } }
+        assert(offset(size(file)) == 12 as long, "rejected positional append did not write");
+    }
+    assert(fs::read_file(path) == ("replacement!" as string?), "append bytes");
+    assert(early_size(path) == 12 as long, "early cleanup");
+    with (
+        let owned = open(path, OpenOptions(ReadOnly, OpenExisting, false)) => closed(free_open_file_result(owned)),
+        let src = bytes::from_string("denied") => bytes::free(src)
+    ) {
+        match (write_some(borrowed(owned), src, 0, 6)) { WriteFailed(error) => {} _ => { assert(false, "read-only write succeeded"); } }
+    }
+    with (let owned = open(path, OpenOptions(ReadWrite, OpenOrCreate, false)) => closed(free_open_file_result(owned))) {
+        assert(offset(size(borrowed(owned))) == 12 as long, "open-or-create preserves existing contents");
+    }
+    with (let owned = open(path, OpenOptions(ReadOnly, CreateOrTruncate, false)) => closed(free_open_file_result(owned))) {
+        match (owned) { OpenFileFailed(error) => { kind(error, 4); } _ => { assert(false, "read-only truncation accepted"); } }
+    }
+    with (let owned = open(path, OpenOptions(ReadOnly, OpenExisting, true)) => closed(free_open_file_result(owned))) {
+        match (owned) { OpenFileFailed(error) => { kind(error, 4); } _ => { assert(false, "read-only append accepted"); } }
+    }
+    assert(fs::read_file(path) == ("replacement!" as string?), "invalid options do not modify existing content");
+    with (let owned = open(path, OpenOptions(ReadWrite, CreateNew, false)) => closed(free_open_file_result(owned))) {
+        match (owned) { OpenFileFailed(error) => { kind(error, 3); } _ => { assert(false, "exclusive creation"); } }
+    }
+    with (let owned = open(path + "/absent", OpenOptions(ReadOnly, OpenExisting, false)) => closed(free_open_file_result(owned))) {
+        match (owned) { OpenFileFailed(error) => {} _ => { assert(false, "failed-open cleanup"); } }
+    }
+    with (let owned = open(path + "\0ignored", OpenOptions(ReadOnly, OpenExisting, false)) => closed(free_open_file_result(owned))) {
+        match (owned) { OpenFileFailed(error) => { kind(error, 4); } _ => { assert(false, "NUL path accepted"); } }
+    }
+    with (let owned = open(path, OpenOptions(ReadWrite, CreateOrTruncate, false)) => closed(free_open_file_result(owned))) {
+        assert(offset(size(borrowed(owned))) == 0 as long, "truncate creation");
+    }
+    with (let owned = open(root + "/new", OpenOptions(ReadWrite, OpenOrCreate, false)) => closed(free_open_file_result(owned))) {
+        assert(offset(size(borrowed(owned))) == 0 as long, "open-or-create missing");
+    }
+    positional_after_rename(root);
+    ok(fs::remove_dir_all(root));
+    printl_s("file_main: PASS");
+    return 0;
+}

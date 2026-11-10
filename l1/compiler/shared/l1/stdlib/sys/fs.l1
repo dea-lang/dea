@@ -4,7 +4,7 @@
  */
 
 /**
- * Direct filesystem transport; handles are owned by std.dir.
+ * Direct filesystem transport; handles are owned by std.dir and std.file.
  */
 module sys.fs;
 
@@ -46,6 +46,16 @@ struct RtDirOpen { ok: bool; handle: void*?; error: RtOsError; }
  * Next states: entry (0), end (1), failure (2). Names are owned bytes.
  */
 struct RtDirNext { state: int; name: string; file_type: int; error: RtOsError; }
+
+/**
+ * An owned native file wrapper, or a captured open failure.
+ */
+struct RtFileOpen { ok: bool; handle: void*?; error: RtOsError; }
+
+/**
+ * A signed 64-bit position or size, or a captured failure.
+ */
+struct RtFileOffset { ok: bool; value: long; error: RtOsError; }
 
 /**
  * Query metadata, optionally following the final link.
@@ -178,3 +188,149 @@ unsafe extern func rt_dir_next(handle: void*) -> RtDirNext;
  * @return Success, or the captured native close failure.
  */
 unsafe extern func rt_dir_close(handle: void*) -> RtFsStatus;
+
+/**
+ * Open a file with direct native I/O and inheritance disabled.
+ *
+ * Access tags are read (0), write (1), and read/write (2). Creation tags are
+ * existing (0), open-or-create (1), exclusive-create (2), and truncate (3).
+ * A successful wrapper must be consumed exactly once with rt_file_free.
+ *
+ * @param path Filesystem path to open.
+ * @param access Native access policy tag.
+ * @param create Native creation policy tag.
+ * @param append Whether writes use native append semantics.
+ * @return An owned native wrapper, or a captured open failure.
+ */
+extern func rt_file_open(path: string, access: int, create: int, append: bool) -> RtFileOpen;
+
+/**
+ * Retire a live file while preserving its wrapper and first close outcome.
+ *
+ * Repeated calls return the saved outcome without another native close.
+ *
+ * @param handle Live native wrapper borrowed from rt_file_open.
+ * @return The first close outcome, including any captured native failure.
+ */
+unsafe extern func rt_file_close(handle: void*) -> RtFsStatus;
+
+/**
+ * Close and destroy one native file wrapper exactly once.
+ *
+ * Every alias expires even when closing fails.
+ *
+ * @param handle Native wrapper whose ownership is consumed.
+ * @return The saved or newly captured close outcome.
+ */
+unsafe extern func rt_file_free(handle: void*) -> RtFsStatus;
+
+/**
+ * Perform one native read without retaining the destination.
+ *
+ * @param handle Live native file wrapper.
+ * @param buffer Writable storage of at least count bytes; ignored when count is zero.
+ * @param count Nonnegative transfer limit.
+ * @return Successful byte count, EOF, timeout, or a captured failure.
+ */
+unsafe extern func rt_file_read(handle: void*, buffer: void*, count: int) -> RtIoResult;
+
+/**
+ * Perform one native write without retaining the source.
+ *
+ * @param handle Live native file wrapper.
+ * @param buffer Readable storage of at least count bytes; ignored when count is zero.
+ * @param count Nonnegative transfer limit.
+ * @return Successful byte count, timeout, or a captured failure.
+ */
+unsafe extern func rt_file_write(handle: void*, buffer: void*, count: int) -> RtIoResult;
+
+/**
+ * Read at an absolute offset without changing the shared cursor.
+ *
+ * @param handle Live native file wrapper.
+ * @param buffer Writable storage of at least count bytes; ignored when count is zero.
+ * @param count Nonnegative transfer limit.
+ * @param offset Nonnegative absolute file offset.
+ * @return Successful byte count, EOF, timeout, or a captured failure.
+ */
+unsafe extern func rt_file_read_at(handle: void*, buffer: void*, count: int, offset: long) -> RtIoResult;
+
+/**
+ * Write at an absolute offset without changing the shared cursor.
+ *
+ * Append handles reject this operation before transferring bytes.
+ *
+ * @param handle Live native file wrapper.
+ * @param buffer Readable storage of at least count bytes; ignored when count is zero.
+ * @param count Nonnegative transfer limit.
+ * @param offset Nonnegative absolute file offset.
+ * @return Successful byte count, timeout, or a captured failure.
+ */
+unsafe extern func rt_file_write_at(handle: void*, buffer: void*, count: int, offset: long) -> RtIoResult;
+
+/**
+ * Reposition the native cursor using signed 64-bit offsets.
+ *
+ * @param handle Live native file wrapper.
+ * @param offset Offset relative to the selected origin.
+ * @param origin Beginning (0), current cursor (1), or end (2).
+ * @return The resulting absolute position, or a captured failure.
+ */
+unsafe extern func rt_file_seek(handle: void*, offset: long, origin: int) -> RtFileOffset;
+
+/**
+ * Query the native cursor without changing it.
+ *
+ * @param handle Live native file wrapper.
+ * @return The absolute position, or a captured failure.
+ */
+unsafe extern func rt_file_position(handle: void*) -> RtFileOffset;
+
+/**
+ * Query the opened object's size without resolving its original path.
+ *
+ * @param handle Live native file wrapper.
+ * @return The byte size when available, or a captured failure.
+ */
+unsafe extern func rt_file_size(handle: void*) -> RtFileOffset;
+
+/**
+ * Set the opened file's byte extent without changing its cursor.
+ *
+ * @param handle Live writable native file wrapper.
+ * @param size Nonnegative requested extent.
+ * @return Success, or a captured failure.
+ */
+unsafe extern func rt_file_truncate(handle: void*, size: long) -> RtFsStatus;
+
+/**
+ * Query metadata directly from the opened object.
+ *
+ * @param handle Live native file wrapper.
+ * @return Opened-object metadata, or a captured failure.
+ */
+unsafe extern func rt_file_metadata(handle: void*) -> RtFsMetadata;
+
+/**
+ * Validate a live direct-I/O file without requesting durability.
+ *
+ * @param handle Live native file wrapper.
+ * @return Success for a live handle, or InvalidHandle for a retired handle.
+ */
+unsafe extern func rt_file_flush(handle: void*) -> RtFsStatus;
+
+/**
+ * Request data synchronization, permitting stronger full synchronization.
+ *
+ * @param handle Live native file wrapper.
+ * @return Success, Unsupported when the guarantee is unavailable, or a captured failure.
+ */
+unsafe extern func rt_file_sync_data(handle: void*) -> RtFsStatus;
+
+/**
+ * Request data and associated metadata synchronization.
+ *
+ * @param handle Live native file wrapper.
+ * @return Success, Unsupported when the guarantee is unavailable, or a captured failure.
+ */
+unsafe extern func rt_file_sync_all(handle: void*) -> RtFsStatus;

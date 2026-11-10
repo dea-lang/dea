@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-11-09
+Version: 2026-11-10
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -18,6 +18,11 @@ scope amendment; the deferred successor feature plans belong to L2.
 - `std.bytes` provides opaque owned dynamic byte buffers with checked growth, logical bounds, zeroing resize, copying
   slice/buffer append, and byte-exact string conversion. Cleanup is explicit; no operation returns a storage view. See
   [l1/work/plans/features/closed/2026-08-30-dynamic-byte-buffers-noref.md][plan-buffers].
+
+- `std.file` implements opaque result-owned handles with repeatable close outcomes, direct bounded transfers, wide
+  positioning, positional I/O, native append, opened-object metadata, and synchronization. The implementation plan
+  remains open for exhaustive native CI evidence. See
+  [l1/work/plans/features/2026-08-30-file-handles-and-random-access-noref.md][plan-files].
 
 - The canonical `.l0` implementation lives under `compiler/src/`; its support and tests are level-owned.
 
@@ -376,9 +381,9 @@ file-watch design, and concurrency now belong to L2.
 
 - [l1/work/initiatives/0003-c-ffi.md][c-ffi] remains on hold. Broader first-class C interoperability is deferred to L2;
   the existing L1 history is preserved.
-- [l1/work/initiatives/0005-filesystem-and-stream-io.md][filesystem-io] retains concrete file handles. Dynamic byte
-  buffers, OS errors, wide metadata, path operations, and directory traversal are complete. Streams and file watching
-  moved to L2.
+- [l1/work/initiatives/0005-filesystem-and-stream-io.md][filesystem-io] has implemented concrete file handles, with
+  exhaustive native validation pending. Dynamic byte buffers, OS errors, wide metadata, path operations, and directory
+  traversal are complete. Streams and file watching moved to L2.
 - [l1/work/initiatives/0006-process-and-host-services.md][host-services] retains entropy, temporary objects, shell-free
   processes, and anonymous pipes. Time/deadline work is complete. Process output uses explicit files/pipes; concurrent
   in-memory capture is deferred.
@@ -456,16 +461,16 @@ file-watch design, and concurrency now belong to L2.
 
 Readiness is independent of lifecycle status. `ready` means implementation can begin; `almost-ready` means a bounded
 immediate prerequisite remains; `not-ready` means required foundations have not landed; `speculative` means unresolved
-design investigation.
+design investigation. `implemented` means implementation is present but the plan still has validation or closure work.
 
-| Readiness    | Plan                                                                                               | Remaining gate                                                                        |
-| ------------ | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| almost-ready | [l1/work/plans/features/2026-08-30-file-handles-and-random-access-noref.md][plan-files]            | Explicit handle cleanup contract; public buffers are complete.                        |
-| ready        | [l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][plan-entropy]                       | Public buffers and checked indexing/ranges are implemented.                           |
-| not-ready    | [l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md][plan-temp]     | File handles and entropy.                                                             |
-| not-ready    | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | Concrete file ownership; public buffers are complete and capture deferral is settled. |
-| not-ready    | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                                                 |
-| not-ready    | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.                                   |
+| Readiness    | Plan                                                                                               | Remaining gate                                                                     |
+| ------------ | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| implemented  | [l1/work/plans/features/2026-08-30-file-handles-and-random-access-noref.md][plan-files]            | Ownership and cleanup are settled; exhaustive native CI validation remains.        |
+| ready        | [l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][plan-entropy]                       | Public buffers and checked indexing/ranges are implemented.                        |
+| not-ready    | [l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md][plan-temp]     | Entropy remains unimplemented; file handles await exhaustive native CI validation. |
+| almost-ready | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership is implemented; exhaustive native acceptance remains pending.       |
+| not-ready    | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                                              |
+| not-ready    | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.                                |
 
 The [work/plans/features/closed/2026-10-29-l1-stabilization-boundary-noref.md][boundary-plan] coordinates plan ownership
 and roadmap changes.
@@ -522,8 +527,8 @@ backlog does not imply missing work where L1 already has a narrower surface.
 - Filesystem, directory, byte-buffer, and file-handle work is tracked by Initiative
   [0005-filesystem-and-stream-io][filesystem-io]. Whole-file `std.fs::read_file` / `std.fs::write_file` and stdin/stdout
   byte helpers, structured standard-stream results, complete path operations, owned streaming directory traversal, and
-  opaque dynamic byte buffers form the implemented baseline. Atomic no-replace rename is deferred; stateful file handles
-  remain planned; streams and file watching are L2-owned.
+  opaque dynamic byte buffers form the implemented baseline. Stateful file handles are implemented with exhaustive
+  native validation pending. Atomic no-replace rename is deferred; streams and file watching are L2-owned.
 - Secure entropy, temporary objects, process spawning, anonymous pipes, and scheduling-time helpers are tracked by
   Initiative [0006-process-and-host-services][host-services].
 - L2 blocking TCP, UDP, and DNS are tracked by Initiative

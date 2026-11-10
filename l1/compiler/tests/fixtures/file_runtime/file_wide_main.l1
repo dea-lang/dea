@@ -1,0 +1,63 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module file_wide_main;
+
+import std.file;
+import std.bytes as bytes;
+import std.assert;
+import std.io;
+import file_main as check;
+import path_arguments;
+
+/**
+ * Exercise wide positions through public L1 operations over an existing sparse file.
+ *
+ * @return Zero after wide offsets, transfers, metadata and cleanup pass.
+ */
+func main() -> int {
+    let wide: FileOffset = 4294967313;
+    with (
+        let owned = open(fixture_path_arg(1), OpenOptions(ReadWrite, OpenExisting, false)) => check::closed(free_open_file_result(owned)),
+        let source = bytes::create() => bytes::free(source),
+        let destination = bytes::from_string("-----") => bytes::free(destination)
+    ) {
+        let file = check::borrowed(owned);
+        bytes::append_byte(source, 0 as byte);
+        bytes::append_byte(source, 255 as byte);
+        bytes::append_byte(source, 'A');
+        assert(check::offset(seek(file, wide, FromStart)) == wide, "wide public seek");
+        check::written(write_all(file, source, 0, 3), 3);
+        assert(check::offset(position(file)) == wide + 3 as long, "wide public cursor");
+        assert(check::offset(size(file)) == wide + 3 as long, "wide public size");
+        match (write_at(file, source, 1, 1, wide - 1 as long)) {
+            Written(count) => { assert(count == 1, "wide positional write count"); }
+            _ => { assert(false, "wide positional write failed"); }
+        }
+        match (read_at(file, destination, 1, 4, wide - 1 as long)) {
+            Read(count) => { assert(count == 4, "wide positional read count"); }
+            _ => { assert(false, "wide positional read failed"); }
+        }
+        assert(bytes::size(destination) == 5 && bytes::get(destination, 0) == '-'
+            && bytes::get(destination, 1) == 255 as byte && bytes::get(destination, 2) == 0 as byte
+            && bytes::get(destination, 3) == 255 as byte && bytes::get(destination, 4) == 'A',
+            "wide binary transfers preserve untouched prefix and logical size");
+        assert(check::offset(position(file)) == wide + 3 as long, "wide positional transfers preserve cursor");
+        match (metadata(file)) {
+            FoundMetadata(info) => { assert(info.size == ((wide + 3 as long) as long?), "wide public metadata"); }
+            _ => { assert(false, "wide public metadata failed"); }
+        }
+        assert(check::offset(seek(file, -4 as long, FromEnd)) == wide - 1 as long, "wide relative seek");
+        match (read_exact(file, destination, 0, 5)) {
+            ReadExactEof(count) => { assert(count == 4, "wide exact read EOF progress"); }
+            _ => { assert(false, "wide exact read EOF failed"); }
+        }
+        check::ok(truncate(file, wide + 1 as long));
+        assert(check::offset(size(file)) == wide + 1 as long, "wide public truncate");
+        assert(check::offset(position(file)) == wide + 3 as long, "wide truncate preserves cursor");
+        check::ok(truncate(file, 0 as long));
+    }
+    printl_s("file_wide_main: PASS");
+    return 0;
+}

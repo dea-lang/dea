@@ -12,10 +12,13 @@ module std.bytes;
 
 export opaque { ByteBuffer }, create, with_capacity, free, size, capacity,
     reserve, resize, clear, get, set, append_byte, append_range, append_buffer,
-    to_string, from_string;
+    to_string, from_string,
+    _bytes_file_read, _bytes_file_write, _bytes_file_read_at, _bytes_file_write_at;
 
 import sys.memory;
 import sys.rt;
+import sys.fs;
+import sys.os;
 import std.assert;
 import std.integer;
 
@@ -266,4 +269,94 @@ func from_string(value: string) -> ByteBuffer* {
     if (count > 0) { rt_memcpy(self._data, rt_string_bytes_ptr(value) as void*, count); }
     self._length = count;
     return self;
+}
+
+/**
+ * Check a synchronous file transfer against initialized logical bytes.
+ *
+ * @param self Live buffer whose logical range is checked.
+ * @param start Nonnegative start, at most size(self).
+ * @param count Nonnegative count, at most size(self) - start.
+ */
+func _check_file_range(self: ByteBuffer*, start: int, count: int) {
+    assert(start >= 0 && start <= self._length, "std.bytes: file range out of bounds");
+    assert(count >= 0 && count <= self._length - start, "std.bytes: file range out of bounds");
+}
+
+/**
+ * Read synchronously into checked buffer storage for std.file.
+ *
+ * The native wrapper must be live. Storage is never returned or retained,
+ * and the logical buffer size remains unchanged on every outcome.
+ *
+ * @param self Live pre-sized destination buffer.
+ * @param handle Native file wrapper borrowed for this call.
+ * @param start Start of the destination range.
+ * @param count Maximum number of bytes to read.
+ * @return The native read outcome.
+ */
+unsafe func _bytes_file_read(self: ByteBuffer*, handle: void*, start: int, count: int) -> RtIoResult {
+    _check_file_range(self, start, count);
+    let data = self._data;
+    if (count > 0) { data = rt_array_element(data, 1, start); }
+    return rt_file_read(handle, data, count);
+}
+
+/**
+ * Write synchronously from checked buffer storage for std.file.
+ *
+ * The native wrapper must be live. Storage is never returned or retained,
+ * and the logical buffer size remains unchanged on every outcome.
+ *
+ * @param self Live source buffer.
+ * @param handle Native file wrapper borrowed for this call.
+ * @param start Start of the source range.
+ * @param count Maximum number of bytes to write.
+ * @return The native write outcome.
+ */
+unsafe func _bytes_file_write(self: ByteBuffer*, handle: void*, start: int, count: int) -> RtIoResult {
+    _check_file_range(self, start, count);
+    let data = self._data;
+    if (count > 0) { data = rt_array_element(data, 1, start); }
+    return rt_file_write(handle, data, count);
+}
+
+/**
+ * Read an absolute file range synchronously into checked buffer storage.
+ *
+ * The native wrapper must be live. Storage never escapes, and neither the
+ * logical buffer size nor the file cursor changes on any outcome.
+ *
+ * @param self Live pre-sized destination buffer.
+ * @param handle Native file wrapper borrowed for this call.
+ * @param start Start of the destination range.
+ * @param count Maximum number of bytes to read.
+ * @param offset Nonnegative absolute file offset.
+ * @return The native positional-read outcome.
+ */
+unsafe func _bytes_file_read_at(self: ByteBuffer*, handle: void*, start: int, count: int, offset: long) -> RtIoResult {
+    _check_file_range(self, start, count);
+    let data = self._data;
+    if (count > 0) { data = rt_array_element(data, 1, start); }
+    return rt_file_read_at(handle, data, count, offset);
+}
+
+/**
+ * Write an absolute file range synchronously from checked buffer storage.
+ *
+ * The native wrapper must be live. Storage never escapes, and neither the
+ * logical buffer size nor the file cursor changes on any outcome.
+ *
+ * @param self Live source buffer.
+ * @param handle Native file wrapper borrowed for this call.
+ * @param start Start of the source range.
+ * @param count Maximum number of bytes to write.
+ * @param offset Nonnegative absolute file offset.
+ * @return The native positional-write outcome.
+ */
+unsafe func _bytes_file_write_at(self: ByteBuffer*, handle: void*, start: int, count: int, offset: long) -> RtIoResult {
+    _check_file_range(self, start, count);
+    let data = self._data;
+    if (count > 0) { data = rt_array_element(data, 1, start); }
+    return rt_file_write_at(handle, data, count, offset);
 }
