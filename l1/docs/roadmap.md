@@ -452,6 +452,12 @@ file-watch design, and concurrency now belong to L2.
 
 ## Active standalone plans
 
+- Refactor [l1/work/plans/refactors/2026-11-10-byte-buffer-range-actions-noref.md][buffer-range-actions] will replace
+  file-specific byte-buffer bridges with a synchronous unsafe callback and by-value context/results. Implement and
+  validate this protocol and file migration first, then resume entropy using that foundation. The refactor completes
+  independently of entropy, keeps `std.bytes` independent of I/O, and requires evidence of no added per-transfer
+  allocations.
+
 - Feature [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] is the
   Stdlib Tier 2 audit that records portable systems capability and C99-family coverage without promising literal C99 API
   parity. It is meant to run after the main stdlib additions land and to be completed before declaring L1 stable;
@@ -463,13 +469,14 @@ Readiness is independent of lifecycle status. `ready` means implementation can b
 immediate prerequisite remains; `not-ready` means required foundations have not landed; `speculative` means unresolved
 design investigation. `implemented` means implementation is present but the plan still has validation or closure work.
 
-| Readiness | Plan                                                                                               | Remaining gate                                                |
-| --------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| ready     | [l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][plan-entropy]                       | Public buffers and checked indexing/ranges are implemented.   |
-| not-ready | [l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md][plan-temp]     | Entropy remains unimplemented; file handles passed native CI. |
-| ready     | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied.     |
-| not-ready | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                         |
-| not-ready | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.           |
+| Readiness | Plan                                                                                               | Remaining gate                                                                    |
+| --------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| ready     | [l1/work/plans/refactors/2026-11-10-byte-buffer-range-actions-noref.md][buffer-range-actions]      | Design settled; callback, allocation, and portability checks scoped.              |
+| not-ready | [l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][plan-entropy]                       | Resume after the range protocol and file migration are implemented and validated. |
+| not-ready | [l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md][plan-temp]     | Entropy remains unimplemented; file handles passed native CI.                     |
+| ready     | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied.                         |
+| not-ready | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                                             |
+| not-ready | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.                               |
 
 The [work/plans/features/closed/2026-10-29-l1-stabilization-boundary-noref.md][boundary-plan] coordinates plan ownership
 and roadmap changes.
@@ -572,6 +579,7 @@ update to be promoted to an initiative or plan:
 [blocking-networking]: ../../l2/work/initiatives/0001-blocking-networking.md
 [bootstrap-productization]: ../work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md
 [boundary-plan]: ../../work/plans/features/closed/2026-10-29-l1-stabilization-boundary-noref.md
+[buffer-range-actions]: ../work/plans/refactors/2026-11-10-byte-buffer-range-actions-noref.md
 [build-run]: ../work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [c-ffi]: ../work/initiatives/0003-c-ffi.md
 [case-builtin-literals]: ../work/plans/bug-fixes/closed/2026-06-08-stage1-case-builtin-literal-support-noref.md
