@@ -25,7 +25,7 @@
   - `l1/compiler/tests/analysis_trace_test.l0`
 - Related:
   - `l1/work/initiatives/0006-process-and-host-services.md`
-  - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
+  - `l1/work/initiatives/closed/0005-filesystem-and-stream-io.md`
   - `l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md`
 - Repro: `make -C l1 test-compiler TESTS="temp_runtime_test analysis_trace_test"`
 

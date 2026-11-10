@@ -775,24 +775,39 @@ See [l1/docs/reference/filesystem.md][filesystem-contract] and
 [l1/docs/decisions/0048-absolute-anchoring-and-existing-path-canonicalization.md][filesystem-resolution], and
 [l1/docs/decisions/0049-filesystem-replacement-and-no-replace-capability.md][filesystem-replacement].
 
+## Stdlib-First I/O Delivery
+
+Public `std.*` contracts, `sys.*` transports, and the L1 runtime define filesystem and I/O delivery. Compiler-private
+helpers supply reference behavior and regression cases; migrating compiler consumers or removing those helpers is
+separate work. Canonical L1 remains implemented in L0, and L2 compiler adoption does not gate public L1 library
+completion. This boundary is recorded in
+[l1/docs/decisions/0061-stdlib-first-io-delivery-boundary.md][stdlib-io-delivery].
+
 ## Owned File Handles and Direct Transfers
 
 `std.file::OpenFileResult` owns an opaque wrapper. Copies share one cleanup obligation; extracted pointers borrow it.
 `close` retires the handle and preserves its first outcome, including failure, until result-level cleanup destroys the
 wrapper. Repeated close is stable; destruction is exactly once. A live closed wrapper returns `InvalidHandle` for
 ordinary operations, while aliases expire after destruction. Logical retirement does not establish native release when
-the host reports a close failure, and interrupted close is never blindly retried.
+the host reports a close failure, and interrupted close is never blindly retried. See
+[l1/docs/decisions/0055-result-owned-file-handles-and-repeatable-close.md][file-ownership].
 
 Transfers operate synchronously within pre-sized `std.bytes::ByteBuffer` ranges and preserve logical size. No storage
 view escapes. One native attempt preserves partial success and explicit EOF; exact/all helpers accumulate progress and
 stop on interruption, EOF, timeout, failure, or a zero-progress write. File offsets and extents use `long` independently
 of `int` buffer ranges. Positional I/O preserves the shared cursor, native append is used without a seek/write
 emulation, and append handles reject positional writes. Metadata is bound to the opened object rather than its path.
+These choices are recorded in [l1/docs/decisions/0059-presized-byte-buffer-file-transfers.md][file-buffers],
+[l1/docs/decisions/0062-wide-file-extents-and-bounded-transfers.md][file-widths],
+[l1/docs/decisions/0057-native-append-and-cursor-independent-file-io.md][file-positioning], and
+[l1/docs/decisions/0060-opened-object-file-metadata.md][file-metadata].
 
 The native file API has no library buffer: `flush` only validates liveness. `sync_data` and `sync_all` request minimum
 data and metadata guarantees and may use stronger host synchronization. An unavailable minimum is `Unsupported`. Native
-handles remain private and non-inheritable. See [l1/docs/reference/filesystem.md][filesystem-contract] and
-[l1/docs/reference/standard-library.md][file-library].
+handles remain private and non-inheritable. See
+[l1/docs/decisions/0056-direct-file-io-and-flush-liveness.md][file-flush] and
+[l1/docs/decisions/0058-minimum-file-synchronization-guarantees.md][file-sync]. Current contracts are in
+[l1/docs/reference/filesystem.md][filesystem-contract] and [l1/docs/reference/standard-library.md][file-library].
 
 ## Wide Time, Monotonic Deadlines, and Explicit Sleep Interruption
 
@@ -817,7 +832,14 @@ See [l1/docs/decisions/0050-wide-time-and-monotonic-deadlines.md][time-width] an
 
 [byte-buffer-decision]: ../decisions/0052-owned-dynamic-byte-buffers.md
 [byte-buffer-library]: standard-library.md#stdbytes
+[file-buffers]: ../decisions/0059-presized-byte-buffer-file-transfers.md
+[file-flush]: ../decisions/0056-direct-file-io-and-flush-liveness.md
 [file-library]: standard-library.md#stdfile
+[file-metadata]: ../decisions/0060-opened-object-file-metadata.md
+[file-ownership]: ../decisions/0055-result-owned-file-handles-and-repeatable-close.md
+[file-positioning]: ../decisions/0057-native-append-and-cursor-independent-file-io.md
+[file-sync]: ../decisions/0058-minimum-file-synchronization-guarantees.md
+[file-widths]: ../decisions/0062-wide-file-extents-and-bounded-transfers.md
 [filesystem-contract]: filesystem.md
 [filesystem-identity]: ../decisions/0047-followed-native-filesystem-identity.md
 [filesystem-replacement]: ../decisions/0049-filesystem-replacement-and-no-replace-capability.md
@@ -825,6 +847,7 @@ See [l1/docs/decisions/0050-wide-time-and-monotonic-deadlines.md][time-width] an
 [filesystem-traversal]: ../decisions/0046-filesystem-paths-and-owned-directory-traversal.md
 [filesystem-width]: ../decisions/0037-wide-filesystem-metadata.md
 [os-results]: ../decisions/0045-direct-os-errors-and-io-results.md
+[stdlib-io-delivery]: ../decisions/0061-stdlib-first-io-delivery-boundary.md
 [time-sleep]: ../decisions/0051-explicit-sleep-interruption-and-restart.md
 [time-width]: ../decisions/0050-wide-time-and-monotonic-deadlines.md
 [typed-formatting]: ../decisions/0054-typed-string-formatting.md

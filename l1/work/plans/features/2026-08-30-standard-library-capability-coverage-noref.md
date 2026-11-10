@@ -17,7 +17,7 @@
 - Test modules:
   - `scripts/check_adr_impact.py`
 - Related:
-  - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
+  - `l1/work/initiatives/closed/0005-filesystem-and-stream-io.md`
   - `l1/work/initiatives/0006-process-and-host-services.md`
   - `l2/work/initiatives/0001-blocking-networking.md`
   - `l2/work/initiatives/0002-data-format-modules.md`

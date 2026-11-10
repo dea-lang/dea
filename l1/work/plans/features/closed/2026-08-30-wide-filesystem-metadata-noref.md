@@ -9,7 +9,7 @@
 - Severity: High
 - Priority: 1
 - Stage: L1
-- Parent Initiative: `l1/work/initiatives/0005-filesystem-and-stream-io.md`
+- Parent Initiative: `l1/work/initiatives/closed/0005-filesystem-and-stream-io.md`
 - Subsystem: Stdlib / runtime / filesystem
 - Modules:
   - `l1/compiler/shared/l1/stdlib/sys/rt.l1`
@@ -23,7 +23,7 @@
   - `l1/compiler/stage1_l0/tests/io_runtime_test.py`
   - `l1/compiler/stage1_l0/tests/fixtures/io_runtime/fs_metadata_main.l1`
 - Related:
-  - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
+  - `l1/work/initiatives/closed/0005-filesystem-and-stream-io.md`
 - Repro: `make -C l1 test-stage1 TESTS="io_runtime_test"`
 
 ## Summary

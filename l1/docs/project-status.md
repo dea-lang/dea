@@ -55,11 +55,11 @@ Source development follows a finite stabilization target for compilers and tools
 implemented in `std.bytes`, and semantic dependency discovery is implemented through `--scan-deps`. Typed string
 formatting is implemented through `std.format`, with explicit `Value...` arguments, structured errors, and
 locale-independent ARC string output. `std.file` implements opaque result-owned handles, direct bounded transfers, wide
-positioning, opened-object metadata, and synchronization; exhaustive native validation remains pending. Secure entropy,
-temporary objects, and shell-free processes and pipes remain planned. General streams, networking, JSON, file watching,
-concurrency, owned slices, and broader language expressiveness are deferred to L2. The current source-tree features
-below may be newer than the published L1 0.1.0 baseline; stabilization also requires public-API acceptance programs and
-fresh artifact validation.
+positioning, opened-object metadata, and synchronization; native CI passed on all four supported platforms. Secure
+entropy, temporary objects, and shell-free processes and pipes remain planned. General streams, networking, JSON, file
+watching, concurrency, owned slices, and broader language expressiveness are deferred to L2. The current source-tree
+features below may be newer than the published L1 0.1.0 baseline; stabilization also requires public-API acceptance
+programs and fresh artifact validation.
 
 ## Current Status
 

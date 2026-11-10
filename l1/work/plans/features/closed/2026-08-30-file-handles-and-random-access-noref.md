@@ -2,14 +2,14 @@
 
 ## Add file handles and complete file I/O
 
-- Date: 2026-08-30
+- Date: 2026-11-10
 - Last reviewed: 2026-11-10
-- Status: In progress
+- Status: Completed
 - Title: Add opaque file handles, incremental transfers, random access, and synchronization
 - Kind: Feature
 - Priority: High
 - Stdlib Tier: 1
-- Parent Initiative: `l1/work/initiatives/0005-filesystem-and-stream-io.md`
+- Parent Initiative: `l1/work/initiatives/closed/0005-filesystem-and-stream-io.md`
 - Subsystem: Stdlib / runtime / filesystem I/O
 - Modules:
   - `l1/compiler/shared/l1/stdlib/std/file.l1`
@@ -28,18 +28,18 @@
   - `l1/compiler/scripts/test_runner_common.py`
   - `l1/compiler/tests/l1c_child_trace_runner_test.py`
 - Related:
-  - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
+  - `l1/work/initiatives/closed/0005-filesystem-and-stream-io.md`
   - `l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md`
   - `l1/work/plans/features/closed/2026-08-30-dynamic-byte-buffers-noref.md`
 - Repro: From `l1/`, run `make test-compiler TESTS="file_runtime_test.py runtime_symbol_manifest_test.py"`.
 
 ## Summary
 
-Add the first stateful file API to L1. `std.file` owns opaque file handles and exposes incremental sequential I/O,
-64-bit positioning, positional I/O, append, truncate, flush, and durability requests through structured results.
+Implemented the first stateful file API in L1. `std.file` owns opaque file handles and exposes incremental sequential
+I/O, 64-bit positioning, positional I/O, append, truncate, flush, and durability requests through structured results.
 
-The ownership and I/O choices below are implemented and local validation has passed. The plan remains open for
-exhaustive native CI evidence and the corresponding ADR closure records.
+The ownership and I/O choices below are implemented and recorded in six accepted ADRs. Local validation and native CI on
+all four supported platforms passed; the plan is complete.
 
 ## Stdlib-First Direction and Reference Material
 
@@ -85,8 +85,8 @@ starts, lengths, and per-call counts are `int`; file sizes, positions, and posit
 
 The result-level owner follows
 [l1/docs/decisions/0046-filesystem-paths-and-owned-directory-traversal.md][directory-ownership]. The separate public
-close operation and saved close outcome are deliberate file-specific choices. Record these decisions in a new L1 ADR
-when implementation closes this plan.
+close operation and saved close outcome are deliberate file-specific choices recorded in
+[l1/docs/decisions/0055-result-owned-file-handles-and-repeatable-close.md][file-ownership].
 
 ## Required Semantics
 
@@ -113,7 +113,7 @@ when implementation closes this plan.
    replacing that path cannot redirect the query to another object. Reuse the path-level metadata record and preserve
    unavailable-field and host-error distinctions.
 
-## Implementation and Local Verification
+## Implementation and Verification
 
 Implemented `std.file`, its `sys.fs` transports, and synchronous checked buffer bridges without returning storage views.
 The native implementation shares existing filesystem path/error helpers in the I/O translation unit. POSIX uses native
@@ -155,12 +155,16 @@ checks successfully.
 Windows fixtures check both handles for disabled inheritance, non-seekable `NUL` operations, captured Win32 domains and
 codes, real overlapped partial completions followed by injected terminal errors, and first-error preservation when both
 native closes fail. The same injected public-API fixture is selected on Windows and POSIX; Windows no longer skips
-failure coverage. These conditional branches await native Windows CI and are not claimed as locally executed.
+failure coverage. Native Windows CI passed with these conditional branches enabled.
 
-Remaining CI work: `make test-extended` / `make test-ci`, exhaustive traces and children, and native Linux x86_64, macOS
-ARM, and Windows UCRT64 execution. These longer gates were deliberately left to CI. Windows API review and conditional
-fixtures do not establish native Windows execution. Close this plan and record its atomic ADR decisions only after the
-remaining evidence is available.
+On 2026-11-10, Unified CI passed L1 `make test-ci` on Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64. This
+covers the complete normal suite including CI-only cases, environment/bootstrap checks, default compiler traces, and
+child fixtures. Repository checks and L1 Validate Documentation also passed, including strict reference generation with
+full PDF and a verified documentation bundle. Fresh installed-artifact acceptance remains a separate L1 stabilization
+gate.
+
+All verification criteria are satisfied. The ADRs below preserve the six architectural decisions, and the completed
+parent initiative records the shared delivery and width boundaries.
 
 ## Non-Goals
 
@@ -178,38 +182,38 @@ remaining evidence is available.
 - Decision: Use result-owned file wrappers with separate close/destruction and a repeatable first close outcome.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0055-result-owned-file-handles-and-repeatable-close.md`
   - Rationale: Result-level cleanup establishes one owner before fallible work, while a live closed wrapper preserves
     error inspection and defined post-close behavior until final destruction.
 - Decision: Use direct native file I/O without library buffering and make flush a live-handle check.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0056-direct-file-io-and-flush-liveness.md`
   - Rationale: Native operations support positional access, append, partial-transfer reporting, and future process
     routing without a second buffering state to coordinate.
 - Decision: Preserve native append and cursor-independent positional I/O by rejecting positional writes on append
   handles.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0057-native-append-and-cursor-independent-file-io.md`
   - Rationale: Host append descriptors do not uniformly honor positional-write offsets; rejecting the combination keeps
     both public contracts portable without promising whole-operation append atomicity.
 - Decision: Define data and full synchronization as minimum guarantees that permit stronger host operations.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0058-minimum-file-synchronization-guarantees.md`
   - Rationale: Hosts without separate data-only synchronization can satisfy the request through full synchronization;
     lack of the minimum guarantee remains observable rather than a silent success.
 - Decision: Transfer only within pre-sized byte-buffer ranges without changing logical size or exposing storage.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0059-presized-byte-buffer-file-transfers.md`
   - Rationale: Explicit sizing separates allocation from I/O and makes partial progress and destination contents
     predictable across EOF, interruption, and failure.
 - Decision: Bind file metadata queries to the opened object independently of later path replacement.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0060-opened-object-file-metadata.md`
   - Rationale: Consumers need metadata for the object they actually opened; repeating a path lookup can inspect a
     different object and cannot provide that contract.
 
@@ -234,9 +238,10 @@ remaining evidence is available.
 09. `flush` performs no durability request and rejects a closed handle. Verify stronger `sync_data` fallbacks, full-sync
     requests, and unsupported minimum guarantees independently of host timing.
 10. Exercise actual `.l1` consumers and resource traces on Linux x86_64, macOS Intel/ARM, and Windows UCRT64. Record
-    unavailable native evidence separately from simulated platform checks; local evidence is recorded above and the
-    remaining native CI gate is open.
+    unavailable native evidence separately from simulated platform checks. Local evidence and successful native CI on
+    all four platforms are recorded above.
 
-[directory-ownership]: ../../../docs/decisions/0046-filesystem-paths-and-owned-directory-traversal.md
-[io-results]: ../../../docs/decisions/0045-direct-os-errors-and-io-results.md
-[platform-support]: ../../../compiler/support/preparation/platform.h
+[directory-ownership]: ../../../../docs/decisions/0046-filesystem-paths-and-owned-directory-traversal.md
+[file-ownership]: ../../../../docs/decisions/0055-result-owned-file-handles-and-repeatable-close.md
+[io-results]: ../../../../docs/decisions/0045-direct-os-errors-and-io-results.md
+[platform-support]: ../../../../compiler/support/preparation/platform.h

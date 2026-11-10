@@ -124,7 +124,7 @@ Spawned plan: [time width, sleep, and deadlines].
 
 ## References
 
-[initiative 0005]: 0005-filesystem-and-stream-io.md
+[initiative 0005]: closed/0005-filesystem-and-stream-io.md
 [l1 roadmap]: ../../docs/roadmap.md
 [process spawning and anonymous pipes]: ../plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md
 [secure os entropy]: ../plans/features/2026-08-30-secure-os-entropy-noref.md

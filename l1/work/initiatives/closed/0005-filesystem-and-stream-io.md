@@ -1,11 +1,11 @@
 # L1 Initiative 0005 - Filesystem and Stream I/O
 
 - Version: 2026-11-10
-- Status: Active
+- Status: Completed
 - Kind: Initiative
-- Open plans:
-  - `l1/work/plans/features/2026-08-30-file-handles-and-random-access-noref.md`
+- Open plans: (none)
 - Closed plans:
+  - `l1/work/plans/features/closed/2026-08-30-file-handles-and-random-access-noref.md`
   - `l1/work/plans/features/closed/2026-08-30-dynamic-byte-buffers-noref.md`
   - `l1/work/plans/features/closed/2026-08-30-filesystem-mutations-and-directory-traversal-noref.md`
   - `l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md`
@@ -21,6 +21,14 @@ design are now L2-owned and do not gate this initiative.
 The target is portable systems capability with typed Dea APIs and platform-specific behavior contained behind the
 runtime boundary. It is not a literal mirror of C99 or of any one host API. This initiative executes under the
 [L1 roadmap].
+
+## Completion
+
+All owned plans are complete. L1 now provides direct OS errors and transfer results, wide filesystem metadata, owned
+dynamic byte buffers, path mutations and directory traversal, and opaque stateful file handles. Unified CI passed L1
+`make test-ci` on Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64 on 2026-11-10; strict L1 documentation
+validation also passed. The ADR Impact records below capture the delivery, width, ownership, transfer, and native-I/O
+decisions. Compiler migration and fresh installed-artifact acceptance remain separate work.
 
 ## Stdlib-first delivery and compiler follow-up
 
@@ -41,7 +49,8 @@ shared-private-code extraction are not completion requirements for this initiati
 - `std.io` exposes standard-stream byte transfers whose buffer indexes and counts are `int`. Additive result helpers use
   shared `std.os` errors and distinguish EOF, timeout, failure, and successful partial transfer.
 - `std.file` provides opaque result-owned handles with direct transfers, `long` offsets, opened-object metadata,
-  explicit close/destruction, and native synchronization. Exhaustive native validation remains pending.
+  explicit close/destruction, and native synchronization. Native CI passed on all four supported platforms; the file
+  plan and its architectural decision records are complete.
 - `std.fs::FileInfo` and `sys.rt::RtFileInfo` use `long?` for file size and modification seconds; normalized nanoseconds
   remain `int?`.
 - Whole-file helpers are necessarily bounded by the `int` length of a Dea string.
@@ -75,7 +84,7 @@ shared-private-code extraction are not completion requirements for this initiati
 - Define `ErrorKind`, `OsError`, direct native-code preservation, and operation-specific result enums.
 - Widen file size and modification seconds to `long?` without changing whole-file helper bounds.
 - Wide metadata and the direct-error foundation are complete, with standard streams as the first error consumer. Opening
-  results and file-handle ownership remain in Phase 2.
+  results and file-handle ownership are specified in Phase 2.
 
 Spawned plans: [OS errors and I/O results] and [wide filesystem metadata].
 
@@ -86,15 +95,17 @@ Spawned plans: [OS errors and I/O results] and [wide filesystem metadata].
 
 Closed plan: [dynamic byte buffers].
 
-### Phase 2 - File handles and complete file I/O (Stdlib Tier 1, implemented; native CI pending)
+### Phase 2 - File handles and complete file I/O (Stdlib Tier 1, complete)
 
-- Implement open/close, partial and exact/all transfers, wide seek/position, cursor-preserving positional I/O, native
+- Delivered open/close, partial and exact/all transfers, wide seek/position, cursor-preserving positional I/O, native
   append, truncate, no-buffer flush, and data/full synchronization.
-- Query metadata through the opened file rather than looking up its original path again.
-- Preserve the first close outcome while the wrapper is live; consume the result-level owner exactly once at cleanup.
-- Complete exhaustive native CI validation before closing the file plan and this initiative.
+- Metadata describes the opened file independently of its original path.
+- The first close outcome remains available while the wrapper is live; result-level cleanup consumes the owner exactly
+  once.
+- Native CI passed on Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64. The atomic ADR decisions are recorded
+  below.
 
-Spawned plan: [file handles and random access].
+Closed plan: [file handles and random access].
 
 ### Phase 3 - Path mutations and directory traversal (Stdlib Tier 1, complete)
 
@@ -132,14 +143,14 @@ Closed plan: [filesystem mutations and directory traversal].
   removing superseded private helpers.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0061-stdlib-first-io-delivery-boundary.md`
   - Rationale: Public error, encoding, identity, and ownership contracts must govern the library implementation; private
     compiler ABIs are reference material, and compiler adoption must not gate stdlib completion.
 - Decision: Use `long` for persistent filesystem extents, positions, offsets, and timestamp seconds while retaining
   `int` for in-memory lengths, indexes, and individual transfer counts.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0062-wide-file-extents-and-bounded-transfers.md`
   - Rationale: L1 has native 64-bit integers, file extents are independent of container length, and no prior L0
     file-handle ABI requires 32-bit compatibility.
 - Decision: Use direct operation-specific results with normalized OS errors, explicit EOF, and successful partial
@@ -152,44 +163,44 @@ Closed plan: [filesystem mutations and directory traversal].
 - Decision: Use result-owned file wrappers with separate close/destruction and a repeatable first close outcome.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0055-result-owned-file-handles-and-repeatable-close.md`
   - Rationale: Result cleanup establishes one owner, while a live closed wrapper preserves error inspection until final
     destruction.
 - Decision: Use direct native file I/O without library buffering and make flush a live-handle check.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0056-direct-file-io-and-flush-liveness.md`
   - Rationale: Native operations support partial and positional transfers without a second buffering state.
 - Decision: Preserve native append and cursor-independent positional I/O by rejecting positional writes on append
   handles.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0057-native-append-and-cursor-independent-file-io.md`
   - Rationale: Host append operations do not uniformly honor positional offsets; rejecting the combination retains both
     portable contracts.
 - Decision: Define data and full synchronization as minimum guarantees that permit stronger host operations.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0058-minimum-file-synchronization-guarantees.md`
   - Rationale: Stronger native synchronization can satisfy a missing data-only operation, while an unavailable minimum
     remains observable.
 - Decision: Transfer only within pre-sized byte-buffer ranges without changing logical size or exposing storage.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0059-presized-byte-buffer-file-transfers.md`
   - Rationale: Explicit sizing separates allocation from I/O and preserves bounded progress reporting on terminal
     outcomes.
 - Decision: Bind file metadata queries to the opened object independently of later path replacement.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0060-opened-object-file-metadata.md`
   - Rationale: A path lookup can observe a replacement object and cannot establish the opened object's metadata.
 
 ## References
 
-[dynamic byte buffers]: ../plans/features/closed/2026-08-30-dynamic-byte-buffers-noref.md
-[file handles and random access]: ../plans/features/2026-08-30-file-handles-and-random-access-noref.md
-[filesystem mutations and directory traversal]: ../plans/features/closed/2026-08-30-filesystem-mutations-and-directory-traversal-noref.md
-[l1 roadmap]: ../../docs/roadmap.md
-[os errors and i/o results]: ../plans/features/closed/2026-08-30-os-error-and-io-results-noref.md
-[wide filesystem metadata]: ../plans/features/closed/2026-08-30-wide-filesystem-metadata-noref.md
+[dynamic byte buffers]: ../../plans/features/closed/2026-08-30-dynamic-byte-buffers-noref.md
+[file handles and random access]: ../../plans/features/closed/2026-08-30-file-handles-and-random-access-noref.md
+[filesystem mutations and directory traversal]: ../../plans/features/closed/2026-08-30-filesystem-mutations-and-directory-traversal-noref.md
+[l1 roadmap]: ../../../docs/roadmap.md
+[os errors and i/o results]: ../../plans/features/closed/2026-08-30-os-error-and-io-results-noref.md
+[wide filesystem metadata]: ../../plans/features/closed/2026-08-30-wide-filesystem-metadata-noref.md

@@ -1,7 +1,7 @@
 # ADR-0047: Followed Native Filesystem Identity
 
 - Decision date: 2026-10-24
-- Last edited: 2026-10-24
+- Last edited: 2026-11-10
 - Status: Accepted
 
 ## Context
@@ -31,7 +31,7 @@ operation.
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-08-30-filesystem-mutations-and-directory-traversal-noref.md][filesystem-plan]
-- [l1/work/initiatives/0005-filesystem-and-stream-io.md][filesystem-io]
+- [l1/work/initiatives/closed/0005-filesystem-and-stream-io.md][filesystem-io]
 
 ## Current Docs
 
@@ -39,6 +39,6 @@ operation.
 - [l1/docs/reference/standard-library.md][stdlib]
 
 [filesystem]: ../reference/filesystem.md
-[filesystem-io]: ../../work/initiatives/0005-filesystem-and-stream-io.md
+[filesystem-io]: ../../work/initiatives/closed/0005-filesystem-and-stream-io.md
 [filesystem-plan]: ../../work/plans/features/closed/2026-08-30-filesystem-mutations-and-directory-traversal-noref.md
 [stdlib]: ../reference/standard-library.md

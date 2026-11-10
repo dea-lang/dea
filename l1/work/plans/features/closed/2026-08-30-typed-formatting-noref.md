@@ -20,7 +20,7 @@
   - `l1/compiler/tests/l1c_child_trace_runner_test.py`
 - Related:
   - `l1/work/plans/features/closed/2026-04-22-variadic-functions-noref.md`
-  - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
+  - `l1/work/initiatives/closed/0005-filesystem-and-stream-io.md`
 - Repro: `make -C l1 test-compiler TESTS="format_test diag_print_test analysis_trace_test"`
 
 ## Summary

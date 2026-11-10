@@ -26,7 +26,7 @@
   - `l2/compiler/tests/analysis_trace_test.l1`
 - Related:
   - `l2/work/initiatives/0001-blocking-networking.md`
-  - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
+  - `l1/work/initiatives/closed/0005-filesystem-and-stream-io.md`
   - `l1/work/plans/features/closed/2026-08-30-time-width-sleep-and-deadlines-noref.md`
 - Repro: `make -C l2 test-compiler TESTS="net_runtime_test analysis_trace_test"`
 

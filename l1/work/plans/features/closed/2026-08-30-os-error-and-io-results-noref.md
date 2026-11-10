@@ -9,7 +9,7 @@
 - Kind: Feature
 - Priority: High
 - Stdlib Tier: 1
-- Parent Initiative: `l1/work/initiatives/0005-filesystem-and-stream-io.md`
+- Parent Initiative: `l1/work/initiatives/closed/0005-filesystem-and-stream-io.md`
 - Subsystem: Stdlib / runtime / standard-stream I/O
 - Modules:
   - `l1/compiler/shared/l1/stdlib/std/os.l1`
@@ -28,7 +28,7 @@
   - `l1/compiler/tests/l1c_child_trace_runner_test.py`
   - `l1/compiler/tests/l1c_managed_preparation_test.py`
 - Related:
-  - [l1/work/initiatives/0005-filesystem-and-stream-io.md][filesystem-io]
+  - [l1/work/initiatives/closed/0005-filesystem-and-stream-io.md][filesystem-io]
   - [l1/docs/reference/standard-library.md][stdlib]
   - [l1/docs/decisions/0045-direct-os-errors-and-io-results.md][os-results]
 - Repro:
@@ -156,6 +156,6 @@ Native validation used macOS Intel with `/usr/bin/clang`, Apple Clang 17 (`clang
 - Win32 numeric mappings and diagnostic fallbacks passed simulated checks. Native Linux, macOS ARM, and Windows,
   including Windows message rendering, remain unverified in this local run.
 
-[filesystem-io]: ../../../initiatives/0005-filesystem-and-stream-io.md
+[filesystem-io]: ../../../initiatives/closed/0005-filesystem-and-stream-io.md
 [os-results]: ../../../../docs/decisions/0045-direct-os-errors-and-io-results.md
 [stdlib]: ../../../../docs/reference/standard-library.md

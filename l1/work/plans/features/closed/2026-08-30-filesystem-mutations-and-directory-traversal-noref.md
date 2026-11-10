@@ -9,7 +9,7 @@
 - Kind: Feature
 - Priority: High
 - Stdlib Tier: 1
-- Parent Initiative: `l1/work/initiatives/0005-filesystem-and-stream-io.md`
+- Parent Initiative: `l1/work/initiatives/closed/0005-filesystem-and-stream-io.md`
 - Subsystem: Stdlib / runtime / filesystem
 - Modules:
   - `l1/compiler/shared/l1/stdlib/std/fs.l1`

@@ -9,7 +9,7 @@
 - Kind: Feature
 - Priority: High
 - Stdlib Tier: 1
-- Parent Initiative: `l1/work/initiatives/0005-filesystem-and-stream-io.md`
+- Parent Initiative: `l1/work/initiatives/closed/0005-filesystem-and-stream-io.md`
 - Subsystem: Stdlib / containers / binary I/O
 - Modules:
   - `l1/compiler/shared/l1/stdlib/std/bytes.l1`
@@ -21,7 +21,7 @@
   - `l1/compiler/scripts/test_runner_common.py`
   - `l1/tests/test_compiler_tooling.py`
 - Related:
-  - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
+  - `l1/work/initiatives/closed/0005-filesystem-and-stream-io.md`
   - `l1/work/initiatives/closed/0004-array-primitives-and-unsafe-marker.md`
   - `l1/work/plans/bug-fixes/closed/2026-10-29-borrowed-slice-escape-noref.md`
 

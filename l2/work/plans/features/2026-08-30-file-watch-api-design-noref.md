@@ -17,7 +17,7 @@
 - Test modules:
   - `l2/compiler/tests/file_watch_runtime_test.l1`
 - Related:
-  - `l1/work/initiatives/0005-filesystem-and-stream-io.md`
+  - `l1/work/initiatives/closed/0005-filesystem-and-stream-io.md`
   - `l2/docs/roadmap.md`
 - Repro: `rg -n "File-watch|File watch|watch" l2/docs l2/work`
 

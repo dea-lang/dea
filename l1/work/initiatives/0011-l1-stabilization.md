@@ -24,7 +24,7 @@ membership entries. Compiler migration away from private native helpers is separ
 | Gate                                            | Owning work                                                                                 | Status                                              |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------- |
 | Borrowed-slice safety                           | [l1/work/plans/bug-fixes/closed/2026-10-29-borrowed-slice-escape-noref.md][slices]          | Complete; native CI passed on all four platforms    |
-| Dynamic byte buffers and files                  | [l1/work/initiatives/0005-filesystem-and-stream-io.md][files]                               | Implemented; file native CI validation pending      |
+| Dynamic byte buffers and files                  | [l1/work/initiatives/closed/0005-filesystem-and-stream-io.md][files]                        | Complete; native CI passed on all four platforms    |
 | Entropy, temporary objects, processes and pipes | [l1/work/initiatives/0006-process-and-host-services.md][process]                            | Planned                                             |
 | Typed string formatting                         | [l1/work/plans/features/closed/2026-08-30-typed-formatting-noref.md][format]                | Complete                                            |
 | Semantic dependency discovery                   | [l1/work/initiatives/0010-explicit-profiles-and-composable-builds.md][profiles]             | Implemented; exhaustive platform validation pending |
@@ -35,8 +35,8 @@ membership entries. Compiler migration away from private native helpers is separ
 ## Delivery sequence
 
 1. Record the boundary and correct borrowed-slice escapes in L1 (complete).
-2. Opaque byte buffers are complete and file handles are implemented. Finish file native CI validation and deliver
-   entropy, then temporary objects and process/pipe support.
+2. Opaque byte buffers and file handles are complete, with native CI passed on all four platforms. Deliver entropy, then
+   temporary objects and process/pipe support.
 3. Typed string formatting and semantic dependency discovery are implemented. Complete the dependency-discovery
    initiative's required exhaustive native-platform validation.
 4. Exercise source indexing, explicit child execution with file-routed capture, and bounded-memory binary copying.
@@ -67,7 +67,7 @@ do not reopen this stabilization target automatically.
 [acceptance]: ../plans/features/2026-10-29-stabilization-acceptance-programs-noref.md
 [boundary]: ../../../work/plans/features/closed/2026-10-29-l1-stabilization-boundary-noref.md
 [coverage]: ../plans/features/2026-08-30-standard-library-capability-coverage-noref.md
-[files]: 0005-filesystem-and-stream-io.md
+[files]: closed/0005-filesystem-and-stream-io.md
 [format]: ../plans/features/closed/2026-08-30-typed-formatting-noref.md
 [process]: 0006-process-and-host-services.md
 [profiles]: 0010-explicit-profiles-and-composable-builds.md

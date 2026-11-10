@@ -1,7 +1,7 @@
 # ADR-0045: Direct OS Errors and I/O Results
 
 - Decision date: 2026-10-21
-- Last edited: 2026-10-21
+- Last edited: 2026-11-10
 - Status: Accepted
 
 ## Context
@@ -54,7 +54,7 @@ error foundation to pending file-handle or stream-adapter lifetime decisions.
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md][os-errors]
-- [l1/work/initiatives/0005-filesystem-and-stream-io.md][filesystem-io]
+- [l1/work/initiatives/closed/0005-filesystem-and-stream-io.md][filesystem-io]
 
 ## Current Docs
 
@@ -63,7 +63,7 @@ error foundation to pending file-handle or stream-adapter lifetime decisions.
 - [l1/docs/project-status.md][status]
 
 [design]: ../reference/design-decisions.md
-[filesystem-io]: ../../work/initiatives/0005-filesystem-and-stream-io.md
+[filesystem-io]: ../../work/initiatives/closed/0005-filesystem-and-stream-io.md
 [os-errors]: ../../work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md
 [status]: ../project-status.md
 [stdlib]: ../reference/standard-library.md
