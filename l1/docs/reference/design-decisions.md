@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-11-10
+Version: 2026-11-11
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -808,6 +808,7 @@ bounds and result counts in every runtime mode, but pointer lifetime, no-escape,
 pairing remain manual contracts. Diagnostic integer fields have action-specific meanings without a protocol-domain
 token. Private file callbacks own native calls and conversion, so the buffer module has no I/O dependency and dispatch
 adds no per-transfer context or result allocation. Existing native resource costs remain separate from that guarantee.
+See [l1/docs/decisions/0063-synchronous-byte-buffer-range-actions.md][buffer-range-actions].
 
 The native file API has no library buffer: `flush` only validates liveness. `sync_data` and `sync_all` request minimum
 data and metadata guarantees and may use stronger host synchronization. An unavailable minimum is `Unsupported`. Native
@@ -837,6 +838,7 @@ source falls back to wall time. Scheduler latency has no hard upper bound.
 See [l1/docs/decisions/0050-wide-time-and-monotonic-deadlines.md][time-width] and
 [l1/docs/decisions/0051-explicit-sleep-interruption-and-restart.md][time-sleep].
 
+[buffer-range-actions]: ../decisions/0063-synchronous-byte-buffer-range-actions.md
 [byte-buffer-decision]: ../decisions/0052-owned-dynamic-byte-buffers.md
 [byte-buffer-library]: standard-library.md#stdbytes
 [file-buffers]: ../decisions/0059-presized-byte-buffer-file-transfers.md

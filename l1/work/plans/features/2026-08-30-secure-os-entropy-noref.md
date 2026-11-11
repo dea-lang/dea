@@ -26,7 +26,7 @@
 - Related:
   - `l1/work/initiatives/0006-process-and-host-services.md`
   - `l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md`
-  - [l1/work/plans/refactors/2026-11-10-byte-buffer-range-actions-noref.md][range-actions]
+  - [l1/work/plans/refactors/closed/2026-11-10-byte-buffer-range-actions-noref.md][range-actions]
 - Repro: After integration, from `l1/`, `make test-compiler TESTS="entropy_runtime_test.py"`; focused child traces and
   allocation checks follow the validation requirements below.
 
@@ -35,12 +35,11 @@
 Add `std.entropy` for bytes supplied by the operating system. It is separate from deterministic `std.rand`, reports host
 failure directly, and never substitutes a predictable generator when secure entropy is unavailable.
 
-The preliminary implementation remains unmerged and unfinished. Resume entropy work only after the range protocol and
-file migration in [l1/work/plans/refactors/2026-11-10-byte-buffer-range-actions-noref.md][range-actions] are implemented
-and validated, with that foundation available in entropy's integration base. Retain the preliminary native work as
-input, then adapt it to the completed synchronous range API: `std.bytes` checks logical bounds and dispatches the
-callback, while `std.entropy` owns the native call and result conversion. Remove the preliminary `_bytes_entropy_fill`
-bridge; do not integrate OS operations into `std.bytes`.
+The range protocol and file migration are implemented, validated, and closed in
+[l1/work/plans/refactors/closed/2026-11-10-byte-buffer-range-actions-noref.md][range-actions]. Bring that foundation
+into entropy's integration base before resuming this feature. Adapt the entropy provider to the synchronous range API:
+`std.bytes` checks logical bounds and dispatches the callback, while `std.entropy` owns the native call and result
+conversion. No entropy-specific bridge or native OS operation belongs in `std.bytes`.
 
 The dependency is one-way: this feature consumes the range protocol, and its implementation, validation, and closure
 must not become prerequisites of the protocol refactor.
@@ -171,4 +170,4 @@ platform checks in CI. Earlier prototype results do not validate the adapted imp
 6. `fill` uses the generic range protocol without per-transfer context/result allocations or OS calls in `std.bytes`;
    `random_bytes` retains its intentional result-buffer allocation and failure cleanup.
 
-[range-actions]: ../refactors/2026-11-10-byte-buffer-range-actions-noref.md
+[range-actions]: ../refactors/closed/2026-11-10-byte-buffer-range-actions-noref.md

@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-11-10
+Version: 2026-11-11
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -451,12 +451,12 @@ file-watch design, and concurrency now belong to L2.
   scoped Apple Clang discovery batching on macOS, and debug warm-build attribution. Container reuse remained research;
   SHA-256 candidates did not meet the consumer/integration gates, so the portable backend remains unchanged.
 
-## Active standalone plans
+- Refactor [l1/work/plans/refactors/closed/2026-11-10-byte-buffer-range-actions-noref.md][buffer-range-actions]
+  implements synchronous unsafe range callbacks and file-owned adapters with by-value context/results. Focused checks,
+  allocation traces, and CI passed. ADR-0063 records the protocol, with buffer and file-transfer decisions in
+  ADR-0052/0059. Entropy adoption remains separate.
 
-- Refactor [l1/work/plans/refactors/2026-11-10-byte-buffer-range-actions-noref.md][buffer-range-actions] implements
-  synchronous unsafe range callbacks and file-owned adapters with by-value context/results. Focused local checks and
-  allocation traces passed; native CI and final ADR closure remain pending. Entropy is still deferred until the protocol
-  foundation is available in its integration base. The refactor completes independently of entropy.
+## Active standalone plans
 
 - Feature [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] is the
   Stdlib Tier 2 audit that records portable systems capability and C99-family coverage without promising literal C99 API
@@ -469,14 +469,13 @@ Readiness is independent of lifecycle status. `ready` means implementation can b
 immediate prerequisite remains; `not-ready` means required foundations have not landed; `speculative` means unresolved
 design investigation. `implemented` means implementation is present but the plan still has validation or closure work.
 
-| Readiness   | Plan                                                                                               | Remaining gate                                                                    |
-| ----------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| implemented | [l1/work/plans/refactors/2026-11-10-byte-buffer-range-actions-noref.md][buffer-range-actions]      | Focused local checks passed; native CI and final ADR closure remain.              |
-| not-ready   | [l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][plan-entropy]                       | Deferred until the validated range protocol is available in its integration base. |
-| not-ready   | [l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md][plan-temp]     | Entropy remains unimplemented; file handles passed native CI.                     |
-| ready       | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied.                         |
-| not-ready   | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                                             |
-| not-ready   | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.                               |
+| Readiness    | Plan                                                                                               | Remaining gate                                                             |
+| ------------ | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| almost-ready | [l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][plan-entropy]                       | Protocol validated and closed; bring it into the entropy integration base. |
+| not-ready    | [l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md][plan-temp]     | Entropy remains unimplemented; file handles passed native CI.              |
+| ready        | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied.                  |
+| not-ready    | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                                      |
+| not-ready    | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.                        |
 
 The [work/plans/features/closed/2026-10-29-l1-stabilization-boundary-noref.md][boundary-plan] coordinates plan ownership
 and roadmap changes.
@@ -579,7 +578,7 @@ update to be promoted to an initiative or plan:
 [blocking-networking]: ../../l2/work/initiatives/0001-blocking-networking.md
 [bootstrap-productization]: ../work/plans/tools/closed/2026-04-02-l1-bootstrap-productization-noref.md
 [boundary-plan]: ../../work/plans/features/closed/2026-10-29-l1-stabilization-boundary-noref.md
-[buffer-range-actions]: ../work/plans/refactors/2026-11-10-byte-buffer-range-actions-noref.md
+[buffer-range-actions]: ../work/plans/refactors/closed/2026-11-10-byte-buffer-range-actions-noref.md
 [build-run]: ../work/plans/features/closed/2026-07-17-build-run-multi-cu-orchestration-noref.md
 [c-ffi]: ../work/initiatives/0003-c-ffi.md
 [case-builtin-literals]: ../work/plans/bug-fixes/closed/2026-06-08-stage1-case-builtin-literal-support-noref.md

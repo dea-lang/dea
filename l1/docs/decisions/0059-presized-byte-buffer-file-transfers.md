@@ -1,7 +1,7 @@
 # ADR-0059: Pre-Sized Byte-Buffer File Transfers
 
 - Decision date: 2026-11-10
-- Last edited: 2026-11-10
+- Last edited: 2026-11-11
 - Status: Accepted
 
 ## Context
@@ -23,6 +23,9 @@ synchronous call and neither return nor retain a pointer or view. The buffer mod
 and has no I/O dependency. Native calls and explicit conversion belong to `std.file`; context and results pass by value
 without per-transfer heap allocation. Callback dispatch still occurs for valid empty ranges, preserving native
 validation. Public file operations do not grow buffers automatically.
+
+The generic transport and the distinction between action schemas and native OS error domains are recorded in
+[l1/docs/decisions/0063-synchronous-byte-buffer-range-actions.md][range-actions].
 
 Single-attempt operations preserve successful partial counts, explicit EOF, timeout, and captured failure. Valid
 zero-length sequential transfers on a live handle succeed without probing EOF; positional operations still enforce their
@@ -47,6 +50,7 @@ for the complete file.
 
 - [l1/work/plans/features/closed/2026-08-30-file-handles-and-random-access-noref.md][file-plan]
 - [l1/work/initiatives/closed/0005-filesystem-and-stream-io.md][filesystem-io]
+- [l1/work/plans/refactors/closed/2026-11-10-byte-buffer-range-actions-noref.md][range-plan]
 
 ## Current Docs
 
@@ -58,4 +62,6 @@ for the complete file.
 [file-plan]: ../../work/plans/features/closed/2026-08-30-file-handles-and-random-access-noref.md
 [filesystem]: ../reference/filesystem.md
 [filesystem-io]: ../../work/initiatives/closed/0005-filesystem-and-stream-io.md
+[range-actions]: 0063-synchronous-byte-buffer-range-actions.md
+[range-plan]: ../../work/plans/refactors/closed/2026-11-10-byte-buffer-range-actions-noref.md
 [stdlib]: ../reference/standard-library.md

@@ -31,6 +31,9 @@ through any alias. The helper checks returned progress and preserves logical siz
 statically enforces the borrow contract. String conversion is explicit copying in both directions and preserves embedded
 NUL and non-UTF-8 bytes without validation.
 
+The callback protocol and its allocation boundary are recorded in
+[l1/docs/decisions/0063-synchronous-byte-buffer-range-actions.md][range-actions].
+
 ## Rationale
 
 An opaque API preserves length and capacity invariants without exposing `VectorBase` or introducing a new owned-slice
@@ -50,6 +53,7 @@ available. Provider modules use the unsafe callback boundary without returning v
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-08-30-dynamic-byte-buffers-noref.md][buffer-plan]
+- [l1/work/plans/refactors/closed/2026-11-10-byte-buffer-range-actions-noref.md][range-plan]
 
 ## Current Docs
 
@@ -58,4 +62,6 @@ available. Provider modules use the unsafe callback boundary without returning v
 
 [buffer-plan]: ../../work/plans/features/closed/2026-08-30-dynamic-byte-buffers-noref.md
 [ownership]: ../reference/ownership.md
+[range-actions]: 0063-synchronous-byte-buffer-range-actions.md
+[range-plan]: ../../work/plans/refactors/closed/2026-11-10-byte-buffer-range-actions-noref.md
 [stdlib]: ../reference/standard-library.md

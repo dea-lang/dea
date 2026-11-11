@@ -2,8 +2,8 @@
 
 ## Decouple byte-buffer range actions from file I/O
 
-- Date: 2026-11-10
-- Status: In Progress
+- Date: 2026-11-11
+- Status: Completed
 - Title: Keep byte-buffer range dispatch independent of I/O without per-transfer allocations
 - Kind: Refactor
 - Priority: Medium
@@ -11,10 +11,11 @@
 - Modules:
   - `l1/compiler/shared/l1/stdlib/std/bytes.l1`
   - `l1/compiler/shared/l1/stdlib/std/file.l1`
-  - `l1/compiler/shared/l1/stdlib/std/os.l1` (conversion reuse, only if needed)
 - Test modules:
-  - `l1/compiler/tests/byte_buffer_range_action_test.py` (new)
-  - `l1/compiler/tests/fixtures/bytes/range_action_main.l1` (new)
+  - `l1/compiler/tests/byte_buffer_range_action_test.py`
+  - `l1/compiler/tests/fixtures/bytes/range_action_main.l1`
+  - `l1/compiler/tests/fixtures/bytes/range_action_allocations.l1`
+  - `l1/compiler/tests/fixtures/bytes/range_action_provider.l1`
   - `l1/compiler/tests/bytes_test.py`
   - `l1/compiler/tests/file_runtime_test.py`
   - `l1/compiler/tests/fixtures/file_runtime/`
@@ -25,6 +26,7 @@
   - [l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][entropy-plan]
   - [l1/docs/decisions/0052-owned-dynamic-byte-buffers.md][buffer-adr]
   - [l1/docs/decisions/0059-presized-byte-buffer-file-transfers.md][transfer-adr]
+  - [l1/docs/decisions/0063-synchronous-byte-buffer-range-actions.md][protocol-adr]
   - [l1/docs/reference/standard-library.md][stdlib]
   - [l1/docs/reference/ownership.md][ownership]
   - [l1/docs/reference/filesystem.md][filesystem]
@@ -40,8 +42,9 @@ allocation per transfer. The protocol is also the prerequisite for later entropy
 
 This is a standalone L1 refactor of the completed file implementation. Medium priority reflects a useful module-boundary
 improvement without a prior correctness blocker. Focused local verification and independent production/generated-C/test
-review passed. The plan remains open for native CI and final ADR/index/closure work; broad and long suites were left to
-CI. The completed filesystem initiative remains closed.
+review passed. CI passed, as confirmed by the project maintainer on 2026-11-11. ADR-0063 records the protocol, and
+ADR-0052/0059 record its buffer and file-transfer boundaries. All closure requirements are complete. The completed
+filesystem initiative remains closed; entropy retains its separate feature plan.
 
 ## ADR Impact
 
@@ -55,7 +58,7 @@ CI. The completed filesystem initiative remains closed.
   I/O-independent byte-buffer range actions.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0063-synchronous-byte-buffer-range-actions.md`
   - Rationale: Record the reusable callback boundary, absence of transport allocations, and caller responsibility for
     pairing an action with its diagnostic schema. File and entropy operations belong to their provider modules, with
     `std.bytes` interpreting no OS payloads. No protocol-domain token or global identifier namespace is needed; field
@@ -207,13 +210,13 @@ the full signed `long`. `detail` retains the native OS error domain that disting
 existing native error sources; it does not identify the callback protocol. `std.bytes` assigns no I/O meaning to this
 field. Keep native state explicitly; do not infer timeout or failure solely from an error code.
 
-Keep file callbacks and their decoders private to `std.file`, with each wrapper selecting the corresponding pair.
+File callbacks and their decoders are private to `std.file`, with each wrapper selecting the corresponding pair.
 Decoders check permitted outcome/tag combinations, null success value, and existing error invariants before adapting to
 public results. These checks validate the file schema and do not establish a result's provenance. Native terminal
-outcomes currently have zero progress; assert this before converting them into single-attempt public variants that
-cannot carry a count. Reject EOF for writes and malformed encodings instead of silently dropping information. Reuse
-existing `std.os` conversion logic where possible without making `std.bytes` depend on `std.os` or `sys.os`. Preserve
-unknown native codes and normalized `Other` errors; do not whitelist native codes or recapture ambient error state.
+outcomes have zero progress, asserted before conversion into single-attempt public variants that cannot carry a count.
+Decoders reject EOF for writes and malformed encodings. Existing `std.os` conversion logic is reused without making
+`std.bytes` depend on `std.os` or `sys.os`. Unknown native codes and normalized `Other` errors survive conversion;
+decoders neither whitelist native codes nor recapture ambient error state.
 
 Do not short-circuit valid empty transfers in the buffer helper: native handle, offset, append, and seekability
 validation must still execute. Preserve short transfers, exact/all accumulation, interruption without retry,
@@ -233,7 +236,7 @@ native source selection, staging, error domains, result ownership, ADRs, and val
 entropy-specific result conversion belong in the provider module, keeping `std.bytes` independent of I/O. Entropy
 implementation and integration are outside this refactor and do not block its closure.
 
-## Implementation Status
+## Completion
 
 - [x] Added the transparent protocol, unsafe helper, pure callbacks, and real source/interface-only consumers.
 - [x] Migrated all four file transfer paths and removed file-specific buffer exports/imports; native runtime behavior
@@ -243,13 +246,11 @@ implementation and integration are outside this refactor and do not block its cl
 - [x] Updated declaration contracts, [l1/docs/reference/standard-library.md][stdlib],
   [l1/docs/reference/ownership.md][ownership], [l1/docs/reference/filesystem.md][filesystem],
   [l1/docs/reference/design-decisions.md][design], and the existing buffer/transfer ADRs.
-- [ ] Obtain the native CI evidence below; broad and long validation remains assigned to CI.
-- [ ] Create the new protocol ADR and [l1/docs/decisions/INDEX.md][adr-index] entry, add closed-plan backlinks to all
-  affected ADRs, and close the plan after acceptance. Update the still-active entropy plan's link to the closed
-  location; leave that feature open under its existing initiative.
+- [x] CI passed for the range-action/file-adapter tranche, confirmed by the project maintainer on 2026-11-11.
+- [x] Created [l1/docs/decisions/0063-synchronous-byte-buffer-range-actions.md][protocol-adr] and its
+  [l1/docs/decisions/INDEX.md][adr-index] entry; added this closed plan to the affected ADRs and updated the roadmap and
+  entropy plan links. Entropy remains open under its existing initiative.
 
-Assign the new ADR number from the live index at implementation closure. Amend the named ADRs and their Related Plans
-links, add the new ADR and index entry, and link all records to this plan's closed location in the same closure change.
 The other file ADRs remain preservation constraints; their ownership, append, synchronization, metadata, and width
 decisions are unchanged.
 
@@ -313,16 +314,13 @@ make test-compiler-trace-children TESTS="bytes_main range_action_main file_main"
 make docs
 ```
 
-Keep exhaustive/long validation in CI: `make test-ci` and documentation checks on Linux x86_64, macOS Intel, macOS ARM,
-and Windows UCRT64. Record native platform evidence separately; local or simulated Windows checks do not replace it.
-Existing file-feature CI success does not validate this refactor. No entropy tests are required for this plan, and no
-remote write or workflow dispatch is part of it.
+Exhaustive/long validation is owned by CI: `make test-ci` and documentation checks on Linux x86_64, macOS Intel, macOS
+ARM, and Windows UCRT64. Native CI evidence is separate from local or simulated checks. No entropy tests are required
+for this plan.
 
-Acceptance requires the I/O-free module boundary, enforceable range/protocol checks, preserved file behavior, positive
-allocation-free transport evidence, independent correctness/portability review, completed local and native CI gates,
-updated contracts/ADRs/index, and resolvable closed-plan links. Entropy adoption belongs to the later feature plan and
-does not block this plan's closure. At planning time, run Markdown formatting/link checks and
-`python3 scripts/check_adr_impact.py --all-active`.
+Closure is supported by the I/O-free module boundary, enforceable range/protocol checks, preserved file behavior,
+allocation-free transport evidence, independent correctness/portability review, completed local and CI gates, updated
+contracts/ADRs/index, and resolvable closed-plan links. Entropy adoption belongs to its separate feature plan.
 
 ## Local Verification Evidence
 
@@ -344,8 +342,9 @@ selected existing L0 Stage 2 compiler, and `make build runtime` refreshed the co
 - Focused child traces for `bytes_main`, `range_action_main`, and `file_main` passed with zero leaked object/string
   pointers. Strict `make docs`, C-contract checks, ADR Impact validation, and whitespace checks passed.
 
-No broad aggregate, exhaustive compiler gate, or native Linux/macOS ARM/Windows run is claimed. Those checks remain for
-CI.
+Broad aggregate and exhaustive compiler validation were delegated to CI; the local runs above do not establish native
+Linux/macOS ARM/Windows coverage. The project maintainer confirmed green CI for the range-action/file-adapter tranche on
+2026-11-11. This satisfies the CI gate separately from the focused local evidence.
 
 ## Non-Goals
 
@@ -353,13 +352,14 @@ No generic result polymorphism, closures, new borrow checker, safe dynamic-buffe
 callbacks, concurrent mutation policy, automatic buffer growth during I/O, generic streams, new native ABI, or broad
 performance claim. The protocol can support later non-I/O actions without implementing those future capabilities here.
 
-[adr-index]: ../../../docs/decisions/INDEX.md
-[buffer-adr]: ../../../docs/decisions/0052-owned-dynamic-byte-buffers.md
-[design]: ../../../docs/reference/design-decisions.md
-[entropy-plan]: ../features/2026-08-30-secure-os-entropy-noref.md
-[file-plan]: ../features/closed/2026-08-30-file-handles-and-random-access-noref.md
-[filesystem]: ../../../docs/reference/filesystem.md
-[guidance]: ../../../AGENTS.md
-[ownership]: ../../../docs/reference/ownership.md
-[stdlib]: ../../../docs/reference/standard-library.md
-[transfer-adr]: ../../../docs/decisions/0059-presized-byte-buffer-file-transfers.md
+[adr-index]: ../../../../docs/decisions/INDEX.md
+[buffer-adr]: ../../../../docs/decisions/0052-owned-dynamic-byte-buffers.md
+[design]: ../../../../docs/reference/design-decisions.md
+[entropy-plan]: ../../features/2026-08-30-secure-os-entropy-noref.md
+[file-plan]: ../../features/closed/2026-08-30-file-handles-and-random-access-noref.md
+[filesystem]: ../../../../docs/reference/filesystem.md
+[guidance]: ../../../../AGENTS.md
+[ownership]: ../../../../docs/reference/ownership.md
+[protocol-adr]: ../../../../docs/decisions/0063-synchronous-byte-buffer-range-actions.md
+[stdlib]: ../../../../docs/reference/standard-library.md
+[transfer-adr]: ../../../../docs/decisions/0059-presized-byte-buffer-file-transfers.md
