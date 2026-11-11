@@ -52,10 +52,10 @@ language and runtime rationale.
 - ARC-managed strings, `new` / `drop`, and `with` / `cleanup` provide explicit ownership and cleanup facilities.
 - Function pointers and L1-defined variadic functions support indirect calls and typed argument packs.
 
-The standard library covers I/O, strings, paths, filesystem metadata and mutations, owned directory traversal, wide time
-values and monotonic sleep/deadlines, pseudorandom generation, containers, and numeric helpers. These source-tree
-capabilities may be newer than the published development release. See
-[l1/docs/reference/grammar.md](docs/reference/grammar.md),
+The standard library covers I/O, typed string formatting, file handles, strings, paths, filesystem metadata and
+mutations, owned directory traversal, wide time values and monotonic sleep/deadlines, secure OS entropy, pseudorandom
+generation, containers, and numeric helpers. These source-tree capabilities may be newer than the published development
+release. See [l1/docs/reference/grammar.md](docs/reference/grammar.md),
 [l1/docs/reference/ownership.md](docs/reference/ownership.md), and
 [l1/docs/reference/standard-library.md](docs/reference/standard-library.md) for the language and library contracts.
 

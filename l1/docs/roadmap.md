@@ -460,10 +460,10 @@ file-watch design, and concurrency now belong to L2.
   allocation traces, and CI passed. ADR-0063 records the protocol, with buffer and file-transfer decisions in
   ADR-0052/0059. Entropy adoption remains separate.
 
-## Active standalone plans
+- Bug Fix [2026-11-11-readme-implemented-library-status-noref][readme-library-status] corrects the README to list typed
+  formatting and file handles as implemented while preserving pending stabilization work and release distinctions.
 
-- Bug Fix [2026-11-11-readme-implemented-library-status-noref][readme-library-status] records stale README claims that
-  typed formatting and file handles remain planned, with correction scoped to the source-tree capability summary.
+## Active standalone plans
 
 - Feature [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] is the
   Stdlib Tier 2 audit that records portable systems capability and C99-family coverage without promising literal C99 API
@@ -652,7 +652,7 @@ update to be promoted to an initiative or plan:
 [preparation-reuse-efficiency]: ../work/plans/features/closed/2026-09-24-preparation-reuse-efficiency-noref.md
 [preparation-sha256-cost]: ../work/plans/refactors/closed/2026-09-25-preparation-sha256-cost-investigation-noref.md
 [preparation-test-cost]: ../work/plans/tools/closed/2026-09-13-preparation-test-cost-noref.md
-[readme-library-status]: ../work/plans/bug-fixes/2026-11-11-readme-implemented-library-status-noref.md
+[readme-library-status]: ../work/plans/bug-fixes/closed/2026-11-11-readme-implemented-library-status-noref.md
 [real-module]: ../work/plans/features/closed/2026-04-14-l1-std-real-module-noref.md
 [reference-ci]: ../work/plans/tools/closed/2026-10-25-full-reference-ci-noref.md
 [release-policy]: ../../docs/decisions/0023-l1-release-workflow-policy.md
