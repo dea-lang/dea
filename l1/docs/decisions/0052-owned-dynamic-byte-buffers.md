@@ -1,7 +1,7 @@
 # ADR-0052: Owned Dynamic Byte Buffers
 
 - Decision date: 2026-11-05
-- Last edited: 2026-11-06
+- Last edited: 2026-11-11
 - Status: Accepted
 
 ## Context
@@ -24,8 +24,12 @@ with the existing container allocation policy and independently of checked versu
 Expose `size` for the number of initialized logical bytes and `capacity` for reserved byte slots.
 
 Accept borrowed slice subranges only for synchronous copying. Append from another buffer copies its full logical
-contents and supports self-append even when growth moves storage. Export no backing pointer or slice. String conversion
-is explicit copying in both directions and preserves embedded NUL and non-UTF-8 bytes without validation.
+contents and supports self-append even when growth moves storage. Return no backing pointer or slice. The explicit
+unsafe `with_raw_range` exception permits synchronous callback access to a validated logical range without allowing
+storage to escape. The callback keeps the buffer live and must not resize, reallocate, free, or reenter operations on it
+through any alias. The helper checks returned progress and preserves logical size/capacity; it neither pins storage nor
+statically enforces the borrow contract. String conversion is explicit copying in both directions and preserves embedded
+NUL and non-UTF-8 bytes without validation.
 
 ## Rationale
 
@@ -40,7 +44,8 @@ The `size` name follows existing container APIs such as `vec_size` and `sb_size`
 Consumers must establish exactly one cleanup owner and coordinate aliases. Borrowed input must remain live during an
 append call; no safe public API can derive a slice from buffer storage. The module provides no shared mutable or
 cross-thread contract, recoverable allocation result, secure erasure, or zero-copy conversion. `ByteArray` remains
-available. Future concrete file and entropy APIs can accept a buffer with checked ranges without returning views.
+available. Provider modules use the unsafe callback boundary without returning views and keep native operations outside
+`std.bytes`.
 
 ## Related Plans
 

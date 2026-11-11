@@ -16,8 +16,9 @@ scope amendment; the deferred successor feature plans belong to L2.
 ## Current position
 
 - `std.bytes` provides opaque owned dynamic byte buffers with checked growth, logical bounds, zeroing resize, copying
-  slice/buffer append, and byte-exact string conversion. Cleanup is explicit; no operation returns a storage view. See
-  [l1/work/plans/features/closed/2026-08-30-dynamic-byte-buffers-noref.md][plan-buffers].
+  slice/buffer append, and byte-exact string conversion. Unsafe synchronous range callbacks borrow storage under an
+  explicit no-escape contract; the buffer module remains independent of I/O. Cleanup is explicit, and no operation
+  returns a storage view. See [l1/work/plans/features/closed/2026-08-30-dynamic-byte-buffers-noref.md][plan-buffers].
 
 - `std.file` implements opaque result-owned handles with repeatable close outcomes, direct bounded transfers, wide
   positioning, positional I/O, native append, opened-object metadata, and synchronization. Native CI passed on all four
@@ -452,11 +453,10 @@ file-watch design, and concurrency now belong to L2.
 
 ## Active standalone plans
 
-- Refactor [l1/work/plans/refactors/2026-11-10-byte-buffer-range-actions-noref.md][buffer-range-actions] will replace
-  file-specific byte-buffer bridges with a synchronous unsafe callback and by-value context/results. Implement and
-  validate this protocol and file migration first, then resume entropy using that foundation. The refactor completes
-  independently of entropy, keeps `std.bytes` independent of I/O, and requires evidence of no added per-transfer
-  allocations.
+- Refactor [l1/work/plans/refactors/2026-11-10-byte-buffer-range-actions-noref.md][buffer-range-actions] implements
+  synchronous unsafe range callbacks and file-owned adapters with by-value context/results. Focused local checks and
+  allocation traces passed; native CI and final ADR closure remain pending. Entropy is still deferred until the protocol
+  foundation is available in its integration base. The refactor completes independently of entropy.
 
 - Feature [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] is the
   Stdlib Tier 2 audit that records portable systems capability and C99-family coverage without promising literal C99 API
@@ -469,14 +469,14 @@ Readiness is independent of lifecycle status. `ready` means implementation can b
 immediate prerequisite remains; `not-ready` means required foundations have not landed; `speculative` means unresolved
 design investigation. `implemented` means implementation is present but the plan still has validation or closure work.
 
-| Readiness | Plan                                                                                               | Remaining gate                                                                    |
-| --------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| ready     | [l1/work/plans/refactors/2026-11-10-byte-buffer-range-actions-noref.md][buffer-range-actions]      | Design settled; callback, allocation, and portability checks scoped.              |
-| not-ready | [l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][plan-entropy]                       | Resume after the range protocol and file migration are implemented and validated. |
-| not-ready | [l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md][plan-temp]     | Entropy remains unimplemented; file handles passed native CI.                     |
-| ready     | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied.                         |
-| not-ready | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                                             |
-| not-ready | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.                               |
+| Readiness   | Plan                                                                                               | Remaining gate                                                                    |
+| ----------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| implemented | [l1/work/plans/refactors/2026-11-10-byte-buffer-range-actions-noref.md][buffer-range-actions]      | Focused local checks passed; native CI and final ADR closure remain.              |
+| not-ready   | [l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][plan-entropy]                       | Deferred until the validated range protocol is available in its integration base. |
+| not-ready   | [l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md][plan-temp]     | Entropy remains unimplemented; file handles passed native CI.                     |
+| ready       | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied.                         |
+| not-ready   | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                                             |
+| not-ready   | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.                               |
 
 The [work/plans/features/closed/2026-10-29-l1-stabilization-boundary-noref.md][boundary-plan] coordinates plan ownership
 and roadmap changes.

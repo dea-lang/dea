@@ -145,6 +145,10 @@ CHILD_TRACE_FIXTURES = (
         7, "file_main", TESTS_DIR / "fixtures/file_runtime/file_main.l1",
         "file_runtime_test.py", frozenset({"mem", "arc"}),
     ),
+    ChildTraceFixture(
+        8, "range_action_main", TESTS_DIR / "fixtures/bytes/range_action_main.l1",
+        "byte_buffer_range_action_test.py", frozenset({"mem", "arc"}),
+    ),
 )
 
 

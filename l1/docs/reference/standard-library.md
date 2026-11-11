@@ -75,24 +75,24 @@ abstraction used by existing containers and raw-memory helpers; it is not the re
 `import std.bytes as bytes;` and qualified calls such as `bytes::size(buf)`. The size is the number of initialized
 logical bytes, while capacity counts reserved byte slots. The name follows the existing container `size` convention.
 
-| Type/Function   | Signature                                                                 | Contract                                                                                   |
-| --------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `ByteBuffer`    | Opaque struct, used through `ByteBuffer*`                                 | No public layout, raw storage, or borrowed views.                                          |
-| `create`        | `func() -> ByteBuffer*`                                                   | Empty buffer with zero logical capacity.                                                   |
-| `with_capacity` | `func(initial_capacity: int) -> ByteBuffer*`                              | Empty buffer with exactly the requested nonnegative capacity.                              |
-| `free`          | `func(self: ByteBuffer*) -> void`                                         | Consume the buffer and its storage exactly once.                                           |
-| `size`          | `func(self: ByteBuffer*) -> int`                                          | Number of initialized logical bytes.                                                       |
-| `capacity`      | `func(self: ByteBuffer*) -> int`                                          | Reserved byte slots, at least the logical length.                                          |
-| `reserve`       | `func(self: ByteBuffer*, total_capacity: int) -> void`                    | Ensure at least this total capacity; preserve length and contents.                         |
-| `resize`        | `func(self: ByteBuffer*, new_length: int) -> void`                        | Zero every newly visible byte, including bytes discarded by earlier shrinking or clearing. |
-| `clear`         | `func(self: ByteBuffer*) -> void`                                         | Set length to zero and retain capacity; does not securely erase storage.                   |
-| `get`           | `func(self: ByteBuffer*, index: int) -> byte`                             | Read a checked logical index.                                                              |
-| `set`           | `func(self: ByteBuffer*, index: int, value: byte) -> void`                | Write a checked logical index.                                                             |
-| `append_byte`   | `func(self: ByteBuffer*, value: byte) -> void`                            | Append one byte with amortized capacity growth.                                            |
-| `append_range`  | `func(self: ByteBuffer*, source: byte[], start: int, count: int) -> void` | Copy a checked source subrange synchronously; never retain the borrowed slice.             |
-| `append_buffer` | `func(self: ByteBuffer*, source: ByteBuffer*) -> void`                    | Copy all source bytes; self-append is supported across growth.                             |
-| `to_string`     | `func(self: ByteBuffer*) -> string`                                       | Return an independent ARC string copy of every logical byte.                               |
-| `from_string`   | `func(value: string) -> ByteBuffer*`                                      | Return a new owned buffer copying every string byte.                                       |
+| Type/Function   | Signature                                                                 | Contract                                                                                      |
+| --------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `ByteBuffer`    | Opaque struct, used through `ByteBuffer*`                                 | No public layout or returned storage view; unsafe callbacks may borrow storage synchronously. |
+| `create`        | `func() -> ByteBuffer*`                                                   | Empty buffer with zero logical capacity.                                                      |
+| `with_capacity` | `func(initial_capacity: int) -> ByteBuffer*`                              | Empty buffer with exactly the requested nonnegative capacity.                                 |
+| `free`          | `func(self: ByteBuffer*) -> void`                                         | Consume the buffer and its storage exactly once.                                              |
+| `size`          | `func(self: ByteBuffer*) -> int`                                          | Number of initialized logical bytes.                                                          |
+| `capacity`      | `func(self: ByteBuffer*) -> int`                                          | Reserved byte slots, at least the logical length.                                             |
+| `reserve`       | `func(self: ByteBuffer*, total_capacity: int) -> void`                    | Ensure at least this total capacity; preserve length and contents.                            |
+| `resize`        | `func(self: ByteBuffer*, new_length: int) -> void`                        | Zero every newly visible byte, including bytes discarded by earlier shrinking or clearing.    |
+| `clear`         | `func(self: ByteBuffer*) -> void`                                         | Set length to zero and retain capacity; does not securely erase storage.                      |
+| `get`           | `func(self: ByteBuffer*, index: int) -> byte`                             | Read a checked logical index.                                                                 |
+| `set`           | `func(self: ByteBuffer*, index: int, value: byte) -> void`                | Write a checked logical index.                                                                |
+| `append_byte`   | `func(self: ByteBuffer*, value: byte) -> void`                            | Append one byte with amortized capacity growth.                                               |
+| `append_range`  | `func(self: ByteBuffer*, source: byte[], start: int, count: int) -> void` | Copy a checked source subrange synchronously; never retain the borrowed slice.                |
+| `append_buffer` | `func(self: ByteBuffer*, source: ByteBuffer*) -> void`                    | Copy all source bytes; self-append is supported across growth.                                |
+| `to_string`     | `func(self: ByteBuffer*) -> string`                                       | Return an independent ARC string copy of every logical byte.                                  |
+| `from_string`   | `func(value: string) -> ByteBuffer*`                                      | Return a new owned buffer copying every string byte.                                          |
 
 Negative sizes, invalid indexes/ranges, append length overflow, and allocation failure terminate execution. These
 library checks also apply under `--unchecked`. A source range starts between zero and the source slice's length,
@@ -104,6 +104,28 @@ Each constructor returns one cleanup obligation. Pointer copies borrow the same 
 Call `bytes::free` exactly once, normally through `with`; all buffer aliases then expire. Returned string copies remain
 valid independently. The buffer uses the existing checked allocation/runtime primitives privately, without exposing
 `VectorBase`. `std.array::ByteArray` and its standard-stream helpers remain available.
+
+`std.bytes` is independent of I/O. Its exported unsafe `with_raw_range(buffer, start, count, context, action)` validates
+an initialized logical range and invokes the callback exactly once, including valid empty ranges. The callback has type
+`ByteBufferRangeAction`, an `unsafe func(byte*, int, ByteBufferRangeActionContext) -> ByteBufferRangeActionResult`. The
+transparent context carries borrowed `state: void*?` and `argument: long` by value; null state supports pure actions.
+Neither context transport nor result transport allocates, and the helper preserves size and capacity.
+
+The result variants are `RangeActionApplied(processed: int, value: long?)`,
+`RangeActionStopped(processed: int, reason: ByteBufferRangeActionDiagnostic)`, and
+`RangeActionFailed(processed: int, error: ByteBufferRangeActionDiagnostic)`. Every returned `processed` count must lie
+between zero and the supplied count, enforced in all runtime modes. Applied may report partial or zero progress; stopped
+and failed may also carry partial progress. Effects are not rolled back. Diagnostics contain `tag`, `code`, and `detail`
+as `int`, plus `value: long`; the selected action defines their meanings. The caller pairs the action with its decoder;
+there is no protocol-domain token or runtime schema-identity check.
+
+This API requires an explicit unsafe contract. Buffer and context resources must remain live throughout the call. Access
+only the supplied bytes; an empty range grants no access and its pointer identity is unspecified. No storage pointer or
+derived view may escape through context, results, globals, retained objects, or asynchronous work. Do not free,
+reallocate, structurally mutate, or reenter operations on the same buffer through any alias during the callback;
+coordinate conflicting concurrent access externally. Pointer reinterpretation requires independent alignment, extent,
+and representation proofs. The helper does not pin storage or enforce lifetime/no-escape statically, and L1's unsafe
+marker does not gate ordinary call sites. Individual actions may allocate under their own contracts.
 
 ```dea
 import std.bytes as bytes;

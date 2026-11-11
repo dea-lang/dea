@@ -3,7 +3,7 @@
 ## Decouple byte-buffer range actions from file I/O
 
 - Date: 2026-11-10
-- Status: Draft
+- Status: In Progress
 - Title: Keep byte-buffer range dispatch independent of I/O without per-transfer allocations
 - Kind: Refactor
 - Priority: Medium
@@ -28,22 +28,20 @@
   - [l1/docs/reference/standard-library.md][stdlib]
   - [l1/docs/reference/ownership.md][ownership]
   - [l1/docs/reference/filesystem.md][filesystem]
-- Repro: From `l1/`, `make test-compiler TESTS="bytes_test.py file_runtime_test.py"` exercises the existing baseline;
-  the new focused suite below will exercise the proposed protocol.
+- Repro: From `l1/`, `make test-compiler TESTS="bytes_test.py byte_buffer_range_action_test.py file_runtime_test.py"`;
+  use the focused trace and supporting regression selections below.
 
 ## Summary
 
-Replace the four file-specific `std.bytes` bridges with a synchronous unsafe range callback. `std.bytes` will own
-logical-range validation and temporary access to storage. `std.file` will own its native calls and explicit
-public-result conversion. Pass context and results by value, using existing native file handles, with no new allocation
-per transfer. The protocol is also the prerequisite for later entropy work.
+Implemented the synchronous unsafe range callback and migrated all four file transfers. `std.bytes` owns logical-range
+validation and temporary access to storage without I/O dependencies. `std.file` owns its native calls and explicit
+public-result conversion. Context and results pass by value, using existing native file handles, with no added heap
+allocation per transfer. The protocol is also the prerequisite for later entropy work.
 
 This is a standalone L1 refactor of the completed file implementation. Medium priority reflects a useful module-boundary
-improvement without a current correctness blocker. The design uses existing language facilities and is ready to
-implement; this draft does not implement or change the normative contracts. The completed filesystem initiative remains
-closed. Entropy is unfinished, unmerged work: its preliminary implementation is design input, not an accepted baseline.
-Implement and validate the protocol and file migration first, then resume entropy work against that foundation. This
-plan's implementation and closure do not depend on entropy.
+improvement without a prior correctness blocker. Focused local verification and independent production/generated-C/test
+review passed. The plan remains open for native CI and final ADR/index/closure work; broad and long suites were left to
+CI. The completed filesystem initiative remains closed.
 
 ## ADR Impact
 
@@ -70,29 +68,22 @@ plan's implementation and closure do not depend on entropy.
     ranges, partial progress, empty-transfer validation, and exact/all behavior. File-local adapters preserve the native
     OS error domain and full native code through explicit diagnostic-field conversion.
 
-## Current State and Scope
+## Implementation Scope
 
-`std.bytes` currently imports `sys.fs` and `sys.os` to implement `_bytes_file_read`, `_bytes_file_write`,
-`_bytes_file_read_at`, and `_bytes_file_write_at`. Each validates an initialized logical range and calls a native file
-operation using the private allocation. `std.file` delegates to these bridges and converts `RtIoResult` into its public
-results. Opaque layout requires storage access to originate in `std.bytes`, but does not require I/O to execute there.
+The previous file-specific `_bytes_file_read`, `_bytes_file_write`, `_bytes_file_read_at`, and `_bytes_file_write_at`
+bridges are removed, together with `std.bytes` imports of `sys.fs` and `sys.os`. The replacement helper validates
+logical ranges and result counts; private file callbacks call the native runtime and convert its results. Opaque layout
+requires storage access to originate in `std.bytes`, but does not require I/O to execute there.
 
-Remove these four exports and all I/O dependencies from `std.bytes`; audit their source/interface consumers before
-removal. The new protocol is an exported unsafe capability, not a friend-module or compiler-private API. Preserve every
-existing safe byte-buffer and file API and the native runtime ABI. Regenerate bundled interfaces through the normal
-build. No L0/L2 port, compiler feature, new diagnostic code, or diagnostic reassignment is in scope; negative
-type/opacity tests use the existing diagnostics.
+Source and emitted-interface consumers use the exported unsafe protocol; no friend-module or compiler-private API is
+introduced. Existing safe byte-buffer/file APIs and the native runtime ABI are preserved. The normal build regenerated
+and verified 32 bundled interfaces. No L0/L2 port, compiler feature, new diagnostic code, or diagnostic reassignment was
+introduced; negative type/opacity tests use existing diagnostics.
 
-The unmerged entropy implementation adds `_bytes_entropy_fill`, which calls `rt_entropy_fill` from `std.bytes`. The
-later entropy feature must replace that bridge with the completed protocol before integration. Its plan owns the
-adapter, public API, native source selection, staging, error domains, result ownership, and validation. No native
-entropy operation or entropy-specific result mapping belongs in `std.bytes`, and entropy sources are not part of this
-refactor.
+## Range-Action Protocol
 
-## Proposed Protocol
-
-Export the following transparent types from `std.bytes`, while keeping `ByteBuffer` opaque. These are proposed L1
-declarations; implementation will supply the required declaration contracts.
+`std.bytes` exports the following transparent types while keeping `ByteBuffer` opaque. Declaration contracts specify the
+unsafe borrow and action-defined result interpretation.
 
 ```dea
 struct ByteBufferRangeActionContext {
@@ -153,7 +144,7 @@ remain responsible for the erased pointer's actual meaning and diagnostic schema
 
 ## Unsafe Contract
 
-Document the following obligations on the helper, callback alias, and provider adapters:
+The helper, callback alias, and provider adapters document these obligations:
 
 - The buffer, callback, and any context resource remain valid throughout the synchronous invocation. Context is
   borrowed; the helper neither owns nor frees it, and copying the context does not extend resource lifetime.
@@ -178,8 +169,8 @@ must be diagnosed or trap in unchecked mode. The explicit range/result assertion
 
 ## File Adapters and Allocation Boundary
 
-Add four private callbacks to `std.file`, each calling its corresponding native operation. Use an existing file handle
-as `state`, zero as the sequential argument, and the complete `long` offset as the positional argument. For example:
+Four private callbacks in `std.file` call their corresponding native operations. They use an existing file handle as
+`state`, zero as the sequential argument, and the complete `long` offset as the positional argument. For example:
 
 ```dea
 type RangeContext = bytes::ByteBufferRangeActionContext;
@@ -236,26 +227,26 @@ handle and operation resources, are outside the Dea heap-transport guarantee and
 
 ## Follow-On Entropy Work
 
-After this protocol and the file migration are implemented and validated, resume
-[l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][entropy-plan] using the new callback API. That feature
-plan owns the entropy adapter, native behavior, result ownership, ADRs, and entropy-specific tests. Its preliminary
-implementation remains available as input for that later work. This refactor can complete and close independently;
-entropy implementation, integration, and validation are not prerequisites.
+The entropy feature depends on validated range actions and file adapters.
+[l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][entropy-plan] owns its callback adapter, public API,
+native source selection, staging, error domains, result ownership, ADRs, and validation. Native entropy operations and
+entropy-specific result conversion belong in the provider module, keeping `std.bytes` independent of I/O. Entropy
+implementation and integration are outside this refactor and do not block its closure.
 
-## Implementation Phases
+## Implementation Status
 
-1. Add the transparent protocol, documented unsafe helper, and non-I/O callback fixtures. Verify source and separately
-   compiled interface consumers before migrating file callers.
-2. Add file-local callbacks and checked explicit result conversion; migrate all four transfer paths. Remove the old
-   file-specific exports/imports from `std.bytes` and regenerate interfaces. Keep native runtime behavior unchanged.
-3. Add protocol, allocation, and adapter regression coverage below; register the new child fixture for independent trace
-   analysis. Review generated C as supporting evidence for by-value lowering.
-4. Update [l1/docs/reference/standard-library.md][stdlib], [l1/docs/reference/ownership.md][ownership],
-   [l1/docs/reference/filesystem.md][filesystem], [l1/docs/reference/design-decisions.md][design], and declaration
-   contracts to distinguish ordinary APIs from the explicit unsafe callback exception. Write/amend ADRs at closure,
-   update [l1/docs/decisions/INDEX.md][adr-index], and move this plan to `closed/` with roadmap/reference updates only
-   after acceptance evidence is complete. Update the still-active entropy plan's link to the closed location; leave that
-   feature open under its existing initiative.
+- [x] Added the transparent protocol, unsafe helper, pure callbacks, and real source/interface-only consumers.
+- [x] Migrated all four file transfer paths and removed file-specific buffer exports/imports; native runtime behavior
+  and public safe APIs are preserved.
+- [x] Added protocol, malformed-adapter, allocation, and POSIX positional-failure coverage; registered the new child
+  fixture and checked generated C for aggregate lowering without boxing or allocation.
+- [x] Updated declaration contracts, [l1/docs/reference/standard-library.md][stdlib],
+  [l1/docs/reference/ownership.md][ownership], [l1/docs/reference/filesystem.md][filesystem],
+  [l1/docs/reference/design-decisions.md][design], and the existing buffer/transfer ADRs.
+- [ ] Obtain the native CI evidence below; broad and long validation remains assigned to CI.
+- [ ] Create the new protocol ADR and [l1/docs/decisions/INDEX.md][adr-index] entry, add closed-plan backlinks to all
+  affected ADRs, and close the plan after acceptance. Update the still-active entropy plan's link to the closed
+  location; leave that feature open under its existing initiative.
 
 Assign the new ADR number from the live index at implementation closure. Amend the named ADRs and their Related Plans
 links, add the new ADR and index entry, and link all records to this plan's closed location in the same closure change.
@@ -314,25 +305,47 @@ decisions are unchanged.
 ### Validation tiers and completion
 
 From `l1/`, explicitly select supported `L0_CC`, `L1_CC`, `L1_RUNTIME_CC`, and `L1_BOOTSTRAP_L0C` as required by
-[l1/AGENTS.md][guidance], recording actual executable versions. After implementation, run:
+[l1/AGENTS.md][guidance], recording actual executable versions. Reproduce focused validation with:
 
 ```sh
 make test-compiler TESTS="bytes_test.py byte_buffer_range_action_test.py file_runtime_test.py os_runtime_test.py io_runtime_test.py runtime_symbol_manifest_test.py l1c_child_trace_runner_test.py"
 make test-compiler-trace-children TESTS="bytes_main range_action_main file_main"
-make test
 make docs
 ```
 
 Keep exhaustive/long validation in CI: `make test-ci` and documentation checks on Linux x86_64, macOS Intel, macOS ARM,
 and Windows UCRT64. Record native platform evidence separately; local or simulated Windows checks do not replace it.
-Existing file-feature CI success does not validate this future refactor. No entropy tests are required for this plan,
-and no remote write or workflow dispatch is part of it.
+Existing file-feature CI success does not validate this refactor. No entropy tests are required for this plan, and no
+remote write or workflow dispatch is part of it.
 
 Acceptance requires the I/O-free module boundary, enforceable range/protocol checks, preserved file behavior, positive
 allocation-free transport evidence, independent correctness/portability review, completed local and native CI gates,
 updated contracts/ADRs/index, and resolvable closed-plan links. Entropy adoption belongs to the later feature plan and
 does not block this plan's closure. At planning time, run Markdown formatting/link checks and
-`python3 scripts/check_adr_impact.py --all-active`; do not report future implementation tests as completed.
+`python3 scripts/check_adr_impact.py --all-active`.
+
+## Local Verification Evidence
+
+Local execution used macOS Intel and `/usr/bin/clang`, Apple Clang 17.0.0 (`clang-1700.6.4.2`), selected explicitly for
+`L0_CC`, `L1_CC`, and `L1_RUNTIME_CC`. Support for `--no-default-config` was verified. Bootstrap used the explicitly
+selected existing L0 Stage 2 compiler, and `make build runtime` refreshed the compiler, interfaces, and runtime inputs.
+
+- The focused `bytes_test.py`, `byte_buffer_range_action_test.py`, `file_runtime_test.py`, `os_runtime_test.py`,
+  `io_runtime_test.py`, `runtime_symbol_manifest_test.py`, and `l1c_child_trace_runner_test.py` checks passed. File
+  conversion/injection checks and the remaining public/native/wide/interface checks ran separately with unchanged
+  production inputs; together they cover the full file harness.
+- The range harness passed checked/basic/unchecked guards, every result variant, negative/oversized progress, exact
+  callback invocation, and unsafe callback-type rejection. The positive separate-compilation consumer ran with both
+  byte-buffer and callback-provider source absent. Interface checks also reject I/O imports.
+- Allocation windows observed no allocation events across 128 first/repeated generic dispatches and all four file paths,
+  including empty transfers, with a positive control outside the windows. Whole-program ownership traces balanced.
+  Independent generated-C review found by-value scalar/pointer aggregates and no boxing, allocation, or ARC retention in
+  dispatch, adapters, or conversion helpers.
+- Focused child traces for `bytes_main`, `range_action_main`, and `file_main` passed with zero leaked object/string
+  pointers. Strict `make docs`, C-contract checks, ADR Impact validation, and whitespace checks passed.
+
+No broad aggregate, exhaustive compiler gate, or native Linux/macOS ARM/Windows run is claimed. Those checks remain for
+CI.
 
 ## Non-Goals
 

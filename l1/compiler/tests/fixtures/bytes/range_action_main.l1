@@ -1,0 +1,185 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module range_action_main;
+
+import std.bytes as bytes;
+import std.assert;
+import std.io;
+import std.system;
+import range_action_provider as provider;
+
+type Context = bytes::ByteBufferRangeActionContext;
+type Result = bytes::ByteBufferRangeActionResult;
+
+struct Counter { calls: int; }
+let outcome: int = 0;
+let progress: int = 0;
+let mark_entry: bool = false;
+const wide: long = -4294967303;
+
+/**
+ * Mutate the permitted prefix and return one configured generic outcome.
+ *
+ * @param data Borrowed writable range, never retained.
+ * @param count Accessible byte count.
+ * @param context Borrowed Counter and signed wide scalar.
+ * @return Configured outcome and progress, including deliberately invalid probes.
+ */
+unsafe func action(data: byte*, count: int, context: Context) -> Result {
+    if (mark_entry) { err_printl_s("RANGE_CALLBACK_ENTERED"); }
+    if (context.state != null) {
+        let counter = (context.state as void*) as Counter*;
+        counter.calls = counter.calls + 1;
+    }
+    assert(context.argument == wide, "wide context argument survives callback");
+    for (let i = 0; i < count && i < progress; i = i + 1) { data[i] = 'X'; }
+    if (outcome == 0) { return bytes::RangeActionApplied(progress, null); }
+    let diagnostic = bytes::ByteBufferRangeActionDiagnostic(17, -23, 41, context.argument);
+    if (outcome == 1) { return bytes::RangeActionStopped(progress, diagnostic); }
+    return bytes::RangeActionFailed(progress, diagnostic);
+}
+
+/**
+ * Verify a diagnostic whose meaning is owned by this local action.
+ *
+ * @param value Diagnostic transported unchanged through std.bytes.
+ */
+func diagnostic_matches(value: bytes::ByteBufferRangeActionDiagnostic) {
+    assert(value.tag == 17 && value.code == -23 && value.detail == 41 && value.value == wide,
+        "all diagnostic fields are preserved");
+}
+
+/**
+ * Inspect the variant without interpreting the provider's progress as full completion.
+ *
+ * @param result Returned generic result.
+ * @param expected Required processed count.
+ */
+func result_matches(result: Result, expected: int) {
+    match (result) {
+        RangeActionApplied(processed, value) => {
+            assert(outcome == 0 && processed == expected && value == null, "applied result");
+        }
+        RangeActionStopped(processed, reason) => {
+            assert(outcome == 1 && processed == expected, "stopped result");
+            diagnostic_matches(reason);
+        }
+        RangeActionFailed(processed, error) => {
+            assert(outcome == 2 && processed == expected, "failed result");
+            diagnostic_matches(error);
+        }
+    }
+}
+
+/**
+ * Check every outcome, progress boundary, storage extent, and empty-range dispatch.
+ */
+func check_results() {
+    with (
+        let buffer = bytes::from_string("abcdef") => bytes::free(buffer),
+        let empty = bytes::create() => bytes::free(empty),
+        let counter = new Counter(0) => drop counter
+    ) {
+        let copied = bytes::to_string(buffer);
+        assert(copied == "abcdef", "owned trace positive control");
+        bytes::reserve(buffer, 32);
+        let original_capacity = bytes::capacity(buffer);
+        let context = Context(counter as void*, wide);
+        for (outcome = 0; outcome < 3; outcome = outcome + 1) {
+            for (progress = 0; progress <= 3; progress = progress + 1) {
+                for (let i = 0; i < 6; i = i + 1) { bytes::set(buffer, i, ('a' as int + i) as byte); }
+                let before = counter.calls;
+                result_matches(bytes::with_raw_range(buffer, 2, 3, context, action), progress);
+                assert(counter.calls == before + 1, "one callback for each nonempty range");
+                assert(bytes::size(buffer) == 6 && bytes::capacity(buffer) == original_capacity, "metadata unchanged");
+                for (let i = 0; i < 6; i = i + 1) {
+                    let expected = ('a' as int + i) as byte;
+                    if (i >= 2 && i < 2 + progress) { expected = 'X'; }
+                    assert(bytes::get(buffer, i) == expected, "bounded effects survive every outcome");
+                }
+            }
+            progress = 0;
+            let before = counter.calls;
+            result_matches(bytes::with_raw_range(buffer, 6, 0, context, action), 0);
+            result_matches(bytes::with_raw_range(empty, 0, 0, context, action), 0);
+            assert(counter.calls == before + 2, "empty ranges still invoke callback once");
+        }
+        outcome = 0;
+        progress = 0;
+        result_matches(bytes::with_raw_range(buffer, 0, 0, Context(null, wide), action), 0);
+    }
+}
+
+/**
+ * Check a separately compiled non-I/O provider and action-owned numeric schemas.
+ */
+func check_provider() {
+    with (let buffer = bytes::from_string("ABC") => bytes::free(buffer)) {
+        let callback: bytes::ByteBufferRangeAction = provider::sum;
+        match (bytes::with_raw_range(buffer, 1, 2, Context(null, wide), callback)) {
+            RangeActionApplied(processed, value) => {
+                assert(processed == 2 && value != null && (value as long) == wide + 133 as long,
+                    "provider scalar result and wide nullable payload");
+            }
+            _ => { assert(false, "provider sum result"); }
+        }
+        match (bytes::with_raw_range(buffer, 0, 0, Context(null, 0 as long), callback)) {
+            RangeActionApplied(processed, value) => {
+                assert(processed == 0 && value != null && (value as long) == 0 as long,
+                    "present zero differs from absent value");
+            }
+            _ => { assert(false, "empty provider sum result"); }
+        }
+        match (bytes::with_raw_range(buffer, 1, 1, Context(null, wide), provider::diagnostic)) {
+            RangeActionFailed(processed, error) => {
+                assert(processed == 1 && error.tag == 17 && error.code == -23 && error.detail == 41,
+                    "independent provider schema accepts overlapping numeric tags");
+                assert(error.value == wide, "independent diagnostic payload");
+            }
+            _ => { assert(false, "provider diagnostic result"); }
+        }
+    }
+}
+
+/**
+ * Select invalid input or invalid returned progress for a separate fatal probe.
+ *
+ * @param scenario Probe selector supplied by the Python harness.
+ */
+func invalid(scenario: string) {
+    with (let buffer = bytes::with_capacity(16) => bytes::free(buffer)) {
+        bytes::resize(buffer, 3);
+        let start = 0;
+        let count = 3;
+        progress = 0;
+        outcome = 0;
+        mark_entry = true;
+        if (scenario == "negative_start") { start = -1; }
+        if (scenario == "negative_count") { count = -1; }
+        if (scenario == "past_end") { start = 4; count = 0; }
+        if (scenario == "capacity_only") { start = 3; count = 1; }
+        if (scenario == "range_overflow") { start = 1; count = 2147483647; }
+        if (scenario == "start_overflow") { start = 2147483647; count = 2147483647; }
+        if (scenario == "applied_negative") { progress = -1; }
+        if (scenario == "applied_large") { progress = 4; }
+        if (scenario == "stopped_negative") { outcome = 1; progress = -1; }
+        if (scenario == "stopped_large") { outcome = 1; progress = 4; }
+        if (scenario == "failed_negative") { outcome = 2; progress = -1; }
+        if (scenario == "failed_large") { outcome = 2; progress = 4; }
+        bytes::with_raw_range(buffer, start, count, Context(null, wide), action);
+    }
+    assert(false, "invalid range probe unexpectedly returned");
+}
+
+/**
+ * Run deterministic protocol contracts or one isolated fatal case.
+ */
+func main() {
+    if (argc() > 1) { invalid(argv(1)); }
+    check_results();
+    check_provider();
+    printl_s("range_action_main: PASS");
+}

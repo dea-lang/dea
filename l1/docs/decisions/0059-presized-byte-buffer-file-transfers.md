@@ -7,8 +7,8 @@
 ## Context
 
 Incremental file I/O needs mutable binary storage and observable partial progress. The opaque dynamic buffer contract
-does not expose its allocation or permit an escaping borrowed view. File transfers must preserve that boundary and
-distinguish a buffer's initialized logical bytes from its reserved capacity.
+permits an explicit synchronous unsafe borrow but no escaping storage view. File transfers must preserve that boundary
+and distinguish a buffer's initialized logical bytes from its reserved capacity.
 
 ## Decision
 
@@ -18,8 +18,11 @@ including empty ranges; invalid ranges terminate execution in checked, basic, an
 capacity alone never authorizes a transfer.
 
 Reads and writes leave the logical buffer size unchanged on success, EOF, timeout, and failure. Results identify the
-transferred prefix. The internal bridge borrows backing storage only for the synchronous call and neither returns nor
-retains a pointer or view. Public file operations do not grow buffers automatically.
+transferred prefix. Private `std.file` callbacks borrow backing storage through `std.bytes::with_raw_range` only for the
+synchronous call and neither return nor retain a pointer or view. The buffer module owns logical-range/progress checks
+and has no I/O dependency. Native calls and explicit conversion belong to `std.file`; context and results pass by value
+without per-transfer heap allocation. Callback dispatch still occurs for valid empty ranges, preserving native
+validation. Public file operations do not grow buffers automatically.
 
 Single-attempt operations preserve successful partial counts, explicit EOF, timeout, and captured failure. Valid
 zero-length sequential transfers on a live handle succeed without probing EOF; positional operations still enforce their
@@ -30,8 +33,8 @@ zero-progress write becomes `IoError` rather than an unbounded retry loop.
 ## Rationale
 
 Explicit sizing separates allocation from I/O and preserves the buffer's initialized-range invariant. Synchronous
-borrowing permits efficient native transfers without extending storage lifetime or weakening opacity. Accumulated
-progress lets callers handle a partially completed request while retaining its terminal error or EOF result.
+borrowing permits efficient native transfers without extending storage lifetime or exposing the buffer layout.
+Accumulated progress lets callers handle a partially completed request while retaining its terminal error or EOF result.
 
 ## Consequences
 

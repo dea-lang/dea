@@ -802,6 +802,13 @@ These choices are recorded in [l1/docs/decisions/0059-presized-byte-buffer-file-
 [l1/docs/decisions/0057-native-append-and-cursor-independent-file-io.md][file-positioning], and
 [l1/docs/decisions/0060-opened-object-file-metadata.md][file-metadata].
 
+`std.bytes` exposes synchronous unsafe range dispatch while retaining opaque layout. A typed callback receives a bounded
+`byte*`, count, and by-value context; it returns a finite by-value progress/result record. The helper checks logical
+bounds and result counts in every runtime mode, but pointer lifetime, no-escape, alias discipline, and action/decoder
+pairing remain manual contracts. Diagnostic integer fields have action-specific meanings without a protocol-domain
+token. Private file callbacks own native calls and conversion, so the buffer module has no I/O dependency and dispatch
+adds no per-transfer context or result allocation. Existing native resource costs remain separate from that guarantee.
+
 The native file API has no library buffer: `flush` only validates liveness. `sync_data` and `sync_all` request minimum
 data and metadata guarantees and may use stronger host synchronization. An unavailable minimum is `Unsupported`. Native
 handles remain private and non-inheritable. See

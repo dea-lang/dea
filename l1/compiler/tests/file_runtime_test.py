@@ -108,7 +108,7 @@ def require_generated(work: Path, cc: str) -> None:
                 str(executable), case, str(output / case),
             ], cwd=L1_ROOT, capture_output=True, text=True, timeout=60, check=False)
             assert failure.returncode != 0, f"{mode}/{case} unexpectedly succeeded"
-            assert "std.bytes: file range out of bounds" in failure.stderr, (mode, case, failure.stderr)
+            assert "std.bytes: range out of bounds" in failure.stderr, (mode, case, failure.stderr)
         if mode == "checked":
             failure = subprocess.run([
                 str(executable), "expired_alias", str(output / "expired"),
@@ -269,7 +269,7 @@ def require_injected(work: Path, cc: str) -> None:
     if os.name == "nt":
         hooks = ["CLOSE_HANDLE", "READ_FILE", "WRITE_FILE", "GET_FILE_INFORMATION", "FLUSH_FILE_BUFFERS"]
     else:
-        hooks = ["CLOSE", "READ", "WRITE", "FSTAT", "FSYNC"]
+        hooks = ["CLOSE", "READ", "WRITE", "PREAD", "PWRITE", "FSTAT", "FSYNC"]
         if sys.platform != "darwin":
             hooks.append("FDATASYNC")
     objects = []
@@ -292,6 +292,150 @@ def require_injected(work: Path, cc: str) -> None:
     check_trace(work, "failures", result.stderr)
 
 
+def range_conversion_source() -> str:
+    """Append a private conversion probe to unchanged file module definitions.
+
+    The generated test module can call private adapters without exporting a test
+    ABI from the production library. It performs no native transfers.
+
+    Returns:
+        Production file source followed by focused schema and payload assertions.
+    """
+    source = (L1_ROOT / "compiler/shared/l1/stdlib/std/file.l1").read_text(encoding="utf-8")
+    source = source.replace("module std.file;", "module file_range_probe;")
+    source = source.replace("sync_data, sync_all;", "sync_data, sync_all, main;")
+    source = source.replace("import std.assert;", "import std.assert;\nimport std.system;\nimport std.io;")
+    return source + r'''
+
+/**
+ * Verify public native error fields without consulting ambient host state.
+ *
+ * @param error Public result payload.
+ * @param domain Expected native namespace.
+ * @param code Expected complete signed native value.
+ */
+func _probe_error(error: os::OsError, domain: int, code: long) {
+    let raw = os::_os_error_to_rt(error);
+    assert(raw.kind == 0 && raw.domain == domain && raw.native_code == code,
+        "Other failures preserve their native domain and complete code");
+}
+
+/**
+ * Select malformed payloads or verify all valid private conversion outcomes.
+ */
+func main() {
+    let success = RtOsError(0, 0, 0 as long);
+    let failure = RangeDiagnostic(2, 0, 1, 0x100000001 as long);
+    let eof = RangeDiagnostic(1, 0, 0, 0 as long);
+    if (argv(1) == "native_negative") { _encode_file_result(RtIoResult(0, -1, success)); return; }
+    if (argv(1) == "native_progress") { _encode_file_result(RtIoResult(2, 1, success)); return; }
+    if (argv(1) == "native_state") { _encode_file_result(RtIoResult(4, 0, success)); return; }
+    if (argv(1) == "applied_negative") { _decode_file_read(bytes::RangeActionApplied(-1, null)); return; }
+    if (argv(1) == "applied_value") { _decode_file_read(bytes::RangeActionApplied(0, 0 as long?)); return; }
+    if (argv(1) == "stopped_progress") { _decode_file_read(bytes::RangeActionStopped(1, eof)); return; }
+    if (argv(1) == "stopped_tag") { _decode_file_read(bytes::RangeActionStopped(0, failure)); return; }
+    if (argv(1) == "stopped_error") {
+        _decode_file_read(bytes::RangeActionStopped(0, RangeDiagnostic(1, 1, 0, 0 as long))); return;
+    }
+    if (argv(1) == "write_eof") { _decode_file_write(bytes::RangeActionStopped(0, eof)); return; }
+    if (argv(1) == "failed_progress") { _decode_file_read(bytes::RangeActionFailed(1, failure)); return; }
+    if (argv(1) == "failed_tag") { _decode_file_read(bytes::RangeActionFailed(0, eof)); return; }
+    if (argv(1) == "failed_domain") {
+        _decode_file_read(bytes::RangeActionFailed(0, RangeDiagnostic(2, 0, -1, 0 as long))); return;
+    }
+    if (argv(1) == "runtime_code") {
+        _decode_file_write(bytes::RangeActionFailed(0, RangeDiagnostic(2, 14, 0, 1 as long))); return;
+    }
+    assert(argv(1) == "normal", "unknown conversion scenario");
+    for (let amount = 0; amount <= 3; amount = amount + 1) {
+        let result = _encode_file_result(RtIoResult(0, amount, success));
+        match (_decode_file_read(result)) {
+            Read(count) => { assert(count == amount, "successful read count"); }
+            _ => { assert(false, "successful read variant"); }
+        }
+        match (_decode_file_write(result)) {
+            Written(count) => { assert(count == amount, "successful write count"); }
+            _ => { assert(false, "successful write variant"); }
+        }
+    }
+    match (_decode_file_read(_encode_file_result(RtIoResult(1, 0, success)))) {
+        Eof => {}
+        _ => { assert(false, "explicit EOF outcome"); }
+    }
+    for (let domain = 0; domain <= 2; domain = domain + 1) {
+        let code = 0x100000001 as long;
+        if (domain == 0) { code = 0 as long; }
+        for (let state = 2; state <= 3; state = state + 1) {
+            let native = RtIoResult(state, 0, RtOsError(0, domain, code));
+            let encoded = _encode_file_result(native);
+            let decoded = _decode_file_result(encoded, true);
+            assert(decoded.state == state && decoded.count == 0
+                && decoded.error.kind == 0 && decoded.error.domain == domain && decoded.error.native_code == code,
+                "native fields round trip without narrowing or inference");
+            match (_decode_file_read(encoded)) {
+                ReadFailed(error) => { assert(state == 2, "read failure state"); _probe_error(error, domain, code); }
+                ReadTimedOut(error) => { assert(state == 3, "read timeout state"); _probe_error(error, domain, code); }
+                _ => { assert(false, "terminal read variant"); }
+            }
+            match (_decode_file_write(encoded)) {
+                WriteFailed(error) => { assert(state == 2, "write failure state"); _probe_error(error, domain, code); }
+                WriteTimedOut(error) => { assert(state == 3, "write timeout state"); _probe_error(error, domain, code); }
+                _ => { assert(false, "terminal write variant"); }
+            }
+        }
+    }
+    let signed = _decode_file_result(bytes::RangeActionFailed(0,
+        RangeDiagnostic(2, 6, 1, -0x100000001 as long)), true);
+    assert(signed.error.kind == 6 && signed.error.domain == 1 && signed.error.native_code == -0x100000001 as long,
+        "signed wide native codes and normalized categories are preserved");
+    printl_s("file range conversions: PASS");
+}
+'''
+
+
+def require_range_conversions(work: Path, cc: str) -> None:
+    """Validate file-owned result schemas in every runtime-checking mode.
+
+    Args:
+        work: Owned source and executable directory.
+        cc: Selected native C compiler.
+
+    Raises:
+        AssertionError: Conversion loses data or accepts an invalid file payload.
+    """
+    source = work / "range-conversion-source"
+    source.mkdir()
+    (source / "file_range_probe.l1").write_text(range_conversion_source(), encoding="utf-8")
+    invalid = {
+        "native_negative": "invalid native transfer result",
+        "native_progress": "invalid native transfer result",
+        "native_state": "invalid native transfer result",
+        "applied_negative": "invalid range action result",
+        "applied_value": "invalid range action result",
+        "stopped_progress": "invalid range action result",
+        "stopped_tag": "invalid range action result",
+        "stopped_error": "invalid range action result",
+        "write_eof": "invalid range action result",
+        "failed_progress": "invalid range action result",
+        "failed_tag": "invalid range action result",
+        "failed_domain": "invalid range action error",
+        "runtime_code": "invalid range action error",
+    }
+    for mode, flags in (("checked", ()), ("basic", ("--check-basic",)), ("unchecked", ("--unchecked",))):
+        output = work / f"range-conversion-{mode}"
+        output.mkdir()
+        executable = build(output, "file_range_probe", cc, flags, project_root=source)
+        result = require_success([str(executable), "normal"], timeout=60)
+        assert result.stdout == "file range conversions: PASS\n" and not result.stderr, result
+        for case, message in invalid.items():
+            failed = subprocess.run(
+                [str(executable), case], cwd=L1_ROOT, capture_output=True, text=True, timeout=60, check=False,
+            )
+            assert failed.returncode != 0, (mode, case, "invalid conversion succeeded")
+            assert f"std.file: {message}" in failed.stderr, (mode, case, failed.stderr)
+        print(f"file_runtime_test: range conversion {mode} PASS")
+
+
 def main() -> int:
     """Run focused public, native, opacity, and failure-injection regressions.
 
@@ -310,6 +454,7 @@ def main() -> int:
         require_generated(work, cc)
         require_wide_public(work, cc)
         require_interface(work)
+        require_range_conversions(work, cc)
         require_injected(work, cc)
     print("file_runtime_test: PASS")
     return 0

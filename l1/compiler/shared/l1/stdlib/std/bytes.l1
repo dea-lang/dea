@@ -6,19 +6,19 @@
 /**
  * Owned growable binary buffers with checked lengths and explicit copying.
  * Invalid sizes, ranges, length overflow, and allocation failure terminate
- * execution. No operation exposes storage or returns a borrowed view.
+ * execution. Unsafe range actions borrow storage synchronously under an
+ * explicit no-escape contract; no operation returns a borrowed storage view.
  */
 module std.bytes;
 
 export opaque { ByteBuffer }, create, with_capacity, free, size, capacity,
     reserve, resize, clear, get, set, append_byte, append_range, append_buffer,
-    to_string, from_string,
-    _bytes_file_read, _bytes_file_write, _bytes_file_read_at, _bytes_file_write_at;
+    to_string, from_string, ByteBufferRangeActionContext,
+    ByteBufferRangeActionDiagnostic, ByteBufferRangeActionResult,
+    ByteBufferRangeAction, with_raw_range;
 
 import sys.memory;
 import sys.rt;
-import sys.fs;
-import sys.os;
 import std.assert;
 import std.integer;
 
@@ -30,6 +30,61 @@ struct ByteBuffer {
     _length: int;
     _capacity: int;
 }
+
+/**
+ * Pass borrowed action state and one scalar argument by value without allocation.
+ * The selected action defines both fields' meanings. A null state is valid for
+ * actions needing no external resource. Copying state neither transfers
+ * ownership nor extends the pointed-to resource's lifetime.
+ */
+struct ByteBufferRangeActionContext {
+    state: void*?;
+    argument: long;
+}
+
+/**
+ * Carry action-defined diagnostic fields without assigning OS or protocol meaning.
+ * The caller selects the action and must interpret its result using that action's
+ * schema. Identical numeric fields can have different meanings for other actions;
+ * no domain token or runtime provenance check establishes the decoder pairing.
+ */
+struct ByteBufferRangeActionDiagnostic {
+    tag: int;
+    code: int;
+    detail: int;
+    value: long;
+}
+
+/**
+ * Report action progress and an optional scalar value or diagnostic by value.
+ * Applied means successful processing, including partial or zero progress, not
+ * necessarily completion of the requested range. Stopped is an action-defined
+ * normal terminal outcome, and Failed is a failure; both may report partial
+ * progress. Every processed count must be within the supplied count. Actions
+ * define their mutation footprint and diagnostic schema; outcomes do not roll
+ * back already performed effects. No payload may encode an escaping storage view.
+ */
+enum ByteBufferRangeActionResult {
+    RangeActionApplied(processed: int, value: long?);
+    RangeActionStopped(processed: int, reason: ByteBufferRangeActionDiagnostic);
+    RangeActionFailed(processed: int, error: ByteBufferRangeActionDiagnostic);
+}
+
+/**
+ * Process a borrowed byte range synchronously under the with_raw_range contract.
+ * Access only the count supplied; retain no storage pointer or derived view.
+ * Keep the buffer and context resources live and do not reenter buffer operations
+ * or structurally mutate, free, or reallocate its storage through any alias.
+ * The unsafe marker preserves callback typing, not a static lifetime proof.
+ *
+ * @param data Borrowed byte storage, with no accessible byte when count is zero.
+ * @param count Number of accessible initialized bytes.
+ * @param context Borrowed resource state and scalar argument, passed by value.
+ * @return Action-defined outcome whose processed count is within count.
+ */
+type ByteBufferRangeAction = unsafe func(
+    byte*, int, ByteBufferRangeActionContext
+) -> ByteBufferRangeActionResult;
 
 /**
  * Create an empty buffer with the requested capacity.
@@ -272,91 +327,47 @@ func from_string(value: string) -> ByteBuffer* {
 }
 
 /**
- * Check a synchronous file transfer against initialized logical bytes.
+ * Invoke one synchronous unsafe action over an initialized logical byte range.
+ * Bounds and returned progress are asserted in every runtime mode. Capacity
+ * beyond the logical length grants no access. Valid empty ranges still invoke
+ * the action exactly once, with an unspecified pointer and no accessible byte.
+ * The helper preserves length and capacity, returns the outcome unchanged, and
+ * performs no allocation or rollback of callback effects.
  *
- * @param self Live buffer whose logical range is checked.
- * @param start Nonnegative start, at most size(self).
- * @param count Nonnegative count, at most size(self) - start.
+ * The caller keeps buffer and context resources live for the complete call and
+ * pairs the action with its documented diagnostic schema. The callback may access
+ * only count bytes; casts to other pointer types require alignment, extent, and
+ * representation proofs. No storage pointer or derived pointer may escape via
+ * context, results, globals, retained objects, or asynchronous work.
+ * Do not free, reallocate, or structurally mutate the buffer through any alias,
+ * including reserve, resize, clear, or append. Do not reenter buffer operations
+ * on this buffer, and coordinate conflicting concurrent access externally.
+ * The helper neither owns context state nor pins storage or enforces no-escape.
+ *
+ * @param buffer Live buffer borrowed for the complete invocation.
+ * @param start Nonnegative start, at most size(buffer).
+ * @param count Nonnegative count, at most size(buffer) minus start.
+ * @param context Borrowed action state and scalar argument, passed by value.
+ * @param action Callback invoked exactly once after range validation.
+ * @return Unchanged callback result with processed count between zero and count.
  */
-func _check_file_range(self: ByteBuffer*, start: int, count: int) {
-    assert(start >= 0 && start <= self._length, "std.bytes: file range out of bounds");
-    assert(count >= 0 && count <= self._length - start, "std.bytes: file range out of bounds");
-}
-
-/**
- * Read synchronously into checked buffer storage for std.file.
- *
- * The native wrapper must be live. Storage is never returned or retained,
- * and the logical buffer size remains unchanged on every outcome.
- *
- * @param self Live pre-sized destination buffer.
- * @param handle Native file wrapper borrowed for this call.
- * @param start Start of the destination range.
- * @param count Maximum number of bytes to read.
- * @return The native read outcome.
- */
-unsafe func _bytes_file_read(self: ByteBuffer*, handle: void*, start: int, count: int) -> RtIoResult {
-    _check_file_range(self, start, count);
-    let data = self._data;
+unsafe func with_raw_range(
+    buffer: ByteBuffer*, start: int, count: int,
+    context: ByteBufferRangeActionContext,
+    action: ByteBufferRangeAction
+) -> ByteBufferRangeActionResult {
+    assert(start >= 0 && start <= buffer._length, "std.bytes: range out of bounds");
+    assert(count >= 0 && count <= buffer._length - start, "std.bytes: range out of bounds");
+    let data = buffer._data;
     if (count > 0) { data = rt_array_element(data, 1, start); }
-    return rt_file_read(handle, data, count);
-}
-
-/**
- * Write synchronously from checked buffer storage for std.file.
- *
- * The native wrapper must be live. Storage is never returned or retained,
- * and the logical buffer size remains unchanged on every outcome.
- *
- * @param self Live source buffer.
- * @param handle Native file wrapper borrowed for this call.
- * @param start Start of the source range.
- * @param count Maximum number of bytes to write.
- * @return The native write outcome.
- */
-unsafe func _bytes_file_write(self: ByteBuffer*, handle: void*, start: int, count: int) -> RtIoResult {
-    _check_file_range(self, start, count);
-    let data = self._data;
-    if (count > 0) { data = rt_array_element(data, 1, start); }
-    return rt_file_write(handle, data, count);
-}
-
-/**
- * Read an absolute file range synchronously into checked buffer storage.
- *
- * The native wrapper must be live. Storage never escapes, and neither the
- * logical buffer size nor the file cursor changes on any outcome.
- *
- * @param self Live pre-sized destination buffer.
- * @param handle Native file wrapper borrowed for this call.
- * @param start Start of the destination range.
- * @param count Maximum number of bytes to read.
- * @param offset Nonnegative absolute file offset.
- * @return The native positional-read outcome.
- */
-unsafe func _bytes_file_read_at(self: ByteBuffer*, handle: void*, start: int, count: int, offset: long) -> RtIoResult {
-    _check_file_range(self, start, count);
-    let data = self._data;
-    if (count > 0) { data = rt_array_element(data, 1, start); }
-    return rt_file_read_at(handle, data, count, offset);
-}
-
-/**
- * Write an absolute file range synchronously from checked buffer storage.
- *
- * The native wrapper must be live. Storage never escapes, and neither the
- * logical buffer size nor the file cursor changes on any outcome.
- *
- * @param self Live source buffer.
- * @param handle Native file wrapper borrowed for this call.
- * @param start Start of the source range.
- * @param count Maximum number of bytes to write.
- * @param offset Nonnegative absolute file offset.
- * @return The native positional-write outcome.
- */
-unsafe func _bytes_file_write_at(self: ByteBuffer*, handle: void*, start: int, count: int, offset: long) -> RtIoResult {
-    _check_file_range(self, start, count);
-    let data = self._data;
-    if (count > 0) { data = rt_array_element(data, 1, start); }
-    return rt_file_write_at(handle, data, count, offset);
+    let result = action(data as byte*, count, context);
+    let processed = 0;
+    match (result) {
+        RangeActionApplied(done, value) => { processed = done; }
+        RangeActionStopped(done, reason) => { processed = done; }
+        RangeActionFailed(done, error) => { processed = done; }
+    }
+    assert(processed >= 0 && processed <= count,
+        "std.bytes: range action processed count out of bounds");
+    return result;
 }

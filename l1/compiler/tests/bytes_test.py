@@ -230,7 +230,7 @@ def require_public_interface(work: Path) -> None:
 
 
 def main() -> int:
-    """Run public and white-box contracts in checked and unchecked runtime modes.
+    """Run public and white-box contracts in all three runtime modes.
 
     Returns:
         Zero when every behavior and opacity assertion passes.
@@ -243,7 +243,7 @@ def main() -> int:
         work = Path(temporary)
         (work / "bytes_failures.l1").write_text(failure_source(), encoding="utf-8")
         (work / "bytes_limits.l1").write_text(limit_source(), encoding="utf-8")
-        for mode, flags in (("checked", []), ("unchecked", ["--unchecked"])):
+        for mode, flags in (("checked", []), ("basic", ["--check-basic"]), ("unchecked", ["--unchecked"])):
             real = build(work, "bytes_main", cc, flags, root=FIXTURES)
             result = require_success([str(real)], timeout=60)
             assert result.stdout == "bytes_main: PASS\n" and result.stderr == "", result

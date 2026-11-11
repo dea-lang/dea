@@ -265,6 +265,51 @@ ssize_t file_probe_write(int fd, const void *buffer, size_t count) {
 }
 
 /**
+ * Limit positional reads or inject a terminal outcome without changing the cursor.
+ *
+ * @param fd Live file descriptor.
+ * @param buffer Destination bytes.
+ * @param count Maximum destination extent.
+ * @param offset Absolute native file offset passed unchanged to pread.
+ * @return Native transferred count, zero EOF, or minus one with selected errno.
+ */
+ssize_t file_probe_pread(int fd, void *buffer, size_t count, off_t offset) {
+    require_private(fd);
+    ++reads;
+    if (mode == 12 && count > 1) count = 1;
+    if (mode == 1 || mode == 8 || mode == 9) {
+        if (reads > 1) {
+            if (mode == 8) return 0;
+            errno = file_probe_error();
+            return -1;
+        }
+        if (count > 2) count = 2;
+    }
+    return pread(fd, buffer, count, offset);
+}
+
+/**
+ * Limit positional writes or inject a terminal fault without changing the cursor.
+ *
+ * @param fd Live file descriptor.
+ * @param buffer Source bytes.
+ * @param count Maximum source extent.
+ * @param offset Absolute native file offset passed unchanged to pwrite.
+ * @return Native transferred count, zero progress, or minus one with selected errno.
+ */
+ssize_t file_probe_pwrite(int fd, const void *buffer, size_t count, off_t offset) {
+    require_private(fd);
+    ++writes;
+    if (mode == 13 && count > 1) count = 1;
+    if (mode == 3) return 0;
+    if (mode == 2 || mode == 10) {
+        if (writes > 1) { errno = file_probe_error(); return -1; }
+        if (count > 2) count = 2;
+    }
+    return pwrite(fd, buffer, count, offset);
+}
+
+/**
  * Consume a descriptor before injecting a deferred close failure.
  *
  * @param fd Native descriptor consumed exactly once.

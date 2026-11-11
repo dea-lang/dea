@@ -124,30 +124,42 @@ func main() -> int {
             _ => { assert(false, "zero-progress write must fail"); }
         }
         assert(file_probe_calls(1) == 1, "zero-progress write does not spin");
-        if (file_probe_domain() == 2) {
-            let cursor = check::offset(position(file));
-            file_probe_config(1);
+        let cursor = check::offset(position(file));
+        for (let mode = 1; mode <= 3; mode = mode + 1) {
+            for (let i = 0; i < bytes::size(destination); i = i + 1) { bytes::set(destination, i, '-'); }
+            let fault = 1;
+            if (mode == 2) { fault = 8; }
+            if (mode == 3) { fault = 9; }
+            file_probe_config(fault);
             match (read_at(file, destination, 1, 4, 0 as long)) {
-                Read(count) => { assert(count == 2, "overlapped read completes partial native progress"); }
-                _ => { assert(false, "overlapped partial read failed"); }
+                Read(count) => { assert(count == 2, "positional read completes partial native progress"); }
+                _ => { assert(false, "positional partial read failed"); }
             }
             match (read_at(file, destination, 3, 2, 2 as long)) {
-                ReadFailed(error) => { captured(error, 6); }
-                _ => { assert(false, "overlapped read interruption failed"); }
+                ReadFailed(error) => { assert(mode == 1, "positional failure variant"); captured(error, 6); }
+                Eof => { assert(mode == 2, "positional EOF variant"); }
+                ReadTimedOut(error) => { assert(mode == 3, "positional timeout variant"); captured(error, 9); }
+                _ => { assert(false, "positional terminal read outcome failed"); }
             }
             assert(file_probe_calls(0) == 2 && check::offset(position(file)) == cursor,
-                "overlapped read success and failure preserve the sequential cursor without retry");
-            file_probe_config(2);
+                "positional read success and terminal outcomes preserve the cursor without retry");
+            assert(bytes::to_string(destination) == "-ab---", "positional terminal read preserves untouched bytes");
+        }
+        for (let mode = 1; mode <= 2; mode = mode + 1) {
+            let fault = 2;
+            if (mode == 2) { fault = 10; }
+            file_probe_config(fault);
             match (write_at(file, source, 0, 4, 0 as long)) {
-                Written(count) => { assert(count == 2, "overlapped write completes partial native progress"); }
-                _ => { assert(false, "overlapped partial write failed"); }
+                Written(count) => { assert(count == 2, "positional write completes partial native progress"); }
+                _ => { assert(false, "positional partial write failed"); }
             }
             match (write_at(file, source, 2, 2, 2 as long)) {
-                WriteFailed(error) => { captured(error, 18); }
-                _ => { assert(false, "overlapped write failure was lost"); }
+                WriteFailed(error) => { assert(mode == 1, "positional write failure variant"); captured(error, 18); }
+                WriteTimedOut(error) => { assert(mode == 2, "positional write timeout variant"); captured(error, 9); }
+                _ => { assert(false, "positional write terminal outcome was lost"); }
             }
             assert(file_probe_calls(1) == 2 && check::offset(position(file)) == cursor,
-                "overlapped write success and failure preserve the sequential cursor without retry");
+                "positional write success and failure preserve the cursor without retry");
         }
         file_probe_config(5);
         match (flush(file)) { Flushed => {} _ => { assert(false, "flush must not synchronize"); } }

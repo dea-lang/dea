@@ -1,0 +1,39 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module range_action_provider;
+
+export sum, diagnostic;
+
+import std.bytes as bytes;
+
+/**
+ * Sum a borrowed range and add an action-specific scalar argument.
+ *
+ * @param data Borrowed readable range, never retained.
+ * @param count Accessible byte count.
+ * @param context Null-state scalar input passed by value.
+ * @return Complete progress and the sum with its supplied argument.
+ */
+unsafe func sum(data: byte*, count: int,
+    context: bytes::ByteBufferRangeActionContext) -> bytes::ByteBufferRangeActionResult {
+    let total = context.argument;
+    for (let i = 0; i < count; i = i + 1) { total = total + (data[i] as long); }
+    return bytes::RangeActionApplied(count, total);
+}
+
+/**
+ * Return an independent diagnostic schema without accessing storage.
+ *
+ * @param data Borrowed range, unused and never retained.
+ * @param count Completed count in this action's schema.
+ * @param context Scalar diagnostic payload passed by value.
+ * @return Failure with opaque numeric fields for the matching consumer.
+ */
+unsafe func diagnostic(data: byte*, count: int,
+    context: bytes::ByteBufferRangeActionContext) -> bytes::ByteBufferRangeActionResult {
+    return bytes::RangeActionFailed(count,
+        bytes::ByteBufferRangeActionDiagnostic(17, -23, 41, context.argument));
+}

@@ -1,6 +1,6 @@
 # L1 Ownership and Memory Management Reference
 
-Version: 2026-11-05
+Version: 2026-11-10
 
 This document describes how ownership works in current Dea/L1 bootstrap builds, covering:
 
@@ -197,6 +197,15 @@ preserve its temporary ownership.
   arbitrary bytes. Buffer mutation and cleanup cannot invalidate string copies.
 - Shrink and clear retain capacity; later resize zeroes newly visible bytes. Clear is not secure erasure. Invalid
   sizes/ranges, length overflow, and allocation failure terminate execution rather than returning a partial result.
+- `with_raw_range` is an unsafe synchronous borrow. It validates logical bounds, invokes the action exactly once even
+  for an empty range, checks the returned progress, and preserves size/capacity without allocating context or results.
+  The caller keeps both buffer and context resources live; context pointer copies do not transfer ownership or extend
+  lifetime. The callback may access only the supplied bytes and must not retain a storage pointer or derived view in any
+  result, context, global, object, or asynchronous work.
+- During a range action, do not free or reallocate the buffer, structurally mutate it through aliases, or reenter its
+  operations. Coordinate conflicting concurrent access externally. The callback type checks its unsafe signature but
+  does not prove bounds, lifetimes, alias discipline, or diagnostic-schema pairing. No automatic pinning or rollback is
+  provided; an empty range grants no byte access.
 
 ### `std.vector` / `StringVector`
 

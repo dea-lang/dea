@@ -75,6 +75,12 @@ sequential transfers on live handles succeed without probing EOF; positional tra
 and append restrictions. `read_exact` and `write_all` loop only over successful progress and retain accumulated counts
 on terminal outcomes. Interruptions return without implicit retry; zero-progress writes become `IoError`.
 
+Private `std.file` callbacks use the I/O-independent `std.bytes::with_raw_range` helper. The buffer module checks bounds
+and returned progress; the file module owns native calls and explicit result conversion. Context and results pass by
+value without per-transfer heap allocation. Even empty ranges invoke the callback, preserving native handle and
+positional validation. File decoders preserve the captured OS error domain and full native code; single-attempt terminal
+outcomes must have zero progress, while the generic range protocol permits other actions to return partial failure.
+
 Offsets and extents are signed 64-bit `long`; buffer ranges and per-call counts are `int`. Seeking beyond EOF does not
 extend the file; truncation changes its extent without requiring a correspondingly large buffer. Truncation and
 positional I/O preserve the sequential cursor. Non-seekable objects return `NotSeekable` for positional operations.

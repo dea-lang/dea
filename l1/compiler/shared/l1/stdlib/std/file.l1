@@ -18,6 +18,8 @@ export opaque { File }, FileOffset, AccessMode, CreateMode, SeekOrigin, OpenOpti
     seek, position, read_at, write_at, size, truncate, metadata, flush, sync_data, sync_all;
 
 import sys.fs;
+import sys.os;
+import std.assert;
 import std.bytes as bytes;
 import std.fs as fs;
 import std.os as os;
@@ -85,6 +87,156 @@ enum WriteAllResult {
     WriteComplete(count: int);
     WriteAllTimedOut(count: int, error: os::OsError);
     WriteAllFailed(count: int, error: os::OsError);
+}
+
+/**
+ * Borrowed native resource and scalar argument passed without allocation.
+ */
+type RangeContext = bytes::ByteBufferRangeActionContext;
+
+/**
+ * Finite range-action outcome returned by value.
+ */
+type RangeResult = bytes::ByteBufferRangeActionResult;
+
+/**
+ * File-owned diagnostic schema carried unchanged by std.bytes.
+ */
+type RangeDiagnostic = bytes::ByteBufferRangeActionDiagnostic;
+
+/**
+ * Encode a native single-attempt file result without losing its state or error.
+ * Terminal file outcomes must have zero progress; unknown native codes remain
+ * diagnostic data and are never inferred from ambient host error state.
+ *
+ * @param result Captured native transfer outcome.
+ * @return The matching range outcome, with success scalar absent.
+ */
+func _encode_file_result(result: RtIoResult) -> RangeResult {
+    assert(result.count >= 0, "std.file: invalid native transfer result");
+    if (result.state == 0) { return bytes::RangeActionApplied(result.count, null); }
+    assert(result.count == 0 && result.state >= 1 && result.state <= 3,
+        "std.file: invalid native transfer result");
+    let diagnostic = RangeDiagnostic(result.state, result.error.kind,
+        result.error.domain, result.error.native_code);
+    if (result.state == 1) { return bytes::RangeActionStopped(result.count, diagnostic); }
+    return bytes::RangeActionFailed(result.count, diagnostic);
+}
+
+/**
+ * Validate the private file schema and reconstruct its native transport fields.
+ * The selected private callback establishes the schema; payload checks do not
+ * prove provenance. Successful partial counts are allowed, but terminal public
+ * variants cannot carry progress. Native namespaces must survive conversion;
+ * unknown native codes and normalized Other failures remain valid.
+ *
+ * @param result By-value result of a private file callback.
+ * @param allow_eof Whether the operation is a read and may stop at EOF.
+ * @return Validated native fields for existing public result conversion.
+ */
+func _decode_file_result(result: RangeResult, allow_eof: bool) -> RtIoResult {
+    match (result) {
+        RangeActionApplied(processed, value) => {
+            assert(processed >= 0 && value == null, "std.file: invalid range action result");
+            return RtIoResult(0, processed, RtOsError(0, 0, 0 as long));
+        }
+        RangeActionStopped(processed, reason) => {
+            assert(allow_eof && processed == 0 && reason.tag == 1
+                && reason.code == 0 && reason.detail == 0 && reason.value == 0 as long,
+                "std.file: invalid range action result");
+            return RtIoResult(1, 0, RtOsError(0, 0, 0 as long));
+        }
+        RangeActionFailed(processed, error) => {
+            assert(processed == 0 && (error.tag == 2 || error.tag == 3),
+                "std.file: invalid range action result");
+            let native = RtOsError(error.code, error.detail, error.value);
+            let public = os::_os_error_from_rt(native);
+            assert(os::_os_error_to_rt(public).domain == error.detail
+                && (error.detail != 0 || error.value == 0 as long),
+                "std.file: invalid range action error");
+            return RtIoResult(error.tag, 0, native);
+        }
+    }
+}
+
+/**
+ * Decode the private read schema into the existing public read result.
+ *
+ * @param result Captured result of a private read callback.
+ * @return Successful partial count, EOF, timeout, or unchanged captured error.
+ */
+func _decode_file_read(result: RangeResult) -> os::ReadResult {
+    return os::_os_read_from_rt(_decode_file_result(result, true));
+}
+
+/**
+ * Decode the private write schema into the existing public write result.
+ *
+ * @param result Captured result of a private write callback.
+ * @return Successful partial count, timeout, or unchanged captured error.
+ */
+func _decode_file_write(result: RangeResult) -> os::WriteResult {
+    return os::_os_write_from_rt(_decode_file_result(result, false));
+}
+
+/**
+ * Borrow a live file handle and buffer range for one synchronous native read.
+ * The caller keeps both resources live and prevents conflicting alias access.
+ * Storage is accessed only within count bytes and is never retained; no buffer
+ * structural operation or ownership transfer occurs during the callback.
+ *
+ * @param data Borrowed writable byte range, inaccessible when count is zero.
+ * @param count Validated logical range length.
+ * @param context Existing native file handle; scalar argument is unused.
+ * @return Captured native read result encoded by value.
+ */
+unsafe func _read_action(data: byte*, count: int, context: RangeContext) -> RangeResult {
+    return _encode_file_result(rt_file_read(context.state as void*, data as void*, count));
+}
+
+/**
+ * Borrow a live file handle and buffer range for one synchronous native write.
+ * The caller keeps both resources live and prevents conflicting alias access.
+ * Storage is accessed only within count bytes and is never retained; no buffer
+ * structural operation or ownership transfer occurs during the callback.
+ *
+ * @param data Borrowed readable byte range, inaccessible when count is zero.
+ * @param count Validated logical range length.
+ * @param context Existing native file handle; scalar argument is unused.
+ * @return Captured native write result encoded by value.
+ */
+unsafe func _write_action(data: byte*, count: int, context: RangeContext) -> RangeResult {
+    return _encode_file_result(rt_file_write(context.state as void*, data as void*, count));
+}
+
+/**
+ * Borrow a live file handle and buffer range for one synchronous positional read.
+ * The caller keeps both resources live and prevents conflicting alias access.
+ * Storage is accessed only within count bytes and is never retained; no buffer
+ * structural operation or ownership transfer occurs during the callback.
+ *
+ * @param data Borrowed writable byte range, inaccessible when count is zero.
+ * @param count Validated logical range length.
+ * @param context Existing native file handle and full signed file offset.
+ * @return Captured native positional read result encoded by value.
+ */
+unsafe func _read_at_action(data: byte*, count: int, context: RangeContext) -> RangeResult {
+    return _encode_file_result(rt_file_read_at(context.state as void*, data as void*, count, context.argument));
+}
+
+/**
+ * Borrow a live file handle and buffer range for one synchronous positional write.
+ * The caller keeps both resources live and prevents conflicting alias access.
+ * Storage is accessed only within count bytes and is never retained; no buffer
+ * structural operation or ownership transfer occurs during the callback.
+ *
+ * @param data Borrowed readable byte range, inaccessible when count is zero.
+ * @param count Validated logical range length.
+ * @param context Existing native file handle and full signed file offset.
+ * @return Captured native positional write result encoded by value.
+ */
+unsafe func _write_at_action(data: byte*, count: int, context: RangeContext) -> RangeResult {
+    return _encode_file_result(rt_file_write_at(context.state as void*, data as void*, count, context.argument));
 }
 
 /**
@@ -221,7 +373,8 @@ func free_open_file_result(result: OpenFileResult) -> CloseResult {
  * @return Read count, EOF, native timeout, or captured failure.
  */
 func read_some(file: File*, buffer: bytes::ByteBuffer*, start: int, count: int) -> os::ReadResult {
-    return os::_os_read_from_rt(bytes::_bytes_file_read(buffer, file._handle, start, count));
+    let context = RangeContext(file._handle, 0 as long);
+    return _decode_file_read(bytes::with_raw_range(buffer, start, count, context, _read_action));
 }
 
 /**
@@ -271,7 +424,8 @@ func read_exact(file: File*, buffer: bytes::ByteBuffer*, start: int, count: int)
  * @return Accepted byte count, native timeout, or captured failure.
  */
 func write_some(file: File*, buffer: bytes::ByteBuffer*, start: int, count: int) -> os::WriteResult {
-    return os::_os_write_from_rt(bytes::_bytes_file_write(buffer, file._handle, start, count));
+    let context = RangeContext(file._handle, 0 as long);
+    return _decode_file_write(bytes::with_raw_range(buffer, start, count, context, _write_action));
 }
 
 /**
@@ -341,7 +495,8 @@ func position(file: File*) -> OffsetResult { return _offset_result(rt_file_posit
  * @return Read count, EOF, timeout, or captured failure including NotSeekable.
  */
 func read_at(file: File*, buffer: bytes::ByteBuffer*, start: int, count: int, offset: FileOffset) -> os::ReadResult {
-    return os::_os_read_from_rt(bytes::_bytes_file_read_at(buffer, file._handle, start, count, offset));
+    let context = RangeContext(file._handle, offset);
+    return _decode_file_read(bytes::with_raw_range(buffer, start, count, context, _read_at_action));
 }
 
 /**
@@ -358,7 +513,8 @@ func read_at(file: File*, buffer: bytes::ByteBuffer*, start: int, count: int, of
  * @return Written count, timeout, or captured failure including NotSeekable.
  */
 func write_at(file: File*, buffer: bytes::ByteBuffer*, start: int, count: int, offset: FileOffset) -> os::WriteResult {
-    return os::_os_write_from_rt(bytes::_bytes_file_write_at(buffer, file._handle, start, count, offset));
+    let context = RangeContext(file._handle, offset);
+    return _decode_file_write(bytes::with_raw_range(buffer, start, count, context, _write_at_action));
 }
 
 /**
