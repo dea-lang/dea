@@ -1,6 +1,6 @@
 # L2 C Backend Design
 
-Version: 2026-10-10
+Version: 2026-11-11
 
 This is the canonical backend implementation document for the canonical Dea/L2 compiler.
 
@@ -337,15 +337,11 @@ See [ownership.md](ownership.md) for the language-facing ownership rules that th
 
 ## Entry Point Behavior
 
-### Legacy process wrapper
+### Process wrapper ownership
 
-When the entry module defines `main`, backend emits a host C `main(int argc, char **argv)` wrapper that:
-
-- initializes runtime argument state
-- calls the hidden global module-init chain when any imported module needs deferred top-level initialization
-- calls the mangled L2 entry function
-- returns `int` directly and maps `bool` `true` to host status `0` and `false` to `1`
-- discards other return values and exits with `0`
+The common link path emits the separate [standalone executable wrapper](#standalone-executable-wrapper), which owns
+process-level C `main`, runtime argument initialization, module initialization in dependency order, and finalization in
+reverse order. The per-module backend supplies the lifecycle functions and entry bridge described below.
 
 ### Per-module lifecycle and entry bridge
 
