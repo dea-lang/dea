@@ -1,6 +1,6 @@
 # L0 Language and Runtime Design Decisions
 
-Version: 2026-09-01
+Version: 2026-11-11
 
 This document records rationale and policy decisions.
 
@@ -205,6 +205,8 @@ Policy:
 - `int` is defined as 32-bit signed semantics,
 - `byte` is 8-bit semantics,
 - runtime helpers enforce defined behavior for overflow/division/mod edge cases.
+- unary minus promotes `byte` to `int`; negating the minimum `int` is a defined arithmetic failure, including in
+  unchecked pointer mode.
 
 At the stdlib layer, shared integer helper contracts belong in `std.integer`; modules such as `std.time` may consume
 those helpers, but they should not own general-purpose arithmetic utilities. The `std.integer` surface remains

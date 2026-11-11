@@ -366,7 +366,7 @@ def test_codegen_unary_expressions(codegen_single):
     if c_code is None:
         return
 
-    assert "(-x)" in c_code
+    assert "(_rt_isub(0, x))" in c_code
     assert "_rt_check_ptr_site(&" in c_code
     assert "(void*)(p), (l0_int)(sizeof" in c_code
     assert "_RT_ACCESS_READ" in c_code
@@ -496,7 +496,7 @@ def test_codegen_if_statement(codegen_single):
 
     assert "if (x < 0)" in c_code
     assert "else" in c_code
-    assert "return (-x);" in c_code
+    assert "return (_rt_isub(0, x));" in c_code
 
 
 def test_codegen_while_statement(codegen_single):

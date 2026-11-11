@@ -734,9 +734,9 @@ func test_run_bitwise_build_and_keep_c() {
         "bitwise_main unary bitwise-not lowering mismatch");
     assert(contains_s(c_text as string, "dea_int masked = (((dea_int)(inverted)) & 15);"),
         "bitwise_main bitwise-and widening mismatch");
-    assert(contains_s(c_text as string, "dea_long shifted_left = (wide << ((dea_long)(count)));"),
+    assert(contains_s(c_text as string, "dea_long shifted_left = (_rt_lshl(wide, ((dea_long)(count))));"),
         "bitwise_main left-shift widening mismatch");
-    assert(contains_s(c_text as string, "dea_long shifted_right = (shifted_left >> ((dea_long)(count)));"),
+    assert(contains_s(c_text as string, "dea_long shifted_right = (_rt_lshr(shifted_left, ((dea_long)(count))));"),
         "bitwise_main right-shift widening mismatch");
 
     rt_delete_file(out_path);

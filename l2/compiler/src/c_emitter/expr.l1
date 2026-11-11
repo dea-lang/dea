@@ -520,6 +520,37 @@ func cem_emit_checked_int_sub_for_type(result_ty: Type*, c_left: string, c_right
 }
 
 /**
+ * Emit a checked shift for a normalized integer type.
+ *
+ * The runtime validates the count before shifting and checks signed left-shift
+ * representability. Unsigned left shifts discard high bits; signed right shifts
+ * preserve the sign. This constructs expression text without evaluating either
+ * operand, and each lowered operand appears exactly once in the result.
+ *
+ * @param result_ty Borrowed builtin `int`, `uint`, `long`, or `ulong` type.
+ * @param c_left Lowered value already converted to `result_ty`.
+ * @param c_right Lowered count already converted to `result_ty`.
+ * @param left_shift Whether to shift left rather than right.
+ * @return Runtime-call expression; unsupported types cause an internal error.
+ */
+func cem_emit_checked_int_shift_for_type(result_ty: Type*, c_left: string, c_right: string, left_shift: bool) -> string {
+    let prefix = "_rt_i";
+    if (type_is_builtin(result_ty, "uint")) {
+        prefix = "_rt_u";
+    } else if (type_is_builtin(result_ty, "long")) {
+        prefix = "_rt_l";
+    } else if (type_is_builtin(result_ty, "ulong")) {
+        prefix = "_rt_ul";
+    } else if (!type_is_builtin(result_ty, "int")) {
+        return cem_ice_string("[ICE-1325] unsupported checked shift type '" + type_format(result_ty) + "'");
+    }
+    if (left_shift) {
+        return "(" + prefix + "shl(" + c_left + ", " + c_right + "))";
+    }
+    return "(" + prefix + "shr(" + c_left + ", " + c_right + "))";
+}
+
+/**
  * Emit a function-call expression.
  *
  * @param c_func_name Function expression.

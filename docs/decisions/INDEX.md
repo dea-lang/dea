@@ -29,3 +29,4 @@
 | [0025](0025-windows-python-environment-ownership.md)                              | Windows Python Environment Ownership                                | Accepted               |
 | [0026](0026-l1-stabilization-boundary.md)                                         | Finite L1 Stabilization Boundary                                    | Accepted               |
 | [0027](0027-validation-ownership-and-dependency-routing.md)                       | Validation Ownership and Dependency Routing                         | Accepted               |
+| [0028](0028-integer-shift-boundaries.md)                                          | Integer Shift Boundaries                                            | Accepted               |

@@ -431,6 +431,8 @@ The bootstrap compiler keeps integer behavior defined rather than inheriting hos
 - `long` is 64-bit signed semantics
 - `ulong` is 64-bit unsigned semantics
 - overflow-sensitive arithmetic and narrowing go through checked runtime helpers
+- unary negation of `tiny`, `short`, `int`, or `long` preserves its signed domain and reports overflow for that domain's
+  minimum value, including in basic and unchecked pointer-runtime modes
 - integer literals that fit `int` remain ordinary `int` literals
 - integer literals outside `int` are carried as opaque bigint payloads until a contextual `uint`, `long`, or `ulong`
   target is known
@@ -442,11 +444,19 @@ The bootstrap compiler keeps integer behavior defined rather than inheriting hos
   casts to the inner type and then produce a present nullable value
 - binary `&`, `|`, `^`, `<<`, and `>>` use the same common-integer-type lattice as the other integer binary operators
 - unary `~` preserves the operand's integer type; the backend casts the promoted C result back to that L1 type
-- right shift follows the signedness of the normalized operand type, so signed shifts are arithmetic and unsigned shifts
-  are logical on supported targets
+- both shift operands use their normalized common type; counts must be in `[0, width)`, where width is 32 for
+  `int`/`uint` and 64 for `long`/`ulong`, or the operation reports a runtime arithmetic error
+- signed left shift multiplies by `2^count` with checked representability, including negative left operands; unsigned
+  left shift discards high bits outside its fixed width
+- signed right shift is arithmetic and unsigned right shift is logical; helpers implement these results without relying
+  on invalid or implementation-defined signed C shifts
+- shift-count and signed-result checks remain active in basic and unchecked pointer-runtime modes
 - integer division by zero is a defined runtime error, not host-C undefined behavior
 
 That policy is part of the language contract even though the current implementation is lowered through C.
+
+The shared shift boundary decision is recorded in
+[docs/decisions/0028-integer-shift-boundaries.md](../../../docs/decisions/0028-integer-shift-boundaries.md).
 
 At the stdlib layer, integer helper contracts belong in `std.integer`; copied modules such as `std.time` may consume
 those helpers, but they should not own general-purpose arithmetic utilities. The unsuffixed helper names remain the

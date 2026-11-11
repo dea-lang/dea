@@ -2552,6 +2552,103 @@ func test_backend_generate_large_integer_builtins() {
 }
 
 /**
+ * Tests signed negation preserves the result domain and evaluates operands once.
+ */
+func test_backend_generate_signed_negation() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "unary.l2");
+        sv_push(lines, "module unary;");
+        sv_push(lines, "let literal: int = -5;");
+        sv_push(lines, "extern func value() -> int;");
+        sv_push(lines, "func negate_tiny(t: tiny) -> tiny { return -t; }");
+        sv_push(lines, "func negate_short(s: short) -> short { return -s; }");
+        sv_push(lines, "func negate_int(i: int) -> int { return -i; }");
+        sv_push(lines, "func negate_long(l: long) -> long { return -l; }");
+        sv_push(lines, "func negate_byte(b: byte) -> byte { return -b; }");
+        sv_push(lines, "func negate_ushort(us: ushort) -> ushort { return -us; }");
+        sv_push(lines, "func negate_uint(u: uint) -> uint { return -u; }");
+        sv_push(lines, "func negate_ulong(ul: ulong) -> ulong { return -ul; }");
+        sv_push(lines, "func negate_float(f: float) -> float { return -f; }");
+        sv_push(lines, "func negate_double(d: double) -> double { return -d; }");
+        sv_push(lines, "func once() -> int { return -value(); }");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("unary", filenames, sources);
+        assert(!analysis_has_errors(result), "negation fixture should analyze");
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "return (_rt_narrow_dea_tiny((_rt_isub(0, t))));"),
+            "tiny negation must reject values outside its signed result domain");
+        assert(contains_s(generated, "return (_rt_narrow_dea_short((_rt_isub(0, s))));"),
+            "short negation must reject values outside its signed result domain");
+        assert(contains_s(generated, "return (_rt_isub(0, i));"), "int negation must use checked arithmetic");
+        assert(contains_s(generated, "return (_rt_lsub(0, l));"), "long negation must use checked arithmetic");
+        assert(contains_s(generated, "return (_rt_isub(0, value()));") &&
+            bt_count_substring(generated, "value()") == 1, "negation must evaluate a call operand once");
+        assert(contains_s(generated, "N7literal = -5;"), "static negative constants must remain C constant initializers");
+        assert(contains_s(generated, "return (-b);") && contains_s(generated, "return (-us);") &&
+            contains_s(generated, "return (-u);") && contains_s(generated, "return (-ul);"),
+            "signed negation repair must preserve unsigned lowering");
+        assert(contains_s(generated, "return (-f);") && contains_s(generated, "return (-d);"),
+            "floating negation must retain its existing representation");
+        analysis_result_free(result);
+    }
+}
+
+/**
+ * Tests shifts use the resolved common type without duplicating operands.
+ */
+func test_backend_generate_checked_shifts() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "shifts.l2");
+        sv_push(lines, "module shifts;");
+        sv_push(lines, "extern func value() -> long;");
+        sv_push(lines, "extern func count() -> int;");
+        sv_push(lines, "func il(x: int, n: int) -> int { return x << n; }");
+        sv_push(lines, "func ir(x: int, n: int) -> int { return x >> n; }");
+        sv_push(lines, "func ul(x: uint, n: uint) -> uint { return x << n; }");
+        sv_push(lines, "func ur(x: uint, n: uint) -> uint { return x >> n; }");
+        sv_push(lines, "func ll(x: long, n: long) -> long { return x << n; }");
+        sv_push(lines, "func lr(x: long, n: long) -> long { return x >> n; }");
+        sv_push(lines, "func ull(x: ulong, n: ulong) -> ulong { return x << n; }");
+        sv_push(lines, "func ulr(x: ulong, n: ulong) -> ulong { return x >> n; }");
+        sv_push(lines, "func mixed(x: uint, n: int) -> long { return x << n; }");
+        sv_push(lines, "func narrow(x: tiny, n: byte) -> int { return x >> n; }");
+        sv_push(lines, "func once() -> long { return value() << count(); }");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("shifts", filenames, sources);
+        assert(!analysis_has_errors(result), "shift fixture should analyze");
+        let generated = bt_generate_entry(result, opts, cfg);
+        assert(contains_s(generated, "return (_rt_ishl(x, n));") &&
+            contains_s(generated, "return (_rt_ishr(x, n));"), "int shifts must validate counts");
+        assert(contains_s(generated, "return (_rt_ushl(x, n));") &&
+            contains_s(generated, "return (_rt_ushr(x, n));"), "uint shifts must retain unsigned dispatch");
+        assert(contains_s(generated, "return (_rt_lshl(x, n));") &&
+            contains_s(generated, "return (_rt_lshr(x, n));"), "long shifts must validate wide counts");
+        assert(contains_s(generated, "return (_rt_ulshl(x, n));") &&
+            contains_s(generated, "return (_rt_ulshr(x, n));"), "ulong shifts must retain wide unsigned dispatch");
+        assert(contains_s(generated, "return (_rt_lshl(((dea_long)(x)), ((dea_long)(n))));"),
+            "mixed uint/int shifts must validate the common long domain");
+        assert(contains_s(generated, "return (_rt_ishr(((dea_int)(x)), ((dea_int)(n))));"),
+            "narrow shifts must use the promoted int domain");
+        assert(contains_s(generated, "return (_rt_lshl(value(), ((dea_long)(count()))));") &&
+            bt_count_substring(generated, "value()") == 1 && bt_count_substring(generated, "count()") == 1,
+            "shift lowering must use each effectful operand exactly once");
+        analysis_result_free(result);
+    }
+}
+
+/**
  * Tests generation for builtin `float` and `double` lowering.
  */
 func test_backend_generate_float_double_builtins() {
@@ -2863,6 +2960,8 @@ func main() {
     test_backend_generate_trigraph_safe_c_strings();
     test_backend_generate_small_integer_builtins();
     test_backend_generate_large_integer_builtins();
+    test_backend_generate_signed_negation();
+    test_backend_generate_checked_shifts();
     test_backend_generate_float_double_builtins();
     test_backend_generate_float_double_ops();
     test_backend_generate_float_zero_division_plain_c();

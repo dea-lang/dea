@@ -285,7 +285,10 @@ Implemented lowering currently includes:
   extent, and alignment before recursive owned-field cleanup
 - `if`, `while`, `for`, `match`, `case`, `with`, `break`, `continue`, and `return`
 - `expr?` null-propagation lowering with early return on empty
-- checked integer arithmetic and narrowing via runtime helpers
+- checked integer arithmetic and narrowing via runtime helpers; signed unary negation uses checked zero-subtraction,
+  followed by checked narrowing for `tiny` and `short`
+- integer shifts use typed runtime helpers after common-type conversion; helpers reject invalid counts, check signed
+  left-shift results, preserve unsigned high-bit discard, and implement arithmetic signed right shift
 - contextual array literals, array constructors, `new T[N]`, `sizeof(T[N])`, whole-array value copies, and checked array
   indexing
 - `len` and `slice` intrinsics, contextual `T[N] -> T[]` conversion, and checked slice indexing

@@ -1,0 +1,20 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module constants_valid;
+
+const LOW: int = -2147483648;
+const NEGATED: int = -(-2147483647);
+const SHIFTED: int = (1 << 30) >> 2;
+
+/**
+ * Keep supported scalar constant evaluation separate from runtime probes.
+ *
+ * @return Zero when supported folded values are preserved.
+ */
+func main() -> int {
+    if (LOW != -2147483648 || NEGATED != 2147483647 || SHIFTED != 268435456) { return 1; }
+    return 0;
+}

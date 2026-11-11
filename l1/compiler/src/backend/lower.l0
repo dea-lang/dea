@@ -504,6 +504,10 @@ func be_emit_binary_op(self: Backend*, expr_id: ExprId) -> string {
             }
             return cem_emit_binary_op(expr.text_value, c_left, c_right);
         }
+        if ((expr.text_value == "<<" || expr.text_value == ">>") && checked_int_op && common_int_ty != null) {
+            return cem_emit_checked_int_shift_for_type(common_int_ty as Type*, c_left, c_right,
+                expr.text_value == "<<");
+        }
         return cem_emit_binary_op(expr.text_value, c_left, c_right);
     }
 }
@@ -1466,6 +1470,20 @@ func be_emit_expr(self: Backend*, expr_id: ExprId) -> string {
         }
         EX_UNARY => {
             let c_inner = be_emit_expr(self, expr.expr_a);
+            if (expr.text_value == "-") {
+                with (let result_ty = be_expr_type(self, expr_id) => type_free_opt(result_ty)) {
+                    if (result_ty != null) {
+                        let signed_ty = result_ty as Type*;
+                        if (type_is_builtin(signed_ty, "tiny") || type_is_builtin(signed_ty, "short")) {
+                            return cem_emit_checked_narrow_cast(cem_emit_type(signed_ty),
+                                cem_emit_checked_int_sub("0", c_inner));
+                        }
+                        if (type_is_builtin(signed_ty, "int") || type_is_builtin(signed_ty, "long")) {
+                            return cem_emit_checked_int_sub_for_type(signed_ty, "0", c_inner);
+                        }
+                    }
+                }
+            }
             if (expr.text_value == "*") {
                 with (let operand_ty = be_expr_type(self, expr.expr_a) => type_free_opt(operand_ty)) {
                     if (operand_ty == null) {

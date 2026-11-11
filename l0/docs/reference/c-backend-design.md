@@ -1,6 +1,6 @@
 # L0 C Backend Design
 
-Version: 2026-09-11
+Version: 2026-11-11
 
 This is the canonical backend implementation document for the current C backend. Stage 1 remains the behavioral oracle;
 Stage 2 is expected to emit the same C and reuse the same diagnostic/ICE codes for equivalent backend conditions.
@@ -159,6 +159,8 @@ Implemented lowering includes:
 - `new` heap allocation (`_rt_alloc_obj`) + initialization
 - `try` (`expr?`) lowering to checked unwrap with early return on empty
 - Checked int arithmetic uses runtime helpers (`_rt_iadd`, `_rt_isub`, `_rt_imul`, `_rt_idiv`, `_rt_imod`)
+- Unary minus uses `_rt_isub(0, operand)` with one operand evaluation, including promotion from `byte` to `int`.
+  Negating the minimum `int` fails before overflow in every pointer-checking mode.
 - Checked narrowing casts use runtime helpers (`_rt_narrow_*`)
 
 ### Statements

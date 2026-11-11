@@ -1,0 +1,253 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module bounds;
+
+/**
+ * Negate a runtime tiny operand.
+ *
+ * @param x Operand supplied by the separate native caller.
+ * @return Negated value under the operand type's existing rules.
+ */
+func neg_tiny(x: tiny) -> tiny { return -x; }
+
+/**
+ * Negate a runtime short operand.
+ *
+ * @param x Operand supplied by the separate native caller.
+ * @return Negated value under the operand type's existing rules.
+ */
+func neg_short(x: short) -> short { return -x; }
+
+/**
+ * Negate a runtime int operand.
+ *
+ * @param x Operand supplied by the separate native caller.
+ * @return Negated value under the operand type's existing rules.
+ */
+func neg_int(x: int) -> int { return -x; }
+
+/**
+ * Negate a runtime long operand.
+ *
+ * @param x Operand supplied by the separate native caller.
+ * @return Negated value under the operand type's existing rules.
+ */
+func neg_long(x: long) -> long { return -x; }
+
+/**
+ * Negate a runtime byte operand.
+ *
+ * @param x Operand supplied by the separate native caller.
+ * @return Negated value under the operand type's existing rules.
+ */
+func neg_byte(x: byte) -> byte { return -x; }
+
+/**
+ * Negate a runtime ushort operand.
+ *
+ * @param x Operand supplied by the separate native caller.
+ * @return Negated value under the operand type's existing rules.
+ */
+func neg_ushort(x: ushort) -> ushort { return -x; }
+
+/**
+ * Negate a runtime uint operand.
+ *
+ * @param x Operand supplied by the separate native caller.
+ * @return Negated value under the operand type's existing rules.
+ */
+func neg_uint(x: uint) -> uint { return -x; }
+
+/**
+ * Negate a runtime ulong operand.
+ *
+ * @param x Operand supplied by the separate native caller.
+ * @return Negated value under the operand type's existing rules.
+ */
+func neg_ulong(x: ulong) -> ulong { return -x; }
+
+/**
+ * Negate a runtime float operand.
+ *
+ * @param x Operand supplied by the separate native caller.
+ * @return Negated value under the operand type's existing rules.
+ */
+func neg_float(x: float) -> float { return -x; }
+
+/**
+ * Negate a runtime double operand.
+ *
+ * @param x Operand supplied by the separate native caller.
+ * @return Negated value under the operand type's existing rules.
+ */
+func neg_double(x: double) -> double { return -x; }
+
+/**
+ * Shift a runtime int operand left.
+ *
+ * @param x Value supplied by the separate native caller.
+ * @param n Count supplied by the separate native caller.
+ * @return Shifted value, or a defined arithmetic failure.
+ */
+func left_int(x: int, n: int) -> int { return x << n; }
+
+/**
+ * Shift a runtime int operand right.
+ *
+ * @param x Value supplied by the separate native caller.
+ * @param n Count supplied by the separate native caller.
+ * @return Shifted value, or a defined arithmetic failure.
+ */
+func right_int(x: int, n: int) -> int { return x >> n; }
+
+/**
+ * Shift a runtime uint operand left.
+ *
+ * @param x Value supplied by the separate native caller.
+ * @param n Count supplied by the separate native caller.
+ * @return Shifted value, or a defined arithmetic failure.
+ */
+func left_uint(x: uint, n: uint) -> uint { return x << n; }
+
+/**
+ * Shift a runtime uint operand right.
+ *
+ * @param x Value supplied by the separate native caller.
+ * @param n Count supplied by the separate native caller.
+ * @return Shifted value, or a defined arithmetic failure.
+ */
+func right_uint(x: uint, n: uint) -> uint { return x >> n; }
+
+/**
+ * Shift a runtime long operand left.
+ *
+ * @param x Value supplied by the separate native caller.
+ * @param n Count supplied by the separate native caller.
+ * @return Shifted value, or a defined arithmetic failure.
+ */
+func left_long(x: long, n: long) -> long { return x << n; }
+
+/**
+ * Shift a runtime long operand right.
+ *
+ * @param x Value supplied by the separate native caller.
+ * @param n Count supplied by the separate native caller.
+ * @return Shifted value, or a defined arithmetic failure.
+ */
+func right_long(x: long, n: long) -> long { return x >> n; }
+
+/**
+ * Shift a runtime ulong operand left.
+ *
+ * @param x Value supplied by the separate native caller.
+ * @param n Count supplied by the separate native caller.
+ * @return Shifted value, or a defined arithmetic failure.
+ */
+func left_ulong(x: ulong, n: ulong) -> ulong { return x << n; }
+
+/**
+ * Shift a runtime ulong operand right.
+ *
+ * @param x Value supplied by the separate native caller.
+ * @param n Count supplied by the separate native caller.
+ * @return Shifted value, or a defined arithmetic failure.
+ */
+func right_ulong(x: ulong, n: ulong) -> ulong { return x >> n; }
+
+/**
+ * Shift mixed operands after common-integer-type normalization.
+ *
+ * @param x Value in the original operand domain.
+ * @param n Count in the original count domain.
+ * @return Value in the normalized long domain, or a defined failure.
+ */
+func left_mixed_uint_int(x: uint, n: int) -> long { return x << n; }
+
+/**
+ * Shift mixed operands after common-integer-type normalization.
+ *
+ * @param x Value in the original operand domain.
+ * @param n Count in the original count domain.
+ * @return Value in the normalized long domain, or a defined failure.
+ */
+func right_mixed_uint_int(x: uint, n: int) -> long { return x >> n; }
+
+/**
+ * Shift mixed operands after common-integer-type normalization.
+ *
+ * @param x Value in the original operand domain.
+ * @param n Count in the original count domain.
+ * @return Value in the normalized int domain, or a defined failure.
+ */
+func left_narrow(x: tiny, n: short) -> int { return x << n; }
+
+/**
+ * Shift mixed operands after common-integer-type normalization.
+ *
+ * @param x Value in the original operand domain.
+ * @param n Count in the original count domain.
+ * @return Value in the normalized int domain, or a defined failure.
+ */
+func left_narrow_unsigned(x: byte, n: ushort) -> int { return x << n; }
+
+/**
+ * Shift mixed operands after common-integer-type normalization.
+ *
+ * @param x Value in the original operand domain.
+ * @param n Count in the original count domain.
+ * @return Value in the normalized ulong domain, or a defined failure.
+ */
+func left_mixed_ulong_byte(x: ulong, n: byte) -> ulong { return x << n; }
+
+/**
+ * Observe one evaluation of the left operand.
+ *
+ * @param x Value to return unchanged.
+ * @return The supplied operand after incrementing its independent native counter.
+ */
+extern func integer_boundary_left(x: int) -> int;
+
+/**
+ * Observe one evaluation of the right operand.
+ *
+ * @param x Value to return unchanged.
+ * @return The supplied operand after incrementing its independent native counter.
+ */
+extern func integer_boundary_right(x: int) -> int;
+
+/**
+ * Observe one evaluation of the value operand.
+ *
+ * @param x Value to return unchanged.
+ * @return The supplied operand after incrementing its independent native counter.
+ */
+extern func integer_boundary_value(x: int) -> int;
+
+/**
+ * Preserve one evaluation of each runtime operand.
+ *
+ * @param x Value to observe.
+ * @param n Shift count to observe independently.
+ * @return The operation result after evaluating every operand once.
+ */
+func left_once(x: int, n: int) -> int { return integer_boundary_left(x) << integer_boundary_right(n); }
+
+/**
+ * Preserve one evaluation of each runtime operand.
+ *
+ * @param x Value to observe.
+ * @param n Shift count to observe independently.
+ * @return The operation result after evaluating every operand once.
+ */
+func right_once(x: int, n: int) -> int { return integer_boundary_left(x) >> integer_boundary_right(n); }
+
+/**
+ * Preserve one evaluation of each runtime operand.
+ *
+ * @param x Value to observe.
+ * @return The operation result after evaluating every operand once.
+ */
+func neg_once(x: int) -> int { return -integer_boundary_value(x); }

@@ -727,6 +727,9 @@ func be_emit_expr(self: Backend*, expr_id: ExprId) -> string {
         }
         EX_UNARY => {
             let c_operand = be_emit_expr(self, expr.expr_a);
+            if (expr.text_value == "-") {
+                return cem_emit_checked_int_sub("0", c_operand);
+            }
             if (expr.text_value == "*") {
                 with (let operand_ty = be_expr_type(self, expr.expr_a) => type_free_opt(operand_ty)) {
                     if (operand_ty == null) {

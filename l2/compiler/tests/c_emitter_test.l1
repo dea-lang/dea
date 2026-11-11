@@ -291,6 +291,7 @@ func test_emitter_type_lowering_and_null_forms() {
  * Tests test_emitter_large_integer_helpers.
  */
 func test_emitter_large_integer_helpers() {
+    let int_ty = type_builtin_int();
     let uint_ty = type_builtin_uint();
     let long_ty = type_builtin_long();
     let ulong_ty = type_builtin_ulong();
@@ -322,7 +323,20 @@ func test_emitter_large_integer_helpers() {
         "signed checked cast mismatch");
     assert(cem_emit_checked_unsigned_cast("dea_long", "value") == "(_rt_cast_dea_long_from_unsigned((dea_ulong)(value)))",
         "unsigned checked cast mismatch");
+    assert(cem_emit_checked_int_shift_for_type(int_ty, "a", "b", true) == "(_rt_ishl(a, b))" &&
+        cem_emit_checked_int_shift_for_type(int_ty, "a", "b", false) == "(_rt_ishr(a, b))",
+        "int shift helper selection mismatch");
+    assert(cem_emit_checked_int_shift_for_type(uint_ty, "a", "b", true) == "(_rt_ushl(a, b))" &&
+        cem_emit_checked_int_shift_for_type(uint_ty, "a", "b", false) == "(_rt_ushr(a, b))",
+        "uint shift helper selection mismatch");
+    assert(cem_emit_checked_int_shift_for_type(long_ty, "a", "b", true) == "(_rt_lshl(a, b))" &&
+        cem_emit_checked_int_shift_for_type(long_ty, "a", "b", false) == "(_rt_lshr(a, b))",
+        "long shift helper selection mismatch");
+    assert(cem_emit_checked_int_shift_for_type(ulong_ty, "a", "b", true) == "(_rt_ulshl(a, b))" &&
+        cem_emit_checked_int_shift_for_type(ulong_ty, "a", "b", false) == "(_rt_ulshr(a, b))",
+        "ulong shift helper selection mismatch");
 
+    type_free(int_ty);
     type_free(uint_ty);
     type_free(long_ty);
     type_free(ulong_ty);

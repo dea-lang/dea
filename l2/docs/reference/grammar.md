@@ -1,6 +1,6 @@
 # Dea/L<sub>2</sub> Grammar
 
-Version: 2026-10-13
+Version: 2026-11-11
 
 The following is the formal grammar for level 2 of the Dea programming language (Dea/L<sub>2</sub>) in EBNF style. This
 describes the concrete syntax that lexers and parsers should accept.
@@ -474,6 +474,15 @@ There is **no** ternary `?:` operator in L<sub>1</sub>.
 
 Bitwise operators follow the C-family ordering shown here: shifts bind tighter than relational operators, and unary `~`
 shares the ordinary unary-precedence level with `-`, `!`, and dereference `*`.
+
+Integer shifts normalize both operands through the common-integer-type lattice. The count must be non-negative and less
+than the resulting 32-bit or 64-bit width. Signed `<<` is multiplication by `2^count` with checked representability,
+including negative left operands; unsigned `<<` discards shifted-out high bits. Signed `>>` is arithmetic, while
+unsigned `>>` is logical. Invalid counts and signed left-shift overflow produce runtime arithmetic errors in every
+pointer-checking mode. These runtime rules do not expand the conservative compile-time expression subset.
+
+Signed unary `-` preserves `tiny`, `short`, `int`, or `long` and reports overflow when negating that type's minimum
+value. Floating-point negation remains a separate operation.
 
 ```ebnf
 Expr                ::=     OrExpr

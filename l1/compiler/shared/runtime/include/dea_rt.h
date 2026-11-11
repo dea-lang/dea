@@ -796,6 +796,30 @@ dea_ulong _rt_ulsub(dea_ulong a, dea_ulong b);
 /* Safe 64-bit unsigned integer multiplication with overflow check. */
 dea_ulong _rt_ulmul(dea_ulong a, dea_ulong b);
 
+/* Shift a signed 32-bit integer left with checked representability. */
+dea_int _rt_ishl(dea_int a, dea_int b);
+
+/* Shift a signed 32-bit integer right arithmetically with a checked count. */
+dea_int _rt_ishr(dea_int a, dea_int b);
+
+/* Shift an unsigned 32-bit integer left with a checked count. */
+dea_uint _rt_ushl(dea_uint a, dea_uint b);
+
+/* Shift an unsigned 32-bit integer right with a checked count. */
+dea_uint _rt_ushr(dea_uint a, dea_uint b);
+
+/* Shift a signed 64-bit integer left with checked representability. */
+dea_long _rt_lshl(dea_long a, dea_long b);
+
+/* Shift a signed 64-bit integer right arithmetically with a checked count. */
+dea_long _rt_lshr(dea_long a, dea_long b);
+
+/* Shift an unsigned 64-bit integer left with a checked count. */
+dea_ulong _rt_ulshl(dea_ulong a, dea_ulong b);
+
+/* Shift an unsigned 64-bit integer right with a checked count. */
+dea_ulong _rt_ulshr(dea_ulong a, dea_ulong b);
+
 /* Checked cast from signed 64-bit to dea_tiny. */
 dea_tiny _rt_cast_dea_tiny_from_signed(dea_long value);
 

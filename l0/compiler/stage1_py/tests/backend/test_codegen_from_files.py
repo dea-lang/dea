@@ -331,7 +331,7 @@ class TestCodeGen:
 
         # Verify expression types
         assert "42" in c_code  # integer literal
-        assert "(-" in c_code or "- " in c_code  # unary minus
+        assert "(_rt_isub(0, lit))" in c_code  # checked unary minus
         assert "_rt_iadd(10, 20)" in c_code or "10 + 20" in c_code  # binary
         assert "(10 < 20)" in c_code or "10 < 20" in c_code  # comparison
         assert "l0_bool l0_cond_" in c_code  # structured logical short-circuit lowering

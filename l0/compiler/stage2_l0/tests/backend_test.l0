@@ -361,6 +361,41 @@ func test_backend_generate_basic_control_flow() {
 }
 
 /**
+ * Tests runtime negation uses checked subtraction with byte-to-int promotion.
+ */
+func test_backend_generate_checked_negation() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(8) => sv_free(lines),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "negation.l0");
+        sv_push(lines, "module negation;");
+        sv_push(lines, "let minimum: int = -2147483648;");
+        sv_push(lines, "func negate(value: int) -> int { return -value; }");
+        sv_push(lines, "func negate_byte(value: byte) -> int { return -value; }");
+        sv_push(lines, "func next_value() -> int { return 17; }");
+        sv_push(lines, "func single() -> int { return -next_value(); }");
+        sv_push(lines, "func invert(value: bool) -> bool { return !value; }");
+        sv_push(sources, bt_source(lines));
+        let result = bt_analyze_sources("negation", filenames, sources);
+        assert(!analysis_has_errors(result), "negation fixture should analyze");
+        let generated = backend_generate(result, opts, cfg);
+        assert(contains_s(generated, "return (_rt_isub(0, value));"),
+            "runtime negation must use checked int subtraction");
+        assert(contains_s(generated, "return (_rt_isub(0, l0_negation_next_value()));"),
+            "runtime negation must evaluate calls once");
+        assert(contains_s(generated, "l0_int l0_negation_negate_byte(l0_byte value)"),
+            "byte negation must keep its int result");
+        assert(contains_s(generated, "return (!value);"), "logical negation must remain unchanged");
+        assert(contains_s(generated, "static l0_int l0_negation_minimum = INT32_MIN;"),
+            "minimum signed literal must remain a static initializer");
+        analysis_result_free(result);
+    }
+}
+
+/**
  * Tests condition headers omit only redundant outer parentheses.
  */
 func test_backend_generate_condition_header_parens() {
@@ -1122,6 +1157,7 @@ func main() {
     test_analysis_has_arc_data_for_struct_and_nullable_pointer();
     test_backend_generate_types_and_top_level_lets();
     test_backend_generate_basic_control_flow();
+    test_backend_generate_checked_negation();
     test_backend_generate_loop_exit_case_lowering();
     test_backend_generate_match_and_with_cleanup_block();
     test_backend_generate_with_cleanup_block_header_try_predeclares_nullable_lets();

@@ -1565,6 +1565,8 @@ class Lowering:
 
         elif isinstance(expr, UnaryOp):
             c_operand = self._emit_expr(expr.operand)
+            if expr.op == "-":
+                return self.state.emitter.values.emit_checked_int_sub("0", c_operand)
             if expr.op == "*":
                 operand_ty = self.state.analysis.expr_types.get(id(expr.operand))
                 if operand_ty is None:

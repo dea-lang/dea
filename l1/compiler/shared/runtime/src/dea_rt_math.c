@@ -455,6 +455,172 @@ dea_ulong _rt_ulmul(dea_ulong a, dea_ulong b) {
 }
 
 /**
+ * Shift a signed 32-bit integer left with checked representability.
+ *
+ * Negative operands use mathematical scaling, without a signed C shift.
+ * Counts outside 0 through 31 and unrepresentable results panic in every mode.
+ *
+ * @param a Value to multiply by two raised to b.
+ * @param b Shift count in the normalized signed domain.
+ * @return Exactly representable signed product.
+ */
+dea_int _rt_ishl(dea_int a, dea_int b) {
+    if (b < 0 || b >= 32) {
+        _rt_panic("integer shift count out of range");
+    }
+    dea_uint magnitude = a < 0 ? (dea_uint)(-(a + 1)) + 1U : (dea_uint)a;
+    dea_uint negative_limit = (dea_uint)INT32_MAX + 1U;
+    dea_uint limit = a < 0 ? negative_limit : (dea_uint)INT32_MAX;
+    if (magnitude > (limit >> b)) {
+        _rt_panic("integer left shift overflow");
+    }
+    dea_uint shifted = magnitude << b;
+    if (a < 0) {
+        if (shifted == negative_limit) {
+            return INT32_MIN;
+        }
+        return -(dea_int)shifted;
+    }
+    return (dea_int)shifted;
+}
+
+/**
+ * Shift a signed 32-bit integer right arithmetically with a checked count.
+ *
+ * The negative path uses unsigned shifts and representable signed values.
+ * Counts outside 0 through 31 panic in every runtime mode.
+ *
+ * @param a Value whose high sign bits are preserved.
+ * @param b Shift count in the normalized signed domain.
+ * @return Quotient by two raised to b, rounded toward negative infinity.
+ */
+dea_int _rt_ishr(dea_int a, dea_int b) {
+    if (b < 0 || b >= 32) {
+        _rt_panic("integer shift count out of range");
+    }
+    if (a < 0) {
+        return -1 - (dea_int)((dea_uint)(-1 - a) >> b);
+    }
+    return a >> b;
+}
+
+/**
+ * Shift an unsigned 32-bit integer left with a checked count.
+ *
+ * High bits are discarded, preserving fixed-width unsigned bit-pattern behavior.
+ * Counts outside 0 through 31 panic in every runtime mode.
+ *
+ * @param a Bit pattern to shift.
+ * @param b Shift count in the normalized unsigned domain.
+ * @return Shifted low 32 bits with zero low bits inserted.
+ */
+dea_uint _rt_ushl(dea_uint a, dea_uint b) {
+    if (b >= 32) {
+        _rt_panic("uint shift count out of range");
+    }
+    return a << b;
+}
+
+/**
+ * Shift an unsigned 32-bit integer right with a checked count.
+ *
+ * Counts outside 0 through 31 panic in every runtime mode.
+ *
+ * @param a Bit pattern to shift.
+ * @param b Shift count in the normalized unsigned domain.
+ * @return Logically shifted value with zero high bits inserted.
+ */
+dea_uint _rt_ushr(dea_uint a, dea_uint b) {
+    if (b >= 32) {
+        _rt_panic("uint shift count out of range");
+    }
+    return a >> b;
+}
+
+/**
+ * Shift a signed 64-bit integer left with checked representability.
+ *
+ * Negative operands use mathematical scaling, without a signed C shift.
+ * Counts outside 0 through 63 and unrepresentable results panic in every mode.
+ *
+ * @param a Value to multiply by two raised to b.
+ * @param b Shift count in the normalized signed domain.
+ * @return Exactly representable signed product.
+ */
+dea_long _rt_lshl(dea_long a, dea_long b) {
+    if (b < 0 || b >= 64) {
+        _rt_panic("long shift count out of range");
+    }
+    dea_ulong magnitude = a < 0 ? (dea_ulong)(-(a + 1)) + 1ULL : (dea_ulong)a;
+    dea_ulong negative_limit = (dea_ulong)INT64_MAX + 1ULL;
+    dea_ulong limit = a < 0 ? negative_limit : (dea_ulong)INT64_MAX;
+    if (magnitude > (limit >> b)) {
+        _rt_panic("long left shift overflow");
+    }
+    dea_ulong shifted = magnitude << b;
+    if (a < 0) {
+        if (shifted == negative_limit) {
+            return INT64_MIN;
+        }
+        return -(dea_long)shifted;
+    }
+    return (dea_long)shifted;
+}
+
+/**
+ * Shift a signed 64-bit integer right arithmetically with a checked count.
+ *
+ * The negative path uses unsigned shifts and representable signed values.
+ * Counts outside 0 through 63 panic in every runtime mode.
+ *
+ * @param a Value whose high sign bits are preserved.
+ * @param b Shift count in the normalized signed domain.
+ * @return Quotient by two raised to b, rounded toward negative infinity.
+ */
+dea_long _rt_lshr(dea_long a, dea_long b) {
+    if (b < 0 || b >= 64) {
+        _rt_panic("long shift count out of range");
+    }
+    if (a < 0) {
+        return -1 - (dea_long)((dea_ulong)(-1 - a) >> b);
+    }
+    return a >> b;
+}
+
+/**
+ * Shift an unsigned 64-bit integer left with a checked count.
+ *
+ * High bits are discarded, preserving fixed-width unsigned bit-pattern behavior.
+ * Counts outside 0 through 63 panic in every runtime mode.
+ *
+ * @param a Bit pattern to shift.
+ * @param b Shift count in the normalized unsigned domain.
+ * @return Shifted low 64 bits with zero low bits inserted.
+ */
+dea_ulong _rt_ulshl(dea_ulong a, dea_ulong b) {
+    if (b >= 64) {
+        _rt_panic("ulong shift count out of range");
+    }
+    return a << b;
+}
+
+/**
+ * Shift an unsigned 64-bit integer right with a checked count.
+ *
+ * Counts outside 0 through 63 panic in every runtime mode.
+ *
+ * @param a Bit pattern to shift.
+ * @param b Shift count in the normalized unsigned domain.
+ * @return Logically shifted value with zero high bits inserted.
+ */
+dea_ulong _rt_ulshr(dea_ulong a, dea_ulong b) {
+    if (b >= 64) {
+        _rt_panic("ulong shift count out of range");
+    }
+    return a >> b;
+}
+
+/**
  * Checked cast from signed 64-bit to dea_tiny.
  *
  * @param value Integer value to convert under the checked range rules.
