@@ -99,7 +99,7 @@ def main() -> int:
             create("--create-profile", "--c-compiler", tcc, "-o", str(profile))
             manifest = json.loads((profile / "profile.json").read_text(encoding="utf-8"))
             assert manifest["configuration"]["family"] == "tcc"
-            assert len(manifest["runtime"]) == 9 and all(path.endswith(".o") for path in manifest["runtime"])
+            assert len(manifest["runtime"]) == 10 and all(path.endswith(".o") for path in manifest["runtime"])
             ran = create("--run", "app", "--profile", str(profile), "-vvv")
             assert ran.stdout == "variant-ok\n", ran.stdout
             no_preparation(ran)

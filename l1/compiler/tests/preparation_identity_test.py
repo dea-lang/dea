@@ -310,7 +310,7 @@ def check_dependency_batch_coverage(library: Path, root: Path, config: dict) -> 
     external = root / "external headers"
     external.mkdir()
     runtime_sources = sorted((home / "shared/runtime/src").glob("*.c"))
-    assert len(runtime_sources) == 10, runtime_sources
+    assert len(runtime_sources) == 11, runtime_sources
     runtime_headers = []
     for index, source in enumerate(runtime_sources):
         header = external / f"runtime_{index}.h"
@@ -457,7 +457,7 @@ def check_runtime_compilation(library: Path, config: dict, variant: str, family:
         service.require("runtime")
         service.require("complete")
         runtime = [entry / relative for relative, role in inventory.items() if role == "runtime"]
-        count = 10 if variant == "traced" else 9
+        count = 11 if variant == "traced" else 10
         assert service.stats()["build_commands"] == count + (family != "tcc")
         assert len(runtime) == (count if family == "tcc" else 1)
         assert all(path.stat().st_size > 0 for path in runtime)
@@ -1084,6 +1084,7 @@ def main() -> int:
             for path in (executable, implementation, home / "shared/l1/stdlib/std/io.l1",
                          home / "shared/l1/stdlib/std/time.l1", home / "shared/l1/stdlib/sys/rt.l1",
                          home / "shared/l1/stdlib/sys/time.l1", home / "shared/runtime/src/dea_rt_time.c",
+                         home / "shared/l1/stdlib/std/entropy.l1", home / "shared/runtime/src/dea_rt_entropy.c",
                          build / "interfaces/sys/time.l1m",
                          home / "shared/runtime/src/dea_rt_io.c", home / "shared/runtime/include/dea_rt.h"):
                 original = path.read_bytes()
@@ -1158,7 +1159,7 @@ def main() -> int:
                     with Service(library, {**config, "compiler": compiler, "variant": "traced"}) as tcc:
                         tcc.require("resolve")
                         inventory = json.loads(tcc.get("native_inventory"))
-                        assert sum(role == "runtime" for role in inventory.values()) == 10
+                        assert sum(role == "runtime" for role in inventory.values()) == 11
                         assert not any(path.endswith(".a") for path in inventory)
             check_header_dependencies(library, root, config)
             check_dependency_batch_coverage(library, root / "dependency-batch", config)

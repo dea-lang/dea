@@ -268,7 +268,7 @@ def main() -> int:
                             for path in interfaces.rglob("*.l1m")}
         prepared_modules = [purpose for purpose, _ in commands if purpose.startswith(("std.", "sys."))]
         assert set(prepared_modules) == expected_bundled and len(prepared_modules) == len(expected_bundled)
-        assert len(runtime_commands) == 9
+        assert len(runtime_commands) == 10
         for words in module_commands:
             assert Path(words[0]).resolve() == Path(cc).resolve()
             assert words.index("-O0") < words.index("-O1") < words.index("-std=c99")

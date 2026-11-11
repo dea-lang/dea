@@ -741,9 +741,10 @@ See [l1/docs/decisions/0037-wide-filesystem-metadata.md][filesystem-width].
 ## Direct OS Errors and I/O Results
 
 `std.os::OsError` carries a portable `ErrorKind`, an `ErrorDomain`, and the original signed `long` native code.
-`Runtime`, `Errno`, and `Win32` distinguish library validation, C runtime/POSIX failures, and native Windows failures.
-Runtime operations capture errors before cleanup, and message rendering uses the captured record. Existing
-`std.system::errno()` remains an ambient compatibility helper.
+`Runtime`, `Errno`, `Win32`, and `NtStatus` distinguish library validation, C runtime/POSIX failures, Win32 failures,
+and BCrypt provider statuses. NTSTATUS retains its unsigned 32-bit value in a positive `long`. Runtime operations
+capture errors before cleanup, and message rendering uses the captured record. Existing `std.system::errno()` remains an
+ambient compatibility helper.
 
 The common `ReadResult`, `WriteResult`, and `FlushResult` enums distinguish success, clean EOF where applicable,
 timeout, and failure. Timeout/failure variants retain `OsError`; zero-length reads return `Read(0)` without probing EOF;
@@ -817,6 +818,25 @@ handles remain private and non-inheritable. See
 [l1/docs/decisions/0058-minimum-file-synchronization-guarantees.md][file-sync]. Current contracts are in
 [l1/docs/reference/filesystem.md][filesystem-contract] and [l1/docs/reference/standard-library.md][file-library].
 
+## Secure Operating-System Entropy
+
+`std.entropy` obtains bytes from the operating system and reports failures directly, independently of deterministic
+`std.rand`. Linux, FreeBSD, and NetBSD use nonblocking `getrandom`; Apple and OpenBSD use `getentropy`. Windows uses
+System32-only loading of `BCryptGenRandom` with the system-preferred RNG. Unsupported sources fail without opening a
+device path or substituting predictable bytes. Interruption and unavailable entropy do not trigger implicit retry.
+
+A private entropy callback borrows a validated logical range through `std.bytes::with_raw_range`. Null context state, a
+zero scalar argument, and finite results pass by value without Dea transport allocations. Entropy decoding requires
+complete success and preserves partial-failure progress; it rejects stopped variants rather than applying file-specific
+zero-progress rules. Native domain and full-width codes survive explicit conversion, including distinct `NtStatus` and
+`Win32` sources. The buffer module remains independent of I/O.
+
+The runtime stages at most 256 bytes and copies only successful chunks, so a failed host call cannot modify the
+remaining destination suffix. Successful short fills continue. Empty requests make no host call. `fill` preserves buffer
+ownership, length, and capacity; `random_bytes` returns one owned buffer or frees the partial buffer before returning
+failure. Neither API promises secure erasure. See [l1/docs/reference/standard-library.md][entropy-library] and
+[l1/docs/reference/ownership.md][entropy-ownership].
+
 ## Wide Time, Monotonic Deadlines, and Explicit Sleep Interruption
 
 `std.time` uses signed `long` seconds and normalized `int` nanoseconds. Checked second arithmetic and explicit
@@ -841,6 +861,8 @@ See [l1/docs/decisions/0050-wide-time-and-monotonic-deadlines.md][time-width] an
 [buffer-range-actions]: ../decisions/0063-synchronous-byte-buffer-range-actions.md
 [byte-buffer-decision]: ../decisions/0052-owned-dynamic-byte-buffers.md
 [byte-buffer-library]: standard-library.md#stdbytes
+[entropy-library]: standard-library.md#stdentropy
+[entropy-ownership]: ownership.md#stdentropy-randombytesresult
 [file-buffers]: ../decisions/0059-presized-byte-buffer-file-transfers.md
 [file-flush]: ../decisions/0056-direct-file-io-and-flush-liveness.md
 [file-library]: standard-library.md#stdfile

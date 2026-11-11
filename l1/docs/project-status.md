@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-11-10
+Version: 2026-11-11
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -55,8 +55,9 @@ Source development follows a finite stabilization target for compilers and tools
 implemented in `std.bytes`, and semantic dependency discovery is implemented through `--scan-deps`. Typed string
 formatting is implemented through `std.format`, with explicit `Value...` arguments, structured errors, and
 locale-independent ARC string output. `std.file` implements opaque result-owned handles, direct bounded transfers, wide
-positioning, opened-object metadata, and synchronization; native CI passed on all four supported platforms. Secure
-entropy, temporary objects, and shell-free processes and pipes remain planned. General streams, networking, JSON, file
+positioning, opened-object metadata, and synchronization; native CI passed on all four supported platforms.
+`std.entropy` fills pre-sized buffers from secure host sources, with explicit partial failures and owned random-byte
+results. Temporary objects and shell-free processes and pipes remain planned. General streams, networking, JSON, file
 watching, concurrency, owned slices, and broader language expressiveness are deferred to L2. The current source-tree
 features below may be newer than the published L1 0.1.0 baseline; stabilization also requires public-API acceptance
 programs and fresh artifact validation.
@@ -283,6 +284,11 @@ whole-file string reads remain `int`-bounded and return `null` for oversized fil
 carrying the original deadline. Windows uses QPC and private bounded relative timers; POSIX uses monotonic clocks and
 native sleeps. Runtime archives, semantic interfaces, dependent objects, and explicit profiles must match the new ABI.
 L0 time is unchanged. See [l1/docs/reference/standard-library.md][stdlib-time].
+
+`std.entropy` uses the synchronous byte-buffer range API for bounded native fills. Its provider owns native calls and
+result conversion; `std.bytes` remains independent of I/O. The runtime stages bounded chunks, preserves the completed
+prefix and untouched suffix on failure, and has no predictable fallback. BCrypt failures retain their `NtStatus`
+namespace separately from Win32 loader errors. `random_bytes` frees a partial buffer before returning failure.
 
 `std.os` and `sys.os` supply normalized OS errors with captured native domain/code data and concrete read, write, and
 flush results. Additive `std.io` standard-stream result helpers distinguish clean EOF, timeout, interrupted or other

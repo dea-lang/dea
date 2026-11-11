@@ -259,7 +259,7 @@ int32_t l1c_prep_runtime(void *context) {
         if (!archive)
             ok = 0;
     }
-    for (i = traced ? -1 : 0; i < 9 && ok; ++i) {
+    for (i = traced ? -1 : 0; i < PC_RUNTIME_SOURCE_COUNT && ok; ++i) {
         const char *name = i == -1 ? "dea_rt_trace" : pc_runtime_sources[i];
         PcBuffer filename = {0};
         char *source, *output, *stem, *relative;

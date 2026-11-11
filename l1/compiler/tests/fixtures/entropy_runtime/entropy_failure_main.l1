@@ -1,0 +1,151 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module entropy_failure_main;
+
+import std.entropy;
+import std.bytes as bytes;
+import std.os;
+import std.assert;
+import std.io;
+import entropy_main as check;
+
+/**
+ * Select a deterministic entropy scenario and reset native counters.
+ *
+ * @param mode Zero succeeds; one fails; two fails after 256 bytes; three rejects or interrupts.
+ */
+extern func entropy_probe_config(mode: int);
+
+/**
+ * Return the number of native entropy calls since configuration.
+ *
+ * @return Count including the terminal failed operation.
+ */
+extern func entropy_probe_calls() -> int;
+
+/**
+ * Return the native error selected by the current failure scenario.
+ *
+ * @return Original errno or unsigned NTSTATUS value.
+ */
+extern func entropy_probe_error() -> long;
+
+/**
+ * Return the error namespace selected by the host fixture.
+ *
+ * @return Errno (1) on POSIX or NtStatus (3) on Windows.
+ */
+extern func entropy_probe_domain() -> int;
+
+/**
+ * Require normalized errors and exact native data independent of ambient state.
+ *
+ * @param error Captured public error.
+ * @param expected Required stable normalized category tag.
+ */
+func captured(error: OsError, expected: int) {
+    let raw = _os_error_to_rt(error);
+    assert(raw.kind == expected && raw.domain == entropy_probe_domain(), "normalized captured entropy error");
+    assert(raw.native_code == entropy_probe_error(), "original entropy error code preserved");
+    assert(dea::len(error_message(error)) > 0, "captured entropy error remains printable");
+}
+
+/**
+ * Require exact deterministic prefix bytes and sentinel bytes elsewhere.
+ *
+ * @param buffer Destination with one leading and trailing guard.
+ * @param count Number of completed bytes after the leading guard.
+ */
+func prefix(buffer: bytes::ByteBuffer*, count: int) {
+    assert(bytes::size(buffer) == 702, "fill preserves logical size");
+    assert(bytes::get(buffer, 0) == 165 as byte, "leading guard remains untouched");
+    for (let i = 0; i < count; i = i + 1) {
+        assert(bytes::get(buffer, i + 1) == (i % 251) as byte, "completed entropy prefix preserved");
+    }
+    for (let i = count + 1; i < 702; i = i + 1) {
+        assert(bytes::get(buffer, i) == 165 as byte, "failed staging bytes and suffix are never published");
+    }
+}
+
+/**
+ * Verify failed random-byte ownership is cleaned up through an early return.
+ *
+ * @return True only after observing the selected failure without a public buffer.
+ */
+func early_failure() -> bool {
+    entropy_probe_config(2);
+    with (let owned = random_bytes(700) => free_random_bytes_result(owned)) {
+        match (owned) {
+            RandomBytesFailed(error) => { captured(error, 2); return true; }
+            RandomBytes(buffer) => { return false; }
+        }
+    }
+}
+
+/**
+ * Exercise deterministic chunks, failure progress, zero requests, and ownership.
+ *
+ * @return Zero after public wrappers preserve the native contract and cleanup.
+ */
+func main() -> int {
+    entropy_probe_config(1);
+    with (
+        let empty = random_bytes(0) => free_random_bytes_result(empty),
+        let buffer = bytes::create() => bytes::free(buffer)
+    ) {
+        assert(bytes::size(check::borrowed(empty)) == 0, "empty allocation owns an empty buffer");
+        check::filled(fill(buffer, 0, 0));
+        assert(entropy_probe_calls() == 0, "valid zero requests never call a failing host source");
+    }
+    with (let buffer = bytes::with_capacity(800) => bytes::free(buffer)) {
+        bytes::resize(buffer, 702);
+        for (let mode = 0; mode <= 3; mode = mode + 1) {
+            for (let i = 0; i < 702; i = i + 1) { bytes::set(buffer, i, 165 as byte); }
+            entropy_probe_config(mode);
+            let count = 0;
+            if (mode == 0) { count = 700; }
+            if (mode == 2) { count = 256; }
+            match (fill(buffer, 1, 700)) {
+                EntropyFilled => { assert(mode == 0, "injected host failure cannot become success"); }
+                EntropyFailed(completed, error) => {
+                    assert(mode != 0 && completed == count, "failure reports exact completed prefix");
+                    let kind = 2;
+                    if (mode == 3) {
+                        kind = 6;
+                        if (entropy_probe_domain() == 3) { kind = 4; }
+                    }
+                    captured(error, kind);
+                }
+            }
+            prefix(buffer, count);
+            let expected_calls = 1;
+            if (mode == 0) { expected_calls = 3; }
+            if (mode == 2) { expected_calls = 2; }
+            assert(entropy_probe_calls() == expected_calls, "bounded chunks stop without implicit retry");
+            assert(bytes::capacity(buffer) == 800, "fill preserves capacity on every outcome");
+        }
+    }
+    entropy_probe_config(0);
+    with (let owned = random_bytes(257) => free_random_bytes_result(owned)) {
+        let buffer = check::borrowed(owned);
+        assert(bytes::size(buffer) == 257 && entropy_probe_calls() == 2, "owned random bytes span two host chunks");
+        for (let i = 0; i < 257; i = i + 1) {
+            assert(bytes::get(buffer, i) == (i % 251) as byte, "owned result contains exact injected bytes");
+        }
+    }
+    for (let mode = 1; mode <= 2; mode = mode + 1) {
+        entropy_probe_config(mode);
+        with (let owned = random_bytes(700) => free_random_bytes_result(owned)) {
+            match (owned) {
+                RandomBytesFailed(error) => { captured(error, 2); }
+                RandomBytes(buffer) => { assert(false, "partially filled owned buffer must not escape"); }
+            }
+        }
+        assert(entropy_probe_calls() == mode, "owned failure stops at the first terminal result");
+    }
+    assert(early_failure(), "failed owned allocation is released before early return");
+    printl_s("entropy_failure_main: PASS");
+    return 0;
+}

@@ -4,7 +4,7 @@
  */
 
 /**
- * Direct runtime transport for OS errors and standard-stream results.
+ * Direct runtime transport for OS errors, entropy, and standard-stream results.
  *
  * Integer tags are runtime protocol values, independent of public enum layout.
  */
@@ -51,6 +51,20 @@ extern func rt_os_error_from_win32(native_code: long) -> RtOsError;
  * @return Host diagnostic text, or a category/domain/code fallback.
  */
 extern func rt_os_error_message(error: RtOsError) -> string;
+
+/**
+ * Fill caller-owned bytes from the operating system's secure entropy source.
+ * A valid zero count succeeds without inspecting storage or calling the host.
+ * Successful short transfers continue; interruption and unavailable entropy
+ * return without implicit retry. Failure leaves the unfilled suffix unchanged.
+ * The caller keeps storage live and coordinates conflicting access throughout
+ * the call; the runtime neither retains its pointer nor transfers ownership.
+ *
+ * @param buf Writable storage for count bytes, required when count is positive.
+ * @param count Nonnegative number of bytes requested.
+ * @return State 0 with the full count, or state 2 with completed prefix and error.
+ */
+unsafe extern func rt_entropy_fill(buf: void*?, count: int) -> RtIoResult;
 
 /**
  * Read bytes from stdin into caller-provided storage.

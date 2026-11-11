@@ -1,0 +1,124 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module entropy_main;
+
+import std.entropy;
+import std.bytes as bytes;
+import std.os;
+import std.assert;
+import std.io;
+import std.system as system;
+
+/**
+ * Require completion while retaining diagnostics from a real host failure.
+ *
+ * @param result Entropy operation to inspect.
+ */
+func filled(result: EntropyResult) {
+    match (result) {
+        EntropyFilled => {}
+        EntropyFailed(count, error) => { assert(false, error_message(error)); }
+    }
+}
+
+/**
+ * Borrow a successful random buffer without acquiring its cleanup obligation.
+ *
+ * @param result Live owning result retained by the caller.
+ * @return The borrowed buffer when the operation succeeded.
+ */
+func borrowed(result: RandomBytesResult) -> bytes::ByteBuffer* {
+    match (result) {
+        RandomBytes(buffer) => { return buffer; }
+        RandomBytesFailed(error) => {
+            assert(false, error_message(error));
+            let absent: bytes::ByteBuffer*? = null;
+            return absent as bytes::ByteBuffer*;
+        }
+    }
+}
+
+/**
+ * Exercise result cleanup on an early return without copying entropy to text.
+ *
+ * @return The length observed before the owned buffer is freed.
+ */
+func early_length() -> int {
+    with (let owned = random_bytes(33) => free_random_bytes_result(owned)) {
+        return bytes::size(borrowed(owned));
+    }
+}
+
+/**
+ * Exercise one independently selected invalid logical range.
+ *
+ * @param scenario Name supplied by the Python parent test.
+ */
+func invalid_range(scenario: string) {
+    with (let buffer = bytes::with_capacity(32) => bytes::free(buffer)) {
+        bytes::resize(buffer, 4);
+        if (scenario == "negative_start") { fill(buffer, -1, 1); }
+        if (scenario == "negative_count") { fill(buffer, 0, -1); }
+        if (scenario == "past_end") { fill(buffer, 4, 1); }
+        if (scenario == "empty_past_end") { fill(buffer, 5, 0); }
+        if (scenario == "range_overflow") { fill(buffer, 1, 2147483647); }
+        if (scenario == "capacity_only") { fill(buffer, 0, 32); }
+        if (scenario == "negative_random") { random_bytes(-1); }
+    }
+}
+
+/**
+ * Exercise real host entropy, logical bounds, ownership, and native error domains.
+ *
+ * No byte-content assertion estimates entropy or assumes probabilistic uniqueness.
+ *
+ * @return Zero when public entropy behavior satisfies its contract.
+ */
+func main() -> int {
+    if (system::argc() > 1) {
+        let scenario = system::argv(1);
+        if (scenario == "expired_alias") {
+            let owned = random_bytes(1);
+            let alias = borrowed(owned);
+            free_random_bytes_result(owned);
+            bytes::size(alias);
+            return 99;
+        }
+        invalid_range(scenario);
+        return 99;
+    }
+    with (let buffer = bytes::with_capacity(1030) => bytes::free(buffer)) {
+        bytes::resize(buffer, 1027);
+        bytes::set(buffer, 0, 17 as byte);
+        bytes::set(buffer, 1026, 239 as byte);
+        let saved_capacity = bytes::capacity(buffer);
+        filled(fill(buffer, 0, 0));
+        filled(fill(buffer, 1027, 0));
+        filled(fill(buffer, 1, 1025));
+        assert(bytes::size(buffer) == 1027 && bytes::capacity(buffer) == saved_capacity,
+            "entropy preserves logical size and reserved capacity");
+        assert(bytes::get(buffer, 0) == 17 as byte && bytes::get(buffer, 1026) == 239 as byte,
+            "entropy preserves bytes outside the requested range");
+    }
+    with (
+        let empty = random_bytes(0) => free_random_bytes_result(empty),
+        let small = random_bytes(1) => free_random_bytes_result(small),
+        let large = random_bytes(4097) => free_random_bytes_result(large)
+    ) {
+        assert(bytes::size(borrowed(empty)) == 0, "owned empty entropy buffer");
+        assert(bytes::size(borrowed(small)) == 1, "single-byte entropy buffer");
+        assert(bytes::size(borrowed(large)) == 4097, "multiple host chunks fill exact length");
+    }
+    assert(early_length() == 33, "early return consumes owned result once");
+    let error = OsError(Other, NtStatus, 3221225473 as long);
+    let native = _os_error_to_rt(error);
+    let restored = _os_error_from_rt(native);
+    assert(native.domain == 3 && native.native_code == 3221225473 as long, "unsigned NTSTATUS value preserved");
+    match (restored.domain) { NtStatus => {} _ => { assert(false, "NTSTATUS domain round trip"); } }
+    assert(dea::len(error_message(restored)) > 0, "captured NTSTATUS remains printable");
+    free_random_bytes_result(RandomBytesFailed(OsError(Unsupported, Runtime, 0 as long)));
+    printl_s("entropy_main: PASS");
+    return 0;
+}

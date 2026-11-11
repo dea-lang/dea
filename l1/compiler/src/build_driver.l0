@@ -887,6 +887,7 @@ func bd_runtime_object_paths_for_build_dir(opts: CliOptions*, build_dir: string?
     sv_push(paths, join(object_dir, "dea_rt_io.o"));
     sv_push(paths, join(object_dir, "dea_rt_hash.o"));
     sv_push(paths, join(object_dir, "dea_rt_time.o"));
+    sv_push(paths, join(object_dir, "dea_rt_entropy.o"));
     return paths;
 }
 

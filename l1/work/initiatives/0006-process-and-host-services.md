@@ -1,6 +1,6 @@
 # L1 Initiative 0006 - Process and Host Services
 
-- Version: 2026-10-29
+- Version: 2026-11-11
 - Status: Active
 - Kind: Initiative
 - Open plans:
@@ -34,7 +34,8 @@ requirements for this initiative or its stdlib plans.
 
 - `std.system::system` runs one shell command string but does not model a child process or argument vector.
 - L1 has no pipe endpoints, wait status, child standard-stream redirection, or termination API.
-- `std.rand` is a pseudorandom generator and is not a secure entropy source.
+- `std.entropy` implements fallible secure host bytes through the synchronous buffer range protocol; native CI and
+  feature ADR closure remain pending. `std.rand` is deterministic and is not a secure entropy source.
 - There is no race-free temporary-file or temporary-directory API.
 - `std.time` uses `long` seconds and normalized `int` nanoseconds. Checked calendar conversion, monotonic sleep,
   deadlines, structured errors, and explicit interruption/resumption are implemented.
@@ -55,7 +56,8 @@ requirements for this initiative or its stdlib plans.
 
 ### Phase 0 - Secure entropy (Stdlib Tier 2)
 
-Add `fill` and `random_bytes` backed by supported OS entropy facilities, with no deterministic fallback.
+`fill` and `random_bytes` are implemented using supported OS entropy facilities without a deterministic fallback. The
+feature plan owns remaining native CI and ADR closure; this initiative remains active for other host services.
 
 Spawned plan: [secure OS entropy].
 

@@ -427,7 +427,7 @@ static PcJson *pc_profile_owned(PcContext *c) {
             char *path = pc_module_artifact(item->key, ".c", "generated");
             pj_set_number(allowed, path, 1); free(path);
         }
-        for (i = -1; i < 9; ++i) {
+        for (i = -1; i < PC_RUNTIME_SOURCE_COUNT; ++i) {
             PcBuffer name = {0};
             pc_text(&name, "runtime-build/"); pc_text(&name, i < 0 ? "dea_rt_trace" : pc_runtime_sources[i]);
             pc_text(&name, ".o"); pj_set_number(allowed, name.s, 1); free(name.s);

@@ -665,7 +665,10 @@ static const char *pc_runtime_archive(const char *variant) {
 }
 static const char *const pc_runtime_sources[] = {
     "dea_rt_panic", "dea_rt_sys", "dea_rt_math", "dea_rt_rand", "dea_rt_string",
-    "dea_rt_alloc", "dea_rt_io",  "dea_rt_hash", "dea_rt_time", NULL};
+    "dea_rt_alloc", "dea_rt_io",  "dea_rt_hash", "dea_rt_time", "dea_rt_entropy", NULL};
+
+/* Number of ordinary runtime sources; traced variants add one separate source. */
+#define PC_RUNTIME_SOURCE_COUNT ((int)(sizeof(pc_runtime_sources) / sizeof(pc_runtime_sources[0]) - 1))
 
 /**
  * Payload roles depend only on the semantic set and normalized native configuration.
@@ -691,7 +694,7 @@ static PcJson *pc_payload_artifacts(const PcJson *modules, const char *family, c
         pj_set_string(expected, path, "object"); free(path);
     }
     if (!strcmp(family, "tcc")) {
-        for (i = !strcmp(variant, "traced") ? -1 : 0; i < 9; ++i) {
+        for (i = !strcmp(variant, "traced") ? -1 : 0; i < PC_RUNTIME_SOURCE_COUNT; ++i) {
             PcBuffer b = {0};
             pc_text(&b, "lib/tcc/"); pc_text(&b, variant); pc_char(&b, '/');
             pc_text(&b, i == -1 ? "dea_rt_trace" : pc_runtime_sources[i]); pc_text(&b, ".o");

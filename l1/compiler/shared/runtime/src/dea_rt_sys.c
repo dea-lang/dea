@@ -534,6 +534,9 @@ dea_string rt_os_error_message(struct __deaM3sys2osS9RtOsError error) {
 #endif
         snprintf(fallback, sizeof(fallback), "%s (Win32 error %" PRId64 ")",
                  _rt_os_kind_name(error.kind), (int64_t)error.native_code);
+    } else if (error.domain == DEA_OS_DOMAIN_NTSTATUS) {
+        snprintf(fallback, sizeof(fallback), "%s (NtStatus error %" PRId64 ")",
+                 _rt_os_kind_name(error.kind), (int64_t)error.native_code);
     } else if (error.domain == DEA_OS_DOMAIN_RUNTIME) {
         snprintf(fallback, sizeof(fallback), "%s (Runtime error %" PRId64 ")",
                  _rt_os_kind_name(error.kind), (int64_t)error.native_code);

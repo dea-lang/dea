@@ -743,6 +743,7 @@ def expected_default_runtime_inputs(
             "dea_rt_io.o",
             "dea_rt_hash.o",
             "dea_rt_time.o",
+            "dea_rt_entropy.o",
         )
         object_paths = [object_dir / name for name in object_names]
         if all(path.is_file() for path in object_paths):

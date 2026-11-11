@@ -3,7 +3,7 @@
 ## Add secure operating-system entropy
 
 - Date: 2026-08-30
-- Status: Draft
+- Status: In Progress
 - Title: Add a secure operating-system entropy module distinct from pseudorandom generation
 - Kind: Feature
 - Priority: Medium
@@ -20,26 +20,26 @@
   - `l1/compiler/shared/runtime/dea_rt_traced.symbols`
   - `l1/docs/reference/standard-library.md`
 - Test modules:
-  - `l1/compiler/tests/entropy_runtime_test.py` (pending integration)
-  - `l1/compiler/tests/entropy_native_simulation.py` (pending integration)
-  - `l1/compiler/tests/fixtures/entropy_runtime/` (pending integration)
+  - `l1/compiler/tests/entropy_runtime_test.py`
+  - `l1/compiler/tests/entropy_native_simulation.py`
+  - `l1/compiler/tests/fixtures/entropy_runtime/`
 - Related:
   - `l1/work/initiatives/0006-process-and-host-services.md`
   - `l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md`
   - [l1/work/plans/refactors/closed/2026-11-10-byte-buffer-range-actions-noref.md][range-actions]
-- Repro: After integration, from `l1/`, `make test-compiler TESTS="entropy_runtime_test.py"`; focused child traces and
-  allocation checks follow the validation requirements below.
+- Repro: From `l1/`, `make test-compiler TESTS="entropy_runtime_test.py"`; focused child traces and allocation checks
+  follow the validation requirements below.
 
 ## Summary
 
-Add `std.entropy` for bytes supplied by the operating system. It is separate from deterministic `std.rand`, reports host
-failure directly, and never substitutes a predictable generator when secure entropy is unavailable.
+Implemented `std.entropy` for bytes supplied by the operating system. It is separate from deterministic `std.rand`,
+reports host failure directly, and never substitutes a predictable generator when secure entropy is unavailable.
 
 The range protocol and file migration are implemented, validated, and closed in
-[l1/work/plans/refactors/closed/2026-11-10-byte-buffer-range-actions-noref.md][range-actions]. Bring that foundation
-into entropy's integration base before resuming this feature. Adapt the entropy provider to the synchronous range API:
-`std.bytes` checks logical bounds and dispatches the callback, while `std.entropy` owns the native call and result
-conversion. No entropy-specific bridge or native OS operation belongs in `std.bytes`.
+[l1/work/plans/refactors/closed/2026-11-10-byte-buffer-range-actions-noref.md][range-actions]. This feature uses that
+validated foundation. The entropy provider uses the synchronous range API: `std.bytes` checks logical bounds and
+dispatches the callback, while `std.entropy` owns the native call and result conversion. No entropy-specific bridge or
+native OS operation belongs in `std.bytes`.
 
 The dependency is one-way: this feature consumes the range protocol, and its implementation, validation, and closure
 must not become prerequisites of the protocol refactor.
@@ -78,10 +78,10 @@ value. A failure may have nonzero progress; retain the exact completed prefix. R
 entropy outcome/tag combinations. The file decoder's zero-terminal-progress requirement must not become a restriction of
 the generic protocol or entropy decoder.
 
-Preserve captured native domains, including the preliminary entropy implementation's distinct `NtStatus` domain for
-BCrypt provider failures and `Win32` domain for loader failures. Preserve NTSTATUS as an unsigned 32-bit value widened
-to positive `long`; never replace it with ambient last-error state or assume the earlier domain inventory is exhaustive.
-`std.bytes` forwards these integer fields without assigning any OS meaning.
+Preserve captured native domains, including the distinct `NtStatus` domain for BCrypt provider failures and `Win32`
+domain for loader failures. Preserve NTSTATUS as an unsigned 32-bit value widened to positive `long`; never replace it
+with ambient last-error state or assume the earlier domain inventory is exhaustive. `std.bytes` forwards these integer
+fields without assigning any OS meaning.
 
 The generic helper still invokes the callback once for a valid empty range. `rt_entropy_fill` then succeeds without
 calling the host, preserving the entropy contract. Invalid ranges fail before callback entry. Preserve the runtime's
@@ -92,25 +92,39 @@ prefix, and unchanged failed suffix and surrounding bytes. Retain the secure OS 
 buffer; retain that ownership behavior and release partial buffers before returning failure without exposing them.
 Measure range/context/result transport separately from this explicit creation API and from native loader resources.
 
-The initial entropy ADR records this adapter and references the range protocol ADR created by the preceding refactor.
-Select the exact indexed protocol ADR after that work is finalized; add a `Covered by ADR` record and the required
-closed-plan backlink if applicable. Assign the entropy ADR number from the live index at entropy closure.
+The initial entropy ADR will record the provider contract and reference
+[l1/docs/decisions/0063-synchronous-byte-buffer-range-actions.md][range-adr]. Assign the entropy ADR number from the
+live index at feature closure and add the closed-plan backlinks in the same change.
 
-## Implementation Phases
+## Implementation Scope
 
-1. After the range protocol and file migration are implemented and validated, resume this feature against that
-   foundation. Adapt the preliminary entropy work to the completed API and keep `std.bytes` independent of I/O.
-2. Verify supported POSIX, Apple, BSD, and Windows entropy calls without opening user-controlled paths.
-3. Add direct error transport and chunking for host APIs with narrower request limits.
-4. Add buffer-range, zero-length, failure-injection, runtime-symbol, adapter, and allocation checks described below.
-   Preserve partial progress and failed-suffix contents.
-5. Document the security boundary and distinction from `std.rand`.
+The public provider uses the existing range-action protocol without changing `std.bytes` or `std.file`. Native source
+selection uses bounded stack staging and explicit error transport. Build, preparation identity, profile inventory, and
+runtime symbol manifests include the new runtime source. Source and emitted-interface consumers share the public API. No
+compiler diagnostic or diagnostic-code allocation changes are required.
 
-## Adapter Tests and Allocation Evidence
+New coverage checks logical ranges, empty dispatch, partial failures, runtime symbols, private schema rejection,
+interface-only use, allocation-free fill, and result cleanup. Stable references describe the delivered API and ownership
+contract; CI evidence and feature closure remain in this plan.
 
-- Extend the pending entropy suite in checked, basic, unchecked, and traced modes. Verify logical-range validation,
-  exactly one callback for valid empty requests, and zero host calls for empty requests. Test source and
-  emitted-interface consumers of the migrated public API.
+## Host Source Decisions
+
+- Linux, FreeBSD, and NetBSD use `getrandom(..., GRND_NONBLOCK)` to return unavailable entropy explicitly. Successful
+  short fills continue; interruption and failure return immediately.
+- Apple and OpenBSD use `getentropy` with requests bounded to 256 bytes.
+- Windows loads BCrypt through `LOAD_LIBRARY_SEARCH_SYSTEM32` and uses the system-preferred RNG. Provider NTSTATUS and
+  Win32 loader failures retain separate native domains, captured before cleanup.
+- Unsupported hosts report `Unsupported`; no device-path or predictable fallback is introduced.
+
+Primary contracts reviewed: [Linux getrandom][linux-random], [FreeBSD getrandom][freebsd-random],
+[NetBSD getrandom][netbsd-random], [Apple getentropy][apple-entropy], [OpenBSD getentropy][openbsd-entropy],
+[BCryptGenRandom][bcrypt], and [LoadLibraryExW][system-loader].
+
+## Adapter Coverage
+
+- Exercise the entropy suite in checked, basic, unchecked, and traced modes. Verify logical-range validation, exactly
+  one callback for valid empty requests, and zero host calls for empty requests. Test source and emitted-interface
+  consumers of the migrated public API.
 
 - Verify complete success, partial failure after a successful chunk, exact progress, and unchanged failed suffix even
   when a failing host call dirties its staging buffer. Preserve bounded chunking, successful short fills, interruption,
@@ -131,9 +145,62 @@ closed-plan backlink if applicable. Assign the entropy ADR number from the live 
   ownership separately. Exclude intentional `random_bytes` buffer construction and native loader resources from the
   transport-allocation claim.
 
-After implementation, run focused `entropy_runtime_test.py` coverage and the registered `entropy_main` child trace from
-`l1/`, plus the affected byte-buffer, OS-error, interface, and runtime-symbol regressions. Keep exhaustive native
-platform checks in CI. Earlier prototype results do not validate the adapted implementation.
+Reproduce focused `entropy_runtime_test.py` coverage and the registered `entropy_main` child trace from `l1/`, plus the
+affected byte-buffer, OS-error, interface, and runtime-symbol regressions. Exhaustive native platform checks remain
+assigned to CI.
+
+## Implementation Status
+
+- [x] Implemented `std.entropy` using the range protocol, with no changes to `std.bytes` or `std.file`.
+- [x] Added bounded native entropy sources, distinct NTSTATUS transport, and runtime/build/preparation inventories.
+- [x] Passed the focused local API, schema, allocation, ownership, interface, native-adapter, and supporting
+  regressions.
+- [x] Updated stable API/ownership references and ADR-0045; independent correctness and portability review found no
+  outstanding production issue.
+- [ ] Obtain native CI evidence for Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64.
+- [ ] Create the entropy ADR and index entry, add closed-plan backlinks to ADR-0045/0063, and close the feature plan
+  with its initiative and roadmap links after acceptance.
+
+## Local Verification Evidence
+
+Local execution used macOS Intel and explicitly selected `/usr/bin/clang` for `L0_CC`, `L1_CC`, and `L1_RUNTIME_CC`:
+Apple Clang 17.0.0 (`clang-1700.6.4.2`), with `--no-default-config` capability verified. An explicit existing L0 Stage 2
+compiler supplied the bootstrap. `make build runtime` regenerated 33 bundled interfaces and normal, basic, unchecked,
+and traced runtime inputs; supplemental TinyCC objects used TinyCC 0.9.28rc.
+
+- `entropy_runtime_test.py` passed public checked/basic/unchecked/traced behavior, bounds, alias expiry, and result
+  cleanup. Private schema, interface-only, native injection/simulation, and allocation checks ran separately against
+  unchanged production inputs; together they cover the complete harness. The interface consumer ran with both entropy
+  and byte-buffer source absent.
+- Allocation windows observed no Dea allocation events across 128 first/repeated success and partial-failure fills,
+  including empty requests, with an allocation positive control outside the windows. Complete ownership traces balanced.
+  Generated-C review confirmed by-value aggregates without boxing or ARC transport.
+- Native Apple probes and deterministic Linux, Windows, and unsupported-host simulations passed. Cases cover successful
+  short fills followed by failure, exact prefix preservation, dirty failed staging, unavailable/interrupted sources,
+  loader/export failures, zero loader calls on empty requests, unknown NTSTATUS, and error preservation across cleanup.
+- The selected compiler regressions passed: `bytes_test.py`, `byte_buffer_range_action_test.py`, `os_runtime_test.py`,
+  `io_runtime_test.py`, `runtime_symbol_manifest_test.py`, `l1c_child_trace_runner_test.py`, `build_driver_test.l0`,
+  `preparation_profile_test.py`, `preparation_construction_test.py`, `preparation_clang_compatibility_test.py`, and
+  `runtime_trace_policy_test.py`.
+- Focused preparation probes passed entropy source/API identity invalidation, actual default/traced runtime compilation,
+  and dependency coverage for all 11 runtime units and four generated-C configurations.
+- The `build_driver_test` canonical trace and `bytes_main`, `range_action_main`, `file_main`, and `entropy_main` child
+  traces passed with zero leaked object or string pointers.
+- Strict `make docs`, C-contract validation including untracked fixtures, Markdown/link checks, ADR Impact validation,
+  and whitespace checks passed.
+
+Reproduce from `l1/` with the explicit compiler/bootstrap selection above:
+
+```sh
+make build runtime
+make test-compiler TESTS="entropy_runtime_test.py bytes_test.py byte_buffer_range_action_test.py os_runtime_test.py io_runtime_test.py runtime_symbol_manifest_test.py l1c_child_trace_runner_test.py build_driver_test.l0 preparation_profile_test.py preparation_construction_test.py preparation_clang_compatibility_test.py runtime_trace_policy_test.py"
+make test-compiler-trace TESTS="build_driver_test"
+make test-compiler-trace-children TESTS="bytes_main range_action_main file_main entropy_main"
+make docs
+```
+
+No native Linux, Windows, macOS ARM, or BSD execution is claimed by these local checks. Simulations and documentation
+review do not replace native CI. Broad aggregates, exhaustive compiler validation, and final ADR closure remain pending.
 
 ## Non-Goals
 
@@ -147,18 +214,29 @@ platform checks in CI. Earlier prototype results do not validate the adapted imp
 
 - Decision: Expose host entropy as a fallible binary service distinct from deterministic pseudorandom generation, with
   no insecure fallback.
+
   - Scope: L1
   - Disposition: New ADR
   - ADR: `l1/docs/decisions/`
   - Rationale: Temporary-name and security-sensitive consumers must not accidentally receive predictable output when the
     operating system cannot provide entropy. Record the provider-owned callback adapter and native error preservation
     while referencing the generic range protocol's ADR; `std.bytes` remains independent of OS operations.
+
 - Decision: Preserve BCrypt provider failures in a distinct native OS error namespace.
+
   - Scope: L1
   - Disposition: Amend ADR
   - ADR: `l1/docs/decisions/0045-direct-os-errors-and-io-results.md`
-  - Rationale: The planned NTSTATUS error domain must preserve the provider's original status independently of Win32
-    loader errors and ambient last-error state, including through the range-action diagnostic payload.
+  - Rationale: The NTSTATUS error domain preserves the provider's original status independently of Win32 loader errors
+    and ambient last-error state, including through the range-action diagnostic payload.
+
+- Decision: Use the established synchronous unsafe range protocol for entropy transport without Dea heap allocation.
+
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0063-synchronous-byte-buffer-range-actions.md`
+  - Rationale: The provider consumes the existing by-value context/result and no-escape contracts without changing the
+    generic protocol; partial failures are already permitted.
 
 ## Verification Criteria
 
@@ -170,4 +248,12 @@ platform checks in CI. Earlier prototype results do not validate the adapted imp
 6. `fill` uses the generic range protocol without per-transfer context/result allocations or OS calls in `std.bytes`;
    `random_bytes` retains its intentional result-buffer allocation and failure cleanup.
 
+[apple-entropy]: https://raw.githubusercontent.com/apple-oss-distributions/xnu/main/bsd/man/man2/getentropy.2
+[bcrypt]: https://learn.microsoft.com/en-us/windows/win32/api/bcrypt/nf-bcrypt-bcryptgenrandom
+[freebsd-random]: https://man.freebsd.org/cgi/man.cgi?query=getrandom&sektion=2
+[linux-random]: https://man7.org/linux/man-pages/man2/getrandom.2.html
+[netbsd-random]: https://man.netbsd.org/getrandom.2
+[openbsd-entropy]: https://man.openbsd.org/getentropy.2
 [range-actions]: ../refactors/closed/2026-11-10-byte-buffer-range-actions-noref.md
+[range-adr]: ../../../docs/decisions/0063-synchronous-byte-buffer-range-actions.md
+[system-loader]: https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryexw

@@ -1,6 +1,6 @@
 # The L1 Standard Library
 
-Version: 2026-11-10
+Version: 2026-11-11
 
 The standard library provides ergonomic L1 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -139,6 +139,43 @@ with (let buf = bytes::create() => bytes::free(buf)) {
 ```
 
 See [l1/docs/decisions/0052-owned-dynamic-byte-buffers.md][byte-buffer-decision] for the ownership and copying decision.
+
+### `std.entropy`
+
+**Imports:** `sys.os`, `std.assert`, `std.bytes`, `std.os`
+
+Secure operating-system bytes are distinct from deterministic `std.rand`. No host failure substitutes predictable bytes.
+
+| Type/Function              | Signature or variants                                                   | Contract                                                                      |
+| -------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `EntropyResult`            | `EntropyFilled`, `EntropyFailed(count: int, error: OsError)`            | Complete fill or captured failure with the completed prefix length.           |
+| `RandomBytesResult`        | `RandomBytes(buffer: ByteBuffer*)`, `RandomBytesFailed(error: OsError)` | One owned result buffer on success; no buffer on failure.                     |
+| `fill`                     | `func(buffer: ByteBuffer*, start: int, count: int) -> EntropyResult`    | Fill an initialized logical range without changing its size or capacity.      |
+| `random_bytes`             | `func(count: int) -> RandomBytesResult`                                 | Allocate a buffer and fill it; free partial storage before returning failure. |
+| `free_random_bytes_result` | `func(result: RandomBytesResult) -> void`                               | Consume successful result ownership exactly once; failed results own nothing. |
+
+`fill` validates logical bounds in every runtime mode, including empty requests. Reserved capacity grants no access. A
+valid zero count succeeds without a host entropy call. A private unsafe callback borrows the range through
+`std.bytes::with_raw_range`, passing null state and a zero argument by value. Native calls and result conversion belong
+to `std.entropy`; `std.bytes` interprets no entropy payloads. Dispatch, context, and results add no Dea heap allocation
+around a pre-sized buffer. `random_bytes` deliberately allocates its owned buffer; negative counts and allocation
+failure terminate execution under the existing buffer policy.
+
+The native operation stages at most 256 bytes per call and copies only successful chunks. Failure reports the exact
+completed prefix, leaves the remaining requested bytes unchanged, and never modifies bytes outside the range, even when
+a failing host call overwrites its staging area. Successful short transfers continue; interruption or unavailable
+entropy returns immediately without an implicit retry. No storage pointer escapes and no buffer growth occurs during the
+call.
+
+Linux, FreeBSD, and NetBSD use `getrandom` with `GRND_NONBLOCK`; Apple and OpenBSD use `getentropy`. Windows resolves
+`BCryptGenRandom` with the System32 loader policy and requests the system-preferred RNG. Unsupported hosts return
+`Unsupported`; there is no device-path or pseudorandom fallback. BCrypt failures retain the `NtStatus` namespace with an
+unsigned 32-bit code widened to positive `long`; loader failures retain `Win32`. Native loader resources are separate
+from the Dea allocation guarantee.
+
+A successful result and all its copies share one cleanup obligation. Register `free_random_bytes_result` with `with`
+before extracting its buffer; extracted pointers borrow that owner and expire on cleanup. The API provides no entropy
+quality estimate, immutable secret string, or secure erasure guarantee.
 
 ### `std.format`
 
@@ -689,7 +726,7 @@ The `modf_*` and `frexp_*` helpers return small named result structs:
 | Type/Function   | Definition or signature                                                                                                                                                                                                                                                                                      | Description                                           |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
 | `ErrorKind`     | `Other`, `NotFound`, `PermissionDenied`, `AlreadyExists`, `InvalidInput`, `InvalidHandle`, `Interrupted`, `WouldBlock`, `BrokenPipe`, `TimedOut`, `Unsupported`, `NotSeekable`, `OutOfMemory`, `ResourceExhausted`, `IoError`, `IsDirectory`, `NotDirectory`, `DirectoryNotEmpty`, `NoSpace`, `FileTooLarge` | Portable normalized error categories.                 |
-| `ErrorDomain`   | `Runtime`, `Errno`, `Win32`                                                                                                                                                                                                                                                                                  | Identifies the native error namespace.                |
+| `ErrorDomain`   | `Runtime`, `Errno`, `Win32`, `NtStatus`                                                                                                                                                                                                                                                                      | Identifies the native error namespace.                |
 | `OsError`       | `struct OsError { kind: ErrorKind; domain: ErrorDomain; native_code: long; }`                                                                                                                                                                                                                                | Captured failure with its original native code.       |
 | `ReadResult`    | `Read(count: int)`, `Eof`, `ReadTimedOut(error: OsError)`, `ReadFailed(error: OsError)`                                                                                                                                                                                                                      | One read outcome; positive partial transfers succeed. |
 | `WriteResult`   | `Written(count: int)`, `WriteTimedOut(error: OsError)`, `WriteFailed(error: OsError)`                                                                                                                                                                                                                        | One write outcome, including successful short writes. |
@@ -698,15 +735,15 @@ The `modf_*` and `frexp_*` helpers return small named result structs:
 
 Portable code branches on `ErrorKind`; `ErrorDomain` and signed `long` `native_code` retain host diagnostics without
 narrowing a Windows native code through `int`. Windows CRT stdio failures use `Errno`, while native Windows APIs use
-`Win32`. Unknown native codes normalize to `Other` and retain their domain and value. Runtime argument validation uses
-`Runtime` / `InvalidInput` with code zero; an I/O failure without a host code uses `Runtime` / `IoError` with code zero.
-No error is inferred from ambient `std.system::errno()` after the operation.
+`Win32`; BCrypt provider failures use `NtStatus`. NTSTATUS preserves its unsigned 32-bit value in a positive `long`.
+Unknown native codes normalize to `Other` and retain their domain and value. Runtime argument validation uses `Runtime`
+/ `InvalidInput` with code zero; an I/O failure without a host code uses `Runtime` / `IoError` with code zero. No error
+is inferred from ambient `std.system::errno()` after the operation.
 
 Timeout variants retain the captured `TimedOut` error but remain distinct operation states. The result helpers do not
 configure a deadline or timeout. Error messages may depend on the host and locale and are unsuitable for portable
-branching or exact string assertions; fallback diagnostics include the category, domain, and code. Future file, process,
-pipe, socket, and resolver APIs can reuse this contract; file-opening results and additional native domains belong to
-their consumers.
+branching or exact string assertions; fallback diagnostics include the category, domain, and code. Provider-specific
+operation results and additional native domains belong to their consumers.
 
 See [l1/docs/decisions/0045-direct-os-errors-and-io-results.md][os-results].
 
@@ -945,11 +982,12 @@ executions.
 
 ### `sys.os`
 
-Low-level error and standard-stream result transport used by `std.os` and `std.io`. `RtOsError` contains integer `kind`
-and `domain` fields plus `native_code: long`; `RtIoResult` contains `state: int`, `count: int`, and `error: RtOsError`.
-Calls return these records directly with captured data, so callers do not consult ambient `errno` afterward. Result
-states distinguish success, EOF, failure, and timeout. Negative raw counts and null raw buffers with positive counts
-return `Runtime` / `InvalidInput` with code zero; the public byte-array helpers retain their asserted range contract.
+Low-level error, entropy, and standard-stream result transport used by `std.os`, `std.entropy`, and `std.io`.
+`RtOsError` contains integer `kind` and `domain` fields plus `native_code: long`; `RtIoResult` contains `state: int`,
+`count: int`, and `error: RtOsError`. Calls return these records directly with captured data, so callers do not consult
+ambient `errno` afterward. Result states distinguish success, EOF, failure, and timeout. Negative raw counts and null
+raw buffers with positive counts return `Runtime` / `InvalidInput` with code zero; the public byte-array helpers retain
+their asserted range contract.
 
 ### `sys.rt`
 
@@ -1009,12 +1047,13 @@ owns its compatibility checks against that predecessor baseline. In particular, 
 `rt_time_local_is_dst` accept `long` seconds in L1 and `int` seconds in L0, so those functions require level-specific C
 declarations. Runtime binaries and level-mangled records are not interchangeable.
 
-### Declared in `sys.os` (8)
+### Declared in `sys.os` (9)
 
 The normal and traced runtime symbol manifests contain the same direct-error surface.
 
 | Function                 | Signature                                               | Description                                                  |
 | ------------------------ | ------------------------------------------------------- | ------------------------------------------------------------ |
+| `rt_entropy_fill`        | `unsafe func(buf: void*?, count: int) -> RtIoResult`    | Complete secure fill or failure with a completed prefix.     |
 | `rt_os_error_from_errno` | `func(native_code: int) -> RtOsError`                   | Normalizes a saved C runtime/POSIX code.                     |
 | `rt_os_error_from_win32` | `func(native_code: long) -> RtOsError`                  | Normalizes a saved Windows native code.                      |
 | `rt_os_error_message`    | `func(error: RtOsError) -> string`                      | Renders captured error data into an owned diagnostic string. |

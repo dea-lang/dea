@@ -1665,7 +1665,7 @@ static int pc_dependency_probes(PcContext *c, const PcJson *sources, int runtime
         if (pc_verbosity(c) >= 3) {
             if (runtime)
                 snprintf(purpose, sizeof(purpose), "runtime dependencies: %s",
-                         index == 9 ? "dea_rt_trace" : pc_runtime_sources[index]);
+                         index == PC_RUNTIME_SOURCE_COUNT ? "dea_rt_trace" : pc_runtime_sources[index]);
             else
                 snprintf(purpose, sizeof(purpose), "generated-C dependencies: real=%d,float=%d",
                          index & 1, (index >> 1) & 1);
@@ -1915,12 +1915,12 @@ static PcJson *pc_discover_toolchain(PcContext *c, const PcJson *selection, PcOp
         PcJson *sources = pj_new(PJ_ARRAY);
         char *public = i ? pc_join(c->home, "shared/runtime/include") : pc_string(include);
         int j, ok = 1;
-        for (j = 0; j < (i ? 10 : 4); ++j) {
+        for (j = 0; j < (i ? PC_RUNTIME_SOURCE_COUNT + 1 : 4); ++j) {
             PcBuffer relative = {0};
             char *path;
             if (i) {
                 pc_text(&relative, "shared/runtime/src/");
-                pc_text(&relative, j == 9 ? "dea_rt_trace" : pc_runtime_sources[j]);
+                pc_text(&relative, j == PC_RUNTIME_SOURCE_COUNT ? "dea_rt_trace" : pc_runtime_sources[j]);
                 pc_text(&relative, ".c");
                 path = pc_join(c->home, relative.s);
             } else {

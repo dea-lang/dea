@@ -1,0 +1,74 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module entropy_allocations;
+
+import std.entropy;
+import std.bytes as bytes;
+import std.os as os;
+import std.assert;
+import std.io;
+
+/**
+ * Select a deterministic native scenario without allocating transport storage.
+ *
+ * @param mode Zero succeeds and two fails after one full native chunk.
+ */
+extern func entropy_probe_config(mode: int);
+
+/**
+ * Return the number of native calls since scenario selection.
+ *
+ * @return Count of successful and failed native attempts.
+ */
+extern func entropy_probe_calls() -> int;
+
+/**
+ * Verify successful fills without allocating error strings in measurement windows.
+ *
+ * @param result Public entropy outcome.
+ */
+func filled(result: EntropyResult) {
+    match (result) {
+        EntropyFilled => {}
+        _ => { assert(false, "allocation probe entropy success"); }
+    }
+}
+
+/**
+ * Measure first and repeated fill transport with explicitly prepared buffer storage.
+ */
+func main() {
+    with (let buffer = bytes::with_capacity(702) => bytes::free(buffer)) {
+        bytes::resize(buffer, 702);
+        let positive_control = bytes::to_string(buffer);
+        assert(dea::len(positive_control) == 702, "allocation trace positive control");
+        err_printl_s("ENTROPY_SUCCESS_ALLOC_BEGIN");
+        for (let iteration = 0; iteration < 128; iteration = iteration + 1) {
+            entropy_probe_config(0);
+            filled(fill(buffer, 1, 700));
+            assert(entropy_probe_calls() == 3, "successful fill uses bounded chunks");
+            filled(fill(buffer, 702, 0));
+            assert(entropy_probe_calls() == 3, "empty fill invokes no host call");
+        }
+        err_printl_s("ENTROPY_SUCCESS_ALLOC_END");
+        err_printl_s("ENTROPY_FAILURE_ALLOC_BEGIN");
+        for (let iteration = 0; iteration < 128; iteration = iteration + 1) {
+            entropy_probe_config(2);
+            match (fill(buffer, 1, 700)) {
+                EntropyFailed(done, error) => {
+                    assert(done == 256 && os::_os_error_to_rt(error).kind == 2,
+                        "failed fill preserves partial progress and captured error");
+                }
+                _ => { assert(false, "allocation probe entropy failure"); }
+            }
+            assert(entropy_probe_calls() == 2, "failed fill stops on first terminal outcome");
+        }
+        err_printl_s("ENTROPY_FAILURE_ALLOC_END");
+        assert(bytes::size(buffer) == 702 && bytes::capacity(buffer) == 702,
+            "fill transport preserves logical storage");
+    }
+    printl_s("entropy_allocations: PASS");
+}

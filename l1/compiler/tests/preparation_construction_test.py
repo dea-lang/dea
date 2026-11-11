@@ -114,7 +114,7 @@ int construction_sentinel(void) { return PROFILE_CONSTRUCTION_SENTINEL; }
         assert {item["path"] for item in inventory} == {
             "modules/std/types.l1m", "modules/std/types.o", "lib/libdea_rt_check_basic.a"}
         assert service.stats()["native_resolutions"] == service.stats()["probes"] == 0
-        assert service.stats()["module_compiles"] == 1 and service.stats()["build_commands"] == 11
+        assert service.stats()["module_compiles"] == 1 and service.stats()["build_commands"] == 12
         assert not (destination / "manifest.json").exists()
         assert not (root / "must-not-exist").exists()
         assert native_write(service, "generated/std/types.c", b"late write") == 0

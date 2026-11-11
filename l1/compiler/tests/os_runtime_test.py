@@ -25,7 +25,7 @@ FIXTURE_ROOT = L1_ROOT / "compiler/tests/fixtures/os_runtime"
 RUNTIME_SOURCES = (
     "dea_rt_panic.c", "dea_rt_sys.c", "dea_rt_math.c", "dea_rt_rand.c",
     "dea_rt_string.c", "dea_rt_alloc.c", "dea_rt_io.c", "dea_rt_hash.c",
-    "dea_rt_time.c",
+    "dea_rt_time.c", "dea_rt_entropy.c",
 )
 
 

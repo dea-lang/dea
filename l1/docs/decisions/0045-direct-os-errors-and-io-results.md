@@ -1,7 +1,7 @@
 # ADR-0045: Direct OS Errors and I/O Results
 
 - Decision date: 2026-10-21
-- Last edited: 2026-11-10
+- Last edited: 2026-11-11
 - Status: Accepted
 
 ## Context
@@ -13,8 +13,8 @@ errors. The first consumer needs no file-handle ownership or dynamic-buffer API.
 ## Decision
 
 `std.os` defines `ErrorKind`, `ErrorDomain`, and `OsError { kind, domain, native_code }`. Native codes use signed
-`long`; the initial domains are `Runtime`, `Errno`, and `Win32`. Library validation and host failures without a native
-code use `Runtime` with code zero. Unknown native codes retain their domain and code and normalize to `Other`.
+`long`; the domains are `Runtime`, `Errno`, `Win32`, and `NtStatus`. Library validation and host failures without a
+native code use `Runtime` with code zero. Unknown native codes retain their domain and code and normalize to `Other`.
 `error_message` renders the captured error; its text is diagnostic and may depend on the host and locale. Fallback
 diagnostics include the normalized category, native domain, and code.
 
@@ -31,7 +31,10 @@ disposition.
 
 `sys.os` transports flat records with integer category/domain fields and a `long` native code. Runtime operations
 capture their native error before any cleanup or message rendering. Windows CRT stdio errors use `Errno`; Windows native
-API errors use `Win32`. Normal and traced runtimes export the same new symbol surface.
+API errors use `Win32`. BCrypt provider failures use `NtStatus`, preserving the unsigned 32-bit status in positive
+`long` form independently of Win32 loader errors. Native entropy failures may report a completed prefix; their
+provider-owned decoder preserves the captured domain and full code through the generic range diagnostic fields. Normal
+and traced runtimes export the same symbol surface.
 
 ## Rationale
 

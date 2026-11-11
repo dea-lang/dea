@@ -164,7 +164,7 @@ def check_construction_snapshot(library: Path, root: Path, config: dict) -> None
             direct.require("runtime")
             direct.require("construction_complete")
             assert direct.stats()["probes"] == direct.stats()["native_resolutions"] == 0
-            assert direct.stats()["build_commands"] == 10 and direct.stats()["module_compiles"] == 0
+            assert direct.stats()["build_commands"] == 11 and direct.stats()["module_compiles"] == 0
             assert json.loads(direct.get("construction_inputs")) == snapshot
         assert not list(scratch.glob("l1-preparation-*"))
     assert sentinel.read_text() == "retain" and not (destination / "manifest.json").exists()

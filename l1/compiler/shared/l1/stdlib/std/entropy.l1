@@ -1,0 +1,174 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/**
+ * Fallible operating-system entropy, separate from deterministic std.rand.
+ * No predictable fallback is used. Owned results require explicit cleanup;
+ * neither cleanup nor buffer mutation promises secure erasure of secret bytes.
+ */
+module std.entropy;
+
+export EntropyResult, RandomBytesResult, fill, random_bytes, free_random_bytes_result;
+
+import sys.os;
+import std.assert;
+import std.bytes as bytes;
+import std.os as os;
+
+/**
+ * Complete fill or captured failure with the successfully filled prefix length.
+ */
+enum EntropyResult {
+    EntropyFilled;
+    EntropyFailed(count: int, error: os::OsError);
+}
+
+/**
+ * Owns one successful buffer; copies share its single cleanup obligation.
+ */
+enum RandomBytesResult {
+    RandomBytes(buffer: bytes::ByteBuffer*);
+    RandomBytesFailed(error: os::OsError);
+}
+
+/**
+ * Empty provider state and scalar argument passed without allocation.
+ */
+type RangeContext = bytes::ByteBufferRangeActionContext;
+
+/**
+ * Finite range-action outcome returned by value.
+ */
+type RangeResult = bytes::ByteBufferRangeActionResult;
+
+/**
+ * Entropy-owned diagnostic schema carried unchanged by std.bytes.
+ */
+type RangeDiagnostic = bytes::ByteBufferRangeActionDiagnostic;
+
+/**
+ * Encode a captured entropy result while preserving completed failure progress.
+ * Native entropy returns complete success or failure, never EOF or timeout.
+ * The callback's caller validates the resulting progress against its range.
+ *
+ * @param result Captured native outcome, with nonnegative completed byte count.
+ * @return Matching range outcome, with the complete native error on failure.
+ */
+func _encode_entropy_result(result: RtIoResult) -> RangeResult {
+    assert(result.count >= 0 && (result.state == 0 || result.state == 2),
+        "std.entropy: invalid native entropy result");
+    if (result.state == 0) { return bytes::RangeActionApplied(result.count, null); }
+    return bytes::RangeActionFailed(result.count,
+        RangeDiagnostic(result.state, result.error.kind, result.error.domain, result.error.native_code));
+}
+
+/**
+ * Validate the private entropy schema and preserve captured native errors.
+ * Success covers the complete request; failure may follow a completed prefix.
+ * The private callback establishes the schema, while checks validate its fields.
+ * Unknown native codes remain diagnostic data, independent of ambient OS state.
+ *
+ * @param result By-value result of the private entropy callback.
+ * @param count Nonnegative number of requested bytes.
+ * @return Complete success or failure with its exact completed prefix and error.
+ */
+func _decode_entropy_result(result: RangeResult, count: int) -> EntropyResult {
+    assert(count >= 0, "std.entropy: invalid range action result");
+    match (result) {
+        RangeActionApplied(processed, value) => {
+            assert(processed == count && value == null, "std.entropy: invalid range action result");
+            return EntropyFilled;
+        }
+        RangeActionStopped(processed, reason) => {
+            assert(false, "std.entropy: invalid range action result");
+            return EntropyFilled;
+        }
+        RangeActionFailed(processed, error) => {
+            assert(processed >= 0 && processed <= count && error.tag == 2,
+                "std.entropy: invalid range action result");
+            let native = RtOsError(error.code, error.detail, error.value);
+            let public = os::_os_error_from_rt(native);
+            assert(os::_os_error_to_rt(public).domain == error.detail
+                && (error.detail != 0 || error.value == 0 as long),
+                "std.entropy: invalid range action error");
+            return EntropyFailed(processed, public);
+        }
+    }
+}
+
+/**
+ * Fill a borrowed byte range through one synchronous native entropy operation.
+ * The caller keeps the buffer live and prevents conflicting alias access.
+ * Storage is accessed only within count bytes and is never retained; no buffer
+ * structural operation or ownership transfer occurs during this callback.
+ * The native operation owns bounded staging and leaves its failed suffix intact.
+ *
+ * @param data Borrowed writable byte range, inaccessible when count is zero.
+ * @param count Validated logical range length; zero makes no host entropy call.
+ * @param context Null state and zero argument, unused by this provider.
+ * @return Captured entropy outcome encoded without allocating context or result.
+ */
+unsafe func _fill_action(data: byte*, count: int, context: RangeContext) -> RangeResult {
+    return _encode_entropy_result(rt_entropy_fill(data as void*, count));
+}
+
+/**
+ * Fill a pre-sized logical buffer range with secure operating-system bytes.
+ * Invalid ranges terminate execution even when count is zero or runtime checks
+ * are disabled. A valid zero count succeeds without probing the host. Length,
+ * capacity, and bytes outside the requested range remain unchanged. Failure
+ * reports the completed prefix and leaves the remaining bytes unchanged.
+ * Interrupted operations return Interrupted without implicit retry. Context and
+ * result transport allocate no Dea heap storage; native OS resources are separate.
+ * Keep the buffer live and coordinate conflicting alias access during the call.
+ *
+ * @param buffer Live pre-sized destination buffer, borrowed synchronously.
+ * @param start Nonnegative logical offset, at most bytes::size(buffer).
+ * @param count Nonnegative count within the remaining logical range.
+ * @return EntropyFilled for the entire request, or its captured failure.
+ */
+func fill(buffer: bytes::ByteBuffer*, start: int, count: int) -> EntropyResult {
+    let context = RangeContext(null, 0 as long);
+    let result = bytes::with_raw_range(buffer, start, count, context, _fill_action);
+    return _decode_entropy_result(result, count);
+}
+
+/**
+ * Create an owned buffer containing the requested secure operating-system bytes.
+ * Register free_random_bytes_result with with cleanup before matching the result.
+ * A failed fill frees the partial buffer and never publishes it. Negative count
+ * and allocation failure terminate execution. Zero count returns an owned empty
+ * buffer without probing the host. No immutable text representation is created.
+ *
+ * @param count Nonnegative logical byte length of the requested buffer.
+ * @return An owning RandomBytes result, or captured failure without a buffer.
+ */
+func random_bytes(count: int) -> RandomBytesResult {
+    assert(count >= 0, "std.entropy: negative count");
+    let buffer = bytes::with_capacity(count);
+    bytes::resize(buffer, count);
+    match (fill(buffer, 0, count)) {
+        EntropyFilled => { return RandomBytes(buffer); }
+        EntropyFailed(completed, error) => {
+            bytes::free(buffer);
+            return RandomBytesFailed(error);
+        }
+    }
+}
+
+/**
+ * Consume a successful random-byte result exactly once and expire all aliases.
+ * Extracted buffer pointers borrow the result's single cleanup obligation.
+ * Failed variants own no buffer and need no cleanup. Cleanup does not securely
+ * erase the allocation and is not idempotent for a successful result.
+ *
+ * @param result Owning result to consume exactly once when successful.
+ */
+func free_random_bytes_result(result: RandomBytesResult) {
+    match (result) {
+        RandomBytes(buffer) => { bytes::free(buffer); }
+        RandomBytesFailed(error) => {}
+    }
+}

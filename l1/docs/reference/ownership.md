@@ -1,6 +1,6 @@
 # L1 Ownership and Memory Management Reference
 
-Version: 2026-11-10
+Version: 2026-11-11
 
 This document describes how ownership works in current Dea/L1 bootstrap builds, covering:
 
@@ -206,6 +206,15 @@ preserve its temporary ownership.
   operations. Coordinate conflicting concurrent access externally. The callback type checks its unsafe signature but
   does not prove bounds, lifetimes, alias discipline, or diagnostic-schema pairing. No automatic pinning or rollback is
   provided; an empty range grants no byte access.
+
+### `std.entropy` / `RandomBytesResult`
+
+`fill` borrows a pre-sized `ByteBuffer` for the synchronous call and preserves its cleanup owner, logical size, and
+capacity. A failed fill exposes its completed prefix and leaves the suffix unchanged. `random_bytes` returns one owned
+buffer on success and frees partial storage before returning failure. Copies of a successful `RandomBytesResult` share
+one cleanup obligation; extracted pointers borrow that owner. Call `free_random_bytes_result` exactly once, normally
+through `with`, and do not separately free an extracted buffer. Cleanup expires every alias and does not promise secure
+erasure. Context and result transport add no Dea heap allocation to `fill`.
 
 ### `std.vector` / `StringVector`
 

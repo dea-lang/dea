@@ -25,9 +25,9 @@ facilities make it practical to build the next compiler level and larger systems
 as a single compilation unit.
 
 The current development target is a finite, useful L1 for compilers and tools. Typed string formatting, file handles,
-secure entropy and temporary objects, and shell-free processes and pipes remain planned stabilization work. Generic
-streams, networking, JSON, file watching, concurrency, and broader language features are deferred to L2. See
-[l1/docs/roadmap.md](docs/roadmap.md) for the boundary and acceptance gates.
+and secure OS entropy are implemented. Temporary objects and shell-free processes and pipes remain planned stabilization
+work. Generic streams, networking, JSON, file watching, concurrency, and broader language features are deferred to L2.
+See [l1/docs/roadmap.md](docs/roadmap.md) for the boundary and acceptance gates.
 
 The language keeps explicit types, familiar control flow, nullable values, and deterministic resource management.
 Strings use automatic reference counting (ARC); non-owning slices provide views into existing storage. Language

@@ -431,6 +431,7 @@ struct __deaM3sys2rtS10RtFileInfo {
 #define DEA_OS_DOMAIN_RUNTIME 0
 #define DEA_OS_DOMAIN_ERRNO 1
 #define DEA_OS_DOMAIN_WIN32 2
+#define DEA_OS_DOMAIN_NTSTATUS 3
 
 #define DEA_OS_ERROR_OTHER 0
 #define DEA_OS_ERROR_NOT_FOUND 1
@@ -1001,6 +1002,9 @@ struct __deaM3sys2osS9RtOsError rt_os_error_from_win32(dea_long native_code);
 
 /* Render an OS error using its saved domain and code, never ambient error state. */
 dea_string rt_os_error_message(struct __deaM3sys2osS9RtOsError error);
+
+/* Fill caller-owned bytes from the operating system's secure entropy source. */
+struct __deaM3sys2osS10RtIoResult rt_entropy_fill(void *buf, dea_int count);
 
 /* Read one partial transfer from standard input with direct error transport. */
 struct __deaM3sys2osS10RtIoResult rt_stdin_read_result(dea_byte *buf, dea_int capacity);

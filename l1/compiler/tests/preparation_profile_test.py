@@ -401,7 +401,7 @@ def complete_opaque_profile(service: ProfileService) -> list[dict]:
     if inputs["family"] == "tcc":
         native_payloads.extend("lib/tcc/default/" + name + ".o" for name in (
             "dea_rt_panic", "dea_rt_sys", "dea_rt_math", "dea_rt_rand", "dea_rt_string",
-            "dea_rt_alloc", "dea_rt_io", "dea_rt_hash", "dea_rt_time"))
+            "dea_rt_alloc", "dea_rt_io", "dea_rt_hash", "dea_rt_time", "dea_rt_entropy"))
     else:
         native_payloads.append("lib/libdea_rt.a")
     for relative in native_payloads:
@@ -550,7 +550,7 @@ def check_creation(library: Path, root: Path) -> None:
                 if inputs["family"] == "tcc":
                     native_payloads.extend("lib/tcc/default/" + name + ".o" for name in (
                         "dea_rt_panic", "dea_rt_sys", "dea_rt_math", "dea_rt_rand", "dea_rt_string",
-                        "dea_rt_alloc", "dea_rt_io", "dea_rt_hash", "dea_rt_time"))
+                        "dea_rt_alloc", "dea_rt_io", "dea_rt_hash", "dea_rt_time", "dea_rt_entropy"))
                 else:
                     native_payloads.append("lib/libdea_rt.a")
                 for relative in native_payloads:

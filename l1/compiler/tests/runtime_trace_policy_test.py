@@ -29,6 +29,7 @@ RUNTIME_SOURCES = [
     "dea_rt_io.c",
     "dea_rt_hash.c",
     "dea_rt_time.c",
+    "dea_rt_entropy.c",
 ]
 
 HARNESS_SOURCE = r"""

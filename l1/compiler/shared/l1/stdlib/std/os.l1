@@ -44,11 +44,14 @@ enum ErrorKind {
 
 /**
  * Namespace of a native code; runtime validation has no host error code.
+ * NtStatus retains the unsigned 32-bit provider status widened to long,
+ * independently of Win32 loader errors and ambient last-error state.
  */
 enum ErrorDomain {
     Runtime;
     Errno;
     Win32;
+    NtStatus;
 }
 
 /**
@@ -158,6 +161,7 @@ func _os_kind_code(kind: ErrorKind) -> int {
 func _os_domain_from_code(code: int) -> ErrorDomain {
     if (code == 1) { return Errno; }
     if (code == 2) { return Win32; }
+    if (code == 3) { return NtStatus; }
     return Runtime;
 }
 
@@ -172,6 +176,7 @@ func _os_domain_code(domain: ErrorDomain) -> int {
         Runtime => { return 0; }
         Errno => { return 1; }
         Win32 => { return 2; }
+        NtStatus => { return 3; }
     }
 }
 

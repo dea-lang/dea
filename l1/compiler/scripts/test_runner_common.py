@@ -149,6 +149,10 @@ CHILD_TRACE_FIXTURES = (
         8, "range_action_main", TESTS_DIR / "fixtures/bytes/range_action_main.l1",
         "byte_buffer_range_action_test.py", frozenset({"mem", "arc"}),
     ),
+    ChildTraceFixture(
+        9, "entropy_main", TESTS_DIR / "fixtures/entropy_runtime/entropy_main.l1",
+        "entropy_runtime_test.py", frozenset({"mem", "arc"}),
+    ),
 )
 
 

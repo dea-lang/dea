@@ -44,6 +44,7 @@ RUNTIME_SOURCES = (
     "dea_rt_io.c",
     "dea_rt_hash.c",
     "dea_rt_time.c",
+    "dea_rt_entropy.c",
 )
 RANGE_FAILURE = "Source range out of bounds in vec_push_bytes"
 OVERLAP_FAILURE = "Source range overlaps backing storage in vec_push_bytes"
