@@ -268,6 +268,8 @@ build mode preserve the L1 floating-point contract.
 - fixed-size arrays lower to generated wrapper structs named with the ABI type-component layer, for example `byte[1024]`
   -> `__deaA1024_h` and `int[2][3]` -> `__deaA2_A3_i`; the wrapper contains one `data` field, and adjacent dimensions
   lower as contiguous C arrays such as `data[2][3]`
+- by-value array fields and enum payloads emit their array and surrounding optional wrappers before the containing type
+  body, after nominal element dependencies are defined; later wrapper passes skip definitions already emitted
 - slices lower to generated descriptor structs named from the element ABI type-component, for example `int[]` ->
   `__deaWi` and `int*[]` -> `__deaWPi`; each descriptor is
   `typedef struct __deaW... { dea_int len; T *data; } __deaW...;`, and descriptor copies are ordinary value copies with

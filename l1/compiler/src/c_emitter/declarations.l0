@@ -18,6 +18,7 @@ import types;
 import c_emitter.abi;
 import c_emitter.state;
 import c_emitter.types;
+import c_emitter.wrappers;
 
 /**
  * Emit a section comment.
@@ -265,6 +266,11 @@ func cem_find_enum_variant_info(enum_info: EnumInfo*, variant_name: string) -> E
  * @param struct_info Resolved struct metadata.
  */
 func cem_emit_struct_info(self: CEmitter*, struct_info: StructInfo*) {
+    for (let field_i = 0; field_i < vec_size(struct_info.fields); field_i = field_i + 1) {
+        let field_info = ptr_vec_get(struct_info.fields, field_i) as StructFieldInfo*;
+        cem_emit_array_field_wrappers(self, field_info.field_type);
+    }
+
     let c_name = cem_mangle_struct_name(struct_info.module_name, struct_info.name);
     let guard = "DEA_DEFINED_" + c_name;
     ccb_emit(self.out, "#ifndef " + guard);
@@ -294,6 +300,13 @@ func cem_emit_struct_info(self: CEmitter*, struct_info: StructInfo*) {
  * @param enum_info Resolved enum metadata.
  */
 func cem_emit_enum_info(self: CEmitter*, enum_info: EnumInfo*) {
+    for (let variant_i = 0; variant_i < vec_size(enum_info.variants); variant_i = variant_i + 1) {
+        let variant_info = ptr_vec_get(enum_info.variants, variant_i) as EnumVariantInfo*;
+        for (let field_i = 0; field_i < vec_size(variant_info.field_types); field_i = field_i + 1) {
+            cem_emit_array_field_wrappers(self, ptr_vec_get(variant_info.field_types, field_i) as Type*);
+        }
+    }
+
     let c_name = cem_mangle_enum_name(enum_info.module_name, enum_info.name);
     let guard = "DEA_DEFINED_" + c_name;
     let tag_enum_name = c_name + "_tag";

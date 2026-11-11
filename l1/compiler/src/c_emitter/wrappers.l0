@@ -241,6 +241,35 @@ func cem_emit_array_wrappers(self: CEmitter*) {
 }
 
 /**
+ * Emit array-related typedefs required by one aggregate field's C spelling.
+ *
+ * The nominal dependency pass must already have defined value elements.
+ * Pointer and nullable constructors preserve array typedef dependencies;
+ * unrelated callable and slice declarations retain their existing ordering.
+ *
+ * @param self Emitter to update.
+ * @param typ Resolved struct field or enum payload type.
+ * @return `true` when an array wrapper occurs through these constructors.
+ */
+func cem_emit_array_field_wrappers(self: CEmitter*, typ: Type*) -> bool {
+    if (ord(typ.kind) == ord(TY_ARRAY)) {
+        cem_emit_array_wrapper(self, cem_array_wrapper_name_for_type(typ), typ);
+        return true;
+    }
+    if (ord(typ.kind) == ord(TY_POINTER)) {
+        return cem_emit_array_field_wrappers(self, typ.inner as Type*);
+    }
+    if (ord(typ.kind) == ord(TY_NULLABLE)) {
+        let needs_array = cem_emit_array_field_wrappers(self, typ.inner as Type*);
+        if (needs_array && !cem_is_niche_nullable(typ)) {
+            cem_emit_optional_wrapper(self, cem_opt_wrapper_name_for_inner(typ.inner as Type*), typ.inner as Type*);
+        }
+        return needs_array;
+    }
+    return false;
+}
+
+/**
  * Emit one collected slice-descriptor typedef.
  *
  * @param self Emitter to update.

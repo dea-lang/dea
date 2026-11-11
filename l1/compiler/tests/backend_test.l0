@@ -2089,6 +2089,87 @@ func test_backend_generate_fixed_arrays() {
 }
 
 /**
+ * Tests aggregate fields emit array dependencies after elements and before use.
+ */
+func test_backend_generate_array_field_type_order() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let lines = sv_create(16) => sv_free(lines),
+          let box_deps = sv_create(7) => sv_free(box_deps),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "order.l1");
+        sv_push(lines, "module order;");
+        sv_push(lines, "struct Box {");
+        sv_push(lines, "    raw: byte[2];");
+        sv_push(lines, "    grid: int[2][3];");
+        sv_push(lines, "    values: Leaf[2];");
+        sv_push(lines, "    nullable_values: Leaf?[2];");
+        sv_push(lines, "    optional_values: Leaf[2]?;");
+        sv_push(lines, "    links: Leaf*[2];");
+        sv_push(lines, "    rows: int[2]*?;");
+        sv_push(lines, "}");
+        sv_push(lines, "struct Leaf { data: byte[4]; }");
+        sv_push(lines, "enum Payload { Bytes(values: byte[3]); Values(values: Leaf[2]?); }");
+        sv_push(lines, "struct Holder { payloads: Payload[2]; }");
+        sv_push(lines, "func main() -> int { return 0; }");
+        sv_push(sources, bt_source(lines));
+
+        let result = bt_analyze_sources("order", filenames, sources);
+        assert(!analysis_has_errors(result), "array-field ordering fixture should analyze without errors");
+        let generated = bt_generate_entry(result, opts, cfg);
+
+        let leaf_pos = find_s(generated, "struct __deaM5orderS4Leaf {");
+        let leaf_bytes_pos = find_s(generated, "typedef struct __deaA4_h {");
+        let leaf_array_pos = find_s(generated, "typedef struct __deaA2_M5orderS4Leaf {");
+        let box_pos = find_s(generated, "struct __deaM5orderS3Box {");
+        assert(leaf_bytes_pos >= 0 && leaf_bytes_pos < leaf_pos && leaf_pos < leaf_array_pos &&
+            leaf_array_pos < box_pos,
+            "nested value dependencies must order builtin array, element struct, nominal array, and containing struct");
+
+        sv_push(box_deps, "typedef struct __deaA2_h {");
+        sv_push(box_deps, "typedef struct __deaA2_A3_i {");
+        sv_push(box_deps, "typedef struct __deaA2_M5orderS4Leaf {");
+        sv_push(box_deps, "typedef struct __deaA2_QM5orderS4Leaf {");
+        sv_push(box_deps, "typedef struct { dea_bool has_value; __deaA2_M5orderS4Leaf value; } dea_opt_a2_s___deaM5orderS4Leaf;");
+        sv_push(box_deps, "typedef struct __deaA2_PM5orderS4Leaf {");
+        sv_push(box_deps, "typedef struct __deaA2_i {");
+        for (let i = 0; i < sv_size(box_deps); i = i + 1) {
+            let dependency = sv_get(box_deps, i);
+            let dependency_pos = find_s(generated, dependency);
+            assert(dependency_pos >= 0 && dependency_pos < box_pos,
+                "every array-related field typedef must precede its containing struct");
+            assert(bt_count_substring(generated, dependency) == 1,
+                "aggregate dependency emission must not duplicate wrapper typedefs");
+        }
+
+        let nullable_leaf_pos = find_s(generated,
+            "typedef struct { dea_bool has_value; struct __deaM5orderS4Leaf value; } dea_opt_s___deaM5orderS4Leaf;");
+        assert(nullable_leaf_pos > leaf_pos &&
+            nullable_leaf_pos < find_s(generated, "typedef struct __deaA2_QM5orderS4Leaf {"),
+            "arrays of nullable nominal values require the optional element wrapper first");
+        assert(contains_s(generated, "typedef struct __deaA2_A3_i { dea_int data[2][3]; } __deaA2_A3_i;"),
+            "dependency ordering must preserve flattened multidimensional storage");
+        assert(contains_s(generated,
+            "typedef struct __deaA2_PM5orderS4Leaf { struct __deaM5orderS4Leaf* data[2]; } __deaA2_PM5orderS4Leaf;"),
+            "dependency ordering must preserve nominal-pointer element storage");
+
+        let payload_pos = find_s(generated, "struct __deaM5orderE7Payload {");
+        let payload_bytes_pos = find_s(generated, "typedef struct __deaA3_h {");
+        let payload_array_pos = find_s(generated, "typedef struct __deaA2_M5orderE7Payload {");
+        let holder_pos = find_s(generated, "struct __deaM5orderS6Holder {");
+        assert(payload_bytes_pos >= 0 && payload_bytes_pos < payload_pos &&
+            payload_pos < payload_array_pos && payload_array_pos < holder_pos,
+            "enum payload and enclosing nominal arrays must preserve dependency order");
+        assert(generated == bt_generate_entry(result, opts, cfg),
+            "array dependency emission must remain deterministic across repeated generation");
+
+        analysis_result_free(result);
+    }
+}
+
+/**
  * Tests slice descriptor lowering, array-to-slice conversion, and checked slice access.
  */
 func test_backend_generate_slices() {
@@ -2774,6 +2855,7 @@ func main() {
     test_backend_generate_pointer_indexing_contract();
     test_backend_generate_deref_field_write_uses_write_mode();
     test_backend_generate_fixed_arrays();
+    test_backend_generate_array_field_type_order();
     test_backend_generate_slices();
     test_backend_generate_fixed_array_arc_shapes();
     test_backend_generate_string_equality_ops();

@@ -1,0 +1,105 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module fixed_array_field_main;
+
+struct NestedBox {
+    children: PrimitiveBox[2];
+}
+
+struct PrimitiveBox {
+    bytes: byte[2];
+    matrix: int[2][3];
+    options: int?[2];
+}
+
+struct NominalBox {
+    leaves: Leaf[2];
+    optional_leaves: Leaf?[2];
+    links: Leaf*?[2];
+}
+
+struct OptionalArrayBox {
+    bytes: byte[2]?;
+}
+
+struct PointerArrayBox {
+    bytes: byte[2]*;
+}
+
+struct Leaf {
+    bytes: byte[2];
+}
+
+struct TextBox {
+    values: string[2];
+}
+
+enum Payload {
+    ByteRow(values: byte[2]);
+    LeafRow(values: Leaf[2]);
+    Matrix(values: int[2][3]);
+}
+
+extern func rt_string_concat(a: string, b: string) -> string;
+
+/**
+ * Read every supported array payload representation.
+ *
+ * @param payload Payload containing a primitive, nominal, or nested array.
+ * @return Selected element promoted to int.
+ */
+func payload_value(payload: Payload) -> int {
+    match (payload) {
+        ByteRow(values) => { return values[1] as int; }
+        LeafRow(values) => { return values[1].bytes[0] as int; }
+        Matrix(values) => { return values[1][2]; }
+    }
+}
+
+/**
+ * Exercise aggregate array layout, writes, value copies, and ARC cleanup.
+ *
+ * @return Zero on success, or the failed check number.
+ */
+func main() -> int {
+    let primitive = PrimitiveBox([1, 2], [[3, 4, 5], [6, 7, 8]], [9, null]);
+    primitive.bytes[1] = 10;
+    primitive.matrix[1][2] = 11;
+    if (primitive.bytes[1] != 10 || primitive.matrix[1][2] != 11) { return 1; }
+    if ((primitive.options[0] as int) != 9 || primitive.options[1] != null) { return 2; }
+
+    let leaf = Leaf([12, 13]);
+    let nominal = NominalBox([leaf, Leaf([14, 15])], [leaf, null], [null, null]);
+    nominal.leaves[1].bytes[0] = 16;
+    if (nominal.leaves[1].bytes[0] != 16 || nominal.links[0] != null) { return 3; }
+    let present = nominal.optional_leaves[0] as Leaf;
+    if (present.bytes[1] != 13 || nominal.optional_leaves[1] != null) { return 4; }
+
+    let nested = NestedBox([primitive, primitive]);
+    nested.children[1].bytes[1] = 17;
+    if (nested.children[1].bytes[1] != 17 || primitive.bytes[1] != 10) { return 5; }
+
+    let bytes: byte[2] = [18, 19];
+    let optional = OptionalArrayBox(bytes);
+    let extracted = optional.bytes as byte[2];
+    if (extracted[1] != 19) { return 6; }
+
+    if (payload_value(ByteRow([20, 21])) != 21) { return 7; }
+    if (payload_value(LeafRow([leaf, Leaf([22, 23])])) != 22) { return 8; }
+    if (payload_value(Matrix([[24, 25, 26], [27, 28, 29]])) != 29) { return 9; }
+
+    let text = TextBox([rt_string_concat("a", "1"), rt_string_concat("b", "2")]);
+    let copied = text;
+    text.values[0] = "changed";
+    if (copied.values[0] != "a1" || copied.values[1] != "b2") { return 10; }
+    let heap = new byte[2](30);
+    let pointer = PointerArrayBox(heap);
+    (*pointer.bytes)[1] = 31;
+    let observed = (*pointer.bytes)[1];
+    drop heap;
+    if (observed != 31) { return 11; }
+    return 0;
+}

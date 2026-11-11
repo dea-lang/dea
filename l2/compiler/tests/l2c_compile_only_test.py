@@ -554,6 +554,113 @@ def test_generated_c_matches_compile_retention(
     assert_no_transactions(root)
 
 
+def test_aggregate_array_fields_compile_and_run(
+    compiler: Path,
+    root: Path,
+) -> None:
+    """Compile array-valued aggregate fields and execute the layout matrix.
+
+    Args:
+        compiler: Canonical compiler launcher.
+        root: Per-run temporary root.
+
+    Raises:
+        CompileOnlyFailure: If generation, C99 compilation, retained-C identity,
+            linking, or the aggregate value/ownership checks fail.
+    """
+
+    from support.driver_inputs import native_driver_args
+
+    c_compiler = resolve_host_c_compiler()
+    # Match the compiler's whitespace-delimited options, preserving backslashes.
+    c_options = os.environ.get("L2_CFLAGS", "").split()
+    for module_name in ("fixed_array_field", "fixed_array_field_main"):
+        case_root = root / "aggregate array fields" / module_name
+        case_root.mkdir(parents=True)
+        generated_c = case_root / "generated.c"
+        compiled_object = case_root / "retained.o"
+        common_args = [
+            "--no-line-directives",
+            "--no-managed-stdlib",
+            "-Rp",
+            str(DRIVER_FIXTURES),
+        ]
+        generated = run_compiler(
+            compiler, case_root, "--gen", *common_args,
+            "-o", str(generated_c), module_name,
+        )
+        if generated.returncode != 0:
+            raise CompileOnlyFailure(
+                f"{module_name} generation failed:\n{generated.stderr}"
+            )
+        direct_compile = subprocess.run(
+            [
+                c_compiler,
+                *c_options,
+                "-std=c99",
+                "-I", str(L2_ROOT / "compiler/shared/runtime/include"),
+                "-c", str(generated_c),
+                "-o", str(case_root / "generated.o"),
+            ],
+            cwd=case_root,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+        if direct_compile.returncode != 0:
+            raise CompileOnlyFailure(
+                f"{module_name} generated C99 compilation failed:\n"
+                + direct_compile.stderr
+            )
+        compiled = run_compiler(
+            compiler, case_root, "--compile", "--keep-c", *common_args,
+            "--c-compiler", c_compiler,
+            "-o", str(compiled_object), module_name,
+        )
+        if compiled.returncode != 0:
+            raise CompileOnlyFailure(
+                f"{module_name} compile-only failed:\n{compiled.stderr}"
+            )
+        kept_c, _, _ = require_kept_c_set(compiled_object, module_name)
+        if generated_c.read_bytes() != kept_c:
+            raise CompileOnlyFailure(
+                f"{module_name} generated and retained C bytes differ"
+            )
+        if module_name != "fixed_array_field_main":
+            continue
+        executable = case_root / ("arrays.exe" if os.name == "nt" else "arrays")
+        linked = run_compiler(
+            compiler, case_root, "--link", str(compiled_object),
+            *native_driver_args(compiler, c_compiler, source=False),
+            "--c-compiler", c_compiler, "-o", str(executable),
+        )
+        if linked.returncode != 0:
+            raise CompileOnlyFailure(
+                "aggregate array layout link failed:\n" + linked.stderr
+            )
+        executed = subprocess.run(
+            [str(executable)],
+            cwd=case_root,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+        if executed.returncode != 0:
+            raise CompileOnlyFailure(
+                "aggregate array layout executable failed with check "
+                f"{executed.returncode}:\n{executed.stderr}"
+            )
+    assert_no_transactions(root)
+
+
 def test_host_compiler_sees_module_relative_paths(
     compiler: Path,
     root: Path,
@@ -1530,6 +1637,7 @@ def main() -> int:
         sentinel = build_host_tool_sentinel(root, CURRENT_SENTINEL_MARKER)
         test_generated_c_is_pure_and_exact(compiler, root, sentinel)
         test_generated_c_matches_compile_retention(compiler, root)
+        test_aggregate_array_fields_compile_and_run(compiler, root)
         test_host_compiler_sees_module_relative_paths(compiler, root, sentinel)
         test_bare_compiler_path_resolution(compiler, root, sentinel)
         test_driver_controlled_object_path_neutrality(compiler, root)
