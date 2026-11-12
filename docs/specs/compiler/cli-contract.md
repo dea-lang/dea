@@ -1,6 +1,6 @@
 # Dea Compiler CLI Contract
 
-Version: 2026-11-05
+Version: 2026-11-12
 
 This document defines the shared command-line contract for Dea compilers. It covers behavior common to the current L0
 Stage 1, L0 Stage 2, canonical L1, and canonical L2 implementations. A level may add a documented mode or option without
@@ -54,9 +54,10 @@ initial L2 contract.
 
 The dump modes are developer-facing; their text formats are not stable interfaces. All current compilers recognize
 `--compile` / `-c`. L0 Stage 1 and Stage 2 report `L0C-9510` without analysis or artifact production. The canonical L1
-and L2 compilers implement the endpoint-rollback compile-only artifact set in section 7 and additionally implements
-`--emit-interface` / `-Gi`, which emits the target module's textual `.l1m` interface. The canonical L1 and L2 compilers
-also implement the standalone `--link` / `-k` mode in section 8 and target-free `--prepare-stdlib` in section 9.
+and L2 compilers implement the endpoint-rollback compile-only artifact set in section 7 and additionally implement
+`--emit-interface` / `-Gi`, which emits the target module's textual `.l1m` or `.l2m` interface. The canonical L1 and L2
+compilers also implement the standalone `--link` / `-k` mode in section 8 and target-free `--prepare-stdlib` in section
+9\.
 
 ### L1 semantic dependency discovery
 

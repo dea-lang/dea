@@ -1,6 +1,6 @@
 # Dea Project Status
 
-Version: 2026-10-29
+Version: 2026-11-12
 
 This document summarizes the current status of the Dea project at the monorepo level.
 
@@ -92,6 +92,9 @@ Its repository status today is:
 - enforcing borrowed-slice backing lifetimes through aliases, control flow, and descriptor stores,
 - supporting caller-owned explicit native profiles, structured OS/I/O errors, filesystem mutations and owned directory
   traversal, and `long` time seconds with monotonic sleep and deadlines,
+- providing opaque dynamic byte buffers, typed string formatting, result-owned file handles with random-access I/O, and
+  secure OS entropy,
+- exposing semantic dependency discovery through `--scan-deps` and an optional external GNU Make adapter,
 - supporting private installed-compiler construction, verified bundled semantic inputs, stage-free schema-2 inventory
   and offline HTML/PDF documentation, local distribution archives, and reusable archive smoke validation.
 
@@ -104,11 +107,11 @@ changes. Its `make test-ci` gate covers canonical normal tests, CI-only cases, e
 ARC/memory traces, child fixtures, and examples on Linux, macOS, and Windows. Shared repository checks run separately.
 The standalone `l1-ci.yml` workflow retains manual platform, compiler, and Make-target selection.
 
-L1 stabilization has a finite compiler/tool capability target. Dynamic byte buffers, file handles, secure entropy and
-temporary objects, shell-free processes and pipes, typed string formatting, and semantic dependency discovery remain
-planned. Acceptance programs, the capability audit, documentation, and fresh artifact acceptance complete that target.
-Generic streams, networking, JSON, file watching, concurrency, owned slices, and broader language expressiveness belong
-to deferred L2 work. See [l1/docs/roadmap.md](../l1/docs/roadmap.md).
+L1 stabilization has a finite compiler/tool capability target. Secure temporary objects and shell-free processes and
+pipes remain planned. Acceptance programs, the capability audit, documentation, and fresh artifact acceptance complete
+that target. The implemented source-tree capabilities above may be newer than the published L1 0.1.0 baseline. Generic
+streams, networking, JSON, file watching, concurrency, owned slices, and broader language expressiveness belong to
+deferred L2 work. See [l1/docs/roadmap.md](../l1/docs/roadmap.md).
 
 L1 snapshot, tag-triggered release, and reusable documentation workflows are implemented with local syntax and policy
 validation. They retain exact source/version/docs handoff, four fresh verification jobs, seven assets, and

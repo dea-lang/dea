@@ -1,6 +1,6 @@
 # L0 Compiler Architecture
 
-Version: 2026-10-26
+Version: 2026-11-12
 
 This is the canonical architecture document for the current compiler pipeline. Stage 1 remains the reference
 implementation and Stage 2 mirrors the same pass structure through code generation and driver execution.
@@ -16,21 +16,9 @@ Related canonical docs:
 
 ## 1. High-Level Pipeline
 
-Stage 1 requires Python 3.14 or newer. Its annotations use built-in generic containers, union syntax, and native
-deferred evaluation. Quoted annotations remain at `TYPE_CHECKING`-only import-cycle boundaries so default signature
-introspection does not require unavailable runtime names. `l0_symbols.SymbolKey` names the
-`(module_name, declaration_name)` tuple used by semantic tables and type dependency graphs. It is an annotation alias;
-runtime keys remain ordinary tuples.
-
-Expression inference and semantic type formatting use structural pattern matching with keyword fields. These internal
-representations preserve the existing diagnostics, generated C, and Stage 2 parity contract. New generic abstractions or
-template-string processors are introduced only when a concrete compiler operation calls for them.
-
-Unified CI uses hosted Python 3.14 for normal validation. Python 3.15 compatibility has been verified locally, with the
-Python 3.14 workspace minimum retained. Windows shared tooling uses native CPython with the MSYS2 shell and C toolchain.
-Windows L0 CI additionally runs the same complete Stage 1 suite with equivalent pytest/xdist settings through an
-explicit temporary UCRT64 Python interpreter; Stage 2 and trace suites run once. See
-[MONOREPO.md](../../../MONOREPO.md#windows-python-environments) for provisioning and dependency ownership.
+Both stages resolve the source import closure, analyze it, and emit one C99 translation unit. Stage 1 implements this
+pipeline in Python; Stage 2 implements it in L0. Native build and run modes then pass the generated C to a host
+compiler.
 
 ### 1.1 Stage 1 Reference Pipeline
 
@@ -98,28 +86,39 @@ build_driver.l0 + compiler_filesystem.l0
 Executable launch (`--run`)
 ```
 
-Current Stage 2 CLI entry point: `compiler/stage2_l0/src/l0c.l0`. Recommended developer-facing workflow:
-`make use-dev-stage1` or `make use-dev-stage2` (each builds and installs the launcher automatically), then
-`source build/dea/bin/l0-env.sh`. Repo-independent Stage 2 install workflow: `make PREFIX=/tmp/l0-install install`, then
-`source /tmp/l0-install/bin/l0-env.sh`. Repo-independent Stage 2 distribution workflow: `make dist`, which emits a
-temporary `build/.../dea-l0` tree plus a host-native `dea-l0-lang_<os>-<arch>_YYYYMMDD-HHMMSS` archive for that same
-relocatable layout. `make install` requires an explicit `PREFIX=...`; there is no implicit install destination.
-Source-tree execution path: `./scripts/l0c -Rp compiler/stage2_l0/src --run l0c -- ...` (`./scripts/l0c` is the Stage 1
-source-tree wrapper). Repo-local bootstrap artifact path: `python scripts/build_stage2_l0c.py`, then
-`./build/dea/bin/l0c-stage2 ...`. Triple-bootstrap fixed-point regression: `make triple-test`. `make install` installs
-the self-hosted Stage 2 compiler (`S1 -> S2`, then `S2 -> S2`) plus copied shared stdlib/runtime assets under `PREFIX`.
-`make dist` packages that same relocatable Stage 2 layout under `dea-l0/` and archives it as `.tar.gz` on POSIX hosts or
-`.zip` on Windows with the lower-case host OS/architecture and UTC build timestamp embedded in the archive filename. The
-implemented Stage 2 CLI modes are `--check`, `--tok`, `--sym`, `--type`, `--ast`, `--gen`, `--build`, and `--run`.
-`--compile` / `-c` is recognized as a shared reserved mode and reports `L0C-9510` without producing artifacts. Stage 2
-public CLI parity with Stage 1 is complete for the current public surface.
+The Stage 2 CLI enters through `compiler/stage2_l0/src/l0c.l0`. It exposes the same public modes as Stage 1: `--check`,
+`--tok`, `--sym`, `--type`, `--ast`, `--gen`, `--build`, and `--run`. The reserved `--compile` / `-c` mode reports
+`L0C-9510` without producing artifacts.
 
-For native `--build` and `--run`, Stage 2 completes source and entry-point validation before reserving one command-owned
-temporary workspace. The driver registers its generated C, compiler output captures, and temporary run executable there,
-but leaves caller-selected executables and `--keep-c` outputs at their public paths. The compiler-private
-`compiler_filesystem.l0` module owns canonical temporary-parent validation, exclusive directory creation, bounded
-no-follow cleanup, and cleanup-result precedence; `support/compiler_filesystem.c` supplies actual-host child-path and
-filesystem primitives without extending the runtime or standard library.
+For `--build` and `--run`, the driver validates the source and entry point before creating a private temporary
+workspace. Generated C, host-compiler output captures, and the temporary run executable live there until the command
+finishes. Caller-selected executables and `--keep-c` outputs remain at their public paths.
+
+`build_driver.l0` coordinates compilation and execution. The compiler-private `compiler_filesystem.l0` module manages
+workspace creation and cleanup, including temporary-parent validation, exclusive directory creation, and bounded cleanup
+that does not follow symlinks. Its native support in `support/compiler_filesystem.c` provides host filesystem
+primitives. These services are internal to the compiler; they do not extend the public runtime or standard library.
+
+### 1.3 Compiler Construction and Delivery
+
+Stage 1 builds the initial Stage 2 compiler from L0 sources. Stage 2 can then compile itself; `make triple-test` checks
+that repeated self-builds reach the required fixed point. The bootstrap procedure and reproducibility checks are
+documented in [l0/compiler/stage2_l0/README.md](../../compiler/stage2_l0/README.md).
+
+The toolchain has three delivery workflows. Run the following commands from `l0/`:
+
+- **Development:** `make use-dev-stage2` builds Stage 2 and selects it as the repo-local `l0c`. Activate the launcher
+  with `source build/dea/bin/l0-env.sh`. Use `make use-dev-stage1` to select the Python compiler instead.
+- **Installation:** `make install PREFIX=/absolute/prefix` bootstraps Stage 2, rebuilds it with itself, and installs the
+  compiler with its standard library and runtime assets. `PREFIX` is required. Activate the installed launcher with
+  `source /absolute/prefix/bin/l0-env.sh`.
+- **Distribution:** `make dist DOCS_ARTIFACT=/absolute/matching-docs-bundle.tar.gz` packages the relocatable Stage 2
+  toolchain and offline documentation under a `dea-l0/` archive root. Archives use `.tar.gz` on POSIX hosts and `.zip`
+  on Windows. Build the matching documentation bundle first with `make docs-artifacts DOC_STAGE=stage2`; packaging does
+  not invoke TeX.
+
+See [l0/README.md](../../README.md#install) for setup instructions, including Windows shell commands, and
+[l0/docs/README.md](../README.md) for documentation bundle and version requirements.
 
 ## 2. Pass Responsibilities
 
@@ -227,9 +226,8 @@ Compilation closure container: `CompilationUnit` (`l0_compilation.py`), containi
 
 ## 5. File/Module Layout
 
-Stage 1 sources live under `l0/compiler/stage1_py/`; Stage 2 sources live under `l0/compiler/stage2_l0/src/`. The lexer,
-parser, AST, name resolver, signature resolver, local-scope resolver, analysis tables, and driver keep their existing
-ownership. The decomposed subsystems have these navigation points:
+Stage 1 sources live under `l0/compiler/stage1_py/`; Stage 2 sources live under `l0/compiler/stage2_l0/src/`. The table
+maps CLI, semantic analysis, backend, and C emission responsibilities to their implementation modules:
 
 | Responsibility                      | Stage 1 owners                                                                                                               | Stage 2 owners                                                                                                                             |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -240,7 +238,13 @@ ownership. The decomposed subsystems have these navigation points:
 | C syntax and output                 | `l0_c_emitter.py` assembles `l0_c_builder`, `state`, `names`, `types`, `values`, `statements`, `cleanup`, and `declarations` | `c_emitter.builder`, `state`, `names`, `types`, `wrappers`, `values`, `statements`, `lifetime`, and `declarations`; no root emitter facade |
 
 In each table cell, abbreviated suffixes share the first module prefix. Stage 1 uses explicit collaborators with only
-their actual dependencies. Stage 2 uses acyclic imports and canonical type owners:
+their actual dependencies. Expression inference and semantic type formatting use structural pattern matching with
+keyword fields. Type annotations use built-in generic containers, union syntax, and native deferred evaluation; quoted
+annotations at `TYPE_CHECKING`-only import boundaries allow signature introspection without runtime imports.
+`l0_symbols.SymbolKey` names the `(module_name, declaration_name)` tuple used by semantic tables and dependency graphs;
+runtime keys remain ordinary tuples.
+
+Stage 2 uses acyclic imports and canonical type owners:
 
 - `cli_args.model` declares `CliMode`, `CliOptions`, and `CliParseResult` and owns their lifecycle.
 - `build_driver.state` declares prepared input and owns its release operations.
@@ -260,6 +264,9 @@ belongs to `build_driver.toolchain`, and native compilation within a borrowed wo
 
 ## 6. Host/Toolchain Assumptions
 
+- Stage 1 requires Python 3.14 or newer.
+- Windows shared tooling uses native CPython with the MSYS2 shell and C toolchain. See
+  [MONOREPO.md](../../../MONOREPO.md#windows-python-environments) for provisioning and CI interpreter ownership.
 - Source decoding is UTF-8 with optional BOM stripping; the language vocabulary remains ASCII-only.
 - Module names use identifier segments separated by dots.
 - `run` and `build` require an entry `main` function in the entry module.

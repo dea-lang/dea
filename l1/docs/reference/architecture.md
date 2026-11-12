@@ -1,6 +1,6 @@
 # L1 Compiler Architecture
 
-Version: 2026-11-05
+Version: 2026-11-12
 
 This is the canonical architecture document for the current Dea/L1 bootstrap compiler.
 
@@ -13,10 +13,10 @@ L1 has one canonical compiler implemented in L0:
 
 Related canonical docs:
 
-- Backend lowering and generated C details: [c-backend-design.md](c-backend-design.md)
+- Backend lowering and generated C details: [l1/docs/reference/c-backend-design.md](c-backend-design.md)
 - Separate-compilation and standalone-link behavior:
   [l1/docs/reference/separate-compilation.md](separate-compilation.md)
-- Language/runtime rationale and policy: [design-decisions.md](design-decisions.md)
+- Language/runtime rationale and policy: [l1/docs/reference/design-decisions.md](design-decisions.md)
 - Bundled support and reuse: [l1/docs/reference/stdlib-preparation.md](stdlib-preparation.md)
 - Bootstrap status snapshot: [l1/docs/project-status.md](../project-status.md)
 - Shared CLI behavior: [docs/specs/compiler/cli-contract.md](../../../docs/specs/compiler/cli-contract.md)
@@ -47,8 +47,8 @@ generated-root collision checks; `.l1m` remains link authority. See
 
 ## Canonical Compiler Development
 
-`make build` constructs `l1c` with the explicitly selected upstream L0 compiler. `make use-dev` installs development
-launchers. The former L1 implementation in `.l1` now belongs to L2; it is not an alternative L1 compiler.
+`make build` constructs `l1c` with the selected upstream L0 compiler. `L1_BOOTSTRAP_L0C` overrides the repo-local Stage
+2 default. `make use-dev` installs development launchers.
 
 `make test` is the fast gate, `make test-extended` the complete normal gate, and `make test-ci` the exhaustive gate with
 CI-only normal cases, environment integration, traces, and child fixtures. Slow trace cases remain explicit through
@@ -56,9 +56,8 @@ CI-only normal cases, environment integration, traces, and child fixtures. Slow 
 fixtures exercise accepted L1 programs. Fixture productization and real exact-artifact acceptance remain separate.
 
 `make install` privately builds the canonical installed-mode compiler with verified semantic inputs. `make dist` also
-requires matching strict offline HTML/full PDF. The canonical L1 artifact passed fresh four-platform acceptance on
-2026-10-11. New artifacts require their own acceptance; neither historical Stage 2 evidence nor compiler CI establishes
-their readiness. See [l1/docs/reference/productization-inventory.md](productization-inventory.md).
+requires matching strict offline HTML/full PDF. Artifact acceptance is a separate gate from compiler CI; see
+[l1/docs/reference/productization-inventory.md](productization-inventory.md).
 
 ## 1. High-Level Pipeline
 
@@ -183,7 +182,7 @@ that target, always-present external `I4init` and `I4fini`, and conditional exte
 `main`, global init chain, dependency lifecycle calls, `I8metadata`, `I7imports`, replacement anchors, or retention
 reads. Compile-only connects this branch to host object compilation and sequential artifact publication with endpoint
 rollback. Standalone link consumes verified sibling `.l1m` files for Dea semantics and passes the paired native objects
-opaquely to the host. Build/run now supplies the same planner with its graph-expanded object set, explicit source-target
+opaquely to the host. Build/run supplies the same planner with its graph-expanded object set, explicit source-target
 entry, and wrapper/capture paths owned by the command workspace.
 
 Every selected filesystem or registry interface is checked before it enters that graph. The driver parses the wire
@@ -357,7 +356,7 @@ those implementation files.
   process-wrapper or cross-module orchestration.
 - Preserves identical module C bytes across all four producer modes for identical semantic and code-generation inputs;
   build/run retain the exact staged compiler inputs while the standalone wrapper remains a separate artifact.
-- Delegates backend-specific behavior to [c-backend-design.md](c-backend-design.md).
+- Delegates backend-specific behavior to [l1/docs/reference/c-backend-design.md](c-backend-design.md).
 
 ### 2.9 Module Lifecycle and Standalone Link (`module_lifecycle.l0`, `link_driver.l0`, `wrapper_emitter.l0`)
 
@@ -476,9 +475,9 @@ Important analysis tables include:
 
 ## 5. File/Module Layout
 
-The production tree under `l1/compiler/src/` contains 119 modules. Modules are organized by owned state, compiler phase,
-and output contract. Imports expose only locally declared symbols: callers import a shared state/model owner explicitly,
-and implementation children never import their command/pass facade.
+Modules under `l1/compiler/src/` are organized by owned state, compiler phase, and output contract. Imports expose only
+locally declared symbols: callers import a shared state/model owner explicitly, and implementation children never import
+their command/pass facade.
 
 | Family                        | Coarse entrypoints                 | Implementation owners                                                                                                                                             |
 | ----------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -490,6 +489,8 @@ and implementation children never import their command/pass facade.
 | Signatures                    | `signatures.l0`                    | `signatures/{tables,declarations,const_init,cycles,visibility,interface}.l0`; `types.l0` retains resolved type/table data and lifecycle                           |
 | Type references and constants | Direct owner imports               | `type_resolve/{lookup,const_value,const_eval,ref,materialize}.l0`                                                                                                 |
 | Expression typing             | `expr_types.l0`                    | `expr_types/{state,liveness,lookup,patterns,convert,expr,stmt}.l0`                                                                                                |
+| Slice lifetimes               | `slice_lifetimes.l0`               | Borrowed backing-storage provenance and destination lifetime checks after expression typing                                                                       |
+| Dependency discovery          | `dependency_report.l0`             | Semantic graph projection, output mapping, and P1689R5 report publication                                                                                         |
 | Backend                       | `backend.l0`                       | `backend/{state,coerce,types,expr,lifetime,lower,stmt,output}.l0`                                                                                                 |
 | C emitter                     | Direct owner imports               | `c_emitter/{state,abi,type_names,types,declarations,wrappers,expr,stmt,lifetime}.l0`                                                                              |
 | CLI                           | `cli_args.l0`                      | `cli_args/{model,help,link,parse}.l0`                                                                                                                             |
@@ -506,12 +507,11 @@ The dependency graph is acyclic. `c_emitter.type_names` sits below type spelling
 array bounds, alias resolution, and nominal finalization form one recursive kernel in `type_resolve.ref`. Loop flow
 transfer stays with statement checking in `expr_types.stmt`, above reusable liveness snapshots.
 
-Only two modules exceed the 1500-line architectural review threshold: `expr_types/expr.l0` (1621 lines) retains the
-mutually recursive inference algorithm, and `backend/lower.l0` (2427 lines) retains expression/statement/cleanup
-recursion. In particular, lowering `try` can emit return cleanup, which can lower registered `with` statements and
-re-enter expression lowering. Splitting that group would require an algorithm change. Independent expression helpers
-remain below it; function-body setup and output orchestration enter it from above. `cleanup` and `module` are reserved
-L0 words, so those module responsibilities use the names `lifetime` and `output`.
+`expr_types/expr.l0` owns mutually recursive expression inference. `backend/lower.l0` owns expression/statement/cleanup
+recursion: lowering `try` can emit return cleanup, which can lower registered `with` statements and re-enter expression
+lowering. Independent expression helpers remain below that recursive group; function-body setup and output orchestration
+enter it from above. `cleanup` and `module` are reserved L0 words, so those module responsibilities use the names
+`lifetime` and `output`.
 
 The L1-owned support directory under `compiler/support/` separates three compiler-private C translation units.
 `interface_fingerprint.c` supplies the fingerprint bridge for the L0-built compiler. `compiler_support.c` supplies

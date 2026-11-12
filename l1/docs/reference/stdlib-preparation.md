@@ -1,6 +1,6 @@
 # L1 Bundled Interfaces and Native Preparation
 
-Version: 2026-11-05
+Version: 2026-11-12
 
 L1 supplies bundled semantic interfaces with the toolchain and derives native stdlib/runtime support when a command
 needs it. Preparation covers only compiler-owned `std.*` and `sys.*` modules and runtime implementation sources.
@@ -383,17 +383,14 @@ retain their filename meaning. A compiler that loses the original filename spell
 dependency. Compiler-image inspection errors decline persistent reuse without disabling invocable fresh preparation.
 
 Discovery retains whole-observation invalidation. Apple Clang on macOS amortizes driver startup with two dependency
-invocations: four generated-C real/float configurations under application options, and all ten runtime translation units
-under runtime options. Every source must appear exactly once in the returned Make rules before batch evidence is
-accepted. Unsupported, incomplete, malformed, failed, timed-out, or oversized batch output falls back to individual
-dependency probes. Other compilers/platforms retain individual probes; Linux measurements did not justify enabling
-batching there. Batching retains the complete header and search-candidate evidence; it does not share discovery between
-invocations or change the selected input identity.
+invocations: four generated-C real/float configurations under application options, and all runtime translation units,
+including trace support, under runtime options. Every source must appear exactly once in the returned Make rules before
+batch evidence is accepted. Unsupported, incomplete, malformed, failed, timed-out, or oversized batch output falls back
+to individual dependency probes. Other compilers/platforms use individual probes. Batching retains the complete header
+and search-candidate evidence; it does not share discovery between invocations or change the selected input identity.
 
-SHA-256 uses the dependency-free portable C implementation for identities, selected inputs and artifact validation.
-Platform crypto acceleration remains deferred: large-file throughput alone does not establish a portable consumer
-improvement or the required failure-cleanup and dependency policy. Hash backend experiments do not change digest bytes,
-stable-read validation or metadata reuse rules.
+SHA-256 uses the dependency-free portable C implementation for identities, selected inputs and artifact validation, with
+stable-read validation and metadata-based digest reuse.
 
 Metadata-preserving external mutation and concurrent external input changes are outside the contract. These checks do
 not prove cache portability.

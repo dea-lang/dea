@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-11-11
+Version: 2026-11-12
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -131,24 +131,12 @@ subsequent L2 ports require deliberate feature placement; the split does not fre
 
 ## 6. Bootstrap Adaptation Strategy
 
-The current L1 subtree is intentionally bootstrapped from the mature L0 toolchain rather than started from a blank
-implementation.
+L1 owns its compiler implementation, runtime, standard library, and reference documentation. L0 supplies the upstream
+compiler used to build the `.l0` implementation; installed L1 operation does not require L0.
 
-Current policy:
-
-- the runnable L1 compiler starts from copied L0 Stage 2 compiler sources and is retargeted inside `compiler/`
-- the current L1 reference set starts from copied L0 reference material and is rewritten to describe the real L1
-  bootstrap tree
-- copied implementation and docs are allowed to retain historical internal names when those names are merely bootstrap
-  artifacts rather than user-facing semantics
-- live L1-owned compiler helpers and tests should use L1-oriented names such as `l1c_*` / `l1c_lib_test` when the
-  subject is the L1 compiler, even if the implementation source language remains `.l0`
-
-Rationale:
-
-- this keeps the first L1 compiler runnable early
-- it preserves a known-good baseline while L1-specific divergence is still small
-- it favors incremental retargeting over speculative greenfield design
+Compiler helpers and tests use L1-oriented names such as `l1c_*` and `l1c_lib_test` when their subject is L1, even
+though their implementation language remains L0. Historical internal names may remain where they are compatibility
+details rather than L1 language semantics. References describe the implemented L1 contract.
 
 ## 7. Pointer and Ownership Policy
 
