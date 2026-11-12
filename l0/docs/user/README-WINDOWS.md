@@ -35,6 +35,10 @@ Native `cmd.exe` launchers are supported. MSYS2 `UCRT64` or `MINGW64` is require
 
 ## Using the shipped archive
 
+Windows archives use `dea-l0-lang_windows-x86_64_<timestamp>.zip`, and their `VERSION` file records `os: Windows` and
+`arch: x86_64`. The compiler's raw host report may use `AMD64`, which names the same architecture. Releases before 2.2.0
+used `windows-amd64` in archive names and the native architecture spelling in `VERSION`.
+
 After extracting the archive, the Windows launchers live under `bin/`.
 
 ### From `cmd.exe`

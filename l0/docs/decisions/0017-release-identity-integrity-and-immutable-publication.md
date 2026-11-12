@@ -1,7 +1,7 @@
 # ADR-0017: Release Identity, Integrity, and Immutable Publication
 
 - Decision date: 2026-03-16
-- Last edited: 2026-10-05
+- Last edited: 2026-11-12
 - Status: Accepted
 
 ## Context
@@ -90,7 +90,7 @@ An official stable L0 release follows this contract:
 
 - [l0/docs/releases/README.md](../releases/README.md): stable tag and canonical release-note mapping
 
-- [l0/docs/releases/2.1.1.md](../releases/2.1.1.md): current curated stable release body and integrity guidance
+- [l0/docs/releases/2.2.0.md](../releases/2.2.0.md): current curated stable release body and integrity guidance
 
 - [l0/docs/project-status.md](../project-status.md): current release, validation, and platform status
 

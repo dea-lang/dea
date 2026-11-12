@@ -232,6 +232,53 @@ Monorepo releases use level-prefixed tags only:
 
 Bare `v*` tags are therefore a closed pre-monorepo namespace. New monorepo releases should not dual-tag with bare `v*`.
 
+## Versioned Release Preparation
+
+This process applies to L0, L1, L2, and every future language level. In the paths and tags below, replace `N` with the
+level number and `X.Y.Z` with its release version. Before publishing, satisfy the owning level's delivery and
+release-readiness prerequisites. Applying this process does not make an unreleased level ready for distribution or turn
+a development release into a stable language or toolchain.
+
+1. **Prepare on the designated working branch.** Compare against the owning level's preceding eligible versioned tag
+   under its baseline policy; for an initial release, describe the initial scope. Curate `lN/docs/releases/X.Y.Z.md`,
+   starting with `# Dea/LN X.Y.Z`, and include any level-required maturity notice. Cover relevant changes,
+   compatibility, and tooling migrations. Follow the level's note-composition rules, including any generated history.
+   Confirm downstream consumers can handle changed artifact names or layouts before publication.
+2. **Bump package metadata before the tag.** Set the version in `lN/pyproject.toml` and its compiler package record in
+   `uv.lock` to `X.Y.Z.dev0`, preserving dependency records unless dependency changes are explicitly in scope. Keep
+   `.dev0` in the tagged source tree. The `lN-vX.Y.Z` tag supplies the release identity and the workflow's artifact
+   version; there is no additional bump to `X.Y.Z` at publication.
+3. **Finalize release-facing documentation before the tag.** Update applicable root and level READMEs,
+   `CONTRIBUTING.md`, root and level project-status documents, the level's release index, and relevant ADR current-doc
+   links to identify the new current release of that level. Refresh date metadata, preserve historical descriptions, and
+   retain the level's stability designation. Replace temporary candidate wording and index grouping before selecting the
+   final tag target. These documents describe the intended tagged release; preparation records and operational handoffs
+   must still state that publication is pending until it is verified. Do not defer routine metadata or release-status
+   updates until after tagging.
+4. **Validate and obtain review of the final preparation.** Apply the validation tier required by the actual diff,
+   including affected release, packaging, documentation, metadata, and repository checks. Complete the owning level's
+   required artifact acceptance separately from compiler validation. Verify that the canonical note matches the intended
+   tag and obtain project maintainer review of its exact final contents. Later content changes invalidate that review.
+   Local preparation may end at this point when promotion or publication is deferred.
+5. **Promote to `main` and validate the exact target.** Perform pushes or integration only with the required separate
+   authorization. Required CI must pass for the final target on `main`; green CI from before release preparation does
+   not cover the new release tree. Build release artifacts from that exact target, not an earlier local preparation.
+6. **Create and push the tag through separate gates.** Tag creation requires an explicit request naming `lN-vX.Y.Z` and
+   its exact target commit on `main`. Tag push requires a separate fresh confirmation immediately before execution,
+   showing the exact command, remote URL, target, and all known automatic effects of that level's workflow, including
+   release/asset publication and any documentation deployment or cross-repository dispatch.
+7. **Verify publication.** Check the published release against the owning level's complete artifact inventory, including
+   archives, documentation, checksums, and compiler smoke results, plus any configured deployment or downstream update.
+   Record observed outcomes without treating preparation or tag creation alone as proof of publication. Published
+   releases remain immutable; corrections follow the release policy rather than moving a published tag or replacing
+   published assets. No routine package-version or release-status bump follows publication.
+
+The authorization rules in [AGENTS.md](AGENTS.md#remote-and-publication-authorization) apply throughout. Level-specific
+authoring and delivery requirements remain in [l0/docs/releases/README.md](l0/docs/releases/README.md) and
+[l1/docs/releases/README.md](l1/docs/releases/README.md), and in the corresponding level-owned documentation as future
+release lines are introduced. Snapshot workflows retain their separate naming and note-generation rules; they do not
+replace versioned release preparation.
+
 ## Release-line Gating Policy
 
 L0 stable releases (`l0-v*`) and L0 snapshots (`l0-snapshot-*`) remain the stable toolchain release line. L1 development
@@ -304,16 +351,6 @@ and the inventory. The release handoff retains seven assets: four native archive
 `SHA256SUMS`. Source/version/docs identities must agree, and release types use `make_latest=false` to preserve L0's
 latest selection. L1 scope is not frozen; release does not imply language stability.
 
-## Working In `l2/`
-
-L2 has one `.l1` compiler implementation and physically owned `.l2` stdlib/runtime inputs. Supply compatible
-`L2_BOOTSTRAP_L1C=/absolute/prefix/bin/l1c` before `make -C l2 build` or root aggregate tests. The default
-`L2_BOOTSTRAP_MODE=installed` requires a complete prefix. Explicit `L2_BOOTSTRAP_MODE=development` permits a generated
-L1 development launcher with matching native binary, headers, and semantic interfaces. There is no implicit sibling
-checkout or PATH fallback; L2 target inputs remain physically owned by L2. Run
-`L2_ISOLATION_BOOTSTRAP_PREFIX=/absolute/installed-bookworm-l1 make -C l2 test-isolation` to prove this boundary and
-target execution without L1. L2 release productization is outside the split. See [l2/AGENTS.md](l2/AGENTS.md).
-
 ## Working In `l0/`
 
 Dea/L0 works as a self-contained project inside [`l0/`](l0/). From the monorepo root, `cd l0` before running build,
@@ -353,3 +390,13 @@ cd l1
 make use-dev
 source build/dea/bin/l1-env.sh
 ```
+
+## Working In `l2/`
+
+L2 has one `.l1` compiler implementation and physically owned `.l2` stdlib/runtime inputs. Supply compatible
+`L2_BOOTSTRAP_L1C=/absolute/prefix/bin/l1c` before `make -C l2 build` or root aggregate tests. The default
+`L2_BOOTSTRAP_MODE=installed` requires a complete prefix. Explicit `L2_BOOTSTRAP_MODE=development` permits a generated
+L1 development launcher with matching native binary, headers, and semantic interfaces. There is no implicit sibling
+checkout or PATH fallback; L2 target inputs remain physically owned by L2. Run
+`L2_ISOLATION_BOOTSTRAP_PREFIX=/absolute/installed-bookworm-l1 make -C l2 test-isolation` to prove this boundary and
+target execution without L1. L2 release productization is outside the split. See [l2/AGENTS.md](l2/AGENTS.md).

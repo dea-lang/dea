@@ -819,12 +819,26 @@ def copy_prefix_shared_assets(layout: PrefixLayout) -> None:
     copy_tree(REPO_ROOT / "compiler" / "shared" / "runtime", layout.runtime_dir)
 
 
+def normalize_distribution_architecture(machine: str) -> str:
+    """Return the canonical architecture token for package metadata and filenames.
+
+    Args:
+        machine: Architecture spelling from the recorded build host.
+
+    Returns:
+        Lower-case sanitized architecture, with AMD64 and AArch64 aliases mapped
+        to x86_64 and arm64 respectively. Empty input becomes unknown.
+    """
+    arch = _sanitize_build_id_component(machine.lower())
+    return {"amd64": "x86_64", "aarch64": "arm64"}.get(arch, arch)
+
+
 def write_distribution_version_file(layout: PrefixLayout, provenance: Stage2BuildProvenance) -> None:
     """Write the key-value `VERSION` metadata file into one distribution tree."""
 
     host_parts = provenance.host.split()
     os_name = host_parts[0] if len(host_parts) >= 1 else "unknown"
-    arch = host_parts[2] if len(host_parts) >= 3 else "unknown"
+    arch = normalize_distribution_architecture(host_parts[2]) if len(host_parts) >= 3 else "unknown"
     commit_text = format_commit_for_version(provenance.commit_full, provenance.tree_state)
 
     lines = [
@@ -890,7 +904,7 @@ def distribution_archive_target(host_text: str) -> str:
     if len(words) < 2:
         return "unknown-unknown"
     os_name = _sanitize_build_id_component(words[0].lower())
-    arch = _sanitize_build_id_component(words[-1].lower())
+    arch = normalize_distribution_architecture(words[-1])
     return f"{os_name}-{arch}"
 
 

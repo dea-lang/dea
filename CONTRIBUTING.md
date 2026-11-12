@@ -11,7 +11,7 @@ workflows use `build`, `use-dev`, and `test-compiler`; the stage commands below 
 
 ## Scope and status
 
-- **L0** is stable; its current release is `2.1.1`.
+- **L0** is stable; its current release is `2.2.0`.
 - **L1** is under active development; `0.1.0` is its current development release and does not promise stable language,
   module-interface, or binary compatibility across future releases.
 - **L2** has an independent canonical compiler implemented in L1. Sustained feature development and catch-up have not

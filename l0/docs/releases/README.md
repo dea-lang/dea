@@ -9,8 +9,21 @@ alongside four platform compiler archives and `SHA256SUMS`. Compiler archives em
 Historical releases retain their original mixed-reference assets. External importers must adopt the new export filename
 before the first publication using this contract.
 
+## Release Preparation
+
+Follow the shared versioned release preparation process in
+[MONOREPO.md](../../../MONOREPO.md#versioned-release-preparation). Metadata, canonical notes, and final current-release
+documentation must be in the validated tree on `main` before tagging; retain `X.Y.Z.dev0` in package metadata. The asset
+inventory above and unchanged canonical release body are L0-specific requirements.
+
+The authorization rules in [AGENTS.md](../../../AGENTS.md#remote-and-publication-authorization) and
+[l0/AGENTS.md](../../AGENTS.md#release-and-documentation-publication) apply throughout. The durable identity and
+publication contract is recorded in
+[l0/docs/decisions/0017-release-identity-integrity-and-immutable-publication.md](../decisions/0017-release-identity-integrity-and-immutable-publication.md).
+
 ## Releases
 
+- [l0/docs/releases/2.2.0.md](2.2.0.md)
 - [l0/docs/releases/2.1.1.md](2.1.1.md)
 - [l0/docs/releases/2.1.0.md](2.1.0.md)
 - [l0/docs/releases/2.0.0.md](2.0.0.md)

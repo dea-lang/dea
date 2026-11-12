@@ -1,8 +1,10 @@
 # Dea/L1 Release Notes
 
 Each versioned `l1-vX.Y.Z` release requires a checked-in `l1/docs/releases/X.Y.Z.md` file. The release helper preserves
-that file as the opening GitHub release body and automatically appends the commit history. This follows the L0
-version-to-file and heading conventions described in [l0/docs/releases/README.md][l0-notes].
+that file as the opening GitHub release body and automatically appends the commit history. Follow the shared versioned
+release preparation process in [MONOREPO.md][release-process]. Metadata, canonical notes, and final current-release
+documentation must be in the validated tree on `main` before tagging; retain `X.Y.Z.dev0` in package metadata and
+preserve L1's development-release designation. The sections below define L1-specific note composition.
 
 ## Authoring
 
@@ -57,6 +59,6 @@ recorded in [docs/decisions/0023-l1-release-workflow-policy.md][release-policy].
   ([published development release](https://github.com/dea-lang/dea/releases/tag/l1-v0.1.0), 2026-10-13)
 
 [agent-policy]: ../../../AGENTS.md
-[l0-notes]: ../../../l0/docs/releases/README.md
 [release-0-1-0]: 0.1.0.md
 [release-policy]: ../../../docs/decisions/0023-l1-release-workflow-policy.md
+[release-process]: ../../../MONOREPO.md#versioned-release-preparation

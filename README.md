@@ -22,7 +22,7 @@ in a self-contained subtree:
 
 | Level             | Directory    | Status                                                              |
 | ----------------- | ------------ | ------------------------------------------------------------------- |
-| Dea/L<sub>0</sub> | [`l0/`](l0/) | **Released** (`l0-v2.1.1`), self-hosted; the current stable Dea     |
+| Dea/L<sub>0</sub> | [`l0/`](l0/) | **Released** (`l0-v2.2.0`), self-hosted; the current stable Dea     |
 | Dea/L<sub>1</sub> | [`l1/`](l1/) | **Development release** (`l1-v0.1.0`); compiler implemented in L0   |
 | Dea/L<sub>2</sub> | [`l2/`](l2/) | **Initial independent level**; canonical compiler implemented in L1 |
 
@@ -30,8 +30,10 @@ in a self-contained subtree:
 self-hosted through its Stage 2 compiler, and remains the stable Dea toolchain. Start at [l0/README.md](l0/README.md)
 for the L0 overview, quickstart, and language tour.
 
-L0 `2.1.1` fixes ARC cleanup for comparison temporaries and improves AddressSanitizer test validation. See
-[l0/docs/releases/2.1.1.md](l0/docs/releases/2.1.1.md) for release notes and compatibility guidance.
+L0 `2.2.0` adds independent stage references and verified offline documentation in compiler distributions, fixes signed
+negation overflow and parser recovery, and improves build diagnostics and tooling. See
+[l0/docs/releases/2.2.0.md](l0/docs/releases/2.2.0.md) for release notes, compatibility guidance, and tooling
+migrations.
 
 **Dea/L1** carries post-L0 language growth: wider fixed-width integer types, `float`/`double` with an explicit
 floating-point contract, bitwise operators, top-level `const`, function pointer types, the `unsafe` function marker,
@@ -56,7 +58,7 @@ See [l2/README.md](l2/README.md).
 
 Stability is defined per language level:
 
-- **Dea/L0 is stable.** Its current release is `2.1.1`. Language, compiler CLI, and runtime compatibility changes follow
+- **Dea/L0 is stable.** Its current release is `2.2.0`. Language, compiler CLI, and runtime compatibility changes follow
   L0's semantic versioning.
 - **Dea/L1 is under active development.** Its current development release is `0.1.0`; it does not promise stable
   language, module-interface, or binary compatibility across future releases.
@@ -73,14 +75,14 @@ the affected level.
 
 Versions are scoped to one language level, not to the project as a whole:
 
-- `l0-v2.1.1` is a release of **Dea/L0**. There is no "Dea 2.1.1"; a project-wide version number is intentionally not
+- `l0-v2.2.0` is a release of **Dea/L0**. There is no "Dea 2.2.0"; a project-wide version number is intentionally not
   defined.
 - `l1-v0.1.0` is a development release of **Dea/L1**; its publication does not change L0's stable status.
 - Release tags are level-prefixed: L0 uses `l0-vX.Y.Z` and `l0-snapshot-*`; L1 uses `l1-vX.Y.Z` and `l1-snapshot-*`.
 - Pre-monorepo bare tags such as `v0.9.0` and `v0.9.1` remain valid historical references to early L0 development.
 
 The full release-tag and release-line gating policy lives in [MONOREPO.md](MONOREPO.md). Release-specific behavior and
-migration guidance are recorded in [l0/docs/releases/2.1.1.md](l0/docs/releases/2.1.1.md) and
+migration guidance are recorded in [l0/docs/releases/2.2.0.md](l0/docs/releases/2.2.0.md) and
 [l1/docs/releases/0.1.0.md](l1/docs/releases/0.1.0.md).
 
 ## The Bootstrap Chain

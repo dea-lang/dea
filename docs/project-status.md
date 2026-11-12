@@ -5,7 +5,7 @@ Version: 2026-11-12
 This document summarizes the current status of the Dea project at the monorepo level.
 
 The repository contains the stable Dea/L0 release line, the Dea/L1 development release line, and the independent L2
-development level. L0 2.1.1 remains the stable toolchain. L1 0.1.0 is the current published development release, with
+development level. L0 2.2.0 is the current stable toolchain. L1 0.1.0 is the current published development release, with
 one canonical compiler implemented in L0. L2 has one compiler implemented in L1. Artifact and hosted release-workflow
 acceptance are complete for the published L1 baseline; newer source-tree changes require their own release acceptance.
 
@@ -17,7 +17,7 @@ Use this file as the Dea-wide status snapshot. For more specific details, use:
 - [work/plans/](../work/plans/) for active and closed Dea-wide plans.
 - [l0/docs/project-status.md](../l0/docs/project-status.md) for the current L0 implementation and release status.
 - [l0/docs/releases/2.0.0.md](../l0/docs/releases/2.0.0.md) for L0 2.0.0 changes and migration guidance.
-- [l0/docs/releases/2.1.1.md](../l0/docs/releases/2.1.1.md) for the current L0 2.1.1 release and compatibility guidance.
+- [l0/docs/releases/2.2.0.md](../l0/docs/releases/2.2.0.md) for the current L0 2.2.0 release and compatibility guidance.
 - [l1/docs/releases/0.1.0.md](../l1/docs/releases/0.1.0.md) for the current L1 development release and compatibility
   limitations.
 - [l1/docs/project-status.md](../l1/docs/project-status.md) for the current L1 implementation and delivery status.
@@ -49,17 +49,21 @@ L2 compiler implementation sources remain `.l1`. L2 program sources use `.l2` an
 
 L0 is the current stable release line.
 
+L0 `2.2.0` combines independent stage references and verified offline distribution documentation with signed-negation,
+parser recovery, and temporary-directory diagnostic fixes. It preserves the L0 language and public interfaces. Tooling
+migration details are in [l0/docs/releases/2.2.0.md](../l0/docs/releases/2.2.0.md).
+
 Its repository status today is:
 
 - self-hosted through Stage 2,
 - its own public CLI and user documentation surface,
 - validated through the existing L0 test, bootstrap, packaging, and docs workflows,
 - versioned under the `l0-v*` / `l0-snapshot-*` release namespace,
-- stable at released version `2.1.1`, retaining its namespaced CLI aliases, wildcard-only `case` defaults, and checked
+- stable at released version `2.2.0`, retaining its namespaced CLI aliases, wildcard-only `case` defaults, and checked
   runtime pointer validation modes.
 
-L0 2.1.1 fixes ARC cleanup for comparison temporaries in both compiler stages and improves AddressSanitizer test
-validation. It preserves the L0 2.1.0 language and public interfaces.
+L0 2.1.1 fixed ARC cleanup for comparison temporaries in both compiler stages and improved AddressSanitizer test
+validation. It preserved the L0 2.1.0 language and public interfaces.
 
 L0 2.1.0 adds the installed public C runtime header, vector self-alias safety, semantic optional hashes,
 sanitizer-visible quarantine lifetimes, and cohesive compiler modules in both stages. Python 3.14 remains the Stage 1
@@ -169,7 +173,7 @@ by the relevant level subtree.
 
 ## Current Project Posture
 
-- Dea/L0 `2.1.1` is the stable release line. User-visible fixes and future compatibility changes remain governed by L0
+- Dea/L0 `2.2.0` is the stable release line. User-visible fixes and future compatibility changes remain governed by L0
   semantic versioning and Stage 1/Stage 2 parity.
 - Dea/L1 follows the finite stabilization target in [l1/docs/roadmap.md](../l1/docs/roadmap.md). New capabilities
   require an explicit scope amendment; defects in the selected contracts remain stabilization work.

@@ -92,6 +92,15 @@ selection and shared managed-client construction/validation are implemented in L
 external Make adapter implement dependency discovery. Initiative closure still requires its cross-platform exhaustive
 validation evidence. L2 adoption requires a separately scoped change.
 
+## Release Preparation
+
+Follow the shared versioned release process in [AGENTS.md](../AGENTS.md#release-preparation-sequencing) and
+[MONOREPO.md](../MONOREPO.md#versioned-release-preparation). Prepare metadata, canonical notes, and final
+current-release documentation before tagging the validated target on `main`; retain `X.Y.Z.dev0` in package metadata.
+Preserve L1's development-release designation and satisfy its artifact acceptance requirements. Level-specific note
+composition and publication requirements are in [l1/docs/releases/README.md](docs/releases/README.md). Promotion, tag
+creation, tag push, and publication remain separately authorized operations.
+
 ## Documentation Link Style
 
 - This guidance is L1-only. Do not apply it to `l0/` or to monorepo-root docs by default.

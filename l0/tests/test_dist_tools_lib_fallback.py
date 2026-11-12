@@ -8,11 +8,13 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -23,12 +25,15 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from dist_tools_lib import (
+    Stage2BuildProvenance,
     collect_stage2_build_provenance,
     distribution_archive_basename,
     distribution_archive_target,
     format_commit_for_version,
+    normalize_prefix_dir,
     render_stage2_build_info_module,
     resolve_host_c_compiler,
+    write_distribution_version_file,
 )
 
 
@@ -77,6 +82,40 @@ def local_fallback_env() -> dict[str, str]:
         env.pop(name, None)
     env["L0_CC"] = "gcc"
     return env
+
+
+def check_package_architecture(provenance: Stage2BuildProvenance) -> None:
+    """Check package identity against native host spellings without changing provenance.
+
+    Args:
+        provenance: Baseline build snapshot for the simulated host cases.
+    """
+    cases = (
+        ("Windows 10 AMD64", "Windows", "x86_64", "windows-x86_64"),
+        ("Windows 10 amd64", "Windows", "x86_64", "windows-x86_64"),
+        ("Windows 10 x86_64", "Windows", "x86_64", "windows-x86_64"),
+        ("Darwin 24.6.0 x86_64", "Darwin", "x86_64", "darwin-x86_64"),
+        ("Darwin 24.6.0 arm64", "Darwin", "arm64", "darwin-arm64"),
+        ("Linux 6.8 x86_64", "Linux", "x86_64", "linux-x86_64"),
+        ("Linux 6.8 aarch64", "Linux", "arm64", "linux-arm64"),
+        ("Linux 6.8 ARM64", "Linux", "arm64", "linux-arm64"),
+        ("Linux 6.8 riscv64", "Linux", "riscv64", "linux-riscv64"),
+    )
+    timestamp = datetime.fromisoformat("2026-03-16 08:31:20+00:00")
+    with tempfile.TemporaryDirectory(prefix="package identity ") as temporary:
+        layout = normalize_prefix_dir(temporary)
+        for host, os_name, arch, target in cases:
+            snapshot = replace(provenance, host=host)
+            write_distribution_version_file(layout, snapshot)
+            fields = dict(line.split(": ", 1) for line in (layout.prefix_dir / "VERSION").read_text().splitlines())
+            if (fields["os"], fields["arch"]) != (os_name, arch):
+                fail(f"unexpected VERSION platform for {host!r}: {fields!r}")
+            expected = f"dea-l0-lang_{target}_20260316-083120"
+            if distribution_archive_basename(timestamp, host) != expected:
+                fail(f"unexpected archive name for {host!r}")
+            rendered = render_stage2_build_info_module(snapshot)
+            if f'func build_info_host() -> string {{\n    return "{host}";\n}}' not in rendered:
+                fail(f"raw compiler host provenance changed for {host!r}")
 
 
 def main() -> int:
@@ -148,6 +187,8 @@ def main() -> int:
         "dea-l0-lang_darwin-x86_64_20260316-083120"
     ):
         fail("unexpected archive basename")
+
+    check_package_architecture(provenance)
 
     path_env = os.environ.copy()
     path_env.pop("L0_CC", None)

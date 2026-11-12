@@ -83,6 +83,11 @@ The remote and publication authorization policy in `../AGENTS.md` applies to eve
 workflow. Release preparation, release-plan implementation, green CI, and local artifact verification do not authorize
 release-tag creation, any remote write, or publication.
 
+Follow the shared versioned release process in [AGENTS.md](../AGENTS.md#release-preparation-sequencing) and
+[MONOREPO.md](../MONOREPO.md#versioned-release-preparation). Prepare metadata, canonical notes, and final
+current-release documentation before tagging the validated target on `main`; retain `X.Y.Z.dev0` in package metadata.
+L0-specific release assets and canonical-note requirements are in [l0/docs/releases/README.md](docs/releases/README.md).
+
 Pushing any `l0-v*` tag starts `.github/workflows/l0-release.yml`. For a valid stable `l0-vX.Y.Z` tag, that workflow:
 
 - validates the canonical release notes and builds the supported platform distributions plus API documentation;

@@ -390,6 +390,11 @@ def check_docs_checksums_and_immutable_guards() -> None:
     """Execute checksum and publication rejection paths without remote operations."""
     if os.name == "nt":
         return  # These production shell fragments run on Ubuntu.
+    from datetime import datetime
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from dist_tools_lib import distribution_archive_basename
+
     for name in ("l0-release.yml", "l0-snapshot.yml"):
         text = read_text(f".github/workflows/{name}")
         script = extract_named_run_script(text, "Generate checksums")
@@ -400,15 +405,18 @@ def check_docs_checksums_and_immutable_guards() -> None:
             root = Path(work)
             assets = root / "build/release-assets"
             assets.mkdir(parents=True)
-            filenames = [f"dea-l0-lang_{target}_stamp" + (".zip" if target.startswith("windows") else ".tar.gz")
-                         for target in ("linux-x86_64", "darwin-x86_64", "darwin-arm64", "windows-x86_64")]
+            timestamp = datetime.fromisoformat("2026-03-16 08:31:20+00:00")
+            filenames = [distribution_archive_basename(timestamp, host) + suffix for host, suffix in (
+                ("Linux 6.8 x86_64", ".tar.gz"), ("Darwin 24.6.0 x86_64", ".tar.gz"),
+                ("Darwin 24.6.0 arm64", ".tar.gz"), ("Windows 10 AMD64", ".zip"),
+            )]
             filenames += ["dea_l0_stage2_api_reference-l0-v9.9.9.pdf", "dea_l0_stage2_api_reference-l0-v9.9.9.tar.gz", "dea_l0_stage2_autodocs-l0-v9.9.9.tar.gz"]
             for filename in filenames:
                 (assets / filename).write_bytes(b"checksum fixture")
             proc = subprocess.run(["bash", "-e", "-c", script], cwd=root, capture_output=True, text=True)
             if proc.returncode or len((assets / "SHA256SUMS").read_text().splitlines()) != 7:
                 fail(f"{name}: complete release checksum script failed: {proc.stderr}")
-            for filename in (filenames[-1], filenames[0]):
+            for filename in (filenames[-1], filenames[0], filenames[3]):
                 (assets / filename).unlink()
                 proc = subprocess.run(["bash", "-e", "-c", script], cwd=root, capture_output=True, text=True)
                 if proc.returncode == 0:

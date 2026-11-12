@@ -1,8 +1,8 @@
 # L0 Project Status
 
-Version: 2026-10-29
+Version: 2026-11-12
 
-This document summarizes what is implemented in this repository today. The latest Dea/L0 release is `2.1.1`.
+This document summarizes what is implemented in this repository today. The latest Dea/L0 release is `2.2.0`.
 
 L0 now lives as one language subtree inside the Dea monorepo; monorepo release tags use the `l0-vX.Y.Z` namespace while
 historical pre-monorepo tags remain legacy references. The monorepo also contains the L0-implemented Dea/L1 development
@@ -14,7 +14,7 @@ Use this file as a status snapshot. For implementation details, use:
 
 - [docs/project-status.md](../../docs/project-status.md) for the Dea-wide monorepo status snapshot.
 - [l0/docs/releases/2.0.0.md](releases/2.0.0.md) for the previous major release and migration guidance.
-- [l0/docs/releases/2.1.1.md](releases/2.1.1.md) for the current release body and compatibility guidance.
+- [l0/docs/releases/2.2.0.md](releases/2.2.0.md) for the current release body and compatibility guidance.
 - [l0/docs/reference/architecture.md](reference/architecture.md) for pass structure and data flow.
 - [l0/docs/specs/compiler/stage1-contract.md](specs/compiler/stage1-contract.md) for external interfaces and guarantees.
 - [l0/docs/reference/c-backend-design.md](reference/c-backend-design.md) for backend lowering and generated C behavior.
@@ -25,6 +25,19 @@ Use this file as a status snapshot. For implementation details, use:
 - [l0/docs/specs/compiler/stage2-contract.md](specs/compiler/stage2-contract.md) for Stage 2 contract and provenance.
 
 ## Current Status
+
+### L0 2.2.0
+
+L0 2.2.0 is the current stable release. See [l0/docs/releases/2.2.0.md](releases/2.2.0.md) for release notes and tooling
+migration instructions.
+
+- Independent Stage 1 and Stage 2 references replace the combined source reference. Compiler distributions embed
+  verified offline Stage 2 HTML/PDF, and release documentation assets use stage-qualified names.
+- Both stages check signed negation overflow and recover from malformed declarations at the correct brace depth.
+  Temporary-directory failures include the failed validation requirement.
+- Cleanup, sanitizer capability detection, Windows Python separation, and validation routing are strengthened.
+- L0 syntax, compiler CLI options, standard-library APIs, public C signatures, and diagnostic codes remain unchanged.
+  Packaging requires `DOCS_ARTIFACT`, and `make test-extended` replaces `make test-all`.
 
 ### L0 2.1.1
 
@@ -149,7 +162,7 @@ The current development support baseline remains:
 
 ## Known Limitations and Constraints
 
-These remain true in the current `2.1.1` release:
+These remain true in the current `2.2.0` release:
 
 1. Backend output is one C translation unit (no multi-object/header split pipeline yet).
 2. Arrays/slices are not implemented, and pointer indexing is not part of the current L0 language surface; indexing

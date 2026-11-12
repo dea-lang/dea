@@ -82,3 +82,12 @@ L2 has no distribution/release productization in this split. No compiler suite p
 feature plans in L1 until individually reassigned. New L2 plans omit `Stage` metadata, live under `l2/work/plans/`, and
 link from [l2/docs/roadmap.md](docs/roadmap.md). Architectural records belong in `l2/docs/decisions/` with normal ADR
 Impact and index rules. Shared work uses one root plan. Generic skills remain in `.agents/skills/`.
+
+## Release Preparation
+
+The shared versioned release process in [AGENTS.md](../AGENTS.md#release-preparation-sequencing) and
+[MONOREPO.md](../MONOREPO.md#versioned-release-preparation) governs L2 when its delivery and release-readiness
+prerequisites are satisfied. Prepare metadata, canonical notes, and final current-release documentation before tagging
+the validated target on `main`; retain `X.Y.Z.dev0` in package metadata. This policy does not establish L2 release
+productization, authorize publication, or imply language stability. Define L2-owned artifact, validation,
+note-composition, and publication requirements before introducing its release workflow.

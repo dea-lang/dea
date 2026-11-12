@@ -223,6 +223,24 @@ Treat local implementation, remote writes, and publication as separate authoriza
 - Authorization for one remote write does not authorize follow-up pushes, CI fixes, workflow reruns, dispatches, or
   publication actions. Obtain the authorization required for each new action.
 
+### Release Preparation Sequencing
+
+Apply this process to every language level: L0, L1, L2, and future levels. A level must satisfy its own delivery and
+release-readiness prerequisites before publication; the shared process does not establish those capabilities or imply
+language stability.
+
+Prepare version metadata, canonical release notes, and final release-facing documentation before creating a versioned
+release tag. For level `N`, set `lN/pyproject.toml` and its compiler package record in `uv.lock` to `X.Y.Z.dev0`. Retain
+that value in the tagged tree; `lN-vX.Y.Z` supplies the release identity. Do not strip `.dev0` at publication or plan a
+routine post-tag metadata or release-status documentation update.
+
+Prepare on the designated working branch, promote the complete preparation to `main` through separately authorized
+remote operations, and tag the exact validated target on `main`. Final documentation must identify the new current
+release of its level while preserving that level's stability designation. Release-facing wording in a prepared tree is
+not evidence of completed publication; operational handoffs must state what remains unpublished and which authorization
+gates remain pending. Follow [MONOREPO.md](MONOREPO.md#versioned-release-preparation) for the shared sequence and the
+owning level's documentation for its validation, artifact inventory, note composition, and publication effects.
+
 ## Git Conventions
 
 - Multiline commits: sentence-case summary with period, then factual body as bullets with `- ` prefix, sentence-case,

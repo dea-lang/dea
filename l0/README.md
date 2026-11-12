@@ -5,8 +5,8 @@
 **L0 (Level Zero)** is the foundational level of the Dea systems programming language. It compiles to C99 and supplies
 the compiler used to build Dea/L1. See [README.md](../README.md) for the overview of Dea and its levels.
 
-**Level 0 is self-hosted.** The latest release is `2.1.1`, tagged `l0-v2.1.1` in the monorepo's level-prefixed release
-namespace. See [l0/docs/releases/2.1.1.md](docs/releases/2.1.1.md) for its complete changes and compatibility guidance.
+**Level 0 is self-hosted.** The latest release is `2.2.0`, tagged `l0-v2.2.0` in the monorepo's level-prefixed release
+namespace. See [l0/docs/releases/2.2.0.md](docs/releases/2.2.0.md) for its complete changes and compatibility guidance.
 
 Run all L0 build, test, docs, and compiler commands described here from this directory.
 
@@ -35,10 +35,15 @@ the semantics are enforced by L0 itself.
 
 ## Project status and directions
 
-L0 `2.1.1` is the current stable release.
+L0 `2.2.0` is the current stable release.
 
-The `2.1.1` release fixes ARC cleanup for comparison temporaries in both compiler stages and improves AddressSanitizer
-test validation. It preserves the language, CLI, public C, and standard-library surfaces of 2.1.0. That release added
+The `2.2.0` release adds independent stage references and verified offline documentation in distributions, fixes signed
+negation overflow and parser recovery, and improves build diagnostics and tooling. It preserves the language, compiler
+CLI, standard-library, and public C interfaces. See [l0/docs/releases/2.2.0.md](docs/releases/2.2.0.md) for migration
+instructions before updating packaging or documentation-consumer scripts.
+
+The `2.1.1` release fixed ARC cleanup for comparison temporaries in both compiler stages and improved AddressSanitizer
+test validation. It preserved the language, CLI, public C, and standard-library surfaces of 2.1.0. That release added
 the declaration-only `dea_rt.h` header, safe byte-vector self-appends, semantic optional hashes, and
 AddressSanitizer-visible quarantine lifetimes.
 
@@ -129,7 +134,7 @@ The `$CC` environment variable will be checked as a last resort if none of the a
 
 If you need a specific compiler, set `$L0_CC` to its executable name or path.
 
-For the current `2.1.1` support matrix, Windows validation is through MSYS2 `UCRT64` with MinGW-w64 GCC. MSYS2 `MINGW64`
+For the current `2.2.0` support matrix, Windows validation is through MSYS2 `UCRT64` with MinGW-w64 GCC. MSYS2 `MINGW64`
 is supported as an alternate C-toolchain environment. Repository builds, docs, and normal tests use native Windows
 CPython in the shared uv environment. Windows CI adds the same full Stage 1 suite under a separate temporary UCRT64
 Python environment; see [l0/README-WINDOWS.md](README-WINDOWS.md).
@@ -216,7 +221,10 @@ remains available through `make install`.
 
 `make dist` creates one temporary `dea-l0/` tree under `build/` plus a host-native archive named
 `dea-l0-lang_<os>-<arch>_YYYYMMDD-HHMMSS.tar.gz` on POSIX or `dea-l0-lang_<os>-<arch>_YYYYMMDD-HHMMSS.zip` on Windows,
-using the lower-case OS/architecture from the recorded build host plus the UTC build timestamp in the archive name.
+using the lower-case OS from the recorded build host, a canonical architecture token, and the UTC build timestamp.
+Architecture aliases are normalized: `AMD64` becomes `x86_64`, and `aarch64` becomes `arm64`. The flat `VERSION` file
+uses the same canonical architecture in `arch:` while preserving the host OS spelling in `os:`. The compiler's
+`--version` host report retains the original host spelling.
 
 `install` installs the self-hosted Stage 2 compiler (`Compiler 2` from the triple-bootstrap chain), not the initial
 Stage 1-built bootstrap artifact.

@@ -1,7 +1,7 @@
 # ADR-0023: Toolchain Installation and Distribution Layout
 
 - Decision date: 2026-03-10
-- Last edited: 2026-10-05
+- Last edited: 2026-11-13
 - Status: Accepted
 
 ## Context
@@ -32,10 +32,13 @@ The L0 toolchain uses these layout rules:
 06. POSIX hosts use shell launchers, activation scripts, and `.tar.gz` archives. Windows includes native `.cmd`
     launchers and activation plus a `.zip` archive, while retaining the MSYS2 shell path.
 07. A local distribution archive unpacks to a `dea-l0/` root. Its basename is
-    `dea-l0-lang_<os>-<arch>_<YYYYMMDD-HHMMSS>`, using the recorded host and UTC build time.
+    `dea-l0-lang_<os>-<arch>_<YYYYMMDD-HHMMSS>`, using the lower-case recorded host OS, canonical package architecture,
+    and UTC build time. Architecture aliases `amd64` and `aarch64` normalize to `x86_64` and `arm64`; other architecture
+    tokens are lower-case and sanitized. This normalization does not extend the supported host matrix.
 08. The distribution contains a `VERSION` metadata file recording its L0 identity, version, build, source revision,
     host, architecture, license, and canonical source location. Release and snapshot workflows supply their release
-    identity to this metadata.
+    identity to this metadata. The flat key-value format and recorded OS spelling remain unchanged; `arch:` uses the
+    same canonical token as the archive name. Raw compiler host provenance retains its original spelling.
 09. Distributions bundle standalone user-facing READMEs, examples, and the level documentation tree. Work plans and
     proposals remain outside that tree; root contributor documentation is omitted.
 10. Source references are generated independently for Stage 1 and Stage 2. Distributions require a complete strict Stage
@@ -73,8 +76,13 @@ The L0 toolchain uses these layout rules:
 - Stage 1 remains available in the checkout and repo-local developer workflow but is absent from release archives.
 - Windows generation and tests maintain both MSYS2/POSIX and native `.cmd` entrypoints.
 - Packaging tests validate the distribution basename, `VERSION` fields, bundled public material, and exclusions.
+- Download automation and metadata consumers supporting historical Windows packages must accept the older `amd64` /
+  `AMD64` spellings as well as canonical `x86_64`. Published historical artifacts are not renamed or rewritten.
 
 ## Related Plans
+
+- [l0/work/plans/bug-fixes/closed/2026-11-13-distribution-architecture-normalization-noref.md](../../work/plans/bug-fixes/closed/2026-11-13-distribution-architecture-normalization-noref.md):
+  canonical package architecture shared by metadata, archive names, and publication validation
 
 - [l0/work/plans/tools/closed/2026-10-05-l0-stage-separated-autodocs-noref.md](../../work/plans/tools/closed/2026-10-05-l0-stage-separated-autodocs-noref.md):
   independent stage references and verified Stage 2 distribution/release documentation
