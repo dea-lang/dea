@@ -35,6 +35,7 @@ from dist_tools_lib import (
     resolve_host_c_compiler,
     write_distribution_version_file,
 )
+from test_make_dist_workflow import assert_archive_name
 
 
 def fail(message: str) -> None:
@@ -113,9 +114,33 @@ def check_package_architecture(provenance: Stage2BuildProvenance) -> None:
             expected = f"dea-l0-lang_{target}_20260316-083120"
             if distribution_archive_basename(timestamp, host) != expected:
                 fail(f"unexpected archive name for {host!r}")
+            windows = os_name == "Windows"
+            suffix = ".zip" if windows else ".tar.gz"
+            assert_archive_name(expected + suffix, f"host: {host}\n", windows=windows)
             rendered = render_stage2_build_info_module(snapshot)
             if f'func build_info_host() -> string {{\n    return "{host}";\n}}' not in rendered:
                 fail(f"raw compiler host provenance changed for {host!r}")
+
+
+def check_invalid_archive_names() -> None:
+    """Ensure canonical host matching still rejects invalid complete archive names."""
+    cases = (
+        ("Windows 10 AMD64", True, "dea-l0-lang_windows-amd64_20261114-112929.zip"),
+        ("Windows 10 AMD64", True, "dea-l0-lang_windows-arm64_20261114-112929.zip"),
+        ("Windows 10 AMD64", True, "dea-l0-lang_linux-x86_64_20261114-112929.zip"),
+        ("Windows 10 AMD64", True, "dea-l0-lang_windows-x86_64_20261114-112929.tar.gz"),
+        ("Windows 10 AMD64", True, "dea-l0-lang_windows-x86_64_stamp.zip"),
+        ("Windows 10 AMD64", True, "other_windows-x86_64_20261114-112929.zip"),
+        ("Windows 10 AMD64", True, "dea-l0-lang_windows-x86_64_20261114-112929.zip\n"),
+        ("Linux 6.8 x86_64", False, "dea-l0-lang_linux-x86_64_20261114-112929.zip"),
+        ("Darwin 24.6.0 arm64", False, "dea-l0-lang_darwin-x86_64_20261114-112929.tar.gz"),
+    )
+    for host, windows, archive in cases:
+        try:
+            assert_archive_name(archive, f"host: {host}\n", windows=windows)
+        except SystemExit:
+            continue
+        fail(f"invalid archive name accepted for {host!r}: {archive!r}")
 
 
 def main() -> int:
@@ -189,6 +214,7 @@ def main() -> int:
         fail("unexpected archive basename")
 
     check_package_architecture(provenance)
+    check_invalid_archive_names()
 
     path_env = os.environ.copy()
     path_env.pop("L0_CC", None)

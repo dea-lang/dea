@@ -241,6 +241,19 @@ not evidence of completed publication; operational handoffs must state what rema
 gates remain pending. Follow [MONOREPO.md](MONOREPO.md#versioned-release-preparation) for the shared sequence and the
 owning level's documentation for its validation, artifact inventory, note composition, and publication effects.
 
+### Release Tag Convention
+
+- Create new versioned release tags for every level (`lN-vX.Y.Z`) as annotated tags, with the message `Dea/LN X.Y.Z.`
+  using the actual level and version. Keep detailed release notes in the owning level's release document.
+- Cryptographic signing is optional; an unsigned annotated tag satisfies this convention. Annotation alone does not
+  authenticate the tagger.
+- Before an authorized tag push, verify that the reference points to a tag object and peels to the exact approved
+  commit. When publishing the same release tag to multiple authorized remotes, preserve the same tag object rather than
+  recreating it independently.
+- Snapshot and temporary test tags may remain lightweight under their existing naming and workflow rules.
+- Apply this convention prospectively. Do not convert, move, or recreate existing release tags to retrofit it. The
+  separate tag-creation and tag-push authorization gates remain unchanged.
+
 ## Git Conventions
 
 - Multiline commits: sentence-case summary with period, then factual body as bullets with `- ` prefix, sentence-case,

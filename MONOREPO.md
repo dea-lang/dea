@@ -263,10 +263,10 @@ a development release into a stable language or toolchain.
 5. **Promote to `main` and validate the exact target.** Perform pushes or integration only with the required separate
    authorization. Required CI must pass for the final target on `main`; green CI from before release preparation does
    not cover the new release tree. Build release artifacts from that exact target, not an earlier local preparation.
-6. **Create and push the tag through separate gates.** Tag creation requires an explicit request naming `lN-vX.Y.Z` and
-   its exact target commit on `main`. Tag push requires a separate fresh confirmation immediately before execution,
-   showing the exact command, remote URL, target, and all known automatic effects of that level's workflow, including
-   release/asset publication and any documentation deployment or cross-repository dispatch.
+6. **Create and push an annotated tag through separate gates.** Tag creation requires an explicit request naming
+   `lN-vX.Y.Z` and its exact target commit on `main`. Tag push requires a separate fresh confirmation immediately before
+   execution, showing the exact command, remote URL, target, and all known automatic effects of that level's workflow,
+   including release/asset publication and any documentation deployment or cross-repository dispatch.
 7. **Verify publication.** Check the published release against the owning level's complete artifact inventory, including
    archives, documentation, checksums, and compiler smoke results, plus any configured deployment or downstream update.
    Record observed outcomes without treating preparation or tag creation alone as proof of publication. Published
@@ -278,6 +278,35 @@ authoring and delivery requirements remain in [l0/docs/releases/README.md](l0/do
 [l1/docs/releases/README.md](l1/docs/releases/README.md), and in the corresponding level-owned documentation as future
 release lines are introduced. Snapshot workflows retain their separate naming and note-generation rules; they do not
 replace versioned release preparation.
+
+### Annotated Release Tags
+
+For all levels, create new versioned release tags (`lN-vX.Y.Z`) as annotated tags. Use the annotation `Dea/LN X.Y.Z.`,
+replacing the level and version placeholders; keep detailed notes in `lN/docs/releases/X.Y.Z.md`. An annotated tag
+records the tagger, tagging date, and release message separately from the target commit. Cryptographic signing is
+optional: an unsigned annotated tag satisfies this convention, but does not authenticate the tagger.
+
+After explicit authorization to create the exact tag at the approved commit, the command has this form:
+
+```bash
+git tag -a "lN-vX.Y.Z" "<approved-commit>" -m "Dea/LN X.Y.Z."
+```
+
+Before a separately authorized push, inspect the tag:
+
+```bash
+git cat-file -t "lN-vX.Y.Z"          # must report tag
+git rev-parse "lN-vX.Y.Z^{commit}"   # must match the approved target commit
+git cat-file -p "lN-vX.Y.Z"          # inspect tagger, date, and annotation
+```
+
+When publishing the same release tag to multiple authorized remotes, transfer the same tag object. Do not recreate the
+tag separately on each remote, even when the name and target commit match. Creation and each push remain subject to the
+separate authorization gates above.
+
+This convention applies prospectively to newly created versioned release tags. Existing tags retain their original type,
+target, and annotation; do not convert or recreate them to retrofit the convention. Snapshot and temporary test tags may
+remain lightweight under their existing naming and workflow rules.
 
 ## Release-line Gating Policy
 

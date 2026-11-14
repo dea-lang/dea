@@ -232,13 +232,45 @@ def assert_version_report(text: str) -> None:
 
 
 def parse_host_target(version_text: str) -> str:
+    """Derive the expected package target independently from raw host provenance.
+
+    Args:
+        version_text: Compiler version output containing the host report.
+
+    Returns:
+        Lower-case OS and canonical architecture joined by a hyphen.
+
+    Raises:
+        SystemExit: The host report is missing or malformed.
+    """
     match = re.search(r"^host: (.+)$", version_text, flags=re.MULTILINE)
     if match is None:
         fail(f"could not parse host line from version output:\n{version_text}")
     words = match.group(1).split()
     if len(words) < 2:
         fail(f"unexpected host line: {match.group(1)!r}")
-    return f"{words[0].lower()}-{words[-1].lower()}"
+    arch = words[-1].lower()
+    arch = {"amd64": "x86_64", "aarch64": "arm64"}.get(arch, arch)
+    return f"{words[0].lower()}-{arch}"
+
+
+def assert_archive_name(archive_name: str, version_text: str, *, windows: bool) -> None:
+    """Validate the complete package filename against the compiler's host report.
+
+    Args:
+        archive_name: Archive basename without directory components.
+        version_text: Extracted compiler version output with raw host provenance.
+        windows: Whether the package must use the Windows ZIP format.
+
+    Raises:
+        SystemExit: The host report or complete archive name violates the contract.
+    """
+    archive_pattern = (
+        rf"dea-l0-lang_{re.escape(parse_host_target(version_text))}_\d{{8}}-\d{{6}}"
+        + (r"\.zip" if windows else r"\.tar\.gz")
+    )
+    if re.fullmatch(archive_pattern, archive_name) is None:
+        fail(f"unexpected archive name: {archive_name}")
 
 
 def make_hello_project(project_dir: Path) -> None:
@@ -371,12 +403,7 @@ def main() -> int:
         assert_version_report(wrapper_version)
         if native_version != wrapper_version:
             fail("expected extracted wrapper/native --version output to match")
-        archive_pattern = (
-            rf"^dea-l0-lang_{re.escape(parse_host_target(wrapper_version))}_\d{{8}}-\d{{6}}"
-            + (r"\.zip$" if is_windows_host() else r"\.tar\.gz$")
-        )
-        if re.match(archive_pattern, archive_path.name) is None:
-            fail(f"unexpected archive name: {archive_path.name}")
+        assert_archive_name(archive_path.name, wrapper_version, windows=is_windows_host())
 
         make_hello_project(project_dir)
         hello_bin = project_dir / "hello"
