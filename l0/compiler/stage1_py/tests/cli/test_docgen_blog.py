@@ -235,20 +235,22 @@ def test_stage2_export_filters_historical_mixed_input(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("html_site_url", ["https://example.com/dea", "https://example.com/dea/"])
-def test_stage2_tab_identifies_scope_and_links_both_pdfs(tmp_path: Path, html_site_url: str) -> None:
+@pytest.mark.parametrize("explicit_pdf", [True, False])
+def test_stage2_tab_identifies_scope_and_links_both_pdfs(tmp_path: Path, html_site_url: str, explicit_pdf: bool) -> None:
     input_dir = tmp_path / "input"
     input_dir.mkdir()
     (input_dir / "index.md").write_text("## Stage 2\n\n## Shared\n")
     output = tmp_path / "out"
     release_pdf = "https://github.com/dea-lang/dea/releases/download/l0-v2.2.0/dea_l0_stage2_api_reference-l0-v2.2.0.pdf"
     export_markdown_tree(input_dir, output, docs_prefix="api/reference", tab_title="API", tab_icon="book", tab_order=5,
-                         stage="stage2", html_site_url=html_site_url, pdf_url=release_pdf, release_tag="l0-v2.2.0")
+                         stage="stage2", html_site_url=html_site_url, pdf_url=release_pdf if explicit_pdf else "", release_tag="l0-v2.2.0")
     tab = (output / "_tabs/api.md").read_text()
     assert "Current Dea/L0 Stage 2 API documentation, synchronized from the compiler repository." in tab
     assert "**Release l0-v2.2.0**" in tab
     assert f"[Complete HTML reference (includes Stage 1 and Stage 2)]({html_site_url})" in tab
     assert "[Stage 1 PDF reference](https://example.com/dea/stage1/pdf/dea_l0_stage1_api_reference.pdf)" in tab
-    assert f"[Stage 2 PDF reference]({release_pdf})" in tab
+    assert "[Stage 2 PDF reference](https://example.com/dea/pdf/dea_l0_stage2_api_reference.pdf)" in tab
+    assert release_pdf not in tab
     assert "Standalone HTML reference" not in tab
     assert "## Stage 1" not in tab
 

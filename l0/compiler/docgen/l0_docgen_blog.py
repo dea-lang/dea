@@ -38,7 +38,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--tab-icon", default="fas fa-book", help="Icon class for the generated Chirpy tab page.")
     parser.add_argument("--tab-order", type=int, default=5, help="Order for the generated Chirpy tab page.")
     parser.add_argument("--html-site-url", default="", help="Complete HTML reference site root URL (both stages).")
-    parser.add_argument("--pdf-url", default="", help="Published PDF URL.")
+    parser.add_argument("--pdf-url", default="", help="PDF URL; Stage 2 exports with an HTML site URL use its current Pages PDF instead.")
     parser.add_argument("--release-tag", default="", help="Release tag for version display.")
     return parser.parse_args(argv)
 
@@ -236,6 +236,7 @@ def export_markdown_tree(
         if stage == "stage2":
             stage1_pdf_url = html_site_url.rstrip("/") + "/stage1/pdf/dea_l0_stage1_api_reference.pdf"
             tab_lines.append(f"- [Stage 1 PDF reference]({stage1_pdf_url})")
+            pdf_url = html_site_url.rstrip("/") + "/pdf/dea_l0_stage2_api_reference.pdf"
     if pdf_url:
         pdf_label = f"Stage {stage[-1]} PDF reference" if stage in {"stage1", "stage2"} else "PDF reference"
         tab_lines.append(f"- [{pdf_label}]({pdf_url})")

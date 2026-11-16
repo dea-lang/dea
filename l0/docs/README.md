@@ -80,9 +80,11 @@ redirect to their matching page under `stage1/` when available, otherwise to its
 their meaning. The missing-page fallback links to both references. Historical published mixed-reference assets remain
 immutable and keep their original names and URLs. Compiler archives, release assets, and blog exports still select only
 Stage 2. The Stage 2 blog tab identifies its scope and links to the complete two-stage HTML reference, the Stage 1 PDF
-on Pages, and the Stage 2 PDF selected for the export (the versioned release asset when available). The Stage 1 Pages
-PDF follows the current Pages publication; it is not a new versioned release asset. Destination repositories own export
-import and deployment. Local generation and validation do not authorize publication or downstream messages.
+and Stage 2 PDF on Pages. Both PDF links follow the current Pages publication, even when the tab identifies a release.
+For Stage 2 exports, `--html-site-url` determines both PDF links and takes precedence over `--pdf-url`; without a site
+URL, the explicit PDF URL remains the fallback. Versioned release PDF assets remain unchanged and available separately.
+Destination repositories own export import and deployment. Local generation and validation do not authorize publication
+or downstream messages.
 
 ## Placement Guide
 
