@@ -234,7 +234,7 @@ jobs:
     needs: resolve-targets
     uses: ./.github/workflows/l0-docs-build.yml
     with:
-      stage: stage2
+      stage: all
       source_ref: ${{ needs.resolve-targets.outputs.source_ref }}
       release_tag: ${{ needs.resolve-targets.outputs.target_release_tag }}
       build_pdf: >-

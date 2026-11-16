@@ -37,7 +37,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--tab-title", default="API", help="Title for the generated Chirpy tab page.")
     parser.add_argument("--tab-icon", default="fas fa-book", help="Icon class for the generated Chirpy tab page.")
     parser.add_argument("--tab-order", type=int, default=5, help="Order for the generated Chirpy tab page.")
-    parser.add_argument("--html-site-url", default="", help="Standalone HTML site URL.")
+    parser.add_argument("--html-site-url", default="", help="Complete HTML reference site root URL (both stages).")
     parser.add_argument("--pdf-url", default="", help="Published PDF URL.")
     parser.add_argument("--release-tag", default="", help="Release tag for version display.")
     return parser.parse_args(argv)
@@ -223,16 +223,22 @@ def export_markdown_tree(
         "permalink: /api/",
         "---",
         "",
-        "Generated API reference synchronized from the Dea/L0 compiler repository.",
+        (f"Current Dea/L0 Stage {stage[-1]} API documentation, synchronized from the compiler repository."
+         if stage in {"stage1", "stage2"}
+         else "Generated API reference synchronized from the Dea/L0 compiler repository."),
         "",
     ]
     if release_tag:
         tab_lines.append(f"**Release {release_tag}**")
         tab_lines.append("")
     if html_site_url:
-        tab_lines.append(f"- [Standalone HTML reference]({html_site_url})")
+        tab_lines.append(f"- [Complete HTML reference (includes Stage 1 and Stage 2)]({html_site_url})")
+        if stage == "stage2":
+            stage1_pdf_url = html_site_url.rstrip("/") + "/stage1/pdf/dea_l0_stage1_api_reference.pdf"
+            tab_lines.append(f"- [Stage 1 PDF reference]({stage1_pdf_url})")
     if pdf_url:
-        tab_lines.append(f"- [PDF reference]({pdf_url})")
+        pdf_label = f"Stage {stage[-1]} PDF reference" if stage in {"stage1", "stage2"} else "PDF reference"
+        tab_lines.append(f"- [{pdf_label}]({pdf_url})")
     if html_site_url or pdf_url:
         tab_lines.append("")
     for key, title in (("stage1", "Stage 1"), ("stage2", "Stage 2")):

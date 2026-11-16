@@ -182,17 +182,151 @@ def test_bundle_rejects_unsafe_members(tmp_path: Path, name: str, link: bool) ->
     assert not (tmp_path / "outside").exists()
 
 
-def test_pages_preserves_pdf_alias_and_notices(tmp_path: Path) -> None:
-    docs_fixture(tmp_path / "fixture")
-    source = tmp_path / "fixture/stage2"
-    destination = tmp_path / "pages"
+def pages_fixture(source: Path) -> None:
+    """Build isolated HTML, search, and PDF inputs with nested source pages."""
+    for stage in ("stage1", "stage2"):
+        docs_fixture(source, stage)
+        tree = source / stage / "html"
+        (tree / "index.html").write_text(
+            f'<html><title>Dea/L0 Stage {stage[-1]}</title><body><header></header>'
+            '<a href="search.js">Search</a></body></html>')
+        (tree / "search.js").write_text(f"search data for {stage}")
+        (tree / "searchdata.bin").write_bytes(stage.encode())
+        (tree / f"{stage}.html").write_text('<html><body>Stage hub</body></html>')
+        nested = tree / f"api/compiler/{'stage1_py' if stage == 'stage1' else 'stage2_l0'}/source.html"
+        nested.parent.mkdir(parents=True)
+        nested.write_text('<html><body class="m-doc">Source</body></html>')
+    (source / "stage1/html/python_classl0__ast_1_1_node.html").write_text('<html><body>Node</body></html>')
+
+
+@pytest.mark.parametrize("with_pdf", [True, False])
+def test_pages_workflow_input_layout(tmp_path: Path, with_pdf: bool) -> None:
+    import os
+    import shutil
+    import yaml
+
+    if os.name == "nt":
+        pytest.skip("Pages assembly runs on Ubuntu")
+    source = tmp_path / "build/docs"
+    pages_fixture(source)
+    workflow = yaml.safe_load((ROOT.parent / ".github/workflows/l0-docs-build.yml").read_text())
+    steps = workflow["jobs"]["build-docs"]["steps"]
+    prepare = next(step["run"] for step in steps if step.get("name") == "Prepare Pages inputs")
+    for stage in ("stage1", "stage2"):
+        (source / stage / "private-build.log").write_text("not part of Pages")
+        if not with_pdf:
+            shutil.rmtree(source / stage / "pdf")
+        subprocess.run(["bash", "-e", "-c", prepare], cwd=tmp_path,
+                       env={**os.environ, "DOC_STAGE": stage}, check=True)
+        tree = source / "pages-input" / stage
+        assert (tree / "html/index.html").is_file()
+        assert (tree / "pdf").is_dir() == with_pdf
+        assert not (tree / "private-build.log").exists()
+    stage_pages(source / "pages-input", tmp_path / "pages")
+
+
+def test_pages_isolates_references_and_preserves_inputs(tmp_path: Path) -> None:
+    from html.parser import HTMLParser
+    from urllib.parse import urljoin
+
+    class Links(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.links = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "a":
+                self.links.append(dict(attrs)["href"])
+
+    source, destination = tmp_path / "docs", tmp_path / "pages"
+    pages_fixture(source)
+    before = {p: p.read_bytes() for p in source.rglob("*") if p.is_file()}
     stage_pages(source, destination)
-    assert (destination / "pdf/dea_l0_api_reference.pdf").read_bytes() == (source / "pdf/dea_l0_stage2_api_reference.pdf").read_bytes()
-    assert "Stage 1 reference moved" in (destination / "stage1.html").read_text()
-    assert "Historical release downloads" in (destination / "404.html").read_text()
-    assert "Stage 1 reference moved" in (destination / "api/compiler/stage1_py/l0_ast.html").read_text()
-    assert "Stage 1 reference moved" in (destination / "classl0__ast_1_1_node.html").read_text()
-    assert not (source / "html/stage1.html").exists()
+    for stage, prefix in (("stage1", "stage1/"), ("stage2", "")):
+        tree = destination / prefix
+        assert (tree / "searchdata.bin").read_bytes() == stage.encode()
+        assert (tree / "search.js").read_bytes() == (source / stage / "html/search.js").read_bytes()
+        assert (tree / f"pdf/dea_l0_{stage}_api_reference.pdf").read_bytes() == (source / stage / f"pdf/dea_l0_{stage}_api_reference.pdf").read_bytes()
+        for original in (source / stage / "html").rglob("*.html"):
+            rel = original.relative_to(source / stage / "html")
+            page = tree / rel
+            text = page.read_text()
+            assert text.count('aria-label="Reference stage"') == 1
+            assert text.count('aria-current="true"') == 1
+            links = Links()
+            links.feed(text)
+            targets = [urljoin('/dea/' + page.relative_to(destination).as_posix(), link) for link in links.links]
+            assert '/dea/index.html' in targets
+            assert '/dea/stage1/index.html' in targets
+            assert all((destination / target.removeprefix('/dea/')).is_file() for target in targets)
+    assert (destination / "pdf/dea_l0_api_reference.pdf").read_bytes() == (destination / "pdf/dea_l0_stage2_api_reference.pdf").read_bytes()
+    assert 'href="stage1/stage1.html"' in (destination / "stage1.html").read_text()
+    assert 'href="stage1/python_classl0__ast_1_1_node.html"' in (destination / "classl0__ast_1_1_node.html").read_text()
+    assert 'href="../../../stage1/index.html"' in (destination / "api/compiler/stage1_py/l0_ast.html").read_text()
+    assert (destination / ".nojekyll").is_file()
+    assert before == {p: p.read_bytes() for p in source.rglob("*") if p.is_file()}
+    # Restaging replaces stale output without stacking selectors or reusing either search index.
+    (destination / "stale.html").touch()
+    stage_pages(source, destination)
+    assert not (destination / "stale.html").exists()
+    assert (destination / "index.html").read_text().count('aria-label="Reference stage"') == 1
+
+
+@pytest.mark.parametrize("base_path", ["/dea/", "/DEA/", "/"])
+def test_pages_404_links_work_from_nested_urls(tmp_path: Path, base_path: str) -> None:
+    source, destination = tmp_path / "docs", tmp_path / "pages"
+    pages_fixture(source)
+    stage_pages(source, destination, base_path=base_path)
+    text = (destination / "404.html").read_text()
+    assert f'href="{base_path}stage1/index.html"' in text
+    assert f'href="{base_path}index.html"' in text
+
+
+@pytest.mark.parametrize("stage", ["stage1", "stage2"])
+@pytest.mark.parametrize("failure", ["missing", "wrong-title", "malformed"])
+def test_pages_rejects_incomplete_inputs_without_replacing_site(tmp_path: Path, stage: str, failure: str) -> None:
+    source, destination = tmp_path / "docs", tmp_path / "pages"
+    pages_fixture(source)
+    destination.mkdir()
+    (destination / "index.html").write_text("previous publication")
+    index = source / stage / "html/index.html"
+    if failure == "missing":
+        index.unlink()
+    elif failure == "wrong-title":
+        index.write_text("Wrong stage")
+    else:
+        index.write_text(f"Dea/L0 Stage {stage[-1]} without a body")
+    with pytest.raises(ValueError, match="Pages"):
+        stage_pages(source, destination)
+    assert (destination / "index.html").read_text() == "previous publication"
+
+
+def test_pages_preserves_stage2_on_legacy_name_collision(tmp_path: Path) -> None:
+    source, destination = tmp_path / "docs", tmp_path / "pages"
+    pages_fixture(source)
+    (source / "stage2/html/classl0__ast_1_1_node.html").write_text('<html><body>Stage 2 symbol</body></html>')
+    stage_pages(source, destination)
+    assert "Stage 2 symbol" in (destination / "classl0__ast_1_1_node.html").read_text()
+    assert "Node" in (destination / "stage1/python_classl0__ast_1_1_node.html").read_text()
+
+
+def test_pages_supports_html_only_without_inventing_pdfs(tmp_path: Path) -> None:
+    import shutil
+    source, destination = tmp_path / "docs", tmp_path / "pages"
+    pages_fixture(source)
+    for stage in ("stage1", "stage2"):
+        shutil.rmtree(source / stage / "pdf")
+    stage_pages(source, destination)
+    assert not (destination / "pdf").exists()
+    assert not (destination / "stage1/pdf").exists()
+
+
+def test_pages_rejects_overlapping_inputs(tmp_path: Path) -> None:
+    source = tmp_path / "docs"
+    pages_fixture(source)
+    for destination in (source, source / "stage1/html/pages"):
+        with pytest.raises(ValueError, match="overlap"):
+            stage_pages(source, destination)
 
 
 @pytest.mark.parametrize("host", ["Linux 6 x86_64", "Darwin 24 x86_64", "Darwin 24 arm64", "Windows 10 x86_64"])

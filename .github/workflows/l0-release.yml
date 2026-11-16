@@ -463,7 +463,7 @@ jobs:
     needs: validate-release
     uses: ./.github/workflows/l0-docs-build.yml
     with:
-      stage: stage2
+      stage: all
       source_ref: ${{ github.ref_name }}
       release_tag: ${{ github.ref_name }}
 

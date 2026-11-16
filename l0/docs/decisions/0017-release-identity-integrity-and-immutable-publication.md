@@ -1,7 +1,7 @@
 # ADR-0017: Release Identity, Integrity, and Immutable Publication
 
 - Decision date: 2026-03-16
-- Last edited: 2026-11-12
+- Last edited: 2026-11-16
 - Status: Accepted
 
 ## Context
@@ -29,14 +29,16 @@ An official stable L0 release follows this contract:
    archives, `dea_l0_stage2_api_reference-<TAG>.pdf`, `dea_l0_stage2_autodocs-<TAG>.tar.gz`,
    `dea_l0_stage2_api_reference-<TAG>.tar.gz`, and `SHA256SUMS`. Compiler archives embed the same verified Stage 2
    HTML/PDF bundle; the API-reference tarball is the separate Chirpy export. Documentation succeeds before platform
-   packaging begins. Stage 1 references remain developer/validation artifacts.
+   packaging begins. Stage 1 references are available through Pages and developer/validation artifacts, but remain
+   outside the immutable release asset set. Pages serves Stage 2 at the existing root and Stage 1 under `stage1/`, with
+   independent navigation and search plus a stage selector added only during Pages assembly.
 5. `SHA256SUMS` covers every staged release asset except itself and records bare filenames without a `./` prefix.
    SHA-256 is the baseline integrity mechanism; artifact signing remains a separate future decision.
 6. Once published, a release is immutable. Workflows may update assets only while the release remains a draft and must
    reject attempts to mutate an existing published release.
 7. Historical published mixed-reference assets keep their original names and URLs. The stage-qualified contract applies
    to newly prepared releases and snapshots. Pages retains its unversioned Stage 2 entrypoint and a compatibility copy
-   at the old PDF URL; removed Stage 1 paths carry migration notices.
+   at the old PDF URL; historical Stage 1 paths lead to the separately hosted Stage 1 reference.
 8. Manual snapshots use a workflow-created tag in the separate `l0-snapshot-*` namespace, assemble the same artifact
    matrix, and are explicit prerelease flows. They may remain draft-only when publication is not requested and do not
    acquire stable-release identity.
@@ -65,6 +67,9 @@ An official stable L0 release follows this contract:
   note contract.
 
 ## Related Plans
+
+- [l0/work/plans/tools/closed/2026-11-16-pages-stage-references-noref.md](../../work/plans/tools/closed/2026-11-16-pages-stage-references-noref.md):
+  restores both public references while retaining Stage 2-only compiler and release assets
 
 - [l0/work/plans/tools/closed/2026-10-05-l0-stage-separated-autodocs-noref.md](../../work/plans/tools/closed/2026-10-05-l0-stage-separated-autodocs-noref.md):
   independent stage references and verified Stage 2 distribution/release documentation

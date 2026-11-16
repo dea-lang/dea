@@ -68,12 +68,21 @@ an opt-in Chirpy Markdown export, distinct from the offline HTML/PDF bundle. Exp
 stage-qualified filename; `compiler.docgen.l0_docgen_blog --stage stage2` filters Stage 1 pages even from historical
 mixed input. Its default `--stage all` retains historical mixed-input compatibility.
 
-Pages keeps its existing unversioned HTML entrypoint for Stage 2. The old `pdf/dea_l0_api_reference.pdf` URL is a
-compatibility copy of the Stage 2 PDF; new links use `pdf/dea_l0_stage2_api_reference.pdf`. Retired Stage 1 URLs show a
-migration notice pointing to local generation and developer validation artifacts, with the same notice as the Pages 404
-fallback for unrecognized historical URLs. Historical published mixed-reference assets remain immutable and keep their
-original names and URLs. Destination repositories own export import and deployment. Local generation and validation do
-not authorize publication or downstream messages.
+Pages serves Stage 2 at its existing unversioned HTML root and Stage 1 under `stage1/`. Each reference retains its own
+navigation, search index, assets, and PDF. A Pages-only selector on every reference page links to both stage homes;
+offline compiler bundles do not contain links to the other stage. The reusable build workflow builds both stages for
+release/manual publication and assembles one Pages artifact only after both builds succeed. Snapshot builds remain Stage
+2-only. Pages staging does not modify the generated input trees or release bundles.
+
+The old `pdf/dea_l0_api_reference.pdf` URL remains a compatibility copy of the Stage 2 PDF. Stage-specific PDFs live at
+`pdf/dea_l0_stage2_api_reference.pdf` and `stage1/pdf/dea_l0_stage1_api_reference.pdf`. Historical Stage 1 HTML URLs
+redirect to their matching page under `stage1/` when available, otherwise to its home; existing Stage 2 URLs retain
+their meaning. The missing-page fallback links to both references. Historical published mixed-reference assets remain
+immutable and keep their original names and URLs. Compiler archives, release assets, and blog exports still select only
+Stage 2. The Stage 2 blog tab identifies its scope and links to the complete two-stage HTML reference, the Stage 1 PDF
+on Pages, and the Stage 2 PDF selected for the export (the versioned release asset when available). The Stage 1 Pages
+PDF follows the current Pages publication; it is not a new versioned release asset. Destination repositories own export
+import and deployment. Local generation and validation do not authorize publication or downstream messages.
 
 ## Placement Guide
 

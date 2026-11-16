@@ -191,7 +191,8 @@ requires `DOCS_ARTIFACT=<absolute-bundle-path>` with the same source/version, an
 `share/doc/dea/l0/autodocs/stage2/`. Generate documentation before packaging; dist never invokes TeX. `make install`
 remains compiler-only. `-v` / `--verbose` shows renderer warnings and LaTeX output. Release/manual publishing uses
 `.github/workflows/l0-docs-publish.yml`; CI validation independently builds both stages through
-`.github/workflows/l0-docs-validate.yml`. Publication consumers select Stage 2; authorization remains separate.
+`.github/workflows/l0-docs-validate.yml`. Pages publishes both stages with separate navigation/search and a stage
+selector. Compiler distributions, release assets, and blog exports select Stage 2; authorization remains separate.
 
 ### Testing
 

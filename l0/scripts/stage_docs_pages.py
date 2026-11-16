@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # Copyright (c) 2026 gwz
-"""Stage the Stage 2 Pages reference and preserve historical entrypoints."""
+"""Stage independent L0 references on Pages and preserve historical entrypoints."""
 
 from __future__ import annotations
 
@@ -10,41 +10,93 @@ import ast
 import html
 from pathlib import Path
 import shutil
+import re
+import tempfile
 
 from docs_artifacts import L0_ROOT, pdf_name
 
 
-NOTICE = """<!DOCTYPE html><html lang="en"><meta charset="utf-8">
-<title>Dea/L0 documentation migration</title><h1>Stage 1 reference moved</h1>
-<p>The public reference now documents Dea/L0 Stage 2 and shared APIs.
-Stage 1 compiler pages are available through local generation with
-<code>make docs-pdf DOC_STAGE=stage1</code> and the separate validation artifacts.
-Historical release downloads retain their original mixed references.</p>
-<p><a href="{home}">Open the Stage 2 reference</a></p></html>
-"""
-
-
-def stage_pages(source: Path, destination: Path, root: Path = L0_ROOT) -> None:
-    """Copy Stage 2 HTML and add migration notices and the old PDF alias.
+def add_stage_selector(tree: Path, stage: str) -> None:
+    """Add Pages-only links to the two reference homes on every HTML page.
 
     Args:
-        source: Stage 2 output directory.
-        destination: Pages staging directory.
-        root: L0 source root, used to inventory retired Python page URLs.
+        tree: Copied HTML tree for one stage.
+        stage: Stage owning this tree.
 
     Raises:
-        ValueError: The selected reference is not Stage 2.
+        ValueError: A generated page has no HTML body.
     """
-    if "Dea/L0 Stage 2" not in (source / "html/index.html").read_text(encoding="utf-8"):
-        raise ValueError("Pages requires the Stage 2 reference")
-    shutil.rmtree(destination, ignore_errors=True)
-    shutil.copytree(source / "html", destination)
-    pdf = source / "pdf" / pdf_name("stage2")
-    if pdf.is_file():
-        (destination / "pdf").mkdir(exist_ok=True)
-        shutil.copy2(pdf, destination / "pdf" / pdf.name)
-        shutil.copy2(pdf, destination / "pdf/dea_l0_api_reference.pdf")
-    retired = {Path("stage1.html"), Path("404.html")}
+    for page in tree.rglob("*.html"):
+        prefix = "../" * (len(page.relative_to(tree).parts) - 1)
+        homes = {"stage1": prefix + "stage1/index.html", "stage2": prefix + "index.html"}
+        if stage == "stage1":
+            homes = {"stage1": prefix + "index.html", "stage2": prefix + "../index.html"}
+        links = []
+        for name, target in homes.items():
+            current = ' aria-current="true"' if name == stage else ""
+            links.append(f'<a href="{target}"{current}>Stage {name[-1]}</a>')
+        selector = ('<nav aria-label="Reference stage" class="m-container" style="padding: .75rem 1rem;">'
+                    'Reference: ' + ' | '.join(links) + '</nav>')
+        text = page.read_text(encoding="utf-8")
+        if "</header>" in text:
+            text = text.replace("</header>", "</header>\n" + selector, 1)
+        else:
+            text, count = re.subn(r"<body\b[^>]*>", lambda match: match[0] + selector, text, count=1)
+            if not count:
+                raise ValueError(f"Pages HTML has no body: {page}")
+        page.write_text(text, encoding="utf-8")
+
+
+def stage_pages(source: Path, destination: Path, root: Path = L0_ROOT, *, base_path: str = "/dea/") -> None:
+    """Assemble both references without modifying their distribution inputs.
+
+    Args:
+        source: Common parent containing stage1 and stage2 HTML/PDF outputs.
+        destination: Pages staging directory, separate from the input stage trees.
+        root: L0 source root, used to inventory historical Python page URLs.
+        base_path: Absolute URL path of the Pages site, used by the 404 fallback.
+
+    Raises:
+        ValueError: A stage is absent, mislabeled, or overlaps the destination.
+    """
+    if not base_path.startswith("/") or not base_path.endswith("/") or base_path.startswith("//"):
+        raise ValueError("Pages base path must start and end with a single slash")
+    for stage in ("stage1", "stage2"):
+        tree = source / stage
+        if tree.resolve().is_relative_to(destination.resolve()) or destination.resolve().is_relative_to(tree.resolve()):
+            raise ValueError("Pages destination must not overlap stage inputs")
+        index = tree / "html/index.html"
+        if not index.is_file() or f"Dea/L0 Stage {stage[-1]}" not in index.read_text(encoding="utf-8"):
+            raise ValueError(f"Pages requires the {stage} reference")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=destination.parent) as temporary:
+        staged = Path(temporary) / "site"
+        # Insert selectors before nesting Stage 1, keeping each search payload untouched.
+        for stage in ("stage2", "stage1"):
+            target = staged if stage == "stage2" else staged / "stage1"
+            shutil.copytree(source / stage / "html", target)
+            pdf = source / stage / "pdf" / pdf_name(stage)
+            if pdf.is_file():
+                (target / "pdf").mkdir(exist_ok=True)
+                shutil.copy2(pdf, target / "pdf" / pdf.name)
+                if stage == "stage2":
+                    shutil.copy2(pdf, target / "pdf/dea_l0_api_reference.pdf")
+            add_stage_selector(target, stage)
+        add_legacy_links(staged, root, base_path)
+        (staged / ".nojekyll").touch()
+        shutil.rmtree(destination, ignore_errors=True)
+        shutil.move(str(staged), destination)
+
+
+def add_legacy_links(destination: Path, root: Path, base_path: str) -> None:
+    """Route historical Stage 1 URLs without overwriting Stage 2 pages.
+
+    Args:
+        destination: Assembled Pages tree.
+        root: L0 source root used to inventory historical Python page URLs.
+        base_path: Absolute site path for links from arbitrary missing URLs.
+    """
+    retired = {Path("stage1.html")}
     for path in (root / "compiler/stage1_py").rglob("*.py"):
         if "tests" in path.parts or "__pycache__" in path.parts:
             continue
@@ -65,22 +117,38 @@ def stage_pages(source: Path, destination: Path, root: Path = L0_ROOT) -> None:
         visit_classes(ast.parse(path.read_text(encoding="utf-8")))
     for rel in retired:
         path = destination / rel
-        # Never redirect a removed oracle symbol to an unrelated Stage 2 symbol.
+        # Existing Stage 2 URLs retain their meaning, including same-named symbols.
         if path.exists():
-            raise ValueError(f"retired Stage 1 URL collides with Stage 2 output: {rel}")
+            continue
         path.parent.mkdir(parents=True, exist_ok=True)
-        home = "../" * (len(rel.parts) - 1) + "index.html"
-        path.write_text(NOTICE.format(home=html.escape(home)), encoding="utf-8")
-    (destination / ".nojekyll").touch()
+        target = Path("stage1") / rel
+        if not (destination / target).is_file():
+            # The isolated Python renderer prefixes raw Doxygen filenames.
+            prefixed = Path("stage1") / rel.with_name("python_" + rel.name)
+            target = prefixed if (destination / prefixed).is_file() else Path("stage1/index.html")
+        url = html.escape("../" * (len(rel.parts) - 1) + target.as_posix(), quote=True)
+        path.write_text(
+            '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
+            f'<meta http-equiv="refresh" content="0; url={url}">'
+            '<title>Stage 1 reference moved</title></head><body>'
+            f'<p><a href="{url}">Open the Stage 1 reference</a></p></body></html>', encoding="utf-8")
+    base = html.escape(base_path, quote=True)
+    (destination / "404.html").write_text(
+        '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
+        '<title>Dea/L0 reference page not found</title></head><body>'
+        '<h1>Reference page not found</h1><p>Choose a reference and use its search:</p>'
+        f'<nav aria-label="Reference stage"><a href="{base}stage1/index.html">Stage 1</a> | '
+        f'<a href="{base}index.html">Stage 2</a></nav></body></html>', encoding="utf-8")
 
 
 def main() -> int:
-    """Stage the current Stage 2 reference for the authorized publication workflow."""
+    """Stage both references for the authorized publication workflow."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", type=Path, default=Path("build/docs/stage2"))
+    parser.add_argument("--source", type=Path, default=Path("build/docs"))
     parser.add_argument("--output", type=Path, default=Path("build/docs/pages-site"))
+    parser.add_argument("--base-path", default="/dea/", help="Pages URL prefix, including leading/trailing slashes")
     args = parser.parse_args()
-    stage_pages(args.source, args.output)
+    stage_pages(args.source, args.output, base_path=args.base_path)
     return 0
 
 

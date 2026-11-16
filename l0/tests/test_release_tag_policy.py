@@ -356,8 +356,9 @@ def check_stage_docs_contract() -> None:
         jobs = workflow["jobs"]
         if set(jobs["build-dist"]["needs"]) != {prerequisite, "build-docs"}:
             fail(f"{name}: distributions must wait for verified documentation")
-        if jobs["build-docs"]["with"].get("stage") != "stage2":
-            fail(f"{name}: release docs must select Stage 2")
+        expected_stage = "all" if name == "l0-release.yml" else "stage2"
+        if jobs["build-docs"]["with"].get("stage") != expected_stage:
+            fail(f"{name}: Pages needs both stages; snapshots only need Stage 2")
         steps = jobs["build-dist"]["steps"]
         checkout_index = next(i for i, s in enumerate(steps) if s.get("uses", "").startswith("actions/checkout@"))
         newline_steps = [s for s in steps[:checkout_index] if s.get("run") == "git config --global core.autocrlf false"]
@@ -381,8 +382,27 @@ def check_stage_docs_contract() -> None:
     for stage in ("stage1", "stage2"):
         assert_contains(validate, f"name: l0-docs-validation-{stage}-autodocs", context="stage-qualified validation artifact")
     publish = yaml.safe_load(read_text(".github/workflows/l0-docs-publish.yml"))
-    if publish["jobs"]["build-docs"]["with"].get("stage") != "stage2":
-        fail("manual publication must select Stage 2")
+    if publish["jobs"]["build-docs"]["with"].get("stage") != "all":
+        fail("manual Pages publication must build both stages")
+    pages = build["jobs"]["stage-pages"]
+    if pages["needs"] != "build-docs" or pages["if"] != "inputs.stage == 'all'":
+        fail("Pages assembly must wait for both independent stage builds")
+    inputs = [s for s in pages["steps"] if s.get("uses", "").startswith("actions/download-artifact@")]
+    if {s["with"]["name"] for s in inputs} != {"l0-docs-stage1-pages-input", "l0-docs-stage2-pages-input"}:
+        fail("Pages must consume both HTML/PDF trees separately")
+    if {s["with"]["path"] for s in inputs} != {"l0/build/docs/stage1", "l0/build/docs/stage2"}:
+        fail("Pages stage input trees must not overwrite each other")
+    uploads = [(name, step) for name, job in build["jobs"].items() for step in job.get("steps", [])
+               if step.get("uses", "").startswith("actions/upload-pages-artifact@")]
+    if len(uploads) != 1 or uploads[0][0] != "stage-pages":
+        fail("Only the combined site may upload the Pages artifact")
+    for name in ("l0-release.yml", "l0-snapshot.yml", "l0-docs-publish.yml"):
+        workflow = yaml.safe_load(read_text(f".github/workflows/{name}"))
+        for job in workflow["jobs"].values():
+            for step in job.get("steps", []):
+                if step.get("uses", "").startswith("actions/download-artifact@"):
+                    if "stage1" in step.get("with", {}).get("name", ""):
+                        fail(f"{name}: compiler/release/blog consumers must not download Stage 1")
 
 
 

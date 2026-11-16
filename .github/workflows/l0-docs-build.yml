@@ -103,15 +103,24 @@ jobs:
           fi
           python3 scripts/gen_docs.py --stage "$DOC_STAGE" ${{ inputs.build_pdf && '--pdf --artifacts' || '' }} --strict
 
-      - name: Stage Pages site
-        if: matrix.stage == 'stage2'
-        run: python3 scripts/stage_docs_pages.py
+      - name: Prepare Pages inputs
+        if: inputs.stage == 'all'
+        env:
+          DOC_STAGE: ${{ matrix.stage }}
+        run: |
+          mkdir -p "build/docs/pages-input/$DOC_STAGE"
+          cp -R "build/docs/$DOC_STAGE/html" "build/docs/pages-input/$DOC_STAGE/"
+          if [ -d "build/docs/$DOC_STAGE/pdf" ]; then
+            cp -R "build/docs/$DOC_STAGE/pdf" "build/docs/pages-input/$DOC_STAGE/"
+          fi
 
-      - name: Upload Pages artifact
-        if: matrix.stage == 'stage2'
-        uses: actions/upload-pages-artifact@v5
+      - name: Upload Pages inputs
+        if: inputs.stage == 'all'
+        uses: actions/upload-artifact@v6
         with:
-          path: l0/build/docs/pages-site
+          name: l0-docs-${{ matrix.stage }}-pages-input
+          path: l0/build/docs/pages-input/${{ matrix.stage }}
+          if-no-files-found: error
 
       - name: Upload generated Markdown artifact
         uses: actions/upload-artifact@v6
@@ -133,3 +142,50 @@ jobs:
           name: l0-docs-${{ matrix.stage }}-autodocs
           path: l0/build/docs/artifacts/dea_l0_${{ matrix.stage }}_autodocs.tar.gz
           if-no-files-found: error
+
+  stage-pages:
+    if: inputs.stage == 'all'
+    needs: build-docs
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: >-
+            ${{
+              inputs.release_tag != '' &&
+              inputs.source_ref == inputs.release_tag &&
+              format('refs/tags/{0}', inputs.release_tag) ||
+              (inputs.source_ref != '' && inputs.source_ref || github.sha)
+            }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Download Stage 1 Pages inputs
+        uses: actions/download-artifact@v7
+        with:
+          name: l0-docs-stage1-pages-input
+          path: l0/build/docs/stage1
+
+      - name: Download Stage 2 Pages inputs
+        uses: actions/download-artifact@v7
+        with:
+          name: l0-docs-stage2-pages-input
+          path: l0/build/docs/stage2
+
+      - name: Stage Pages site
+        working-directory: l0
+        env:
+          REPOSITORY_NAME: ${{ github.event.repository.name }}
+        run: |
+          base_path="/$REPOSITORY_NAME/"
+          if [[ "$REPOSITORY_NAME" == *.github.io ]]; then base_path="/"; fi
+          python3 scripts/stage_docs_pages.py --base-path "$base_path"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: l0/build/docs/pages-site
