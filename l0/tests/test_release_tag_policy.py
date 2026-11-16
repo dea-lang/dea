@@ -308,6 +308,92 @@ def check_docs_publish_workflow() -> None:
         fail("stale upload_pdf_to_release input present in l0-docs-publish.yml")
 
 
+def check_docs_pages_only_job_gates() -> None:
+    """Exercise publication gates with skipped ancestors, failures, and cancellation.
+
+    This evaluates the workflow's actual Boolean conditions over fixture job results,
+    including the implicit success check across ancestors. It models only the expression
+    subset used here; it does not emulate runners, reusable workflows, or publication.
+    """
+    import ast
+    import re
+    import yaml
+
+    jobs = yaml.safe_load(read_text(".github/workflows/l0-docs-publish.yml"))["jobs"]
+
+    def dependencies(name: str) -> list[str]:
+        value = jobs[name].get("needs", [])
+        return [value] if isinstance(value, str) else value
+
+    def ancestors(name: str) -> set[str]:
+        direct = set(dependencies(name))
+        return direct | {ancestor for parent in direct for ancestor in ancestors(parent)}
+
+    def simulate(*, draft: bool = False, pages: bool = True, available: bool = True,
+                 cancelled: bool = False, failures: dict[str, str] | None = None) -> dict[str, str]:
+        results: dict[str, str] = {}
+        inputs = {"attach_release_assets_to_draft": draft, "publish_pages": pages, "publish_blog": False}
+
+        def run(name: str) -> str:
+            if name in results:
+                return results[name]
+            for dependency in dependencies(name):
+                run(dependency)
+            expression = jobs[name].get("if", "success()")
+            expression = expression.removeprefix("${{").removesuffix("}}").strip()
+            success = not cancelled and all(results[parent] == "success" for parent in ancestors(name))
+            if not re.search(r"\b(always|cancelled|success|failure)\s*\(", expression):
+                expression = f"success() && ({expression})"
+            checks = {"always": True, "cancelled": cancelled, "success": success,
+                      "failure": any(results[parent] == "failure" for parent in ancestors(name))}
+            for function, value in checks.items():
+                expression = expression.replace(f"{function}()", repr(value))
+            expression = re.sub(r"inputs\.([a-z_]+)", lambda match: repr(inputs[match[1]]), expression)
+            expression = re.sub(r"needs\.([a-z-]+)\.result", lambda match: repr(results[match[1]]), expression)
+            expression = expression.replace("needs.check-pages-availability.outputs.pages_enabled", repr(str(available).lower()))
+            expression = expression.replace("&&", " and ").replace("||", " or ")
+            expression = re.sub(r"!(?!=)", " not ", expression)
+            parsed = ast.parse(expression.strip(), mode="eval")
+            allowed = (ast.Expression, ast.BoolOp, ast.And, ast.Or, ast.UnaryOp, ast.Not,
+                       ast.Compare, ast.Eq, ast.NotEq, ast.Constant)
+            if any(not isinstance(node, allowed) for node in ast.walk(parsed)):
+                fail(f"unsupported publication condition in {name}: {expression}")
+            enabled = eval(compile(parsed, "<job condition>", "eval"), {"__builtins__": {}})
+            results[name] = (failures or {}).get(name, "success") if enabled else "skipped"
+            return results[name]
+
+        for name in jobs:
+            run(name)
+        return results
+
+    pages_only = simulate()
+    for name in ("check-pages-availability", "resolve-targets", "build-docs", "deploy-pages"):
+        if pages_only[name] != "success":
+            fail(f"Pages without a draft must run {name}; got {pages_only[name]}")
+    for name in ("resolve-draft-release", "attach-release-assets", "upload-blog-export"):
+        if pages_only[name] != "skipped":
+            fail(f"Pages-only publication must not run {name}")
+
+    with_draft = simulate(draft=True)
+    if any(with_draft[name] != "success" for name in ("resolve-draft-release", "build-docs", "deploy-pages", "attach-release-assets")):
+        fail("draft attachment with Pages must retain its successful path")
+    for failed_job in ("resolve-targets", "build-docs", "check-pages-availability"):
+        for outcome in ("failure", "cancelled", "skipped"):
+            result = simulate(failures={failed_job: outcome})
+            if result["deploy-pages"] != "skipped":
+                fail(f"Pages must not deploy after {failed_job} is {outcome}")
+            if failed_job == "resolve-targets" and result["build-docs"] != "skipped":
+                fail("documentation must not build without successful target resolution")
+    for draft in (False, True):
+        result = simulate(draft=draft, cancelled=True)
+        if result["build-docs"] != "skipped" or result["deploy-pages"] != "skipped":
+            fail("cancelled publication must not build or deploy documentation")
+    for options in ({"pages": False}, {"available": False}):
+        result = simulate(**options)
+        if result["build-docs"] != "success" or result["deploy-pages"] != "skipped":
+            fail("disabled or unavailable Pages must skip deployment without suppressing the build")
+
+
 def check_docs_build_workflow() -> None:
     text = read_text(".github/workflows/l0-docs-build.yml")
     assert_contains(text, "inputs.release_tag != ''", context="l0-docs-build.yml")
@@ -490,6 +576,7 @@ def main() -> int:
     check_release_workflow()
     check_snapshot_workflow()
     check_docs_publish_workflow()
+    check_docs_pages_only_job_gates()
     check_docs_build_workflow()
     check_docs_validate_workflow()
     check_docs()

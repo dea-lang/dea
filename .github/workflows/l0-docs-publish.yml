@@ -232,6 +232,8 @@ jobs:
 
   build-docs:
     needs: resolve-targets
+    # Draft resolution is optional; do not inherit its skipped ancestor status.
+    if: ${{ !cancelled() && needs.resolve-targets.result == 'success' }}
     uses: ./.github/workflows/l0-docs-build.yml
     with:
       stage: all
@@ -249,6 +251,9 @@ jobs:
       - check-pages-availability
       - build-docs
     if: >-
+      !cancelled() &&
+      needs.build-docs.result == 'success' &&
+      needs.check-pages-availability.result == 'success' &&
       needs.check-pages-availability.outputs.pages_enabled == 'true' &&
       inputs.publish_pages
     runs-on: ubuntu-26.04
