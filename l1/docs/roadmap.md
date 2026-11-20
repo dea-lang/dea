@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-11-11
+Version: 2026-11-20
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -26,8 +26,8 @@ scope amendment; the deferred successor feature plans belong to L2.
   [l1/work/plans/features/closed/2026-08-30-file-handles-and-random-access-noref.md][plan-files].
 
 - `std.entropy` implements secure host bytes, partial-failure progress, and owned random-byte results through the
-  synchronous buffer range API. Native CI and ADR closure remain tracked in
-  [l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][plan-entropy].
+  synchronous buffer range API. Native CI passed on all four supported platforms, and ADR-0064 records the completed
+  feature. See [l1/work/plans/features/closed/2026-08-30-secure-os-entropy-noref.md][plan-entropy].
 
 - The canonical `.l0` implementation lives under `compiler/src/`; its support and tests are level-owned.
 
@@ -386,9 +386,9 @@ file-watch design, and concurrency now belong to L2.
 
 - [l1/work/initiatives/0003-c-ffi.md][c-ffi] remains on hold. Broader first-class C interoperability is deferred to L2;
   the existing L1 history is preserved.
-- [l1/work/initiatives/0006-process-and-host-services.md][host-services] retains entropy, temporary objects, shell-free
-  processes, and anonymous pipes. Time/deadline work is complete. Process output uses explicit files/pipes; concurrent
-  in-memory capture is deferred.
+- [l1/work/initiatives/0006-process-and-host-services.md][host-services] retains temporary objects, shell-free
+  processes, and anonymous pipes. Entropy and time/deadline work are complete. Process output uses explicit files/pipes;
+  concurrent in-memory capture is deferred.
 - [l1/work/initiatives/0010-explicit-profiles-and-composable-builds.md][explicit-profiles] has completed phases A
   through C and implements Phase D's P1689R5 report and external Make adapter in
   [l1/work/plans/features/closed/2026-10-21-semantic-dependency-discovery-noref.md][dependency-discovery].
@@ -458,7 +458,8 @@ file-watch design, and concurrency now belong to L2.
 - Refactor [l1/work/plans/refactors/closed/2026-11-10-byte-buffer-range-actions-noref.md][buffer-range-actions]
   implements synchronous unsafe range callbacks and file-owned adapters with by-value context/results. Focused checks,
   allocation traces, and CI passed. ADR-0063 records the protocol, with buffer and file-transfer decisions in
-  ADR-0052/0059. Entropy adoption remains separate.
+  ADR-0052/0059. Entropy adoption is complete in
+  [l1/work/plans/features/closed/2026-08-30-secure-os-entropy-noref.md][plan-entropy].
 
 - Bug Fix [2026-11-11-readme-implemented-library-status-noref][readme-library-status] corrects the README to list typed
   formatting and file handles as implemented while preserving pending stabilization work and release distinctions.
@@ -476,13 +477,12 @@ Readiness is independent of lifecycle status. `ready` means implementation can b
 immediate prerequisite remains; `not-ready` means required foundations have not landed; `speculative` means unresolved
 design investigation. `implemented` means implementation is present but the plan still has validation or closure work.
 
-| Readiness   | Plan                                                                                               | Remaining gate                                                             |
-| ----------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| implemented | [l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][plan-entropy]                       | Range-action adapter implemented; native CI and final ADR closure remain.  |
-| not-ready   | [l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md][plan-temp]     | Entropy implementation awaits native CI; file prerequisites are satisfied. |
-| ready       | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied.                  |
-| not-ready   | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                                      |
-| not-ready   | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.                        |
+| Readiness | Plan                                                                                               | Remaining gate                                                                                                  |
+| --------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| ready     | [l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md][plan-temp]     | File and secure-entropy prerequisites passed native CI; define the planned API contracts during implementation. |
+| ready     | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied.                                                       |
+| not-ready | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                                                                           |
+| not-ready | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.                                                             |
 
 The [work/plans/features/closed/2026-10-29-l1-stabilization-boundary-noref.md][boundary-plan] coordinates plan ownership
 and roadmap changes.
@@ -639,7 +639,7 @@ update to be promoted to an initiative or plan:
 [parenthesized-casted-place-arc]: ../../work/plans/bug-fixes/closed/2026-08-21-shared-parenthesized-casted-place-arc-classification-noref.md
 [per-module-generated-c]: ../work/plans/features/closed/2026-07-24-per-module-generated-c-mode-noref.md
 [plan-buffers]: ../work/plans/features/closed/2026-08-30-dynamic-byte-buffers-noref.md
-[plan-entropy]: ../work/plans/features/2026-08-30-secure-os-entropy-noref.md
+[plan-entropy]: ../work/plans/features/closed/2026-08-30-secure-os-entropy-noref.md
 [plan-files]: ../work/plans/features/closed/2026-08-30-file-handles-and-random-access-noref.md
 [plan-process]: ../work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md
 [plan-temp]: ../work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md

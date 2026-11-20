@@ -17,7 +17,7 @@
   - [l1/work/initiatives/0011-l1-stabilization.md][stabilization]
   - [l1/work/plans/features/closed/2026-08-30-typed-formatting-noref.md][format-plan]
   - [l1/work/plans/features/closed/2026-08-30-file-handles-and-random-access-noref.md][file-plan]
-  - [l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][entropy-plan]
+  - [l1/work/plans/features/closed/2026-08-30-secure-os-entropy-noref.md][entropy-plan]
 - Repro: The README's former "Motivation" paragraph listed completed formatting and file handles as planned work.
 
 ## Summary
@@ -50,9 +50,9 @@ owned-string results. [l1/compiler/shared/l1/stdlib/std/file.l1][file-source] ex
 transfer, positioning, metadata, and synchronization operations. The README now agrees with that implementation and its
 existing lifecycle records without implying a new release or completion of remaining acceptance gates.
 
-Secure OS entropy is implemented as well. Its native CI and final ADR closure remain tracked in the
-[l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][entropy-plan]; the README preserves that distinction
-between implementation and acceptance.
+Secure OS entropy is implemented as well. Its native CI evidence and architectural acceptance are recorded in
+[l1/work/plans/features/closed/2026-08-30-secure-os-entropy-noref.md][entropy-plan]. The README preserves the
+distinction between implemented capabilities and remaining stabilization acceptance.
 
 ## Verification
 
@@ -65,7 +65,7 @@ between implementation and acceptance.
 - This is documentation-only validation. Library tests and historical native CI acceptance were not rerun; no library,
   compiler, runtime, test, diagnostic, release-baseline, or stabilization-scope input changed.
 
-[entropy-plan]: ../../features/2026-08-30-secure-os-entropy-noref.md
+[entropy-plan]: ../../features/closed/2026-08-30-secure-os-entropy-noref.md
 [file-plan]: ../../features/closed/2026-08-30-file-handles-and-random-access-noref.md
 [file-source]: ../../../../compiler/shared/l1/stdlib/std/file.l1
 [format-plan]: ../../features/closed/2026-08-30-typed-formatting-noref.md

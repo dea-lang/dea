@@ -1,7 +1,7 @@
 # ADR-0063: Synchronous Byte-Buffer Range Actions
 
 - Decision date: 2026-11-11
-- Last edited: 2026-11-11
+- Last edited: 2026-11-20
 - Status: Accepted
 
 ## Context
@@ -69,6 +69,7 @@ buffer growth, asynchronous lifetime extension, rollback, or claim of zero execu
 ## Related Plans
 
 - [l1/work/plans/refactors/closed/2026-11-10-byte-buffer-range-actions-noref.md][range-plan]
+- [l1/work/plans/features/closed/2026-08-30-secure-os-entropy-noref.md][entropy-plan]
 
 ## Current Docs
 
@@ -78,6 +79,7 @@ buffer growth, asynchronous lifetime extension, rollback, or claim of zero execu
 - [l1/docs/reference/design-decisions.md][design]
 
 [design]: ../reference/design-decisions.md
+[entropy-plan]: ../../work/plans/features/closed/2026-08-30-secure-os-entropy-noref.md
 [filesystem]: ../reference/filesystem.md
 [ownership]: ../reference/ownership.md
 [range-plan]: ../../work/plans/refactors/closed/2026-11-10-byte-buffer-range-actions-noref.md

@@ -2,8 +2,8 @@
 
 ## Add secure operating-system entropy
 
-- Date: 2026-08-30
-- Status: In Progress
+- Date: 2026-11-20
+- Status: Completed
 - Title: Add a secure operating-system entropy module distinct from pseudorandom generation
 - Kind: Feature
 - Priority: Medium
@@ -32,8 +32,9 @@
 
 ## Summary
 
-Implemented `std.entropy` for bytes supplied by the operating system. It is separate from deterministic `std.rand`,
-reports host failure directly, and never substitutes a predictable generator when secure entropy is unavailable.
+Implemented and accepted `std.entropy` for bytes supplied by the operating system. It is separate from deterministic
+`std.rand`, reports host failure directly, and never substitutes a predictable generator when secure entropy is
+unavailable. Native four-platform CI passed; ADR-0064 records the accepted provider contract.
 
 The range protocol and file migration are implemented, validated, and closed in
 [l1/work/plans/refactors/closed/2026-11-10-byte-buffer-range-actions-noref.md][range-actions]. This feature uses that
@@ -92,9 +93,9 @@ prefix, and unchanged failed suffix and surrounding bytes. Retain the secure OS 
 buffer; retain that ownership behavior and release partial buffers before returning failure without exposing them.
 Measure range/context/result transport separately from this explicit creation API and from native loader resources.
 
-The initial entropy ADR will record the provider contract and reference
-[l1/docs/decisions/0063-synchronous-byte-buffer-range-actions.md][range-adr]. Assign the entropy ADR number from the
-live index at feature closure and add the closed-plan backlinks in the same change.
+The provider contract is recorded in [l1/docs/decisions/0064-secure-operating-system-entropy.md][entropy-adr], which
+references [l1/docs/decisions/0063-synchronous-byte-buffer-range-actions.md][range-adr]. ADR-0045 and ADR-0063 link to
+this closed plan.
 
 ## Implementation Scope
 
@@ -105,7 +106,7 @@ compiler diagnostic or diagnostic-code allocation changes are required.
 
 New coverage checks logical ranges, empty dispatch, partial failures, runtime symbols, private schema rejection,
 interface-only use, allocation-free fill, and result cleanup. Stable references describe the delivered API and ownership
-contract; CI evidence and feature closure remain in this plan.
+contract; native CI acceptance and feature closure are recorded below.
 
 ## Host Source Decisions
 
@@ -146,8 +147,8 @@ Primary contracts reviewed: [Linux getrandom][linux-random], [FreeBSD getrandom]
   transport-allocation claim.
 
 Reproduce focused `entropy_runtime_test.py` coverage and the registered `entropy_main` child trace from `l1/`, plus the
-affected byte-buffer, OS-error, interface, and runtime-symbol regressions. Exhaustive native platform checks remain
-assigned to CI.
+affected byte-buffer, OS-error, interface, and runtime-symbol regressions. CI also passed the exhaustive native platform
+checks recorded below.
 
 ## Implementation Status
 
@@ -157,9 +158,9 @@ assigned to CI.
   regressions.
 - [x] Updated stable API/ownership references and ADR-0045; independent correctness and portability review found no
   outstanding production issue.
-- [ ] Obtain native CI evidence for Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64.
-- [ ] Create the entropy ADR and index entry, add closed-plan backlinks to ADR-0045/0063, and close the feature plan
-  with its initiative and roadmap links after acceptance.
+- [x] Verified passing native CI for Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64.
+- [x] Created ADR-0064 and its index entry, added closed-plan backlinks to ADR-0045/0063, and closed the feature plan
+  with updated initiative, roadmap, and dependent-plan links.
 
 ## Local Verification Evidence
 
@@ -199,8 +200,41 @@ make test-compiler-trace-children TESTS="bytes_main range_action_main file_main 
 make docs
 ```
 
-No native Linux, Windows, macOS ARM, or BSD execution is claimed by these local checks. Simulations and documentation
-review do not replace native CI. Broad aggregates, exhaustive compiler validation, and final ADR closure remain pending.
+These local checks provide native macOS Intel evidence and separately identified simulations. Native acceptance on the
+four supported CI platforms is recorded below; no native BSD execution is claimed.
+
+## Native CI Acceptance and Closure
+
+Verified on 2026-11-20 against the public `dea-lang/dea` repository: hosted `Unified CI` on 2026-11-12 passed L1
+`make test-ci` on all four supported native platforms. The successful L1 delegate steps and job logs confirm execution
+of the complete normal suite including CI-only cases, environment/bootstrap checks, canonical traces, and child
+fixtures. Each platform passed `entropy_runtime_test.py` and `entropy_main`; the child entropy trace reported zero
+leaked object or string pointers.
+
+| Platform       | Selected compiler executable and version                    | Result |
+| -------------- | ----------------------------------------------------------- | ------ |
+| Linux x86_64   | `/usr/bin/gcc`, GCC 15.2.0                                  | Passed |
+| macOS Intel    | `/usr/bin/clang`, Apple Clang 17.0.0 (`clang-1700.0.13.5`)  | Passed |
+| macOS ARM      | `/usr/bin/clang`, Apple Clang 21.0.0 (`clang-2100.1.1.101`) | Passed |
+| Windows UCRT64 | `/ucrt64/bin/gcc`, GCC 16.2.0 (MSYS2 Rev4)                  | Passed |
+
+The same workflow passed strict L1 reference generation with the full PDF and verified bundle. The native results are
+reused for this documentation-only closure: L1 compiler, runtime, test, build, shared tooling, and dependency versions
+remain unchanged from the accepted inputs. Subsequent L0 release metadata and documentation/publication changes do not
+alter the validated entropy implementation or compiler construction inputs. No runtime, ownership, trace, or build
+behavior changes in this closure.
+
+Reproduce the exhaustive gate from `l1/` with the platform's explicit compiler and L0 bootstrap selection:
+
+```sh
+make test-ci
+```
+
+The entropy feature is complete. Initiative 0006 remains active for temporary objects and processes/pipes; temporary
+objects now have accepted file and entropy prerequisites.
+
+Closure validation passed strict `make docs` and rendered local Markdown link-target checks. The accepted native
+compiler suites were reused without rerunning unchanged code.
 
 ## Non-Goals
 
@@ -217,7 +251,7 @@ review do not replace native CI. Broad aggregates, exhaustive compiler validatio
 
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0064-secure-operating-system-entropy.md`
   - Rationale: Temporary-name and security-sensitive consumers must not accidentally receive predictable output when the
     operating system cannot provide entropy. Record the provider-owned callback adapter and native error preservation
     while referencing the generic range protocol's ADR; `std.bytes` remains independent of OS operations.
@@ -250,10 +284,11 @@ review do not replace native CI. Broad aggregates, exhaustive compiler validatio
 
 [apple-entropy]: https://raw.githubusercontent.com/apple-oss-distributions/xnu/main/bsd/man/man2/getentropy.2
 [bcrypt]: https://learn.microsoft.com/en-us/windows/win32/api/bcrypt/nf-bcrypt-bcryptgenrandom
+[entropy-adr]: ../../../../docs/decisions/0064-secure-operating-system-entropy.md
 [freebsd-random]: https://man.freebsd.org/cgi/man.cgi?query=getrandom&sektion=2
 [linux-random]: https://man7.org/linux/man-pages/man2/getrandom.2.html
 [netbsd-random]: https://man.netbsd.org/getrandom.2
 [openbsd-entropy]: https://man.openbsd.org/getentropy.2
-[range-actions]: ../refactors/closed/2026-11-10-byte-buffer-range-actions-noref.md
-[range-adr]: ../../../docs/decisions/0063-synchronous-byte-buffer-range-actions.md
+[range-actions]: ../../refactors/closed/2026-11-10-byte-buffer-range-actions-noref.md
+[range-adr]: ../../../../docs/decisions/0063-synchronous-byte-buffer-range-actions.md
 [system-loader]: https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryexw

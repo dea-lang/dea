@@ -1,13 +1,13 @@
 # L1 Initiative 0006 - Process and Host Services
 
-- Version: 2026-11-11
+- Version: 2026-11-20
 - Status: Active
 - Kind: Initiative
 - Open plans:
-  - `l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md`
   - `l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md`
   - `l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md`
 - Closed plans:
+  - `l1/work/plans/features/closed/2026-08-30-secure-os-entropy-noref.md`
   - `l1/work/plans/features/closed/2026-08-30-time-width-sleep-and-deadlines-noref.md`
 
 ## Summary
@@ -34,8 +34,9 @@ requirements for this initiative or its stdlib plans.
 
 - `std.system::system` runs one shell command string but does not model a child process or argument vector.
 - L1 has no pipe endpoints, wait status, child standard-stream redirection, or termination API.
-- `std.entropy` implements fallible secure host bytes through the synchronous buffer range protocol; native CI and
-  feature ADR closure remain pending. `std.rand` is deterministic and is not a secure entropy source.
+- `std.entropy` supplies fallible secure host bytes through the synchronous buffer range protocol. Native CI passed on
+  all four platforms, and ADR-0064 records the completed feature. `std.rand` is deterministic and is not a secure
+  entropy source.
 - There is no race-free temporary-file or temporary-directory API.
 - `std.time` uses `long` seconds and normalized `int` nanoseconds. Checked calendar conversion, monotonic sleep,
   deadlines, structured errors, and explicit interruption/resumption are implemented.
@@ -56,8 +57,10 @@ requirements for this initiative or its stdlib plans.
 
 ### Phase 0 - Secure entropy (Stdlib Tier 2)
 
-`fill` and `random_bytes` are implemented using supported OS entropy facilities without a deterministic fallback. The
-feature plan owns remaining native CI and ADR closure; this initiative remains active for other host services.
+Completed: `fill` and `random_bytes` use supported OS entropy facilities without a deterministic fallback. Native L1
+`make test-ci` passed on Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64, including the entropy runtime suite
+and child trace with zero leaked object or string pointers. ADR-0064 records the accepted contract. This initiative
+remains active for temporary objects and processes/pipes.
 
 Spawned plan: [secure OS entropy].
 
@@ -109,10 +112,10 @@ Spawned plan: [time width, sleep, and deadlines].
   - Rationale: Process construction and endpoint inheritance are durable portability, security, and ownership contracts.
 - Decision: Separate secure operating-system entropy from deterministic pseudorandom generation.
   - Scope: L1
-  - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
-  - Rationale: Security-sensitive consumers must fail explicitly when host entropy is unavailable and must never receive
-    a deterministic fallback silently.
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0064-secure-operating-system-entropy.md`
+  - Rationale: The completed entropy contract records secure host sources, explicit partial failures, captured native
+    errors, and no predictable fallback.
 - Decision: Use `long` seconds for general time values and monotonic time for deadlines.
   - Scope: L1
   - Disposition: Covered by ADR
@@ -129,6 +132,6 @@ Spawned plan: [time width, sleep, and deadlines].
 [initiative 0005]: closed/0005-filesystem-and-stream-io.md
 [l1 roadmap]: ../../docs/roadmap.md
 [process spawning and anonymous pipes]: ../plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md
-[secure os entropy]: ../plans/features/2026-08-30-secure-os-entropy-noref.md
+[secure os entropy]: ../plans/features/closed/2026-08-30-secure-os-entropy-noref.md
 [secure temporary objects]: ../plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md
 [time width, sleep, and deadlines]: ../plans/features/closed/2026-08-30-time-width-sleep-and-deadlines-noref.md

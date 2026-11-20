@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-11-12
+Version: 2026-11-20
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -832,8 +832,9 @@ zero-progress rules. Native domain and full-width codes survive explicit convers
 The runtime stages at most 256 bytes and copies only successful chunks, so a failed host call cannot modify the
 remaining destination suffix. Successful short fills continue. Empty requests make no host call. `fill` preserves buffer
 ownership, length, and capacity; `random_bytes` returns one owned buffer or frees the partial buffer before returning
-failure. Neither API promises secure erasure. See [l1/docs/reference/standard-library.md][entropy-library] and
-[l1/docs/reference/ownership.md][entropy-ownership].
+failure. Neither API promises secure erasure. The accepted decision is recorded in
+[l1/docs/decisions/0064-secure-operating-system-entropy.md][entropy-adr]. Current contracts are in
+[l1/docs/reference/standard-library.md][entropy-library] and [l1/docs/reference/ownership.md][entropy-ownership].
 
 ## Wide Time, Monotonic Deadlines, and Explicit Sleep Interruption
 
@@ -859,6 +860,7 @@ See [l1/docs/decisions/0050-wide-time-and-monotonic-deadlines.md][time-width] an
 [buffer-range-actions]: ../decisions/0063-synchronous-byte-buffer-range-actions.md
 [byte-buffer-decision]: ../decisions/0052-owned-dynamic-byte-buffers.md
 [byte-buffer-library]: standard-library.md#stdbytes
+[entropy-adr]: ../decisions/0064-secure-operating-system-entropy.md
 [entropy-library]: standard-library.md#stdentropy
 [entropy-ownership]: ownership.md#stdentropy-randombytesresult
 [file-buffers]: ../decisions/0059-presized-byte-buffer-file-transfers.md

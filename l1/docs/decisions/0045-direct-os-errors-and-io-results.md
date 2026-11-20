@@ -1,7 +1,7 @@
 # ADR-0045: Direct OS Errors and I/O Results
 
 - Decision date: 2026-10-21
-- Last edited: 2026-11-11
+- Last edited: 2026-11-20
 - Status: Accepted
 
 ## Context
@@ -36,6 +36,9 @@ API errors use `Win32`. BCrypt provider failures use `NtStatus`, preserving the 
 provider-owned decoder preserves the captured domain and full code through the generic range diagnostic fields. Normal
 and traced runtimes export the same symbol surface.
 
+The accepted secure-source and completed-prefix contract is recorded in
+[l1/docs/decisions/0064-secure-operating-system-entropy.md][entropy-adr].
+
 ## Rationale
 
 Portable control flow needs stable categories while diagnostics need the original native domain and value. Concrete
@@ -57,6 +60,7 @@ error foundation to pending file-handle or stream-adapter lifetime decisions.
 ## Related Plans
 
 - [l1/work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md][os-errors]
+- [l1/work/plans/features/closed/2026-08-30-secure-os-entropy-noref.md][entropy-plan]
 - [l1/work/initiatives/closed/0005-filesystem-and-stream-io.md][filesystem-io]
 
 ## Current Docs
@@ -66,6 +70,8 @@ error foundation to pending file-handle or stream-adapter lifetime decisions.
 - [l1/docs/project-status.md][status]
 
 [design]: ../reference/design-decisions.md
+[entropy-adr]: 0064-secure-operating-system-entropy.md
+[entropy-plan]: ../../work/plans/features/closed/2026-08-30-secure-os-entropy-noref.md
 [filesystem-io]: ../../work/initiatives/closed/0005-filesystem-and-stream-io.md
 [os-errors]: ../../work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md
 [status]: ../project-status.md

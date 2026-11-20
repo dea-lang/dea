@@ -23,7 +23,7 @@
   - `l1/compiler/scripts/test_runner_common.py` (child-fixture registration)
 - Related:
   - [l1/work/plans/features/closed/2026-08-30-file-handles-and-random-access-noref.md][file-plan]
-  - [l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][entropy-plan]
+  - [l1/work/plans/features/closed/2026-08-30-secure-os-entropy-noref.md][entropy-plan]
   - [l1/docs/decisions/0052-owned-dynamic-byte-buffers.md][buffer-adr]
   - [l1/docs/decisions/0059-presized-byte-buffer-file-transfers.md][transfer-adr]
   - [l1/docs/decisions/0063-synchronous-byte-buffer-range-actions.md][protocol-adr]
@@ -231,9 +231,9 @@ handle and operation resources, are outside the Dea heap-transport guarantee and
 ## Follow-On Entropy Work
 
 The entropy feature depends on validated range actions and file adapters.
-[l1/work/plans/features/2026-08-30-secure-os-entropy-noref.md][entropy-plan] owns its callback adapter, public API,
-native source selection, staging, error domains, result ownership, ADRs, and validation. Native entropy operations and
-entropy-specific result conversion belong in the provider module, keeping `std.bytes` independent of I/O. Entropy
+[l1/work/plans/features/closed/2026-08-30-secure-os-entropy-noref.md][entropy-plan] owns its callback adapter, public
+API, native source selection, staging, error domains, result ownership, ADRs, and validation. Native entropy operations
+and entropy-specific result conversion belong in the provider module, keeping `std.bytes` independent of I/O. Entropy
 implementation and integration are outside this refactor and do not block its closure.
 
 ## Completion
@@ -355,7 +355,7 @@ performance claim. The protocol can support later non-I/O actions without implem
 [adr-index]: ../../../../docs/decisions/INDEX.md
 [buffer-adr]: ../../../../docs/decisions/0052-owned-dynamic-byte-buffers.md
 [design]: ../../../../docs/reference/design-decisions.md
-[entropy-plan]: ../../features/2026-08-30-secure-os-entropy-noref.md
+[entropy-plan]: ../../features/closed/2026-08-30-secure-os-entropy-noref.md
 [file-plan]: ../../features/closed/2026-08-30-file-handles-and-random-access-noref.md
 [filesystem]: ../../../../docs/reference/filesystem.md
 [guidance]: ../../../../AGENTS.md
