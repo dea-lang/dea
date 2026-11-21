@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-11-20
+Version: 2026-11-21
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -24,6 +24,9 @@ scope amendment; the deferred successor feature plans belong to L2.
   positioning, positional I/O, native append, opened-object metadata, and synchronization. Native CI passed on all four
   supported platforms, and the implementation plan is complete. See
   [l1/work/plans/features/closed/2026-08-30-file-handles-and-random-access-noref.md][plan-files].
+
+- `std.temp` creates private files and directories and reports explicit cleanup outcomes. Native acceptance remains open
+  under [l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md][plan-temp].
 
 - `std.entropy` implements secure host bytes, partial-failure progress, and owned random-byte results through the
   synchronous buffer range API. Native CI passed on all four supported platforms, and ADR-0064 records the completed
@@ -477,12 +480,12 @@ Readiness is independent of lifecycle status. `ready` means implementation can b
 immediate prerequisite remains; `not-ready` means required foundations have not landed; `speculative` means unresolved
 design investigation. `implemented` means implementation is present but the plan still has validation or closure work.
 
-| Readiness | Plan                                                                                               | Remaining gate                                                                                                  |
-| --------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| ready     | [l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md][plan-temp]     | File and secure-entropy prerequisites passed native CI; define the planned API contracts during implementation. |
-| ready     | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied.                                                       |
-| not-ready | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                                                                           |
-| not-ready | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.                                                             |
+| Readiness   | Plan                                                                                               | Remaining gate                                            |
+| ----------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| implemented | [l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md][plan-temp]     | Four-platform native validation and ADR closure.          |
+| ready       | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied. |
+| not-ready   | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                     |
+| not-ready   | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.       |
 
 The [work/plans/features/closed/2026-10-29-l1-stabilization-boundary-noref.md][boundary-plan] coordinates plan ownership
 and roadmap changes.

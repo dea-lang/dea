@@ -1,0 +1,145 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module temp_main;
+
+import std.temp;
+import std.file as file;
+import std.fs as fs;
+import std.bytes as bytes;
+import std.os;
+import std.path as paths;
+import std.system as system;
+import std.assert;
+import std.io;
+
+/**
+ * Require exact progress and successful release of the owner.
+ *
+ * @param result Consuming cleanup result.
+ * @param expected Expected entry count.
+ */
+func cleaned(result: CleanupResult, expected: long) {
+    if (result.close_failure != null) { assert(false, error_message((result.close_failure as Failure).error)); }
+    if (result.removal_failure != null) { assert(false, error_message((result.removal_failure as Failure).error)); }
+    assert(result.removed == expected, "cleanup count");
+}
+
+/**
+ * Require a filesystem mutation to succeed.
+ *
+ * @param result Mutation result.
+ */
+func mutated(result: fs::FsResult) {
+    match (result) { FsOk => {} FsFailed(error) => { assert(false, error_message(error)); } }
+}
+
+/**
+ * Exercise normal file ownership and publication in a private directory.
+ *
+ * @param root Owned working directory.
+ * @param replace_name Whether to install a different object at the old name.
+ */
+func publish(root: string, replace_name: bool) {
+    let result = create_file(root);
+    match (result) {
+        TempFileFailed(primary, rollback) => { assert(false, error_message(primary.error)); }
+        CreatedFile(path, handle, owner) => {
+            with (let data = bytes::from_string("hello") => bytes::free(data)) {
+                match (file::write_all(handle, data, 0, 5)) {
+                    WriteComplete(n) => { assert(n == 5, "write count"); }
+                    _ => { assert(false, "file write"); }
+                }
+            }
+            assert(is(file::close(handle), file::Closed), "ordinary close");
+            let dest = root + "/published";
+            mutated(fs::replace(path, dest));
+            if (replace_name) { assert(fs::write_file(path, "replacement") != null, "create replacement"); }
+            let outcome = close_and_remove(result);
+            if (replace_name) {
+                assert(outcome.removed == 0 as long && outcome.close_failure == null, "replacement progress");
+                let failure = outcome.removal_failure as Failure;
+                assert(is(failure.operation, VerifyIdentity) && failure.path == path, "replacement diagnostic");
+                assert(fs::read_file(path) == ("replacement" as string?), "replacement content");
+                mutated(fs::remove_file(path));
+            } else { cleaned(outcome, 0 as long); }
+            assert(fs::read_file(dest) == ("hello" as string?), "published content");
+        }
+    }
+}
+
+/**
+ * Exercise public temporary ownership with an optional explicit parent.
+ *
+ * @return Zero after all creation and cleanup assertions pass.
+ */
+func main() -> int {
+    let selected_parent: string? = null;
+    if (system::argc() > 1) { selected_parent = system::argv(1); }
+    if (system::argc() > 2) {
+        if (system::argv(2) == "selected-default") {
+            match (system_temp_dir()) {
+                ResolvedPath(path) => {
+                    match (fs::same_file(path, selected_parent as string)) {
+                        SameFile(same) => { assert(same, "default precedence"); }
+                        _ => { assert(false, "inspect selected default"); }
+                    }
+                }
+                _ => { assert(false, "valid override"); }
+            }
+            selected_parent = null;
+        } else if (system::argv(2) == "bad-default") {
+            assert(is(system_temp_dir(), fs::PathFailed), "invalid default discovery");
+            let failed = create_file(null);
+            assert(is(failed, TempFileFailed), "invalid default creation");
+            cleaned(close_and_remove(failed), 0 as long);
+            cleaned(remove_tree(create_dir(selected_parent)), 1 as long);
+            return 0;
+        }
+        else {
+            let bad = create_dir(selected_parent);
+            assert(is(bad, TempDirFailed), "invalid parent accepted");
+            cleaned(remove_tree(bad), 0 as long);
+            return 0;
+        }
+    }
+    if (selected_parent == null) {
+        match (system_temp_dir()) {
+            PathFailed(error) => { assert(false, error_message(error)); }
+            ResolvedPath(path) => { assert(fs::is_dir(path), "system parent"); }
+        }
+    }
+    let empty = create_file("");
+    assert(is(empty, TempFileFailed), "empty parent");
+    cleaned(close_and_remove(empty), 0 as long);
+    let invalid = create_dir("a\0b");
+    assert(is(invalid, TempDirFailed), "embedded NUL");
+    cleaned(remove_tree(invalid), 0 as long);
+    let result = create_dir(selected_parent);
+    match (result) {
+        TempDirFailed(primary, rollback) => { assert(false, error_message(primary.error)); }
+        CreatedDir(root, owner) => {
+            if (system::argc() > 1) {
+                match (fs::same_file(paths::parent(root), system::argv(1))) {
+                    SameFile(same) => { assert(same, "created under selected parent"); }
+                    _ => { assert(false, "created parent inspection"); }
+                }
+            }
+            let child = root + "/directory with spaces café";
+            mutated(fs::create_dir(child));
+            let removed = create_file(child);
+            match (removed) {
+                CreatedFile(path, handle, own) => { assert(fs::is_file(path), "private file"); }
+                TempFileFailed(primary, rollback) => { assert(false, error_message(primary.error)); }
+            }
+            cleaned(close_and_remove(removed), 1 as long);
+            publish(child, false);
+            publish(child, true);
+            cleaned(remove_tree(result), 3 as long);
+            assert(!fs::exists(root), "private root removed");
+        }
+    }
+    printl_s("temp_main: PASS");
+    return 0;
+}

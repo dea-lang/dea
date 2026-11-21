@@ -113,6 +113,9 @@ extern void DEA_RUNTIME_OS_CLEARERR(FILE *stream);
 /* Stateful file operations reuse the direct filesystem transports. */
 #include "../internal/dea_rt_file.h"
 
+/* Temporary owners adopt the existing native file wrapper. */
+#include "../internal/dea_rt_temp.h"
+
 /* =========================================================================
  * Runtime support for file I/O and metadata, stdin/stdout/stderr stream I/O,
  * formatted printing of dea values (strings, integers, floats, booleans),

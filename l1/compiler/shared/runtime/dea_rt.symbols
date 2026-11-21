@@ -195,6 +195,9 @@ rt_string_retain
 rt_string_slice
 rt_strlen
 rt_system
+rt_temp_create
+rt_temp_parent
+rt_temp_remove
 rt_time_local_is_dst
 rt_time_local_offset_sec
 rt_time_monotonic

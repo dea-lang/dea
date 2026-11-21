@@ -14,7 +14,7 @@ module std.file;
 
 export opaque { File }, FileOffset, AccessMode, CreateMode, SeekOrigin, OpenOptions,
     OpenFileResult, CloseResult, OffsetResult, ReadExactResult, WriteAllResult,
-    open, close, free_open_file_result, read_some, read_exact, write_some, write_all,
+    _adopt_open_handle, open, close, free_open_file_result, read_some, read_exact, write_some, write_all,
     seek, position, read_at, write_at, size, truncate, metadata, flush, sync_data, sync_all;
 
 import sys.fs;
@@ -305,6 +305,14 @@ func _offset_result(result: RtFileOffset) -> OffsetResult {
 }
 
 /**
+ * Adopt an already opened runtime file wrapper into ordinary file ownership.
+ *
+ * @param handle Newly owned file wrapper from sys.fs.
+ * @return Borrowable file pointer with one result cleanup obligation.
+ */
+unsafe func _adopt_open_handle(handle: void*) -> File* { return new File(handle); }
+
+/**
  * Open a file with direct native I/O and child inheritance disabled.
  *
  * Register free_open_file_result with with cleanup before matching the result.
@@ -319,7 +327,7 @@ func _offset_result(result: RtFileOffset) -> OffsetResult {
 func open(path: string, options: OpenOptions) -> OpenFileResult {
     let result = rt_file_open(path, _access_tag(options.access), _create_tag(options.create), options.append);
     if (!result.ok) { return OpenFileFailed(os::_os_error_from_rt(result.error)); }
-    return OpenedFile(new File(result.handle as void*));
+    return OpenedFile(_adopt_open_handle(result.handle as void*));
 }
 
 /**

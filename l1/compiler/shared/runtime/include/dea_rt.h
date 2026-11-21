@@ -615,6 +615,42 @@ struct __deaM3sys2fsS12RtFileOffset {
 };
 #endif
 
+#ifndef DEA_DEFINED___deaM3sys2fsS10RtTempOpen
+#define DEA_DEFINED___deaM3sys2fsS10RtTempOpen
+
+/** Exclusive creation and rollback result. */
+struct __deaM3sys2fsS10RtTempOpen {
+    void *owner;
+    void *file_handle;
+    dea_string path;
+    dea_int operation;
+    struct __deaM3sys2osS9RtOsError error;
+    dea_int rollback_operation;
+    struct __deaM3sys2osS9RtOsError rollback;
+};
+#endif
+
+#ifndef DEA_DEFINED___deaM3sys2fsS13RtTempCleanup
+#define DEA_DEFINED___deaM3sys2fsS13RtTempCleanup
+
+/** Progress and first removal failure from consuming a temporary owner. */
+struct __deaM3sys2fsS13RtTempCleanup {
+    dea_long removed;
+    dea_int operation;
+    dea_string path;
+    struct __deaM3sys2osS9RtOsError error;
+};
+#endif
+
+/* Inspect the selected system temporary directory. */
+struct __deaM3sys2fsS8RtFsPath rt_temp_parent(void);
+
+/* Create an exclusive private object under a trusted directory. */
+struct __deaM3sys2fsS10RtTempOpen rt_temp_create(dea_opt_string parent, dea_bool directory);
+
+/* Remove the original object and release its native cleanup owner. */
+struct __deaM3sys2fsS13RtTempCleanup rt_temp_remove(void *owner);
+
 /* Public metadata transport, with shared input validation. */
 struct __deaM3sys2fsS12RtFsMetadata rt_fs_metadata(dea_string path, dea_bool follow);
 

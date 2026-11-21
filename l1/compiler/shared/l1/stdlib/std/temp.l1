@@ -1,0 +1,179 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+/**
+ * Private temporary objects with one explicit cleanup obligation per success.
+ */
+module std.temp;
+
+export opaque { TempFile, TempDir }, Operation, Failure, TempFileResult, TempDirResult,
+    CleanupResult, system_temp_dir, create_file, create_dir, close_and_remove, remove_tree;
+
+import sys.fs;
+import std.file as file;
+import std.fs as fs;
+import std.os as os;
+
+/**
+ * Stage that produced a captured temporary-object failure.
+ */
+enum Operation { InspectParent; GenerateName; CreateObject; VerifyIdentity; Enumerate; RemoveEntry; CloseHandle; }
+
+/**
+ * Captured cause and affected path, empty when discovery produced no spelling.
+ */
+struct Failure { operation: Operation; path: string; error: os::OsError; }
+
+/**
+ * Single cleanup owner independent of the returned spelling and borrowed file pointer.
+ */
+struct TempFile { owner: void*; file: file::File*; path: string; }
+
+/**
+ * Single directory cleanup owner independent of the returned spelling.
+ */
+struct TempDir { owner: void*; }
+
+/**
+ * Successful copies share ownership and the file pointer borrows its owner.
+ */
+enum TempFileResult {
+    CreatedFile(path: string, file: file::File*, owner: TempFile*);
+    TempFileFailed(primary: Failure, rollback: Failure?);
+}
+
+/**
+ * Successful copies share one cleanup obligation.
+ */
+enum TempDirResult { CreatedDir(path: string, owner: TempDir*); TempDirFailed(primary: Failure, rollback: Failure?); }
+
+/**
+ * Number of entries removed and independently captured close and removal failures.
+ */
+struct CleanupResult { removed: long; close_failure: Failure?; removal_failure: Failure?; }
+
+/**
+ * Translate native operation tags.
+ *
+ * @param value Native operation code.
+ * @return Public stage of the operation.
+ */
+func _operation(value: int) -> Operation {
+    if (value == 1) { return InspectParent; }
+    if (value == 2) { return GenerateName; }
+    if (value == 3) { return CreateObject; }
+    if (value == 4) { return VerifyIdentity; }
+    if (value == 5) { return Enumerate; }
+    if (value == 6) { return RemoveEntry; }
+    return CloseHandle;
+}
+
+/**
+ * Preserve a secondary removal failure during creation.
+ *
+ * @param result Failed creation transport.
+ * @return Captured rollback failure when rollback failed.
+ */
+func _rollback(result: RtTempOpen) -> Failure? {
+    if (result.rollback_operation == 0) {
+        return null;
+    }
+    return Failure(_operation(result.rollback_operation), result.path, os::_os_error_from_rt(result.rollback));
+}
+
+/**
+ * Inspect the default parent using the same selection and trust checks as creation.
+ *
+ * @return Validated absolute spelling or a captured inspection error.
+ */
+func system_temp_dir() -> fs::PathResult {
+    let result = rt_temp_parent();
+    if (!result.ok) { return fs::PathFailed(os::_os_error_from_rt(result.error)); }
+    return fs::ResolvedPath(result.value);
+}
+
+/**
+ * Create a private read/write file and return the path, borrowed file, and owner.
+ *
+ * @param parent Explicit parent, or null for the host default.
+ * @return One cleanup obligation or captured creation and rollback failures.
+ */
+func create_file(parent: string?) -> TempFileResult {
+    let result = rt_temp_create(parent, false);
+    if (result.owner == null) {
+        return TempFileFailed(Failure(_operation(result.operation), result.path, os::_os_error_from_rt(result.error)),
+            _rollback(result));
+    }
+    let handle = file::_adopt_open_handle(result.file_handle as void*);
+    return CreatedFile(result.path, handle, new TempFile(result.owner as void*, handle, result.path));
+}
+
+/**
+ * Create a private directory and return its path and owner.
+ *
+ * @param parent Explicit parent, or null for the host default.
+ * @return One cleanup obligation or captured creation and rollback failures.
+ */
+func create_dir(parent: string?) -> TempDirResult {
+    let result = rt_temp_create(parent, true);
+    if (result.owner == null) {
+        return TempDirFailed(Failure(_operation(result.operation), result.path, os::_os_error_from_rt(result.error)),
+            _rollback(result));
+    }
+    return CreatedDir(result.path, new TempDir(result.owner as void*));
+}
+
+/**
+ * Convert cleanup progress while preserving a prior close failure.
+ *
+ * @param result Consumed native cleanup result.
+ * @param prior Previously captured public file close failure, if any.
+ * @return Independent close and removal diagnostics.
+ */
+func _cleanup(result: RtTempCleanup, prior: Failure?) -> CleanupResult {
+    if (result.operation == 0) { return CleanupResult(result.removed, prior, null); }
+    return CleanupResult(result.removed, prior,
+        Failure(_operation(result.operation), result.path, os::_os_error_from_rt(result.error)));
+}
+
+/**
+ * Consume a successful result once, close the file and remove its original entry.
+ *
+ * @param result Temporary file result to consume, including a failed creation.
+ * @return Progress and both failures when close and removal fail.
+ */
+func close_and_remove(result: TempFileResult) -> CleanupResult {
+    match (result) {
+        TempFileFailed(primary, rollback) => { return CleanupResult(0 as long, null, null); }
+        CreatedFile(path, handle, owner) => {
+            let closed = file::free_open_file_result(file::OpenedFile(owner.file));
+            let prior: Failure? = null;
+            match (closed) {
+                CloseFailed(error) => { prior = Failure(CloseHandle, owner.path, error); }
+                Closed => {}
+            }
+            let outcome = _cleanup(rt_temp_remove(owner.owner), prior);
+            drop owner;
+            return outcome;
+        }
+    }
+}
+
+/**
+ * Consume a directory result once and remove its original tree.
+ *
+ * @param result Temporary directory result to consume, including a failed creation.
+ * @return Removed-entry count and any failure.
+ */
+func remove_tree(result: TempDirResult) -> CleanupResult {
+    match (result) {
+        TempDirFailed(primary, rollback) => { return CleanupResult(0 as long, null, null); }
+        CreatedDir(path, owner) => {
+            let outcome = _cleanup(rt_temp_remove(owner.owner), null);
+            drop owner;
+            return outcome;
+        }
+    }
+}

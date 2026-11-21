@@ -1,6 +1,6 @@
 # Dea Project Status
 
-Version: 2026-11-12
+Version: 2026-11-21
 
 This document summarizes the current status of the Dea project at the monorepo level.
 
@@ -111,11 +111,11 @@ changes. Its `make test-ci` gate covers canonical normal tests, CI-only cases, e
 ARC/memory traces, child fixtures, and examples on Linux, macOS, and Windows. Shared repository checks run separately.
 The standalone `l1-ci.yml` workflow retains manual platform, compiler, and Make-target selection.
 
-L1 stabilization has a finite compiler/tool capability target. Secure temporary objects and shell-free processes and
-pipes remain planned. Acceptance programs, the capability audit, documentation, and fresh artifact acceptance complete
-that target. The implemented source-tree capabilities above may be newer than the published L1 0.1.0 baseline. Generic
-streams, networking, JSON, file watching, concurrency, owned slices, and broader language expressiveness belong to
-deferred L2 work. See [l1/docs/roadmap.md](../l1/docs/roadmap.md).
+L1 stabilization has a finite compiler/tool capability target. L1 source now provides secure temporary objects with
+explicit cleanup. Shell-free processes and pipes remain planned. Acceptance programs, the capability audit,
+documentation, and fresh artifact acceptance complete that target. The implemented source-tree capabilities above may be
+newer than the published L1 0.1.0 baseline. Generic streams, networking, JSON, file watching, concurrency, owned slices,
+and broader language expressiveness belong to deferred L2 work. See [l1/docs/roadmap.md](../l1/docs/roadmap.md).
 
 L1 snapshot, tag-triggered release, and reusable documentation workflows are implemented with local syntax and policy
 validation. They retain exact source/version/docs handoff, four fresh verification jobs, seven assets, and

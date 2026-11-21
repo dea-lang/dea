@@ -1,6 +1,6 @@
 # L1 Initiative 0011 - Stabilization for Compilers and Tools
 
-- Version: 2026-11-20
+- Version: 2026-11-21
 - Status: Active
 - Kind: Initiative
 - Open plans:
@@ -21,22 +21,22 @@ membership entries. Compiler migration away from private native helpers is separ
 
 ## Completion gates
 
-| Gate                                            | Owning work                                                                                 | Status                                                          |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| Borrowed-slice safety                           | [l1/work/plans/bug-fixes/closed/2026-10-29-borrowed-slice-escape-noref.md][slices]          | Complete; native CI passed on all four platforms                |
-| Dynamic byte buffers and files                  | [l1/work/initiatives/closed/0005-filesystem-and-stream-io.md][files]                        | Complete; native CI passed on all four platforms                |
-| Entropy, temporary objects, processes and pipes | [l1/work/initiatives/0006-process-and-host-services.md][process]                            | Entropy complete; temporary objects and processes/pipes planned |
-| Typed string formatting                         | [l1/work/plans/features/closed/2026-08-30-typed-formatting-noref.md][format]                | Complete                                                        |
-| Semantic dependency discovery                   | [l1/work/initiatives/0010-explicit-profiles-and-composable-builds.md][profiles]             | Implemented; exhaustive platform validation pending             |
-| Public-API acceptance programs                  | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]  | Planned                                                         |
-| Capability audit                                | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][coverage] | After library delivery                                          |
-| Documentation and fresh artifact acceptance     | Existing compiler, reference and productization gates                                       | Before stability declaration                                    |
+| Gate                                            | Owning work                                                                                 | Status                                                                   |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Borrowed-slice safety                           | [l1/work/plans/bug-fixes/closed/2026-10-29-borrowed-slice-escape-noref.md][slices]          | Complete; native CI passed on all four platforms                         |
+| Dynamic byte buffers and files                  | [l1/work/initiatives/closed/0005-filesystem-and-stream-io.md][files]                        | Complete; native CI passed on all four platforms                         |
+| Entropy, temporary objects, processes and pipes | [l1/work/initiatives/0006-process-and-host-services.md][process]                            | Entropy complete; temporary objects implemented; processes/pipes planned |
+| Typed string formatting                         | [l1/work/plans/features/closed/2026-08-30-typed-formatting-noref.md][format]                | Complete                                                                 |
+| Semantic dependency discovery                   | [l1/work/initiatives/0010-explicit-profiles-and-composable-builds.md][profiles]             | Implemented; exhaustive platform validation pending                      |
+| Public-API acceptance programs                  | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]  | Planned                                                                  |
+| Capability audit                                | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][coverage] | After library delivery                                                   |
+| Documentation and fresh artifact acceptance     | Existing compiler, reference and productization gates                                       | Before stability declaration                                             |
 
 ## Delivery sequence
 
 1. Record the boundary and correct borrowed-slice escapes in L1 (complete).
 2. Opaque byte buffers, file handles, and secure entropy are complete, with native CI passed on all four platforms.
-   Deliver temporary objects and process/pipe support.
+   Validate temporary objects on all four platforms and deliver process/pipe support.
 3. Typed string formatting and semantic dependency discovery are implemented. Complete the dependency-discovery
    initiative's required exhaustive native-platform validation.
 4. Exercise source indexing, explicit child execution with file-routed capture, and bounded-memory binary copying.

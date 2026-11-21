@@ -1,6 +1,6 @@
 # L1 Ownership and Memory Management Reference
 
-Version: 2026-11-11
+Version: 2026-11-21
 
 This document describes how ownership works in current Dea/L1 bootstrap builds, covering:
 
@@ -215,6 +215,17 @@ buffer on success and frees partial storage before returning failure. Copies of 
 one cleanup obligation; extracted pointers borrow that owner. Call `free_random_bytes_result` exactly once, normally
 through `with`, and do not separately free an extracted buffer. Cleanup expires every alias and does not promise secure
 erasure. Context and result transport add no Dea heap allocation to `fill`.
+
+### `std.temp` / temporary objects
+
+A successful `TempFileResult` or `TempDirResult` owns one cleanup obligation. Copies share it. The path is an
+ARC-managed string and can outlive the owner. The extracted file pointer borrows the owner. Calling `std.file::close`
+retires the file and preserves its first close outcome, while the temporary owner retains the original identity.
+
+Pass the complete result to `close_and_remove` or `remove_tree` once. Both helpers release their owner and invalidate
+borrowed pointers even on failure. The returned diagnostic paths have ordinary ARC ownership. Retain the cleanup result
+when reporting both a workload failure and any cleanup failure. Failed creation results can use the same scoped cleanup.
+See [l1/docs/reference/standard-library.md](standard-library.md#stdtemp).
 
 ### `std.vector` / `StringVector`
 

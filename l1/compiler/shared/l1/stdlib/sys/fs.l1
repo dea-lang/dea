@@ -4,7 +4,7 @@
  */
 
 /**
- * Direct filesystem transport; handles are owned by std.dir and std.file.
+ * Direct filesystem transport; handles are owned by std.dir, std.file and std.temp.
  */
 module sys.fs;
 
@@ -56,6 +56,48 @@ struct RtFileOpen { ok: bool; handle: void*?; error: RtOsError; }
  * A signed 64-bit position or size, or a captured failure.
  */
 struct RtFileOffset { ok: bool; value: long; error: RtOsError; }
+
+/**
+ * Exclusive creation returns a pinned owner, an optional file wrapper, and diagnostics.
+ */
+struct RtTempOpen {
+    owner: void*?;
+    file_handle: void*?;
+    path: string;
+    operation: int;
+    error: RtOsError;
+    rollback_operation: int;
+    rollback: RtOsError;
+}
+
+/**
+ * Consuming cleanup reports its first failure and exact removed-entry count.
+ */
+struct RtTempCleanup { removed: long; operation: int; path: string; error: RtOsError; }
+
+/**
+ * Inspect the selected system temporary directory.
+ *
+ * @return Validated absolute spelling or captured discovery failure.
+ */
+extern func rt_temp_parent() -> RtFsPath;
+
+/**
+ * Create an exclusive private object under a trusted directory.
+ *
+ * @param parent Explicit directory, or null for host discovery.
+ * @param directory Select a directory instead of a read/write file.
+ * @return Owned native state or primary and rollback diagnostics.
+ */
+extern func rt_temp_create(parent: string?, directory: bool) -> RtTempOpen;
+
+/**
+ * Remove the original object and release its native cleanup owner.
+ *
+ * @param owner Live native cleanup owner to consume exactly once.
+ * @return Removed-entry count and any residual failure.
+ */
+unsafe extern func rt_temp_remove(owner: void*) -> RtTempCleanup;
 
 /**
  * Query metadata, optionally following the final link.

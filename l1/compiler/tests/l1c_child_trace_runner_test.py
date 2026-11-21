@@ -39,7 +39,7 @@ def test_selection_and_commands(root: Path) -> None:
     require(
         [case.name for case in fixtures] == [
             "math_int_trace_main", "wide_math_main", "os_error_main", "filesystem_main", "directory_main", "bytes_main",
-            "format_main", "file_main", "range_action_main", "entropy_main",
+            "format_main", "file_main", "range_action_main", "entropy_main", "temp_main",
         ],
         "wrong default children",
     )

@@ -1,6 +1,6 @@
 # L1 Project Status
 
-Version: 2026-11-11
+Version: 2026-11-21
 
 This document summarizes what is implemented in the Dea/L1 subtree today.
 
@@ -57,10 +57,10 @@ formatting is implemented through `std.format`, with explicit `Value...` argumen
 locale-independent ARC string output. `std.file` implements opaque result-owned handles, direct bounded transfers, wide
 positioning, opened-object metadata, and synchronization; native CI passed on all four supported platforms.
 `std.entropy` fills pre-sized buffers from secure host sources, with explicit partial failures and owned random-byte
-results. Temporary objects and shell-free processes and pipes remain planned. General streams, networking, JSON, file
-watching, concurrency, owned slices, and broader language expressiveness are deferred to L2. The current source-tree
-features below may be newer than the published L1 0.1.0 baseline; stabilization also requires public-API acceptance
-programs and fresh artifact validation.
+results. `std.temp` provides private temporary objects and explicit cleanup. Shell-free processes and pipes remain
+planned. General streams, networking, JSON, file watching, concurrency, owned slices, and broader language
+expressiveness are deferred to L2. The current source-tree features below may be newer than the published L1 0.1.0
+baseline; stabilization also requires public-API acceptance programs and fresh artifact validation.
 
 ## Current Status
 

@@ -25,9 +25,9 @@ facilities make it practical to build the next compiler level and larger systems
 as a single compilation unit.
 
 The current development target is a finite, useful L1 for compilers and tools. Typed string formatting, file handles,
-and secure OS entropy are implemented. Temporary objects and shell-free processes and pipes remain planned stabilization
-work. Generic streams, networking, JSON, file watching, concurrency, and broader language features are deferred to L2.
-See [l1/docs/roadmap.md](docs/roadmap.md) for the boundary and acceptance gates.
+secure OS entropy, and private temporary objects are implemented. Shell-free processes and pipes remain planned
+stabilization work. Generic streams, networking, JSON, file watching, concurrency, and broader language features are
+deferred to L2. See [l1/docs/roadmap.md](docs/roadmap.md) for the boundary and acceptance gates.
 
 The language keeps explicit types, familiar control flow, nullable values, and deterministic resource management.
 Strings use automatic reference counting (ARC); non-owning slices provide views into existing storage. Language
@@ -53,9 +53,9 @@ language and runtime rationale.
 - Function pointers and L1-defined variadic functions support indirect calls and typed argument packs.
 
 The standard library covers I/O, typed string formatting, file handles, strings, paths, filesystem metadata and
-mutations, owned directory traversal, wide time values and monotonic sleep/deadlines, secure OS entropy, pseudorandom
-generation, containers, and numeric helpers. These source-tree capabilities may be newer than the published development
-release. See [l1/docs/reference/grammar.md](docs/reference/grammar.md),
+mutations, owned directory traversal, wide time values and monotonic sleep/deadlines, secure OS entropy, private
+temporary objects, pseudorandom generation, containers, and numeric helpers. These source-tree capabilities may be newer
+than the published development release. See [l1/docs/reference/grammar.md](docs/reference/grammar.md),
 [l1/docs/reference/ownership.md](docs/reference/ownership.md), and
 [l1/docs/reference/standard-library.md](docs/reference/standard-library.md) for the language and library contracts.
 

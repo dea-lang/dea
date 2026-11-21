@@ -1,6 +1,6 @@
 # The L1 Standard Library
 
-Version: 2026-11-11
+Version: 2026-11-21
 
 The standard library provides ergonomic L1 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -285,6 +285,58 @@ The structured surface is additive:
 `FsResult` is `FsOk` or `FsFailed(OsError)`. Every path argument is a `string`. Failure is returned with its saved
 native domain/code; missing identity inputs never become a successful `false`. See
 [l1/docs/reference/filesystem.md][filesystem] for link policies, Windows root rules, replacement and failure behavior.
+
+### `std.temp`
+
+Use `create_file(parent: string?)` or `create_dir(parent: string?)` when a tool needs a private temporary object. Pass
+`null` for the host default. An explicit parent takes precedence and a relative spelling is anchored at call time.
+`system_temp_dir() -> fs::PathResult` inspects the default without creating anything. Creation validates its own parent.
+POSIX selects nonempty `TMPDIR`, then `/tmp` when the variable is absent or empty. Windows uses `GetTempPath2W`
+(including SYSTEM-specific selection) or `GetTempPathW` when the newer API is unavailable. For ordinary Windows
+processes, selection follows `TMP`, `TEMP`, `USERPROFILE`, then the Windows directory. A selected invalid parent
+produces an inspection error. Filesystem path encoding follows `std.fs`.
+
+| Result           | Success                          | Failure                             | Consume exactly once       |
+| ---------------- | -------------------------------- | ----------------------------------- | -------------------------- |
+| `TempFileResult` | `CreatedFile(path, file, owner)` | `TempFileFailed(primary, rollback)` | `close_and_remove(result)` |
+| `TempDirResult`  | `CreatedDir(path, owner)`        | `TempDirFailed(primary, rollback)`  | `remove_tree(result)`      |
+
+Copies share one obligation. Retain the result before inspecting its variant. The read/write `std.file::File*` borrows
+from the opaque owner and supports normal close, positioning, transfer and metadata operations. Both cleanup helpers
+accept failed results. A scoped `with` cleanup may discard its return value; call the helper explicitly when the caller
+must report cleanup alongside a primary application error.
+
+Creation pins the parent, obtains 16 bytes from the OS entropy provider per attempt, and creates a single child
+exclusively. After 32 name collisions it returns `AlreadyExists`. Entropy and other host failures return immediately.
+Native handles are non-inheritable. The returned path is absolute and may retain a trusted alias spelling. Protection
+requires a trusted filesystem, host administrator, and cooperating processes running as the effective user.
+
+- POSIX walks every directory and symlink target from pinned descriptors. Components must be owned by root or the
+  effective UID. A group- or world-writable directory must have the sticky bit, and alias ownership is checked before
+  following its target. Creation requests mode `0600` for files and `0700` for directories, subject to the umask.
+  Reviewed mode-enforcing volumes include Linux ext-family, Btrfs, XFS, tmpfs, ramfs and OverlayFS, and macOS APFS and
+  HFS with ownership enabled. Other volumes return `Unsupported`. Darwin extended allow ACLs on a traversed directory or
+  alias fail the trust check because they can change effective permissions or be inherited.
+- Windows checks component owners and DACLs, including junction and symbolic-link targets. Trusted principals are the
+  effective user, LocalSystem, built-in Administrators and TrustedInstaller. Untrusted namespace-changing grants and
+  unrecognized effective ACEs fail validation. The volume must support persistent ACLs. Exclusive handle-relative
+  creation applies a protected DACL granting the effective user full access. A directory grants inheritable rights to
+  that user. Creation reads back the owner and DACL before returning. If the filesystem drops the required protection,
+  creation rolls back and reports `Unsupported`. Unknown reparse tags in parent paths also return `Unsupported`.
+
+Cleanup consumes ownership even on failure. It checks the original entry against a retained identity. An absent entry
+succeeds with zero removals, allowing `file::close` followed by publication through `fs::replace`. A replacement at the
+original name survives and yields `VerifyIdentity` with `InvalidInput`. Recursive cleanup enumerates opened directories,
+removes links and reparse points as leaves, and stops at the first failed operation. Descending past 256 nested
+directories reports `ResourceExhausted` with the removal count so far. Coordinate changes by the same principal and
+prevent mount or namespace changes during cleanup. Keep externally mounted trees outside the owned directory.
+
+`Failure(operation, path, error)` carries the failing operation, diagnostic spelling and captured `OsError`. A creation
+failure preserves a separate optional rollback failure. `CleanupResult(removed, close_failure, removal_failure)` reports
+completed entry deletions (including the root) and preserves the ordinary file's first close failure independently of
+tree or entry removal. On Windows a successful disposition may await other open handles for physical deletion. After a
+partial failure the affected path helps the caller inspect residual entries. Process exit and crashes do not run this
+cleanup contract.
 
 ### `std.file`
 
@@ -735,10 +787,11 @@ The `modf_*` and `frexp_*` helpers return small named result structs:
 
 Portable code branches on `ErrorKind`; `ErrorDomain` and signed `long` `native_code` retain host diagnostics without
 narrowing a Windows native code through `int`. Windows CRT stdio failures use `Errno`, while native Windows APIs use
-`Win32`; BCrypt provider failures use `NtStatus`. NTSTATUS preserves its unsigned 32-bit value in a positive `long`.
-Unknown native codes normalize to `Other` and retain their domain and value. Runtime argument validation uses `Runtime`
-/ `InvalidInput` with code zero; an I/O failure without a host code uses `Runtime` / `IoError` with code zero. No error
-is inferred from ambient `std.system::errno()` after the operation.
+`Win32`; BCrypt provider and handle-relative temporary-file system calls retain failures in `NtStatus`. NTSTATUS
+preserves its unsigned 32-bit value in a positive `long`. Unknown native codes normalize to `Other` and retain their
+domain and value. Runtime argument validation uses `Runtime` / `InvalidInput` with code zero; an I/O failure without a
+host code uses `Runtime` / `IoError` with code zero. No error is inferred from ambient `std.system::errno()` after the
+operation.
 
 Timeout variants retain the captured `TimedOut` error but remain distinct operation states. The result helpers do not
 configure a deadline or timeout. Error messages may depend on the host and locale and are unsuitable for portable

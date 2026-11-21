@@ -3,8 +3,8 @@
 ## Add secure temporary files and directories
 
 - Date: 2026-08-30
-- Last reviewed: 2026-10-24
-- Status: Draft
+- Last reviewed: 2026-11-21
+- Status: Implemented, native acceptance pending
 - Title: Add exclusive temporary-file and temporary-directory creation
 - Kind: Feature
 - Priority: Medium
@@ -21,13 +21,14 @@
   - `l1/compiler/shared/runtime/src/dea_rt_io.c`
   - `l1/docs/reference/standard-library.md`
 - Test modules:
-  - `l1/compiler/tests/temp_runtime_test.l0`
+  - `l1/compiler/tests/temp_runtime_test.py`
   - `l1/compiler/tests/analysis_trace_test.l0`
 - Related:
   - `l1/work/initiatives/0006-process-and-host-services.md`
   - `l1/work/initiatives/closed/0005-filesystem-and-stream-io.md`
   - `l1/work/plans/features/closed/2026-08-30-secure-os-entropy-noref.md`
-- Repro: `make -C l1 test-compiler TESTS="temp_runtime_test analysis_trace_test"`
+- Repro:
+  `make -C l1 test-compiler TESTS="temp_runtime_test.py file_runtime_test.py entropy_runtime_test.py analysis_trace_test"`
 
 ## Summary
 
@@ -71,12 +72,38 @@ existence check followed by a non-exclusive open.
 8. Cleanup reports the failed operation and partial progress without following substituted links outside the owned tree.
    Define how a primary failure and a later cleanup failure are both preserved.
 
-## Implementation Phases
+## Implementation
 
-1. Define explicit/default parent selection, owned result types, private-access guarantees, and error behavior.
-2. Implement exclusive file and directory creation on supported hosts.
-3. Add explicit close/remove and recursive cleanup helpers.
-4. Add collision injection, permission, symlink, trace, and cleanup-failure tests.
+`std.temp` provides the five public operations. A result owns the pinned parent and original object identity separately
+from the borrowed ordinary file. Cleanup consumes the owner once even on failure. The reference records host selection,
+trusted alias resolution, permission checks, private creation, publication, error transport and the caller concurrency
+boundary in [l1/docs/reference/standard-library.md][stdlib].
+
+The native runtime uses 128-bit OS entropy and at most 32 exclusive attempts. Tests exercise real L1 clients through
+source and bundled interfaces, deterministic host faults, release after publication, retained replacements, link leaves
+and exact removal counts. Native acceptance remains open until all four supported platforms validate the implementation.
+
+## Verification evidence
+
+Native fixtures cover the public consumer, deterministic failures, ARC and memory traces, and bundled interfaces. The
+focused temp, file, entropy and analysis tests passed on macOS Intel. Strict L1 docs, C contract checks and ADR Impact
+validation passed with `make -C l1 docs`, `python3 scripts/check_c_docs.py`,
+`python3 scripts/check_adr_impact.py --all-active` and `python3 scripts/check_adr_impact.py --staged`.
+
+| Platform       | Native result                                                                         |
+| -------------- | ------------------------------------------------------------------------------------- |
+| Linux x86_64   | `make -C l1 test-ci` passed with GCC 12.2 for the runtime and L1 programs.            |
+| macOS Intel    | `make -C l1 test-ci` passed with Apple Clang 17, including the traced child consumer. |
+| macOS ARM      | Pending. The runtime and native test shim cross-compiled for arm64.                   |
+| Windows UCRT64 | Pending. Both traced L1 consumers linked for Windows x86_64 using MinGW.              |
+
+Linux and macOS Intel each passed 109 normal cases, 53 dedicated trace tests and 11 child trace fixtures. The final temp
+fixture also passed separately on both systems. A Wine compatibility probe encountered a filesystem that reports
+persistent ACLs but discards the protected DACL. Both file and directory creation returned `Unsupported` and removed the
+original entries. The public L1 invalid-parent consumer also passed under Wine. Native Windows acceptance must exercise
+successful creation and inspect the effective DACL.
+
+Close the plan and record the L1 ADR after all four native results are available.
 
 ## Non-Goals
 
@@ -109,3 +136,4 @@ existence check followed by a non-exclusive open.
 
 [compiler-support]: ../../../compiler/support/compiler_support.c
 [identity-support]: ../../../compiler/support/preparation/identity.h
+[stdlib]: ../../../docs/reference/standard-library.md#stdtemp

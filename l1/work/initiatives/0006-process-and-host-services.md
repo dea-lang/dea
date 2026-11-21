@@ -1,6 +1,6 @@
 # L1 Initiative 0006 - Process and Host Services
 
-- Version: 2026-11-20
+- Version: 2026-11-21
 - Status: Active
 - Kind: Initiative
 - Open plans:
@@ -37,7 +37,7 @@ requirements for this initiative or its stdlib plans.
 - `std.entropy` supplies fallible secure host bytes through the synchronous buffer range protocol. Native CI passed on
   all four platforms, and ADR-0064 records the completed feature. `std.rand` is deterministic and is not a secure
   entropy source.
-- There is no race-free temporary-file or temporary-directory API.
+- `std.temp` creates exclusive private files and directories with result-owned cleanup and captured partial failures.
 - `std.time` uses `long` seconds and normalized `int` nanoseconds. Checked calendar conversion, monotonic sleep,
   deadlines, structured errors, and explicit interruption/resumption are implemented.
 
@@ -66,8 +66,8 @@ Spawned plan: [secure OS entropy].
 
 ### Phase 1 - Temporary objects (Stdlib Tier 2)
 
-Add exclusive temporary files and directories plus cleanup helpers over the filesystem and entropy foundations. Specify
-explicit/default parent selection, owned private directories, and observable primary/cleanup failures.
+Implemented in `std.temp`. Callers select a parent or use the validated host default. Cleanup consumes the result once,
+preserves published files, and reports partial progress. Four-platform native acceptance remains open.
 
 Spawned plan: [secure temporary objects].
 

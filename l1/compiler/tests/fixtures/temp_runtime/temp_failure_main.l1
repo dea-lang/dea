@@ -1,0 +1,130 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module temp_failure_main;
+
+import std.temp;
+import std.fs as fs;
+import std.file as file;
+import std.os;
+import std.assert;
+import std.io;
+import std.system;
+import sys.fs;
+
+/**
+ * Select one native fixture scenario.
+ *
+ * @param mode Deterministic mode.
+ */
+extern func temp_probe_mode(mode: int);
+
+/**
+ * Count entropy requests.
+ *
+ * @return Number of attempts.
+ */
+extern func temp_probe_calls() -> int;
+
+/**
+ * Assert native protection and handle inheritance.
+ *
+ * @param raw Live native owner.
+ * @param directory Expected object kind.
+ */
+extern func temp_probe_private(raw: void*, directory: bool);
+
+/**
+ * Exercise exact retry boundaries, partial cleanup and independent errors.
+ *
+ * @return Zero when all failure paths preserve their contract.
+ */
+func main() -> int {
+    let parent = argv(1);
+    let existing = parent + "/dea-00000000000000000000000000000000";
+    assert(fs::write_file(existing, "keep") != null, "collision sentinel");
+    temp_probe_mode(1);
+    let collided = create_file(parent);
+    match (collided) {
+        TempFileFailed(primary, rollback) => {
+            assert(is(primary.error.kind, AlreadyExists) && rollback == null, "exclusive collision");
+        }
+        _ => { assert(false, "overwrote existing file"); }
+    }
+    assert(temp_probe_calls() == 32 && fs::read_file(existing) == ("keep" as string?), "collision bound");
+    temp_probe_mode(1);
+    let collided_dir = create_dir(parent);
+    assert(is(collided_dir, TempDirFailed) && temp_probe_calls() == 32, "directory collision bound");
+    assert(remove_tree(collided_dir).removed == 0 as long, "failed directory cleanup");
+    temp_probe_mode(2);
+    match (create_file(parent)) {
+        TempFileFailed(primary, rollback) => {
+            assert(is(primary.operation, GenerateName) && is(primary.error.kind, Interrupted), "entropy failure");
+        }
+        _ => { assert(false, "entropy failure ignored"); }
+    }
+    assert(temp_probe_calls() == 1, "retried entropy");
+    temp_probe_mode(0);
+    let native = rt_temp_create(parent, true);
+    assert(native.owner != null && temp_probe_calls() == 2, "collision then success");
+    temp_probe_private(native.owner as void*, true);
+    assert(rt_temp_remove(native.owner as void*).removed == 1 as long, "private directory");
+    let f = rt_temp_create(parent, false);
+    assert(f.owner != null, "private file");
+    temp_probe_private(f.owner as void*, false);
+    assert(rt_file_free(f.file_handle as void*).ok, "private file release");
+    assert(rt_temp_remove(f.owner as void*).removed == 1 as long, "private file removal");
+    let owned = create_file(parent);
+    match (owned) {
+        CreatedFile(path, handle, owner) => {
+            temp_probe_mode(3);
+            assert(is(file::close(handle), file::CloseFailed), "injected ordinary close");
+            assert(is(fs::rename(path, parent + "/published"), fs::FsOk), "publish closed file");
+            assert(fs::write_file(path, "keep") != null, "replacement");
+            let outcome = close_and_remove(owned);
+            assert(outcome.removed == 0 as long && outcome.close_failure != null, "saved close failure");
+            assert(is((outcome.removal_failure as Failure).operation, VerifyIdentity), "simultaneous identity failure");
+            assert(fs::read_file(path) == ("keep" as string?), "replacement untouched");
+            assert(is(fs::remove_file(path), fs::FsOk), "release replacement");
+        }
+        _ => { assert(false, "file adoption"); }
+    }
+    temp_probe_mode(0);
+    let tree = create_dir(parent);
+    match (tree) {
+        CreatedDir(path, owner) => {
+            assert(fs::write_file(path + "/one", "1") != null && fs::write_file(path + "/two", "2") != null, "tree");
+            temp_probe_mode(4);
+            let outcome = remove_tree(tree);
+            let failed = outcome.removal_failure as Failure;
+            assert(outcome.removed == 1 as long && is(failed.operation, RemoveEntry), "partial count");
+            assert(fs::is_file(failed.path) && fs::is_dir(path), "residual entry");
+            temp_probe_mode(0);
+            assert(is(fs::remove_dir_all(path), fs::FsOk), "fixture recovery");
+        }
+        _ => { assert(false, "tree creation"); }
+    }
+    temp_probe_mode(5);
+    match (create_file(parent)) {
+        TempFileFailed(primary, rollback) => {
+            assert(is(primary.operation, CreateObject) && rollback != null, "creation and rollback errors");
+            assert(is((rollback as Failure).operation, RemoveEntry) && fs::is_file(primary.path), "residual object");
+            temp_probe_mode(0);
+            assert(is(fs::remove_file(primary.path), fs::FsOk), "fixture rollback recovery");
+        }
+        _ => { assert(false, "injected adoption"); }
+    }
+    let linked = create_dir(parent);
+    match (linked) {
+        CreatedDir(path, owner) => {
+            assert(is(fs::rename(parent + "/prepared", path + "/nested"), fs::FsOk), "place prepared tree");
+            let result = remove_tree(linked);
+            assert(result.removed == 3 as long && result.removal_failure == null, "remove link as leaf");
+            assert(fs::read_file(parent + "/outside/keep") == ("outside" as string?), "external content");
+        }
+        _ => { assert(false, "link tree"); }
+    }
+    printl_s("temp_failure_main: PASS");
+    return 0;
+}
