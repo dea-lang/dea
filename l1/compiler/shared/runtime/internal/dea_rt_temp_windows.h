@@ -87,6 +87,32 @@ static int temp_trusted_sid(PSID sid, PSID user, PSID installer) {
 }
 
 /**
+ * Check the owner and effective grants of a pinned namespace component.
+ *
+ * @param owner Object owner from the same descriptor as the DACL.
+ * @param acl Discretionary ACL, or NULL for unrestricted access.
+ * @param user Effective user SID.
+ * @param installer TrustedInstaller SID.
+ * @return True when only trusted principals can change the namespace.
+ */
+static int temp_trusted_acl(PSID owner, PACL acl, PSID user, PSID installer) {
+    if (!owner || !temp_trusted_sid(owner, user, installer) || !acl) return 0;
+    for (DWORD i = 0; i < acl->AceCount; ++i) {
+        ACE_HEADER *ace;
+        if (!GetAce(acl, i, (void **)&ace)) return 0;
+        if ((ace->AceFlags & INHERIT_ONLY_ACE) || ace->AceType == ACCESS_DENIED_ACE_TYPE) continue;
+        if (ace->AceType != ACCESS_ALLOWED_ACE_TYPE) return 0;
+        ACCESS_ALLOWED_ACE *allow = (ACCESS_ALLOWED_ACE *)ace;
+        DWORD unsafe = WRITE_DAC | WRITE_OWNER | DELETE | FILE_DELETE_CHILD | FILE_WRITE_ATTRIBUTES |
+            FILE_WRITE_DATA | FILE_WRITE_EA | GENERIC_WRITE | GENERIC_ALL;
+        PSID trustee = &allow->SidStart;
+        if (IsWellKnownSid(trustee, WinCreatorOwnerRightsSid)) trustee = owner;
+        if ((allow->Mask & unsafe) && !temp_trusted_sid(trustee, user, installer)) return 0;
+    }
+    return 1;
+}
+
+/**
  * Inspect a directory or alias before using it as a namespace component.
  *
  * @param handle Pinned directory or link with READ_CONTROL access.
@@ -101,17 +127,7 @@ static FsError temp_trusted(HANDLE handle, PSID user, PSID installer) {
     DWORD code = GetSecurityInfo(handle, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
         &owner, NULL, &acl, NULL, &sd);
     if (code != ERROR_SUCCESS) return rt_os_error_from_win32(code);
-    int trusted = owner && temp_trusted_sid(owner, user, installer) && acl;
-    for (DWORD i = 0; trusted && i < acl->AceCount; ++i) {
-        ACE_HEADER *ace;
-        if (!GetAce(acl, i, (void **)&ace)) { trusted = 0; break; }
-        if ((ace->AceFlags & INHERIT_ONLY_ACE) || ace->AceType == ACCESS_DENIED_ACE_TYPE) continue;
-        if (ace->AceType != ACCESS_ALLOWED_ACE_TYPE) { trusted = 0; break; }
-        ACCESS_ALLOWED_ACE *allow = (ACCESS_ALLOWED_ACE *)ace;
-        DWORD unsafe = WRITE_DAC | WRITE_OWNER | DELETE | FILE_DELETE_CHILD | FILE_WRITE_ATTRIBUTES |
-            FILE_WRITE_DATA | FILE_WRITE_EA | GENERIC_WRITE | GENERIC_ALL;
-        if ((allow->Mask & unsafe) && !temp_trusted_sid(&allow->SidStart, user, installer)) trusted = 0;
-    }
+    int trusted = temp_trusted_acl(owner, acl, user, installer);
     LocalFree(sd);
     return fs_error(trusted ? 0 : DEA_OS_ERROR_PERMISSION_DENIED);
 }

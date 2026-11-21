@@ -90,20 +90,21 @@ focused temp, file, entropy and analysis tests passed on macOS Intel. Strict L1 
 validation passed with `make -C l1 docs`, `python3 scripts/check_c_docs.py`,
 `python3 scripts/check_adr_impact.py --all-active` and `python3 scripts/check_adr_impact.py --staged`.
 
-| Platform       | Native result                                                                              |
-| -------------- | ------------------------------------------------------------------------------------------ |
-| Linux x86_64   | Local and hosted `make -C l1 test-ci` passed, including the traced child consumer.         |
-| macOS Intel    | Local `make -C l1 test-ci` passed with Apple Clang 17.                                     |
-| macOS ARM      | Hosted `make -C l1 test-ci` passed, including the temp runtime fixture and child trace.    |
-| Windows UCRT64 | 108 of 109 normal cases passed. A native rerun with the corrected temp fixture is pending. |
+| Platform       | Native result                                                                           |
+| -------------- | --------------------------------------------------------------------------------------- |
+| Linux x86_64   | Local and hosted `make -C l1 test-ci` passed, including the traced child consumer.      |
+| macOS Intel    | Local and hosted `make -C l1 test-ci` passed. Local coverage used Apple Clang 17.       |
+| macOS ARM      | Hosted `make -C l1 test-ci` passed, including the temp runtime fixture and child trace. |
+| Windows UCRT64 | 108 of 109 normal cases passed. Native verification of the OWNER RIGHTS fix is pending. |
 
-On Windows, default-parent inspection returned `PermissionDenied` before creation. The fixture had assumed the MSYS2
-temp hierarchy was trusted. Windows success cases now select a parent under the profile's local application data. A
-separate case grants Everyone the right to delete children in a fixture directory and requires `InspectParent` with
-`PermissionDenied` for default creation and for an explicit path through that directory. The revised fixture and
-standalone child trace passed on Linux x86_64 and macOS Intel. The cross-built rejection case passed under Wine with a
-world-writable emulated directory and zero leaked objects or strings. Native Windows acceptance must exercise successful
-creation, protected DACL read-back, and the delete-child grant on NTFS.
+On Windows, `system_temp_dir()` returned `PermissionDenied` for a Python-created directory under `LOCALAPPDATA`.
+[CPython's Windows implementation of mode 0700][cpython-mkdir] grants full control to SYSTEM, Administrators and
+`OWNER RIGHTS`. The validator rejected the last trustee even when it trusted the directory owner. It now resolves that
+trustee to the owner from the same descriptor. A cross-built Windows probe under Wine confirmed that the previous
+runtime rejected the private descriptor and the revised runtime accepts it. Both reject an untrusted owner and a
+separate Everyone delete-child grant. Native Windows acceptance must exercise successful creation, protected DACL
+read-back, and the delete-child denial through a junction on NTFS. On fixture failure the harness logs the working
+directory and ancestor descriptors for inspection.
 
 A separate Wine compatibility probe encountered a filesystem that reports persistent ACLs but discards the protected
 DACL. Both file and directory creation returned `Unsupported` and removed the original entries.
@@ -140,5 +141,6 @@ Close the plan and record the L1 ADR after all four native results are available
    directory access, ownership, primary failure, and cleanup failure follow the selected host contract.
 
 [compiler-support]: ../../../compiler/support/compiler_support.c
+[cpython-mkdir]: https://github.com/python/cpython/blob/v3.14.10/Modules/posixmodule.c#L5387-L5396
 [identity-support]: ../../../compiler/support/preparation/identity.h
 [stdlib]: ../../../docs/reference/standard-library.md#stdtemp

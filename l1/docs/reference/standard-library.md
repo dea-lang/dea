@@ -318,11 +318,12 @@ requires a trusted filesystem, host administrator, and cooperating processes run
   HFS with ownership enabled. Other volumes return `Unsupported`. Darwin extended allow ACLs on a traversed directory or
   alias fail the trust check because they can change effective permissions or be inherited.
 - Windows checks component owners and DACLs, including junction and symbolic-link targets. Trusted principals are the
-  effective user, LocalSystem, built-in Administrators and TrustedInstaller. Untrusted namespace-changing grants and
-  unrecognized effective ACEs fail validation. The volume must support persistent ACLs. Exclusive handle-relative
-  creation applies a protected DACL granting the effective user full access. A directory grants inheritable rights to
-  that user. Creation reads back the owner and DACL before returning. If the filesystem drops the required protection,
-  creation rolls back and reports `Unsupported`. Unknown reparse tags in parent paths also return `Unsupported`.
+  effective user, LocalSystem, built-in Administrators and TrustedInstaller. An `OWNER RIGHTS` grant applies to the
+  verified owner of that component. Untrusted namespace-changing grants and unrecognized effective ACEs fail validation.
+  The volume must support persistent ACLs. Exclusive handle-relative creation applies a protected DACL granting the
+  effective user full access. A directory grants inheritable rights to that user. Creation reads back the owner and DACL
+  before returning. If the filesystem drops the required protection, creation rolls back and reports `Unsupported`.
+  Unknown reparse tags in parent paths also return `Unsupported`.
 
 Cleanup consumes ownership even on failure. It checks the original entry against a retained identity. An absent entry
 succeeds with zero removals, allowing `file::close` followed by publication through `fs::replace`. A replacement at the

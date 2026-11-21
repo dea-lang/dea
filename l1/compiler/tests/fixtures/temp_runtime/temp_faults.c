@@ -178,6 +178,40 @@ int temp_probe_close(int fd) {
 #if defined(_WIN32)
 
 /**
+ * Exercise OWNER RIGHTS on a private parent and independently unsafe descriptors.
+ */
+static void temp_probe_owner_rights(void) {
+    const struct { const wchar_t *descriptor; int trusted; } cases[] = {
+        {L"O:S-1-5-21-1-2-3-1001D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;OW)", 1},
+        {L"O:BAD:P(A;OICI;FA;;;OW)", 1},
+        {L"O:S-1-5-21-1-2-3-1002D:P(A;OICI;FA;;;OW)", 0},
+        {L"O:OWD:P(A;OICI;FA;;;OW)", 0},
+        {L"O:BAD:P(A;OICI;FA;;;OW)(A;;0x40;;;WD)", 0},
+        {L"O:BAD:P(A;;FA;;;CO)", 0},
+    };
+    PSID user, installer;
+    assert(ConvertStringSidToSidW(L"S-1-5-21-1-2-3-1001", &user));
+    assert(ConvertStringSidToSidW(L"S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464", &installer));
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        PSECURITY_DESCRIPTOR sd;
+        PSID owner;
+        PACL acl;
+        BOOL present, defaulted;
+        assert(ConvertStringSecurityDescriptorToSecurityDescriptorW(cases[i].descriptor, SDDL_REVISION_1, &sd, NULL));
+        assert(GetSecurityDescriptorOwner(sd, &owner, &defaulted));
+        assert(GetSecurityDescriptorDacl(sd, &present, &acl, &defaulted) && present);
+        int trusted = temp_trusted_acl(owner, acl, user, installer);
+        if (trusted != cases[i].trusted) {
+            fprintf(stderr, "unexpected trust result %d for %ls\n", trusted, cases[i].descriptor);
+        }
+        assert(trusted == cases[i].trusted);
+        LocalFree(sd);
+    }
+    LocalFree(installer);
+    LocalFree(user);
+}
+
+/**
  * Refuse files and directories when the host fails to preserve their requested DACL.
  *
  * @param path Owned test directory spelling to use as the parent.
@@ -228,7 +262,10 @@ void temp_probe_private(void *raw, dea_bool directory) {
     assert(ace->Header.AceType == ACCESS_ALLOWED_ACE_TYPE && EqualSid(&ace->SidStart, user->User.Sid));
     assert(GetHandleInformation(owner->object, &flags) && !(flags & HANDLE_FLAG_INHERIT));
     LocalFree(sd); free(user);
-    if (directory) temp_probe_discarded_acl(owner->path);
+    if (directory) {
+        temp_probe_owner_rights();
+        temp_probe_discarded_acl(owner->path);
+    }
 #else
     struct stat st;
     assert(fstat(owner->object, &st) == 0 && st.st_uid == geteuid());

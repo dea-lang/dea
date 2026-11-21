@@ -50,6 +50,18 @@ def run(work: Path, executable: Path, *args: str, env: dict[str, str] | None = N
     """
     result = subprocess.run([str(executable), *args], cwd=work, env=env, capture_output=True,
                             text=True, timeout=90, check=False, **({} if os.name == "nt" else {"umask": 0o022}))
+    if os.name == "nt" and result.returncode:
+        # Record the security descriptors while the failing fixture still exists.
+        inspect = (
+            "[Security.Principal.WindowsIdentity]::GetCurrent().User.Value; "
+            "for ($dir = Get-Item -LiteralPath .; $dir; $dir = $dir.Parent) { "
+            "$acl = Get-Acl -LiteralPath $dir.FullName; Write-Output \"$($dir.FullName) $($acl.Sddl)\" }"
+        )
+        try:
+            subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", inspect],
+                           cwd=work, timeout=30, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            print(f"Could not inspect the Windows fixture ACLs: {exc}", flush=True)
     assert result.returncode == 0, (work, args, result.returncode, result.stdout, result.stderr[-6000:])
     return result.stderr
 
