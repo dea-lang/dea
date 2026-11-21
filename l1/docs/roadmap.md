@@ -470,6 +470,16 @@ file-watch design, and concurrency now belong to L2.
 
 ## Active standalone plans
 
+- [2026-11-21-explicit-entry-file-identity-noref][entry-file] tracks explicit CLI operands that can select a different
+  source file.
+- [2026-11-21-contextual-null-lowering-noref][contextual-null] covers the lost destination type for parenthesized nulls
+  and single-value allocation initializers.
+- [2026-11-21-drop-optional-payload-cleanup-noref][optional-drop] tracks the heap string leaked when dropping an
+  allocated present optional.
+- [2026-11-21-match-wildcard-dispatch-and-return-flow-noref][match-wildcard] tracks wildcard precedence and the
+  disagreement between return analysis and executable dispatch.
+- [2026-11-21-compound-dereference-grouping-noref][deref-grouping] covers compound pointer operands in the C lvalue
+  emitter.
 - Feature [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] is the
   Stdlib Tier 2 audit that records portable systems capability and C99-family coverage without promising literal C99 API
   parity. It is meant to run after the main stdlib additions land and to be completed before declaring L1 stable;
@@ -481,11 +491,16 @@ Readiness is independent of lifecycle status. `ready` means implementation can b
 immediate prerequisite remains; `not-ready` means required foundations have not landed; `speculative` means unresolved
 design investigation. `implemented` means implementation is present but the plan still has validation or closure work.
 
-| Readiness | Plan                                                                                               | Remaining gate                                            |
-| --------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| ready     | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied. |
-| not-ready | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                     |
-| not-ready | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.       |
+| Readiness    | Plan                                                                                               | Remaining gate                                              |
+| ------------ | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| ready        | [2026-11-21-explicit-entry-file-identity-noref][entry-file]                                        | The shared CLI contract defines explicit target identity.   |
+| ready        | [2026-11-21-contextual-null-lowering-noref][contextual-null]                                       | Both failures reproduce after semantic analysis.            |
+| ready        | [2026-11-21-drop-optional-payload-cleanup-noref][optional-drop]                                    | Present and absent fixtures distinguish the leaked payload. |
+| almost-ready | [2026-11-21-match-wildcard-dispatch-and-return-flow-noref][match-wildcard]                         | Select the precedence rule for enum match arms.             |
+| ready        | [2026-11-21-compound-dereference-grouping-noref][deref-grouping]                                   | The helper and host C regression can be tested directly.    |
+| ready        | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied.   |
+| not-ready    | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                       |
+| not-ready    | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.         |
 
 The [work/plans/features/closed/2026-10-29-l1-stabilization-boundary-noref.md][boundary-plan] coordinates plan ownership
 and roadmap changes.
@@ -600,12 +615,15 @@ update to be promoted to an initiative or plan:
 [const-declarations]: ../work/plans/features/closed/2026-04-18-l1-const-declarations-noref.md
 [const-scalar-casts]: ../work/plans/features/closed/2026-06-18-stage1-const-scalar-casts-noref.md
 [contextual-array-literals]: ../work/plans/bug-fixes/closed/2026-06-17-stage1-contextual-array-literals-noref.md
+[contextual-null]: ../work/plans/bug-fixes/2026-11-21-contextual-null-lowering-noref.md
 [cross-platform-ci]: ../work/plans/bug-fixes/closed/2026-07-26-stage1-cross-platform-ci-regressions-noref.md
 [cstr-proposal]: ../work/proposals/cstr-and-c-string-guards.md
 [data-formats]: ../../l2/work/initiatives/0002-data-format-modules.md
 [dependency-discovery]: ../work/plans/features/closed/2026-10-21-semantic-dependency-discovery-noref.md
+[deref-grouping]: ../work/plans/bug-fixes/2026-11-21-compound-dereference-grouping-noref.md
 [design-decisions]: reference/design-decisions.md
 [embedded-members]: ../work/proposals/anonymous-embedded-struct-members.md
+[entry-file]: ../work/plans/bug-fixes/2026-11-21-explicit-entry-file-identity-noref.md
 [env-text-reassessment]: ../work/plans/refactors/closed/2026-09-15-native-identity-environment-text-reassessment-noref.md
 [explicit-profiles]: ../work/initiatives/0010-explicit-profiles-and-composable-builds.md
 [export-imports]: ../work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
@@ -630,6 +648,7 @@ update to be promoted to an initiative or plan:
 [library-linking]: ../work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md
 [lifecycle-entrypoints]: ../work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: ../work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
+[match-wildcard]: ../work/plans/bug-fixes/2026-11-21-match-wildcard-dispatch-and-return-flow-noref.md
 [module-graph-invariant-hardening]: ../work/plans/bug-fixes/closed/2026-07-20-stage1-module-graph-invariant-hardening-noref.md
 [module-interface-hardening]: ../work/plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md
 [named-arguments]: ../work/plans/features/closed/2026-04-22-named-arguments-noref.md
@@ -637,6 +656,7 @@ update to be promoted to an initiative or plan:
 [numeric-lexer]: ../work/plans/features/closed/2026-04-10-l1-numeric-literal-lexer-groundwork-noref.md
 [object-metadata]: ../work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
 [opaque-exports]: ../work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
+[optional-drop]: ../work/plans/bug-fixes/2026-11-21-drop-optional-payload-cleanup-noref.md
 [os-error-plan]: ../work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md
 [os-results]: decisions/0045-direct-os-errors-and-io-results.md
 [parenthesized-casted-place-arc]: ../../work/plans/bug-fixes/closed/2026-08-21-shared-parenthesized-casted-place-arc-classification-noref.md
