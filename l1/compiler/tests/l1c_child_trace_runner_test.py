@@ -89,6 +89,15 @@ def test_selection_and_commands(root: Path) -> None:
             "POSIX executable name changed")
     require(runner.child_executable_path(root, "sample", windows=True) == root / "sample.exe",
             "Windows executable suffix missing")
+    temp_fixture = runner.select_child_fixtures(["temp_main"])[0]
+    temp_exe = root / "temp_main.exe"
+    profile = r"C:\Users\Runner With Spaces\AppData\Local"
+    require(runner.child_run_command(temp_fixture, temp_exe, {"LOCALAPPDATA": profile}, windows=True)
+            == [str(temp_exe), profile], "Windows temp child lost its explicit profile parent")
+    require(runner.child_run_command(temp_fixture, temp_exe, {}, windows=False) == [str(temp_exe)],
+            "POSIX temp child lost host default coverage")
+    require(runner.child_run_command(fixtures[0], temp_exe, {}, windows=True) == [str(temp_exe)],
+            "unrelated Windows child received temp arguments")
     original_windows = bootstrap.is_windows_host
     try:
         bootstrap.is_windows_host = lambda: True

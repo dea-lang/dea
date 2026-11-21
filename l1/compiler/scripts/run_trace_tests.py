@@ -248,6 +248,24 @@ def child_executable_path(case_dir: Path, name: str, *, windows: bool | None = N
     return case_dir / (name + (".exe" if windows else ""))
 
 
+def child_run_command(fixture: ChildTraceFixture, executable: Path, env: dict[str, str], *, windows: bool) -> list[str]:
+    """Select arguments for the fixture's native host.
+
+    Args:
+        fixture: Registered trace fixture.
+        executable: Built program.
+        env: Child process environment.
+        windows: Whether the child runs on Windows.
+
+    Returns:
+        The executable and its arguments as separate entries.
+    """
+    if windows and fixture.name == "temp_main":
+        # MSYS2's shared default can fail parent inspection. Exercise creation under the profile.
+        return [str(executable), env["LOCALAPPDATA"]]
+    return [str(executable)]
+
+
 def run_child_fixture(
     fixture: ChildTraceFixture,
     artifact_dir: Path,
@@ -295,7 +313,7 @@ def run_child_fixture(
     started = time.perf_counter()
     try:
         executed = run_captured_binary_output(
-            [str(executable)], cwd=REPO_ROOT, env=trace_env,
+            child_run_command(fixture, executable, trace_env, windows=os.name == "nt"), cwd=REPO_ROOT, env=trace_env,
             stdout_path=child_out, stderr_path=trace_path,
         )
     except OSError as exc:

@@ -96,8 +96,32 @@ func main() -> int {
             cleaned(close_and_remove(failed), 0 as long);
             cleaned(remove_tree(create_dir(selected_parent)), 1 as long);
             return 0;
-        }
-        else {
+        } else if (system::argv(2) == "untrusted") {
+            match (system_temp_dir()) {
+                PathFailed(error) => { assert(is(error.kind, PermissionDenied), "untrusted default error"); }
+                _ => { assert(false, "untrusted default accepted"); }
+            }
+            let denied_file = create_file(null);
+            match (denied_file) {
+                TempFileFailed(primary, rollback) => {
+                    assert(is(primary.operation, InspectParent) && is(primary.error.kind, PermissionDenied)
+                        && rollback == null, "untrusted default file");
+                }
+                _ => { assert(false, "created file under untrusted default"); }
+            }
+            cleaned(close_and_remove(denied_file), 0 as long);
+            let denied_dir = create_dir(selected_parent);
+            match (denied_dir) {
+                TempDirFailed(primary, rollback) => {
+                    assert(is(primary.operation, InspectParent) && is(primary.error.kind, PermissionDenied)
+                        && rollback == null, "untrusted alias parent");
+                }
+                _ => { assert(false, "created directory through untrusted alias"); }
+            }
+            cleaned(remove_tree(denied_dir), 0 as long);
+            return 0;
+        } else {
+            assert(system::argv(2) == "reject", "unknown fixture mode");
             let bad = create_dir(selected_parent);
             assert(is(bad, TempDirFailed), "invalid parent accepted");
             cleaned(remove_tree(bad), 0 as long);

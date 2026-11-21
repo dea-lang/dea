@@ -90,18 +90,23 @@ focused temp, file, entropy and analysis tests passed on macOS Intel. Strict L1 
 validation passed with `make -C l1 docs`, `python3 scripts/check_c_docs.py`,
 `python3 scripts/check_adr_impact.py --all-active` and `python3 scripts/check_adr_impact.py --staged`.
 
-| Platform       | Native result                                                                         |
-| -------------- | ------------------------------------------------------------------------------------- |
-| Linux x86_64   | `make -C l1 test-ci` passed with GCC 12.2 for the runtime and L1 programs.            |
-| macOS Intel    | `make -C l1 test-ci` passed with Apple Clang 17, including the traced child consumer. |
-| macOS ARM      | Pending. The runtime and native test shim cross-compiled for arm64.                   |
-| Windows UCRT64 | Pending. Both traced L1 consumers linked for Windows x86_64 using MinGW.              |
+| Platform       | Native result                                                                              |
+| -------------- | ------------------------------------------------------------------------------------------ |
+| Linux x86_64   | Local and hosted `make -C l1 test-ci` passed, including the traced child consumer.         |
+| macOS Intel    | Local `make -C l1 test-ci` passed with Apple Clang 17.                                     |
+| macOS ARM      | Hosted `make -C l1 test-ci` passed, including the temp runtime fixture and child trace.    |
+| Windows UCRT64 | 108 of 109 normal cases passed. A native rerun with the corrected temp fixture is pending. |
 
-Linux and macOS Intel each passed 109 normal cases, 53 dedicated trace tests and 11 child trace fixtures. The final temp
-fixture also passed separately on both systems. A Wine compatibility probe encountered a filesystem that reports
-persistent ACLs but discards the protected DACL. Both file and directory creation returned `Unsupported` and removed the
-original entries. The public L1 invalid-parent consumer also passed under Wine. Native Windows acceptance must exercise
-successful creation and inspect the effective DACL.
+On Windows, default-parent inspection returned `PermissionDenied` before creation. The fixture had assumed the MSYS2
+temp hierarchy was trusted. Windows success cases now select a parent under the profile's local application data. A
+separate case grants Everyone the right to delete children in a fixture directory and requires `InspectParent` with
+`PermissionDenied` for default creation and for an explicit path through that directory. The revised fixture and
+standalone child trace passed on Linux x86_64 and macOS Intel. The cross-built rejection case passed under Wine with a
+world-writable emulated directory and zero leaked objects or strings. Native Windows acceptance must exercise successful
+creation, protected DACL read-back, and the delete-child grant on NTFS.
+
+A separate Wine compatibility probe encountered a filesystem that reports persistent ACLs but discards the protected
+DACL. Both file and directory creation returned `Unsupported` and removed the original entries.
 
 Close the plan and record the L1 ADR after all four native results are available.
 
