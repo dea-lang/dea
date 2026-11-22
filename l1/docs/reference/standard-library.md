@@ -1,6 +1,6 @@
 # The L1 Standard Library
 
-Version: 2026-11-21
+Version: 2026-11-22
 
 The standard library provides ergonomic L1 modules (`std.*`) and low-level runtime bindings (`sys.*`).
 
@@ -337,7 +337,7 @@ failure preserves a separate optional rollback failure. `CleanupResult(removed, 
 completed entry deletions (including the root) and preserves the ordinary file's first close failure independently of
 tree or entry removal. On Windows a successful disposition may await other open handles for physical deletion. After a
 partial failure the affected path helps the caller inspect residual entries. Process exit and crashes do not run this
-cleanup contract.
+cleanup contract. See [l1/docs/decisions/0065-secure-temporary-files-and-directories.md][temp-adr].
 
 ### `std.file`
 
@@ -1264,6 +1264,7 @@ These are runtime-backed hash externs declared directly in `sys.hash`.
 [byte-buffer-decision]: ../decisions/0052-owned-dynamic-byte-buffers.md
 [filesystem]: filesystem.md
 [os-results]: ../decisions/0045-direct-os-errors-and-io-results.md
+[temp-adr]: ../decisions/0065-secure-temporary-files-and-directories.md
 [time-sleep]: ../decisions/0051-explicit-sleep-interruption-and-restart.md
 [time-width]: ../decisions/0050-wide-time-and-monotonic-deadlines.md
 [typed-formatting]: ../decisions/0054-typed-string-formatting.md

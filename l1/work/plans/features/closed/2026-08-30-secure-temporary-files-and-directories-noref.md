@@ -2,9 +2,8 @@
 
 ## Add secure temporary files and directories
 
-- Date: 2026-08-30
-- Last reviewed: 2026-11-21
-- Status: Implemented, native acceptance pending
+- Date: 2026-11-22
+- Status: Completed
 - Title: Add exclusive temporary-file and temporary-directory creation
 - Kind: Feature
 - Priority: Medium
@@ -32,8 +31,9 @@
 
 ## Summary
 
-Add race-free temporary-file and temporary-directory creation for compiler and linker transactions. Creation is
-exclusive, returns ownership of the created object, and provides explicit cleanup helpers.
+L1 tools can create private files and directories under a validated parent and clean them up through a single owner. All
+four supported native platforms passed acceptance. The decision is recorded in
+[l1/docs/decisions/0065-secure-temporary-files-and-directories.md][adr].
 
 ## Stdlib-First Direction and Reference Material
 
@@ -81,7 +81,7 @@ boundary in [l1/docs/reference/standard-library.md][stdlib].
 
 The native runtime uses 128-bit OS entropy and at most 32 exclusive attempts. Tests exercise real L1 clients through
 source and bundled interfaces, deterministic host faults, release after publication, retained replacements, link leaves
-and exact removal counts. Native acceptance remains open until all four supported platforms validate the implementation.
+and exact removal counts.
 
 ## Verification evidence
 
@@ -90,26 +90,22 @@ focused temp, file, entropy and analysis tests passed on macOS Intel. Strict L1 
 validation passed with `make -C l1 docs`, `python3 scripts/check_c_docs.py`,
 `python3 scripts/check_adr_impact.py --all-active` and `python3 scripts/check_adr_impact.py --staged`.
 
-| Platform       | Native result                                                                           |
-| -------------- | --------------------------------------------------------------------------------------- |
-| Linux x86_64   | Local and hosted `make -C l1 test-ci` passed, including the traced child consumer.      |
-| macOS Intel    | Local and hosted `make -C l1 test-ci` passed. Local coverage used Apple Clang 17.       |
-| macOS ARM      | Hosted `make -C l1 test-ci` passed, including the temp runtime fixture and child trace. |
-| Windows UCRT64 | 108 of 109 normal cases passed. Native verification of the OWNER RIGHTS fix is pending. |
+Unified CI ran `make -C l1 test-ci` on each native host. The normal suite includes `temp_runtime_test.py`. The
+`temp_main` child trace reported zero leaked object and string pointers on every host.
 
-On Windows, `system_temp_dir()` returned `PermissionDenied` for a Python-created directory under `LOCALAPPDATA`.
-[CPython's Windows implementation of mode 0700][cpython-mkdir] grants full control to SYSTEM, Administrators and
-`OWNER RIGHTS`. The validator rejected the last trustee even when it trusted the directory owner. It now resolves that
-trustee to the owner from the same descriptor. A cross-built Windows probe under Wine confirmed that the previous
-runtime rejected the private descriptor and the revised runtime accepts it. Both reject an untrusted owner and a
-separate Everyone delete-child grant. Native Windows acceptance must exercise successful creation, protected DACL
-read-back, and the delete-child denial through a junction on NTFS. On fixture failure the harness logs the working
-directory and ancestor descriptors for inspection.
+| Native host    | Normal tests | Compiler traces | Child traces |
+| -------------- | ------------ | --------------- | ------------ |
+| Linux x86_64   | 109 passed   | 53 passed       | 11 passed    |
+| macOS Intel    | 109 passed   | 53 passed       | 11 passed    |
+| macOS ARM64    | 109 passed   | 53 passed       | 11 passed    |
+| Windows UCRT64 | 109 passed   | 53 passed       | 11 passed    |
+
+The Windows fixture exercised private creation under a Python-created directory, verified the protected DACL, and
+rejected an Everyone delete-child grant on a path through a junction. [CPython's mode 0700 DACL][cpython-mkdir] grants
+access to `OWNER RIGHTS`. Parent validation resolves that trustee to the verified owner in the same descriptor.
 
 A separate Wine compatibility probe encountered a filesystem that reports persistent ACLs but discards the protected
 DACL. Both file and directory creation returned `Unsupported` and removed the original entries.
-
-Close the plan and record the L1 ADR after all four native results are available.
 
 ## Non-Goals
 
@@ -126,7 +122,7 @@ Close the plan and record the L1 ADR after all four native results are available
   bounded collision retry, and observable cleanup.
   - Scope: L1
   - Disposition: New ADR
-  - ADR: `l1/docs/decisions/`
+  - ADR: `l1/docs/decisions/0065-secure-temporary-files-and-directories.md`
   - Rationale: Compiler and linker temporary paths are security and correctness boundaries where name-first creation is
     vulnerable to races and substitution.
 
@@ -140,7 +136,8 @@ Close the plan and record the L1 ADR after all four native results are available
 6. Explicit and default parent selection have deterministic precedence and observable inspection failures. Private
    directory access, ownership, primary failure, and cleanup failure follow the selected host contract.
 
-[compiler-support]: ../../../compiler/support/compiler_support.c
+[adr]: ../../../../docs/decisions/0065-secure-temporary-files-and-directories.md
+[compiler-support]: ../../../../compiler/support/compiler_support.c
 [cpython-mkdir]: https://github.com/python/cpython/blob/v3.14.10/Modules/posixmodule.c#L5387-L5396
-[identity-support]: ../../../compiler/support/preparation/identity.h
-[stdlib]: ../../../docs/reference/standard-library.md#stdtemp
+[identity-support]: ../../../../compiler/support/preparation/identity.h
+[stdlib]: ../../../../docs/reference/standard-library.md#stdtemp

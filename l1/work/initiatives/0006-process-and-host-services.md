@@ -1,12 +1,12 @@
 # L1 Initiative 0006 - Process and Host Services
 
-- Version: 2026-11-21
+- Version: 2026-11-22
 - Status: Active
 - Kind: Initiative
 - Open plans:
-  - `l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md`
   - `l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md`
 - Closed plans:
+  - `l1/work/plans/features/closed/2026-08-30-secure-temporary-files-and-directories-noref.md`
   - `l1/work/plans/features/closed/2026-08-30-secure-os-entropy-noref.md`
   - `l1/work/plans/features/closed/2026-08-30-time-width-sleep-and-deadlines-noref.md`
 
@@ -59,17 +59,17 @@ requirements for this initiative or its stdlib plans.
 
 Completed: `fill` and `random_bytes` use supported OS entropy facilities without a deterministic fallback. Native L1
 `make test-ci` passed on Linux x86_64, macOS Intel, macOS ARM, and Windows UCRT64, including the entropy runtime suite
-and child trace with zero leaked object or string pointers. ADR-0064 records the accepted contract. This initiative
-remains active for temporary objects and processes/pipes.
+and child trace with zero leaked object or string pointers. ADR-0064 records the accepted contract.
 
 Spawned plan: [secure OS entropy].
 
 ### Phase 1 - Temporary objects (Stdlib Tier 2)
 
-Implemented in `std.temp`. Callers select a parent or use the validated host default. Cleanup consumes the result once,
-preserves published files, and reports partial progress. Four-platform native acceptance remains open.
+Completed. Callers select a parent or use the validated host default. Cleanup consumes the owner once, preserves
+published files, and reports partial progress. Native `make -C l1 test-ci` passed on Linux x86_64, macOS Intel, macOS
+ARM64, and Windows UCRT64. ADR-0065 records the accepted contract.
 
-Spawned plan: [secure temporary objects].
+[l1/work/plans/features/closed/2026-08-30-secure-temporary-files-and-directories-noref.md][secure temporary objects]
 
 ### Phase 2 - Process spawning and pipes (Stdlib Tier 2)
 
@@ -116,6 +116,12 @@ Spawned plan: [time width, sleep, and deadlines].
   - ADR: `l1/docs/decisions/0064-secure-operating-system-entropy.md`
   - Rationale: The completed entropy contract records secure host sources, explicit partial failures, captured native
     errors, and no predictable fallback.
+- Decision: Create private temporary objects under a validated, pinned parent and consume their cleanup owner once.
+  - Scope: L1
+  - Disposition: Covered by ADR
+  - ADR: `l1/docs/decisions/0065-secure-temporary-files-and-directories.md`
+  - Rationale: Temporary-object ownership ties cleanup to the original entry and preserves publication and partial
+    failure outcomes.
 - Decision: Use `long` seconds for general time values and monotonic time for deadlines.
   - Scope: L1
   - Disposition: Covered by ADR
@@ -133,5 +139,5 @@ Spawned plan: [time width, sleep, and deadlines].
 [l1 roadmap]: ../../docs/roadmap.md
 [process spawning and anonymous pipes]: ../plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md
 [secure os entropy]: ../plans/features/closed/2026-08-30-secure-os-entropy-noref.md
-[secure temporary objects]: ../plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md
+[secure temporary objects]: ../plans/features/closed/2026-08-30-secure-temporary-files-and-directories-noref.md
 [time width, sleep, and deadlines]: ../plans/features/closed/2026-08-30-time-width-sleep-and-deadlines-noref.md

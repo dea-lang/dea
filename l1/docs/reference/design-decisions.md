@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-11-20
+Version: 2026-11-22
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -836,6 +836,13 @@ failure. Neither API promises secure erasure. The accepted decision is recorded 
 [l1/docs/decisions/0064-secure-operating-system-entropy.md][entropy-adr]. Current contracts are in
 [l1/docs/reference/standard-library.md][entropy-library] and [l1/docs/reference/ownership.md][entropy-ownership].
 
+## Secure Temporary Files and Directories
+
+`std.temp` validates and pins the parent, including any trusted alias, before exclusive creation. The returned owner
+retains the original object identity independently of the file handle and the public path. A caller can close and
+publish a file before cleanup. Cleanup consumes the owner even on failure and reports the failed operation, affected
+path, and number of entries removed. See [l1/docs/decisions/0065-secure-temporary-files-and-directories.md][temp-adr].
+
 ## Wide Time, Monotonic Deadlines, and Explicit Sleep Interruption
 
 `std.time` uses signed `long` seconds and normalized `int` nanoseconds. Checked second arithmetic and explicit
@@ -879,6 +886,7 @@ See [l1/docs/decisions/0050-wide-time-and-monotonic-deadlines.md][time-width] an
 [filesystem-width]: ../decisions/0037-wide-filesystem-metadata.md
 [os-results]: ../decisions/0045-direct-os-errors-and-io-results.md
 [stdlib-io-delivery]: ../decisions/0061-stdlib-first-io-delivery-boundary.md
+[temp-adr]: ../decisions/0065-secure-temporary-files-and-directories.md
 [time-sleep]: ../decisions/0051-explicit-sleep-interruption-and-restart.md
 [time-width]: ../decisions/0050-wide-time-and-monotonic-deadlines.md
 [typed-formatting]: ../decisions/0054-typed-string-formatting.md

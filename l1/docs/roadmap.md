@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-11-21
+Version: 2026-11-22
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -25,8 +25,9 @@ scope amendment; the deferred successor feature plans belong to L2.
   supported platforms, and the implementation plan is complete. See
   [l1/work/plans/features/closed/2026-08-30-file-handles-and-random-access-noref.md][plan-files].
 
-- `std.temp` creates private files and directories and reports explicit cleanup outcomes. Native acceptance remains open
-  under [l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md][plan-temp].
+- `std.temp` creates private files and directories and reports explicit cleanup outcomes. Native CI passed on all four
+  supported platforms. ADR-0065 records the contract. See
+  [l1/work/plans/features/closed/2026-08-30-secure-temporary-files-and-directories-noref.md][plan-temp].
 
 - `std.entropy` implements secure host bytes, partial-failure progress, and owned random-byte results through the
   synchronous buffer range API. Native CI passed on all four supported platforms, and ADR-0064 records the completed
@@ -389,9 +390,9 @@ file-watch design, and concurrency now belong to L2.
 
 - [l1/work/initiatives/0003-c-ffi.md][c-ffi] remains on hold. Broader first-class C interoperability is deferred to L2;
   the existing L1 history is preserved.
-- [l1/work/initiatives/0006-process-and-host-services.md][host-services] retains temporary objects, shell-free
-  processes, and anonymous pipes. Entropy and time/deadline work are complete. Process output uses explicit files/pipes;
-  concurrent in-memory capture is deferred.
+- [l1/work/initiatives/0006-process-and-host-services.md][host-services] remains active for shell-free processes and
+  anonymous pipes. Secure entropy, temporary objects, and time/deadline work are complete. Process output uses explicit
+  files or pipes. Concurrent in-memory capture is deferred.
 - [l1/work/initiatives/0010-explicit-profiles-and-composable-builds.md][explicit-profiles] has completed phases A
   through C and implements Phase D's P1689R5 report and external Make adapter in
   [l1/work/plans/features/closed/2026-10-21-semantic-dependency-discovery-noref.md][dependency-discovery].
@@ -480,12 +481,11 @@ Readiness is independent of lifecycle status. `ready` means implementation can b
 immediate prerequisite remains; `not-ready` means required foundations have not landed; `speculative` means unresolved
 design investigation. `implemented` means implementation is present but the plan still has validation or closure work.
 
-| Readiness   | Plan                                                                                               | Remaining gate                                            |
-| ----------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| implemented | [l1/work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md][plan-temp]     | Four-platform native validation and ADR closure.          |
-| ready       | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied. |
-| not-ready   | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                     |
-| not-ready   | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.       |
+| Readiness | Plan                                                                                               | Remaining gate                                            |
+| --------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| ready     | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied. |
+| not-ready | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                     |
+| not-ready | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.       |
 
 The [work/plans/features/closed/2026-10-29-l1-stabilization-boundary-noref.md][boundary-plan] coordinates plan ownership
 and roadmap changes.
@@ -645,7 +645,7 @@ update to be promoted to an initiative or plan:
 [plan-entropy]: ../work/plans/features/closed/2026-08-30-secure-os-entropy-noref.md
 [plan-files]: ../work/plans/features/closed/2026-08-30-file-handles-and-random-access-noref.md
 [plan-process]: ../work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md
-[plan-temp]: ../work/plans/features/2026-08-30-secure-temporary-files-and-directories-noref.md
+[plan-temp]: ../work/plans/features/closed/2026-08-30-secure-temporary-files-and-directories-noref.md
 [pointer-equality]: ../work/plans/features/closed/2026-04-19-pointer-identity-equality-noref.md
 [prefixed-literals]: ../work/plans/features/closed/2026-04-04-l1-prefixed-int-literals-noref.md
 [preparation-contract]: reference/stdlib-preparation.md
