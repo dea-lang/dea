@@ -1,0 +1,117 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module widening;
+
+type B = byte?;
+type BB = B?;
+type I = int?;
+type II = I?;
+type III = II?;
+struct Box { value: I; }
+enum Item { Number(value: I); }
+let static_byte: I = 'A';
+let calls: int = 0;
+
+/**
+ * Return a counted source with its two presence states intact.
+ *
+ * @param x Source to pass through.
+ * @return Original source.
+ */
+func counted(x: BB) -> BB {
+    calls = calls + 1;
+    return x;
+}
+
+/**
+ * Read a present numeric value or report absence.
+ *
+ * @param x Optional value.
+ * @param absent Sentinel for an absent value.
+ * @return Value or sentinel.
+ */
+func read(x: I, absent: int) -> int {
+    if (x == null) return absent;
+    return x as int;
+}
+
+/**
+ * Encode the inner layer, propagating outer absence.
+ *
+ * @param x Two nullable layers.
+ * @return Inner payload or -1, or null on outer absence.
+ */
+func read2(x: II) -> I {
+    let inner = x?;
+    return read(inner, -1);
+}
+
+/**
+ * Encode two inner layers, propagating outer absence.
+ *
+ * @param x Three nullable layers.
+ * @return Encoded payload or null on outer absence.
+ */
+func read3(x: III) -> I {
+    let inner = x?;
+    return read(read2(inner), -2);
+}
+
+/**
+ * Widen a nullable byte at a return site.
+ *
+ * @param x Byte to widen.
+ * @return Widened optional.
+ */
+func widen(x: B) -> I {
+    return x;
+}
+
+/**
+ * Check equal-depth widening and injection after widening.
+ *
+ * @param x Typed source with two nullable layers.
+ * @param expected Encoded presence and value.
+ * @return Whether all conversions preserved the expected state.
+ */
+func check_layers(x: BB, expected: int) -> bool {
+    let same: II = x;
+    let extra: III = counted(x) as III;
+    return read(read2(same), -2) == expected && read(read3(extra), -3) == expected;
+}
+
+/**
+ * Exercise numeric conversions at assignment sites and both byte boundaries.
+ *
+ * @return Zero on success.
+ */
+func main() -> int {
+    let zero: byte = 0 as byte;
+    let max: byte = 255 as byte;
+    let empty: B = null;
+    let absent_outer: BB = null;
+    let with_empty: BB = empty;
+    let boxed: Box = Box(max);
+    if (read(boxed.value, -1) != 255 || read(zero, -1) != 0) return 1;
+    let present: B = max;
+    let initialized: I = present;
+    if (read(initialized, -1) != 255) return 2;
+    initialized = empty;
+    if (initialized != null || widen(empty) != null || read(widen(present), -1) != 255) return 3;
+    let item: Item = Number(present);
+    match (item) {
+        Number(v) => { if (read(v, -1) != 255) return 4; }
+    }
+    let slot = new I(present);
+    let saved: int = read(*slot, -1);
+    drop slot;
+    if (saved != 255) return 5;
+    if (!check_layers(absent_outer, -2) || !check_layers(with_empty, -1)) return 6;
+    if (!check_layers(zero, 0) || !check_layers(max, 255) || calls != 4) return 7;
+    let injected: II = empty;
+    if (read(read2(injected), -2) != -1) return 8;
+    if (read(static_byte, -1) != 65) return 9;
+    return 0;
+}

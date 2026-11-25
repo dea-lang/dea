@@ -19,6 +19,8 @@ At the following conversion sites:
 #  SPDX-License-Identifier: MIT OR Apache-2.0
 #  Copyright (c) 2026 gwz
 
+from pathlib import Path
+
 import pytest
 
 from conftest import has_error_code
@@ -607,6 +609,24 @@ class TestConversionExecution:
 # ============================================================================
 # Negative tests (things that should NOT compile)
 # ============================================================================
+
+def test_lifted_widening_executes(tmp_path, write_l0_file, search_paths, compile_and_run):
+    """Compile and run the shared L0 presence and single-evaluation fixture."""
+    fixture = Path(__file__).resolve().parents[4] / "tests/fixtures/nullable_widening/widening.l0"
+    c_code = generate_c(tmp_path, write_l0_file, search_paths, "widening", fixture.read_text(encoding="utf-8"))
+    success, _, stderr = compile_and_run(c_code, tmp_path)
+    assert success, stderr
+
+
+@pytest.mark.parametrize(("source", "target"), [
+    ("int?", "byte?"), ("byte?", "int"), ("B?", "int?"), ("bool?", "int?"),
+    ("S?", "int?"), ("S*?", "int*?"), ("B*", "I*"),
+])
+def test_lifted_widening_rejects_incompatible_types(tmp_path, write_l0_file, search_paths, source, target):
+    """Reject narrowing, layer removal and unrelated payloads."""
+    src = f"module main; type B = byte?; type I = int?; struct S {{ x: int; }} func f(x: {source}) {{ let y: {target} = x; }}"
+    analyze_and_expect_error(tmp_path, write_l0_file, search_paths, "main", src, "TYP-0310")
+
 
 class TestConversionRejection:
     """Test that invalid conversions are rejected."""

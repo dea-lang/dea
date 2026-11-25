@@ -3,7 +3,7 @@
 
 from dataclasses import dataclass
 from l0_ast import Node, CallExpr
-from l0_types import Type, BuiltinType, NullableType, format_type
+from l0_types import Type, BuiltinType, NullableType, format_type, is_numeric_widening
 from l0_backend_state import BackendState
 
 
@@ -83,19 +83,39 @@ class OwnershipConversion:
         if self.state._types_equal(natural_ty, expected):
             return c_expr
 
-        # T → T? (wrap in Some)
-        if isinstance(expected, NullableType) and self.state._types_equal(expected.inner, natural_ty):
-            if self.state.emitter.types.is_niche_nullable(expected):
-                return c_expr  # pointer-to-pointer, no wrapping needed
-            return self.state.emitter.types.emit_some_value_for_nullable(expected, c_expr)
-
-        # byte → int (implicit widening)
-        if (isinstance(natural_ty, BuiltinType) and natural_ty.name == "byte" and
-                isinstance(expected, BuiltinType) and expected.name == "int"):
+        if is_numeric_widening(expected, natural_ty):
+            if isinstance(natural_ty, NullableType):
+                # Keep the evaluation at the conversion site, including in short-circuit operands.
+                tmp = self.state.emitter.names.fresh_tmp("widen")
+                self.state.emitter.statements.emit_temp_decl(self.state.emitter.types.emit_type(natural_ty), tmp, "{0}")
+                widened = self._widen_present_payload(tmp, natural_ty, expected)
+                return f"({tmp} = {c_expr}, {widened})"
             return self.state.emitter.values.emit_widen_int(c_expr, natural_ty, expected)
 
-        # No type conversion needed
+        if isinstance(expected, NullableType):
+            payload = self._convert_expr_with_expected_type(c_expr, natural_ty, expected.inner)
+            return self.state.emitter.types.emit_some_value_for_nullable(expected, payload)
+
         return c_expr
+
+    def _widen_present_payload(self, place: str, source: Type, target: Type) -> str:
+        """Map matching numeric nullable layers on a stabilized source.
+
+        Args:
+            place: Side-effect-free source temporary or payload member.
+            source: Type of the source place.
+            target: Destination type at the same nullable depth.
+
+        Returns:
+            A conditional C expression reading only present payloads.
+        """
+        values = self.state.emitter.values
+        if isinstance(source, NullableType) and isinstance(target, NullableType):
+            payload = self._widen_present_payload(values.emit_optional_value(place), source.inner, target.inner)
+            present = self.state.emitter.types.emit_some_value_for_nullable(target, payload)
+            absent = self.state.emitter.types.emit_none_value_for_nullable(target)
+            return f"({values.emit_optional_has_value(place)} ? {present} : {absent})"
+        return values.emit_widen_int(place, source, target)
 
     def _emit_unwrap(self, c_dst: str, c_inner: str, src_ty: NullableType) -> str:
         """Emit code to unwrap a nullable value.

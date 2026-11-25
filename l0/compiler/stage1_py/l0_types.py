@@ -102,6 +102,21 @@ class NullType(Type):
     pass
 
 
+def is_numeric_widening(target: Type, source: Type) -> bool:
+    """Check for byte-to-int widening through the same number of nullable layers.
+
+    Args:
+        target: Destination type.
+        source: Natural source type.
+
+    Returns:
+        Whether every present source payload can widen at this depth.
+    """
+    while isinstance(target, NullableType) and isinstance(source, NullableType):
+        target, source = target.inner, source.inner
+    return source == get_builtin_type("byte") and target == get_builtin_type("int")
+
+
 # --- helpers for builtins ---
 
 _BUILTIN_CACHE: dict[str, BuiltinType] = {}

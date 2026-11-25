@@ -4,7 +4,7 @@
 from dataclasses import dataclass, field
 from l0_ast import Expr, IntLiteral, StringLiteral, BoolLiteral, VarRef, CallExpr, NullLiteral, NewExpr, ByteLiteral
 from l0_name_resolver import SymbolKind
-from l0_types import Type, StructType, EnumType
+from l0_types import Type, StructType, EnumType, NullableType
 from l0_backend_state import BackendState
 
 
@@ -29,6 +29,9 @@ class StaticInitializers:
         Raises:
             InternalCompilerError: If the initializer is not constant or supported.
         """
+        if isinstance(expected_type, NullableType) and isinstance(expr, (ByteLiteral, IntLiteral)):
+            payload = self._emit_let_initializer(expr, expected_type.inner)
+            return self.state.emitter.values.emit_struct_static_initializer([("has_value", "1"), ("value", payload)])
         if isinstance(expr, IntLiteral):
             return self.state.emitter.values.emit_int_literal(expr.value)
         elif isinstance(expr, BoolLiteral):

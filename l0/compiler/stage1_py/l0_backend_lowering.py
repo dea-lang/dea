@@ -1414,7 +1414,7 @@ class Lowering:
 
         else:
             if len(expr.args) == 1:
-                c_arg = self._emit_expr(expr.args[0])
+                c_arg = self._emit_owned_expr_with_expected_type(expr.args[0], base_ty)
                 self.state.emitter.statements.emit_checked_pointer_assignment(tmp, c_base, c_arg)
             else:
                 # multiple args not supported for other types
@@ -1702,7 +1702,7 @@ class Lowering:
                 ):
                     retained = self.lifetime._emit_copy_expr_with_retains(c_inner, dst_ty.inner)
                     return self.state.emitter.types.emit_some_value_for_nullable(dst_ty, retained)
-                return self.state.emitter.types.emit_some_value_for_nullable(dst_ty, c_inner)
+                return self.convert._convert_expr_with_expected_type(c_inner, src_ty, dst_ty)
 
             # Checked unwrap cast (T? -> T): emit a runtime check + abort on empty.
             if isinstance(src_ty, NullableType) and dst_ty == src_ty.inner:

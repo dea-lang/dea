@@ -3,7 +3,7 @@
 ## Implement lifted nullable numeric widening
 
 - Date: 2026-11-25
-- Status: Draft
+- Status: In progress
 - Title: Implement lifted nullable numeric widening across Dea compilers
 - Kind: Feature
 - Priority: High
@@ -17,7 +17,7 @@
 - Origin: Dea-wide language decision in ADR-0029
 - Porting rule: Use the shared value semantics and each level's existing numeric widening pairs and nullable syntax.
 - Target status:
-  - L0 Stage 1: Pending
+  - L0 Stage 1: Implemented
   - L0 Stage 2: Pending
   - L1 canonical compiler: Pending
   - L2 canonical compiler: Pending
@@ -56,6 +56,11 @@ also proceed independently.
   - Disposition: Covered by ADR
   - ADR: `docs/decisions/0029-lifted-nullable-numeric-widening.md`
   - Rationale: The language rule is accepted. This plan tracks conformance of the four compiler implementations.
+
+## Verification results
+
+- L0 Stage 1 compiled and executed the shared L0 fixture for absence, 0, 255, nested aliases, injection, and counted
+  sources. Its implicit-conversion and cast tests cover rejected narrowing, layer removal, and incompatible payloads.
 
 ## Baseline and implementation sequence
 

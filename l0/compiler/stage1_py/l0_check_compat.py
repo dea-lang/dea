@@ -3,7 +3,7 @@
 
 from dataclasses import dataclass
 from l0_ast import Expr, IntLiteral, NullLiteral, UnaryOp, ParenExpr, CastExpr
-from l0_types import Type, BuiltinType, PointerType, NullableType, NullType
+from l0_types import Type, BuiltinType, PointerType, NullableType, NullType, is_numeric_widening
 
 
 @dataclass
@@ -11,7 +11,7 @@ class TypeCompatibility:
     """Assignment, cast, and scalar type-compatibility rules."""
 
 
-    def _can_assign(self, target: Type, source: Type, *, allow_promotion=False) -> bool:
+    def _can_assign(self, target: Type, source: Type, *, allow_promotion=False, lift_numeric=True) -> bool:
         """Check if 'source' type can be assigned to 'target' type."""
         # Exact match
         if self._types_equal(target, source):
@@ -22,10 +22,8 @@ class TypeCompatibility:
             if isinstance(target, NullableType):
                 return True
 
-        # Allow widening for certain built-in types (byte -> int)
-        if isinstance(source, BuiltinType) and isinstance(target, BuiltinType):
-            if source.name == "byte" and target.name == "int":
-                return True
+        if (lift_numeric or not isinstance(source, NullableType)) and is_numeric_widening(target, source):
+            return True
 
         # Checked narrowing for built-in types (int -> byte) in casts
         if allow_promotion and isinstance(source, BuiltinType) and isinstance(target, BuiltinType):
@@ -35,7 +33,7 @@ class TypeCompatibility:
 
         # Allow widening non-nullable to nullable promotion (T -> T?)
         if isinstance(target, NullableType):
-            if self._can_assign(target.inner, source):
+            if self._can_assign(target.inner, source, lift_numeric=lift_numeric):
                 return True
 
         # Nullable to non-nullable demotion (T? -> T) only if allowed (e.g., in casts)
@@ -43,17 +41,17 @@ class TypeCompatibility:
             if self._can_assign(target, source.inner):
                 return True
 
-        # Recursive checks for Nullable types
-        if isinstance(source, NullableType) and isinstance(target, NullableType):
-            # T1? -> T2? if T1 -> T2
-            return self._can_assign(target.inner, source.inner)
+        # Preserve existing pointer-niche compatibility for nullable pointers.
+        if (isinstance(target, NullableType) and isinstance(target.inner, PointerType)
+                and isinstance(source, NullableType) and isinstance(source.inner, PointerType)):
+            return self._can_assign(target.inner, source.inner, lift_numeric=False)
 
         # Recursive checks for Pointer types
         if isinstance(source, PointerType) and isinstance(target, PointerType):
             # T1* -> T2* if T1 -> T2 or T2 is void or T1 is void
             if self._is_void(target.inner) or self._is_void(source.inner):
                 return True
-            return self._can_assign(target.inner, source.inner)
+            return self._can_assign(target.inner, source.inner, lift_numeric=False)
 
         return False
 

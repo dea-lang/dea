@@ -220,7 +220,9 @@ class CTypes:
         if name in self._opt_emitted:
             return
 
-        c_inner = self.emit_type(inner)  # may itself be another l0_opt_...
+        if isinstance(inner, NullableType) and not self._is_niche_nullable(inner):
+            self._emit_optional_wrapper(self._opt_wrapper_name_for_inner(inner.inner), inner.inner)
+        c_inner = self.emit_type(inner)
 
         # Emit #ifndef guard so generated wrappers do not conflict.
         self.state.out.emit(f"#ifndef {name.upper()}_DEFINED")
@@ -246,6 +248,9 @@ class CTypes:
         """Scan all compilation unit types and collect required optional wrappers."""
         self._opt_wrappers.clear()
         self._opt_emitted.clear()
+
+        for ty in self.state.analysis.let_types.values():
+            self._collect_opt_wrappers_from_type(ty)
 
         # Function signatures
         for ft in self.state.analysis.func_types.values():
