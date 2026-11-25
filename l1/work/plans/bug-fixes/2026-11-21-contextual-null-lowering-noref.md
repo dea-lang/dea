@@ -2,7 +2,7 @@
 
 ## Preserve the target type of null in expressions and allocations
 
-- Date: 2026-11-21
+- Date: 2026-11-25
 - Status: Draft
 - Title: Preserve the target type of null in expressions and allocations
 - Kind: Bug Fix
@@ -51,8 +51,11 @@ is a typed absent local. These workarounds narrow the impact, but ordinary accep
    diagnostic.
 
 From `l1/`, run `make test-compiler TESTS="expr_types_test backend_test l1c_build_run_multi_cu_test"`. Check both
-generated C and the executed result. Optional-to-optional numeric widening is a separate conversion-policy decision.
+generated C and the executed result. These cases require only the destination type of a null literal. ADR-0029's numeric
+payload conversions are tracked independently in
+[work/plans/features/2026-11-25-shared-nullable-numeric-widening-noref.md][widening].
 
 [l0-nullable]: ../../../../l0/work/plans/bug-fixes/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md
 [nullability]: ../../../docs/reference/design-decisions.md
 [suffixes]: ../../../docs/decisions/0012-ordered-type-suffix-constructors.md
+[widening]: ../../../../work/plans/features/2026-11-25-shared-nullable-numeric-widening-noref.md

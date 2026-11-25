@@ -2,7 +2,7 @@
 
 ## Catch L2 up with the stable L1 baseline
 
-- Date: 2026-10-27
+- Date: 2026-11-25
 - Status: Draft
 - Title: Catch L2 up with stable L1 compiler and standard-library work before sustained L2 development
 - Kind: Feature
@@ -32,6 +32,10 @@ its named release or dated baseline, and explicitly starts the L2 development ph
 
 The virtual rebase means reviewing and porting the accumulated compiler, runtime, stdlib, support, and regression
 changes into L2-owned sources while retaining L2's independent lineage and bootstrap contract. Preserve Git history.
+
+For lifted nullable numeric widening, consult the L2 target in
+[work/plans/features/2026-11-25-shared-nullable-numeric-widening-noref.md][widening] when recording the delta. That
+shared plan owns L2 implementation and validation of ADR-0029.
 
 ## Approach
 
@@ -79,3 +83,4 @@ or IFF implementation, self-hosting, release productization, tags, remote writes
 [diagnostics]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
 [independent-compiler]: ../../../docs/decisions/0001-independent-canonical-compiler.md
 [roadmap]: ../../../docs/roadmap.md
+[widening]: ../../../../work/plans/features/2026-11-25-shared-nullable-numeric-widening-noref.md

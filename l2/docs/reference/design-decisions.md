@@ -1,6 +1,6 @@
 # L2 Design Decisions
 
-Version: 2026-11-11
+Version: 2026-11-25
 
 L2 begins with the documented language, ABI, ownership, separate-compilation, and native-preparation semantics of its L1
 donor. The split changes compiler/target identity and physical ownership, not those algorithms or public APIs. Its
@@ -9,6 +9,13 @@ canonical `.l1` implementation is built by installed L1; `.l2` programs and `.l2
 See [l2/docs/decisions/0001-independent-canonical-compiler.md](../decisions/0001-independent-canonical-compiler.md),
 [l2/docs/reference/architecture.md](architecture.md), and [l2/docs/reference/ownership.md](ownership.md). Future
 language decisions require their own scoped work; no L1 feature plan is automatically migrated here.
+
+## Nullable numeric widening
+
+The Dea-wide rule covers L2's existing type-based implicit numeric widenings. For example, `float?` to `double?`
+preserves absence and widens a present payload. The current L2 compiler rejects this conversion. L2 conformance is
+tracked in the shared implementation plan linked from
+[docs/specs/language/nullable-numeric-widening.md](../../../docs/specs/language/nullable-numeric-widening.md).
 
 ## Integer boundaries
 

@@ -1,6 +1,6 @@
 # L1 Language and Runtime Design Decisions
 
-Version: 2026-11-22
+Version: 2026-11-25
 
 This document records current design rationale and policy decisions for Dea/L1 as implemented by the bootstrap compiler.
 
@@ -347,6 +347,11 @@ distinguish outer null from an outer-present inner null pointer.
 
 For non-pointer nullable values, and for nested nullable values whose outer layer cannot use a pointer niche, generated
 C uses wrapper representations rather than exposing host-specific niche assumptions.
+
+Dea has accepted lifted implicit numeric widening for L1's existing scalar widening pairs. Under this rule, an absent
+`byte?` converts to an absent `int?`. Conversion of that same value to `int??` adds a present outer layer. The
+corresponding `as` cast must preserve the same states. L1 currently rejects `byte?` to `int?` in both forms. See
+[docs/specs/language/nullable-numeric-widening.md][nullable-widening].
 
 Future direction: broaden the cast rule so `expr as U` is valid whenever there is an explicit cast target `V` for the
 operand and `V` can be implicitly widened to `U`. That would make the current integer-to-optional-integer behavior one
@@ -884,6 +889,7 @@ See [l1/docs/decisions/0050-wide-time-and-monotonic-deadlines.md][time-width] an
 [filesystem-resolution]: ../decisions/0048-absolute-anchoring-and-existing-path-canonicalization.md
 [filesystem-traversal]: ../decisions/0046-filesystem-paths-and-owned-directory-traversal.md
 [filesystem-width]: ../decisions/0037-wide-filesystem-metadata.md
+[nullable-widening]: ../../../docs/specs/language/nullable-numeric-widening.md
 [os-results]: ../decisions/0045-direct-os-errors-and-io-results.md
 [stdlib-io-delivery]: ../decisions/0061-stdlib-first-io-delivery-boundary.md
 [temp-adr]: ../decisions/0065-secure-temporary-files-and-directories.md

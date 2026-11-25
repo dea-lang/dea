@@ -1,6 +1,6 @@
 # L0 Language and Runtime Design Decisions
 
-Version: 2026-11-11
+Version: 2026-11-25
 
 This document records rationale and policy decisions.
 
@@ -152,13 +152,17 @@ expression is currently rejected during semantic analysis.
 - Non-pointer nullable values are represented by wrapper forms in generated C (e.g., `l0_opt_*` structs).
 - Nullable pointers use pointer-null representation (niche optimization).
 
+The accepted Dea-wide conversion rule applies to L0's `byte` to `int` widening. A plain byte converts to a present
+`int?`. Converting a `byte?` to `int?` preserves absence and widens a present byte. Both stages still have conformance
+work. See [docs/specs/language/nullable-numeric-widening.md](../../../docs/specs/language/nullable-numeric-widening.md).
+
 ### 4.2 Cast policy (`as`)
 
 Casts are explicit and checked by type rules and runtime helpers where needed.
 
 Important intent:
 
-- narrowing and wrap/unwrap semantics are explicit,
+- narrowing and unwrapping require explicit handling,
 - invalid casts are compile-time errors,
 - runtime checks are used for defined-failure cases (panic), not UB.
 

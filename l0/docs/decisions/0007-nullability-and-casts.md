@@ -1,7 +1,7 @@
 # ADR-0007: Nullability and Casts
 
 - Decision date: 2025-12-16
-- Last edited: 2026-05-20
+- Last edited: 2026-11-25
 - Status: Accepted
 
 ## Context
@@ -24,8 +24,10 @@ A related question was how explicit type casts should work in a UB-free language
 **Casts:**
 
 - Casts are explicit and spelled with `as`.
-- Narrowing and wrap/unwrap semantics are explicit; implicit widening applies only for `T → T?` (non-nullable to
-  nullable promotion).
+- Implicit nullable injection from `T` to `T?` constructs a present value. Numeric widening into and through nullable
+  types follows the accepted Dea-wide rule in
+  [docs/decisions/0029-lifted-nullable-numeric-widening.md](../../../docs/decisions/0029-lifted-nullable-numeric-widening.md).
+  Narrowing and unwrapping require explicit handling.
 - Invalid casts are compile-time errors.
 - Runtime checks are used for defined-failure cases (panic), not for UB.
 
@@ -50,4 +52,5 @@ A related question was how explicit type casts should work in a UB-free language
 
 ## Current Docs
 
+- [docs/specs/language/nullable-numeric-widening.md](../../../docs/specs/language/nullable-numeric-widening.md)
 - [l0/docs/reference/design-decisions.md](../reference/design-decisions.md): §4 (nullability, casts, and introspection)

@@ -2,7 +2,7 @@
 
 ## Release owned payloads when dropping an allocated optional
 
-- Date: 2026-11-21
+- Date: 2026-11-25
 - Status: Draft
 - Title: Release owned payloads when dropping an allocated optional
 - Kind: Bug Fix
@@ -24,6 +24,9 @@
 The program exits successfully, but the trace checker reports one leaked string and zero leaked objects. The generated
 code validates and frees the object without releasing the string held in its present payload. Each such drop loses a
 heap reference. The existing nullable value cleanup already knows how to check presence and release owned data.
+
+This cleanup applies to an already-typed slot and can ship independently of the numeric conversions tracked in
+[work/plans/features/2026-11-25-shared-nullable-numeric-widening-noref.md][widening].
 
 ## ADR Impact
 
@@ -52,3 +55,4 @@ the present and absent allocated-slot examples.
 
 [l0-ownership]: ../../../../l0/work/plans/bug-fixes/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md
 [ownership]: ../../../docs/reference/ownership.md
+[widening]: ../../../../work/plans/features/2026-11-25-shared-nullable-numeric-widening-noref.md

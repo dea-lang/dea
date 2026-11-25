@@ -39,6 +39,7 @@ Root specs live under `docs/specs/` and define Dea-wide contracts that are not o
 
 Examples:
 
+- the language rule in [docs/specs/language/nullable-numeric-widening.md](specs/language/nullable-numeric-widening.md)
 - the shared [docs/specs/compiler/cli-contract.md](specs/compiler/cli-contract.md)
 - shared compiler catalogs such as
   [docs/specs/compiler/diagnostic-code-catalog.md](specs/compiler/diagnostic-code-catalog.md)
