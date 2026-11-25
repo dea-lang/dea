@@ -20,7 +20,7 @@
   - L0 Stage 1: Implemented
   - L0 Stage 2: Implemented
   - L1 canonical compiler: Implemented
-  - L2 canonical compiler: Pending
+  - L2 canonical compiler: Deferred: resume during the stable L1 catch-up.
 - Modules:
   - `l0/compiler/stage1_py/l0_check_compat.py`, `l0/compiler/stage1_py/l0_backend_convert.py`
   - `l0/compiler/stage2_l0/src/expr_types/compat.l0`, `l0/compiler/stage2_l0/src/backend/convert.l0`
@@ -37,9 +37,10 @@
 
 ## Summary
 
-Bring all four implementations into conformance with the accepted numeric conversion rule. This takes priority because
-the stages disagree about the same source and Stage 1 can accept programs that fail native compilation. The L0
-contextual-null, ARC and structural type-equality repairs retain their own scope in
+Both L0 stages and L1 implement ADR-0029 and passed focused local checks. L2 is the remaining target. Resume it when the
+project maintainer selects a stable L1 baseline and activates
+[l2/work/plans/features/2026-10-27-stable-l1-catch-up-noref.md][catch-up]. The L0 contextual-null, ARC and structural
+type-equality repairs retain their own scope in
 [l0/work/plans/bug-fixes/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md][l0-fixes]. The two L1 fixes can
 also proceed independently.
 
@@ -70,21 +71,20 @@ also proceed independently.
   the floating pair with typed boundaries, nested presence states, and checked rejection of mixed optional equality,
   arithmetic, pointer, array and slice conversions.
 
-## Baseline and implementation sequence
+## L2 bootstrap issue and catch-up
 
-1. **L0 Stage 1.** Start with typed `byte` and `byte?` arguments and initializers targeting `int?`. The Python checker
-   accepts both. Its optional-to-optional path recurses through general assignment compatibility, and accepted programs
-   can produce incompatible C. Cover the scalar widening, injection and lifted cases end to end first. Restrict the
-   lifting predicate to numeric payload widening and make the emitter construct the correct destination.
-2. **L0 Stage 2.** Plain bytes already widen into `int?` at 0 and 255. A nullable-destination return in `etc_can_assign`
-   makes the subsequent optional-pair branch unreachable. Port the numeric rule and its executable cases. Check the
-   explicit-cast path as well as the borrowed and owned expected-type emission paths.
-3. **L1.** The same early return rejects `byte?` to `int?` for initialization, assignment, calls and returns. `as int?`
-   also rejects that source. The emitter currently wraps a converted expression as present. Cover the wider integer
-   matrix, `float` to `double`, and all distinguishable states of nested nullables using L1-owned fixtures.
-4. **L2.** The canonical checker and emitter have the same structure, and local L2 probes gave the same results as L1.
-   Port the reviewed rule to the L1-written compiler. Check and execute L2-owned `.l2` fixtures with L2's numeric types,
-   runtime and native build inputs. The stable-L1 catch-up plan can reference the recorded target result.
+Building the L1-written L2 compiler with `L2_BOOTSTRAP_MODE=development` and `L2_BOOTSTRAP_L1C` set to the built L1
+launcher failed with `TYP-0311` at `sec = now.sec`. L1's `std.time.WallTime.sec` is a 64-bit `long`. Three L2 compiler
+helpers infer a 32-bit `int` from `let sec = 0` when constructing workspace or transaction names.
+
+- `cfs_workspace_create` in `l2/compiler/src/compiler_filesystem.l1`
+- `cd_create_transaction` in `l2/compiler/src/compile_driver/transaction.l1`
+- `ld_create_transaction` in `l2/compiler/src/link_driver/transaction.l1`
+
+The retry stopped during compiler construction, before the L2 conformance tests ran. At catch-up, confirm the clock type
+against the selected stable L1 toolchain. If it is `long`, carry seconds through the locals, identity parameters and
+decimal formatting at full width. Exercise a workspace collision at 2147483648 seconds and build L2 with that toolchain.
+Then port the L1 widening rule and run the conformance cases below with L2-owned `.l2` sources and runtime inputs.
 
 ## Implementation constraints
 
@@ -124,6 +124,7 @@ also proceed independently.
   inputs and explicitly selected L1 bootstrap. Update the level references as support lands.
 
 [adr]: ../../../docs/decisions/0029-lifted-nullable-numeric-widening.md
+[catch-up]: ../../../l2/work/plans/features/2026-10-27-stable-l1-catch-up-noref.md
 [diagnostics]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
 [l0-fixes]: ../../../l0/work/plans/bug-fixes/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md
 [l1-drop]: ../../../l1/work/plans/bug-fixes/2026-11-21-drop-optional-payload-cleanup-noref.md
