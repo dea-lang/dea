@@ -75,6 +75,8 @@ artifact root maps future outputs without changing resolution inputs; scans do n
 
 ## Related Plans
 
+- [l1/work/plans/bug-fixes/closed/2026-11-21-explicit-entry-file-identity-noref.md](../../l1/work/plans/bug-fixes/closed/2026-11-21-explicit-entry-file-identity-noref.md)
+
 - [l0/work/plans/bug-fixes/closed/2026-11-21-stage1-entry-paths-and-import-cache-noref.md](../../l0/work/plans/bug-fixes/closed/2026-11-21-stage1-entry-paths-and-import-cache-noref.md)
 
 - [l1/work/plans/features/closed/2026-10-21-semantic-dependency-discovery-noref.md][dependency-plan]

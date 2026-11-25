@@ -233,7 +233,10 @@ func dr_resolve_module(ctx: DriverResolutionContext*, stack: StringVector*, modu
     }
 
     let existing_opt = mg_find_node(state.graph, module_name);
-    if (existing_opt != null) {
+
+    /* An explicit dea source must resolve its path before it can conflict with the preloaded virtual node. */
+    let explicit_virtual = ctx.search_paths.explicit_entry_name == module_name && dea_is_virtual_module_name(module_name);
+    if (existing_opt != null && !explicit_virtual) {
         let existing = existing_opt as ModuleGraphNode*;
         if (ord(existing.state) == ord(MNS_RESOLVED)) {
             log_debug(ctx.cfg, "Module '" + module_name + "' already resolved (cache hit)");
@@ -252,11 +255,6 @@ func dr_resolve_module(ctx: DriverResolutionContext*, stack: StringVector*, modu
             "conflicting unresolved graph identity for module '" + module_name + "'", "");
         existing.state = MNS_FAILED;
         return false;
-    }
-
-    if (dea_is_virtual_module_name(module_name)) {
-        log_debug(ctx.cfg, "Treating module '" + module_name + "' as compiler-synthesized prelude");
-        return true;
     }
 
     with (let next_stack = us_sv_clone(stack) => sv_free(next_stack)) {
@@ -374,7 +372,7 @@ func dr_resolve_module(ctx: DriverResolutionContext*, stack: StringVector*, modu
         let path_opt = sp_resolve(ctx.search_paths, module_name);
         if (path_opt == null) {
             dr_emit_error(state.diags, "DRV-0010",
-                "Module '" + module_name + "' not found in system_roots or project_roots", "");
+                sp_missing_source_message(ctx.search_paths, module_name), "");
             return dr_fail_without_node(state, module_name);
         }
         let path = path_opt as string;

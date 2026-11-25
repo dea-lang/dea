@@ -14,6 +14,7 @@ import std.system;
 import std.vector;
 import util.diag;
 
+import compiler_filesystem;
 import source_paths;
 
 /**
@@ -101,15 +102,18 @@ func test_validated_module_relative_paths() {
  * Tests test_path_target_parent_suppresses_default_dot_root.
  */
 func test_path_target_parent_suppresses_default_dot_root() {
-    with (
-        let roots = sv_create(2) => sv_free(roots),
-        let diags = diag_create() => diag_free(diags)
-    ) {
-        let entry = sp_normalize_entry_target("examples/demo.l1", roots, diags);
-        assert(entry != null && entry as string == "demo", "expected demo entry module");
-        sp_apply_default_project_roots(roots);
-        assert(sv_size(roots) == 1, "path target should not keep default '.' root");
-        assert(sv_get(roots, 0) == "examples", "path target parent should become the only root");
+    with (let paths = sp_create() => sp_free(paths), let diags = diag_create() => diag_free(diags)) {
+        let file = "compiler/tests/fixtures/source_paths/project_first/duplicate.l1";
+        sp_add_system_root(paths, "compiler/tests/fixtures/source_paths/system_first");
+        let entry = sp_normalize_entry_target(paths, file, diags);
+        assert(entry != null && entry as string == "duplicate", "expected duplicate entry module");
+        sp_apply_default_project_roots(paths.project_roots);
+        assert(sp_project_root_count(paths) == 1, "entry parent should become the only project root");
+        assert(cfs_same_file(join(sp_project_root_get(paths, 0), "duplicate.l1"), file) == 1,
+            "entry parent should identify the selected directory");
+        let selected = sp_resolve(paths, "duplicate");
+        assert(selected != null && is_absolute(selected as string) && cfs_same_file(selected as string, file) == 1,
+            "explicit entry must identify the project file from any working directory");
     }
 }
 

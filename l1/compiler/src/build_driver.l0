@@ -21,7 +21,7 @@ import cli_args.model;
 import compiler_filesystem;
 
 /**
- * Prepared input bundle for build/run commands.
+ * Canonical entry and source selection shared by CLI modes.
  */
 struct BuildPreparedInput {
     entry_module: string;
@@ -70,19 +70,16 @@ func bd_log_effective_roots(cfg: LogConfig*, sys_roots: StringVector*, project_r
  * @return Prepared input bundle, or `null` on failure.
  */
 func bd_prepare_input(opts: CliOptions*, diags: DiagCollector*, cfg: LogConfig*) -> BuildPreparedInput*? {
-    with (
-        let project_roots = us_sv_clone(opts.project_roots) => sv_free(project_roots),
-        let sys_roots = us_sv_clone(opts.sys_roots) => sv_free(sys_roots)
-    ) {
-        if (opts.profile == null) { sp_apply_default_sys_roots(sys_roots); }
-
-        let entry_target = opts.entry_target as string;
-        let entry_module = sp_normalize_entry_target(entry_target, project_roots, diags)?;
-        sp_apply_default_project_roots(project_roots);
-        bd_log_effective_roots(cfg, sys_roots, project_roots);
-        let sp = sp_build_from_roots(project_roots, sys_roots);
-        return new BuildPreparedInput(entry_module, sp);
+    let sp = sp_build_from_roots(opts.project_roots, opts.sys_roots);
+    let entry = sp_normalize_entry_target(sp, opts.entry_target as string, diags);
+    if (entry == null) {
+        sp_free(sp);
+        return null;
     }
+    if (opts.profile == null) { sp_apply_default_sys_roots(sp.system_roots); }
+    sp_apply_default_project_roots(sp.project_roots);
+    bd_log_effective_roots(cfg, sp.system_roots, sp.project_roots);
+    return new BuildPreparedInput(entry as string, sp);
 }
 
 /**

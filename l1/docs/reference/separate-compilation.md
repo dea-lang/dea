@@ -1,6 +1,6 @@
 # L1 Separate Compilation, Build, Run, and Standalone Linking
 
-Version: 2026-11-05
+Version: 2026-11-25
 
 This document describes the implemented Dea/L1 canonical compiler path from per-module generated C and one-module
 compilation to an interface-authoritative executable. It is the current behavioral reference for `l1c --gen`,
@@ -42,6 +42,10 @@ generated-root collision checks; `.l1m` remains link authority. See
 [l1/docs/reference/dependency-discovery.md][dependency-discovery].
 
 ## 1. Implemented Workflow
+
+A path operand such as `./item.l1` selects that exact entry file for inspection, dependency discovery, code generation
+and native compilation. Relative paths resolve from the invocation directory. The file's parent joins the project roots
+for imports. Dotted module operands and bare filenames such as `item.l1` search system roots before project roots.
 
 Generate one source-backed module, with interface-first imports and source fallback only when no interface is selected:
 

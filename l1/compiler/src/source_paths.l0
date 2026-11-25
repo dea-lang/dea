@@ -24,6 +24,8 @@ import compiler_filesystem;
 struct SourceSearchPaths {
     system_roots: StringVector*;
     project_roots: StringVector*;
+    explicit_entry_name: string;
+    explicit_entry_path: string;
     managed_source_root: string?;
     managed_interfaces: string?;
     profile_modules: string?; /* Exact validated inventory; independent of installed sources. */
@@ -35,7 +37,7 @@ struct SourceSearchPaths {
  * @return New search-path set with separate system and project root vectors.
  */
 func sp_create() -> SourceSearchPaths* {
-    return new SourceSearchPaths(sv_create(2), sv_create(2), null, null, null);
+    return new SourceSearchPaths(sv_create(2), sv_create(2), "", "", null, null, null);
 }
 
 /**
@@ -177,13 +179,19 @@ func _sp_resolve_roots(roots: StringVector*, rel: string) -> string? {
 }
 
 /**
- * Resolve a module name against configured search roots.
+ * Select the bound entry file or resolve another module through ordered source roots.
  *
  * @param self Search paths to inspect.
  * @param module_name Dotted module name to resolve.
  * @return First matching source path, or `null` if the module is not found.
  */
 func sp_resolve(self: SourceSearchPaths*, module_name: string) -> string? {
+    if (self.explicit_entry_name == module_name && self.explicit_entry_path != "") {
+        if (cfs_path_kind_follow(self.explicit_entry_path) == CFS_PATH_ABSENT) {
+            return null;
+        }
+        return self.explicit_entry_path;
+    }
     let rel_opt = sp_module_source_relpath(module_name);
     if (rel_opt == null) {
         return null;
@@ -196,6 +204,20 @@ func sp_resolve(self: SourceSearchPaths*, module_name: string) -> string? {
     }
 
     return _sp_resolve_roots(self.project_roots, rel);
+}
+
+/**
+ * Describe the explicit file or module search that failed.
+ *
+ * @param self Source paths for this invocation.
+ * @param module_name Requested canonical name.
+ * @return Diagnostic detail for a missing source.
+ */
+func sp_missing_source_message(self: SourceSearchPaths*, module_name: string) -> string {
+    if (self.explicit_entry_name == module_name && self.explicit_entry_path != "") {
+        return "source file not found: " + self.explicit_entry_path;
+    }
+    return "Module '" + module_name + "' not found in system_roots or project_roots";
 }
 
 /**
@@ -413,58 +435,40 @@ func sp_build_from_roots(project_roots: StringVector*, sys_roots: StringVector*)
 }
 
 /**
- * Normalize a CLI entry target to a module name.
+ * Bind a CLI path operand to its module and add its parent to the project roots.
  *
- * @param target CLI target, either a module name or a path-like input.
- * @param project_roots Project-root vector to extend when `target` includes a parent path.
- * @param diags Diagnostic collector for validation errors.
- * @return Normalized module name, or `null` if validation fails.
+ * @param self Search paths for the new invocation.
+ * @param target Original CLI operand.
+ * @param diags Collector for invalid names or unresolvable paths.
+ * @return Canonical entry name, or `null` on failure.
  */
-func sp_normalize_entry_target(target: string, project_roots: StringVector*, diags: DiagCollector*) -> string? {
-    if (has_extension(target, ".l1") || is_absolute(target) || has_parent(target)) {
-        let module_name = "";
-        if (has_extension(target, ".l1")) {
-            module_name = stem(target);
-        } else {
-            module_name = basename(target);
-        }
-
-        let parent_dir = parent(target);
-        if (parent_dir != ".") {
-            sv_push(project_roots, parent_dir);
-        }
-
-        if (!sp_is_valid_module_name(module_name)) {
-            diag_error(
-                diags,
-                "l1c",
-                "L1C-0011",
-                "invalid entry module name '" + module_name + "': module components must be valid identifiers",
-                "",
-                0,
-                0,
-                0,
-                0
-            );
-            return null;
-        }
-        return module_name;
+func sp_normalize_entry_target(self: SourceSearchPaths*, target: string, diags: DiagCollector*) -> string? {
+    let explicit_file = has_parent(target);
+    let name = target;
+    if (has_extension(target, ".l1")) {
+        name = stem(target);
+    } else if (explicit_file) {
+        name = basename(target);
     }
-
-    if (!sp_is_valid_module_name(target)) {
-        diag_error(
-            diags,
-            "l1c",
-            "L1C-0011",
-            "invalid entry module name '" + target + "': module components must be valid identifiers",
-            "",
-            0,
-            0,
-            0,
-            0
-        );
+    if (!sp_is_valid_module_name(name)) {
+        diag_error(diags, "l1c", "L1C-0011",
+            "invalid entry module name '" + name + "': module components must be valid identifiers",
+            "", 0, 0, 0, 0);
         return null;
     }
+    if (explicit_file) {
+        let path = cfs_absolute_path(target);
+        if (path == null) {
+            diag_error(diags, "Driver", "DRV-0010", "cannot resolve explicit source path: " + target,
+                target, 0, 0, 0, 0);
+            return null;
+        }
+        self.explicit_entry_name = name;
+        self.explicit_entry_path = path as string;
 
-    return target;
+        /* Keep the separator even when a POSIX directory name ends in a literal backslash. */
+        let absolute = self.explicit_entry_path;
+        sp_add_project_root(self, slice_s(absolute, 0, find_last_s(absolute, basename(absolute))));
+    }
+    return name;
 }

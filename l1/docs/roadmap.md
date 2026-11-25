@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-11-22
+Version: 2026-11-25
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -468,10 +468,11 @@ file-watch design, and concurrency now belong to L2.
 - Bug Fix [2026-11-11-readme-implemented-library-status-noref][readme-library-status] corrects the README to list typed
   formatting and file handles as implemented while preserving pending stabilization work and release distinctions.
 
+- Bug Fix [l1/work/plans/bug-fixes/closed/2026-11-21-explicit-entry-file-identity-noref.md][entry-file] preserves the
+  selected entry file through inspection, dependency discovery and per-module native compilation.
+
 ## Active standalone plans
 
-- [2026-11-21-explicit-entry-file-identity-noref][entry-file] tracks explicit CLI operands that can select a different
-  source file.
 - [2026-11-21-contextual-null-lowering-noref][contextual-null] covers the lost destination type for parenthesized nulls
   and single-value allocation initializers.
 - [2026-11-21-drop-optional-payload-cleanup-noref][optional-drop] tracks the heap string leaked when dropping an
@@ -493,7 +494,6 @@ design investigation. `implemented` means implementation is present but the plan
 
 | Readiness    | Plan                                                                                               | Remaining gate                                              |
 | ------------ | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| ready        | [2026-11-21-explicit-entry-file-identity-noref][entry-file]                                        | The shared CLI contract defines explicit target identity.   |
 | ready        | [2026-11-21-contextual-null-lowering-noref][contextual-null]                                       | Both failures reproduce after semantic analysis.            |
 | ready        | [2026-11-21-drop-optional-payload-cleanup-noref][optional-drop]                                    | Present and absent fixtures distinguish the leaked payload. |
 | almost-ready | [2026-11-21-match-wildcard-dispatch-and-return-flow-noref][match-wildcard]                         | Select the precedence rule for enum match arms.             |
@@ -623,7 +623,7 @@ update to be promoted to an initiative or plan:
 [deref-grouping]: ../work/plans/bug-fixes/2026-11-21-compound-dereference-grouping-noref.md
 [design-decisions]: reference/design-decisions.md
 [embedded-members]: ../work/proposals/anonymous-embedded-struct-members.md
-[entry-file]: ../work/plans/bug-fixes/2026-11-21-explicit-entry-file-identity-noref.md
+[entry-file]: ../work/plans/bug-fixes/closed/2026-11-21-explicit-entry-file-identity-noref.md
 [env-text-reassessment]: ../work/plans/refactors/closed/2026-09-15-native-identity-environment-text-reassessment-noref.md
 [explicit-profiles]: ../work/initiatives/0010-explicit-profiles-and-composable-builds.md
 [export-imports]: ../work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md

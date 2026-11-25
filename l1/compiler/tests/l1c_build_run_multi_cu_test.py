@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from support.compiler_subject import selected_compiler
@@ -312,6 +313,112 @@ def write_invocation_marker_compiler(root: Path, marker: Path) -> Path:
     return launcher
 
 
+def check_explicit_entry(compiler: Path, cc: str, env: dict[str, str], root: Path) -> None:
+    """Check source identity through CLI inspection, graph discovery and native execution.
+
+    Args:
+        compiler: Canonical L1 compiler.
+        cc: Host C compiler for native execution.
+        env: Test toolchain environment.
+        root: Isolated fixture directory.
+    """
+    project = root / "project files"
+    system = root / "system files"
+    write_module(project, "sibling", "module sibling; export value; func value() -> int { return 23; }")
+    write_module(project, "item", """
+        module item;
+        import sibling;
+        func requestedmarker() -> int { return sibling::value(); }
+        func main() -> int { return requestedmarker(); }
+    """)
+    write_module(system, "item", """
+        module item;
+        func shadowmarker() -> int { return 37; }
+        func main() -> int { return shadowmarker(); }
+    """)
+    entry = project / "item.l1"
+    roots = ["-Rs", system, "-Rp", root]
+    targets = [str(entry), "./item.l1"]
+    if os.name == "nt":
+        targets.append(r"..\project files/item.l1")
+    for target in targets:
+        for flags in (["--tok"], ["--tok", "--all-modules"], ["--gen"]):
+            result = run([compiler, *flags, *roots, target], cwd=project, env=env)
+            require_status(result, 0, f"{flags} {target}")
+            if "requestedmarker" not in result.stdout or "shadowmarker" in result.stdout:
+                raise MultiCuFailure(f"{flags} selected a different source for {target}")
+            if "--all-modules" in flags and "Tokens for module sibling" not in result.stdout:
+                raise MultiCuFailure(f"missing sibling token dump for {target}")
+
+        scan = run([compiler, "--scan-deps", "--artifact-root", "outputs", *roots, target], cwd=project, env=env)
+        require_status(scan, 0, f"dependency discovery for {target}")
+        rules = json.loads(scan.stdout)["rules"]
+        selected = {
+            rule["provides"][0]["logical-name"]: Path(rule["work-directory"]) / rule["provides"][0]["source-path"]
+            for rule in rules
+        }
+        expected = {"item": entry, "sibling": project / "sibling.l1"}
+        if selected.keys() != expected.keys() or any(not selected[name].samefile(path) for name, path in expected.items()):
+            raise MultiCuFailure(f"wrong entry graph for {target}: {selected}")
+
+        executed = run(compiler_command(compiler, cc, "--run", root, target, "-Rs", system), cwd=project, env=env)
+        require_status(executed, 23, f"native explicit entry {target}")
+
+    for directory, marker in [(system, "systemchoice"), (project, "projectchoice")]:
+        write_module(directory, "pkg.choice", f"module pkg.choice; func {marker}() {{}}")
+    dotted = run([compiler, "--tok", "-Rs", system, "-Rp", project, "pkg.choice"], cwd=project, env=env)
+    require_status(dotted, 0, "dotted module search")
+    if "systemchoice" not in dotted.stdout or "projectchoice" in dotted.stdout:
+        raise MultiCuFailure("dotted target lost system-root precedence")
+
+    bare = run([compiler, "--tok", *roots, "item.l1"], cwd=project, env=env)
+    require_status(bare, 0, "bare filename search")
+    if "shadowmarker" not in bare.stdout:
+        raise MultiCuFailure("bare filename lost system-root precedence")
+
+    if os.name != "nt":
+        alias = root / "project alias\\"
+        alias.symlink_to(project, target_is_directory=True)
+        checked = run([compiler, "--check", *roots, alias / "item.l1"], cwd=root, env=env)
+        require_status(checked, 0, "sibling in a directory ending in a literal backslash")
+
+    interfaces = root / "provider interfaces"
+    compile_module(compiler, cc, env, project, interfaces, "sibling")
+    (interfaces / "item.l1m").write_text("invalid competing entry interface", encoding="utf-8")
+    write_module(project, "sibling", "invalid competing imported source")
+    executed = run(
+        compiler_command(compiler, cc, "--run", root, "./item.l1", "-Rs", system, "-I", interfaces),
+        cwd=project, env=env,
+    )
+    require_status(executed, 23, "explicit source entry with authoritative imported interface")
+
+    entry.write_text("module wrong_name;", encoding="utf-8")
+    write_module(project, "dea", "module dea;")
+    for mode, target, code in [
+        ("--check", "./item.l1", "DRV-0020"),
+        ("--check", "../missing/item.l1", "DRV-0010"),
+        ("--tok", "../missing/item.l1", "L1C-0070"),
+        ("--run", "../missing/item.l1", "DRV-0010"),
+        ("--check", "../missing/dea.l1", "DRV-0010"),
+        ("--check", "./dea.l1", "DRV-0077"),
+    ]:
+        result = run([compiler, mode, *roots, target], cwd=project, env=env)
+        require_status(result, 1, f"{mode} {target}")
+        if f"[{code}]" not in result.stderr:
+            raise MultiCuFailure(f"missing {code} for {target}: {result.stderr}")
+
+    if os.name != "nt" and os.geteuid() != 0:
+        entry.chmod(0)
+        try:
+            for mode, code in [("--check", "DRV-0011"), ("--tok", "L1C-0040")]:
+                result = run([compiler, mode, *roots, "./item.l1"], cwd=project, env=env)
+                require_status(result, 1, f"{mode} unreadable entry")
+                if f"[{code}]" not in result.stderr:
+                    raise MultiCuFailure(f"missing {code} for unreadable entry: {result.stderr}")
+        finally:
+            entry.chmod(0o600)
+
+
 def main() -> int:
     """Run the multi-CU build/run regression matrix."""
 
@@ -325,6 +432,8 @@ def main() -> int:
         env["TMPDIR"] = str(temp_parent)
         env.pop("TEMP", None)
         env.pop("TMP", None)
+
+        check_explicit_entry(compiler, cc, env, root)
 
         if os.name == "nt":
             invocation_marker = root / "unsafe-link-arg-invoked-compiler"
