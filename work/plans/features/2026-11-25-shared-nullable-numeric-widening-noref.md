@@ -18,7 +18,7 @@
 - Porting rule: Use the shared value semantics and each level's existing numeric widening pairs and nullable syntax.
 - Target status:
   - L0 Stage 1: Implemented
-  - L0 Stage 2: Pending
+  - L0 Stage 2: Implemented
   - L1 canonical compiler: Pending
   - L2 canonical compiler: Pending
 - Modules:
@@ -61,6 +61,9 @@ also proceed independently.
 
 - L0 Stage 1 compiled and executed the shared L0 fixture for absence, 0, 255, nested aliases, injection, and counted
   sources. Its implicit-conversion and cast tests cover rejected narrowing, layer removal, and incompatible payloads.
+
+- L0 Stage 2 executed the same fixture through its native launcher. Its expression checker rejects nullable narrowing,
+  loss of depth, and widening through a pointer.
 
 ## Baseline and implementation sequence
 

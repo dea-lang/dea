@@ -1,0 +1,25 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module typing_nullable_widening_err;
+
+type B = byte?;
+type I = int?;
+
+/**
+ * Exercise invalid payload, depth, and pointer conversions.
+ *
+ * @param wide Nullable integer.
+ * @param small Nullable byte.
+ * @param nested Two optional byte layers.
+ * @param pointer Pointer to optional byte storage.
+ */
+func rejected(wide: I, small: B, nested: B?, pointer: B*) {
+    let narrow: B = wide;
+    let unwrapped: int = small;
+    let lost_layer: I = nested;
+    let covariant: I* = pointer;
+    let cast = wide as B;
+}

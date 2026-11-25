@@ -153,8 +153,8 @@ expression is currently rejected during semantic analysis.
 - Nullable pointers use pointer-null representation (niche optimization).
 
 The accepted Dea-wide conversion rule applies to L0's `byte` to `int` widening. A plain byte converts to a present
-`int?`. Converting a `byte?` to `int?` preserves absence and widens a present byte. Stage 1 implements the rule,
-including nested nullable aliases. Stage 2 conformance is pending. See
+`int?`. Converting a `byte?` to `int?` preserves absence and widens a present byte. Both stages implement the rule,
+including nested nullable aliases. See
 [docs/specs/language/nullable-numeric-widening.md](../../../docs/specs/language/nullable-numeric-widening.md).
 
 ### 4.2 Cast policy (`as`)

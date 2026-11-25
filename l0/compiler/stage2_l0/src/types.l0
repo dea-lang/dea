@@ -253,6 +253,41 @@ func type_is_builtin(self: Type*, name: string) -> bool {
 }
 
 /**
+ * Check the scalar numeric widening pair supported by L0.
+ *
+ * @param dst Destination type.
+ * @param src Source type.
+ * @return Whether a byte widens to an integer.
+ */
+func type_can_widen_numeric(dst: Type*, src: Type*) -> bool {
+    return type_is_builtin(dst, "int") && type_is_builtin(src, "byte");
+}
+
+/**
+ * Count the present layers injected after widening through the source layers.
+ *
+ * @param dst Borrowed destination type.
+ * @param src Borrowed source type.
+ * @return Extra destination depth, or -1 for an unsupported conversion.
+ */
+func type_numeric_widening_injections(dst: Type*, src: Type*) -> int {
+    let target = dst;
+    let source = src;
+    while (ord(source.kind) == ord(TY_NULLABLE)) {
+        if (ord(target.kind) != ord(TY_NULLABLE)) return -1;
+        target = target.inner as Type*;
+        source = source.inner as Type*;
+    }
+    let extra = 0;
+    while (ord(target.kind) == ord(TY_NULLABLE)) {
+        target = target.inner as Type*;
+        extra = extra + 1;
+    }
+    if (type_can_widen_numeric(target, source)) return extra;
+    return -1;
+}
+
+/**
  * Check whether a type name is one of the builtin names.
  *
  * @param name Type name to inspect.

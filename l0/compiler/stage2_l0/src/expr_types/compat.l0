@@ -76,17 +76,28 @@ func etc_types_equal(a: Type*?, b: Type*?) -> bool {
  * @return `true` if assignment is allowed.
  */
 func etc_can_assign(self: ExpressionTypeChecker*, dst: Type*, src: Type*) -> bool {
+    return etc_can_assign_types(dst, src, true);
+}
+
+/**
+ * Check assignment while keeping nullable widening outside pointer compatibility.
+ *
+ * @param dst Destination type.
+ * @param src Source type.
+ * @param lift_numeric Permit lifted numeric conversion at this value position.
+ * @return Whether the assignment is allowed.
+ */
+func etc_can_assign_types(dst: Type*, src: Type*, lift_numeric: bool) -> bool {
     if (type_equals(dst, src)) return true;
 
     if (ord(src.kind) == ord(TY_NULL) && ord(dst.kind) == ord(TY_NULLABLE)) return true;
-    if (type_is_builtin(dst, "int") && type_is_builtin(src, "byte")) return true;
+    if (type_can_widen_numeric(dst, src)) return true;
 
     if (ord(dst.kind) == ord(TY_NULLABLE)) {
-        return etc_can_assign(self, dst.inner as Type*, src);
-    }
-
-    if (ord(src.kind) == ord(TY_NULLABLE) && ord(dst.kind) == ord(TY_NULLABLE)) {
-        return etc_can_assign(self, dst.inner as Type*, src.inner as Type*);
+        if (lift_numeric && ord(src.kind) == ord(TY_NULLABLE) && type_numeric_widening_injections(dst, src) >= 0) {
+            return true;
+        }
+        return etc_can_assign_types(dst.inner as Type*, src, lift_numeric);
     }
 
     if (ord(src.kind) == ord(TY_POINTER) && ord(dst.kind) == ord(TY_POINTER)) {
@@ -95,7 +106,7 @@ func etc_can_assign(self: ExpressionTypeChecker*, dst: Type*, src: Type*) -> boo
         if (type_is_builtin(dst_inner, "void") || type_is_builtin(src_inner, "void")) {
             return true;
         }
-        return etc_can_assign(self, dst_inner, src_inner);
+        return etc_can_assign_types(dst_inner, src_inner, false);
     }
 
     return false;

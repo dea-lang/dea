@@ -88,6 +88,10 @@ func cem_emit_optional_wrapper(self: CEmitter*, name: string, inner: Type*) {
         return;
     }
 
+    if (ord(inner.kind) == ord(TY_NULLABLE) && !cem_is_niche_nullable(inner)) {
+        let payload = inner.inner as Type*;
+        cem_emit_optional_wrapper(self, cem_opt_wrapper_name_for_inner(payload), payload);
+    }
     let guard = cem_upper_ascii(name) + "_DEFINED";
     let c_inner = cem_emit_type(inner);
     ccb_emit(self.out, "#ifndef " + guard);

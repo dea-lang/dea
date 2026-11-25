@@ -241,6 +241,20 @@ func test_typing_alias_value_err() {
 }
 
 /**
+ * Check that numeric widening preserves depth and never lifts through pointers.
+ */
+func test_typing_nullable_widening_err() {
+    let sp = make_paths();
+    with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        let result = analysis_analyze_entry(sp, "typing_nullable_widening_err", cfg);
+        assert(count_diag_code(result, "TYP-0310") == 4, "expected four rejected initializers");
+        assert(count_diag_code(result, "TYP-0230") == 1, "expected rejected nullable narrowing cast");
+        analysis_result_free(result);
+    }
+    sp_free(sp);
+}
+
+/**
  * Tests `let` declaration diagnostic parity cases.
  */
 func test_typing_let_diag_err() {
@@ -887,6 +901,7 @@ func main() {
     test_typing_alias_struct_constructor_ok();
     test_typing_alias_value_err();
     test_typing_let_diag_err();
+    test_typing_nullable_widening_err();
     test_typing_let_diag_tail_err();
     test_typing_loop_cond_err();
     test_typing_match_diag_err();

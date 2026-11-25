@@ -81,7 +81,7 @@ func be_emit_expr_with_expected_type(self: Backend*, expr_id: ExprId, expected: 
 
     with (let natural_ty = be_expr_type(self, expr_id) => type_free_opt(natural_ty)) {
         let c_expr = be_emit_expr(self, expr_id);
-        return be_convert_expr_with_expected_type(c_expr, natural_ty, expected);
+        return be_convert_expr_with_expected_type(self, c_expr, natural_ty, expected);
     }
 }
 
@@ -103,7 +103,7 @@ func be_emit_owned_expr_with_expected_type(self: Backend*, expr_id: ExprId, expe
         let c_expr = be_emit_expr(self, expr_id);
         let place_like = be_is_place_expr(self, expr_id) || be_is_borrowed_extraction(self, expr_id);
         if (natural_ty == null || !place_like) {
-            return be_convert_expr_with_expected_type(c_expr, natural_ty, expected);
+            return be_convert_expr_with_expected_type(self, c_expr, natural_ty, expected);
         }
         if (type_equals(natural_ty as Type*, expected)) {
             return be_emit_copy_expr_with_retains(self, c_expr, expected);
@@ -115,7 +115,7 @@ func be_emit_owned_expr_with_expected_type(self: Backend*, expr_id: ExprId, expe
             return cem_emit_some_value_for_nullable(expected,
                 be_emit_copy_expr_with_retains(self, c_expr, natural_ty as Type*));
         }
-        return be_convert_expr_with_expected_type(c_expr, natural_ty, expected);
+        return be_convert_expr_with_expected_type(self, c_expr, natural_ty, expected);
     }
 }
 
@@ -660,7 +660,9 @@ func be_emit_new_expr(self: Backend*, expr_id: ExprId) -> string {
         }
 
         if (arg_count == 1) {
-            cem_emit_checked_pointer_assignment(self.emitter, tmp, c_base, be_emit_expr(self, id_vec_get(expr.ids as VectorBase*, 0)));
+            let init_id = id_vec_get(expr.ids as VectorBase*, 0);
+            let init = be_emit_owned_expr_with_expected_type(self, init_id, base_ty);
+            cem_emit_checked_pointer_assignment(self.emitter, tmp, c_base, init);
             return tmp;
         }
 
@@ -795,6 +797,9 @@ func be_emit_expr(self: Backend*, expr_id: ExprId) -> string {
                 }
 
                 if (ord((dst_ty as Type*).kind) == ord(TY_NULLABLE)) {
+                    if (src_ty != null && type_numeric_widening_injections(dst_ty as Type*, src_ty as Type*) >= 0) {
+                        return be_convert_expr_with_expected_type(self, c_inner, src_ty, dst_ty as Type*);
+                    }
                     if (src_ty != null && type_equals((dst_ty as Type*).inner as Type*, src_ty as Type*)) {
                         if (cem_is_niche_nullable(dst_ty as Type*)) {
                             return cem_emit_cast(c_dst, c_inner);

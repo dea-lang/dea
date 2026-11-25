@@ -273,6 +273,8 @@ def main() -> int:
         stage2_native = native_path(bootstrap_dir / "bin" / "l0c-stage2.native")
 
         check_entry_file_identity(l0c, work_dir)
+        widening = REPO_ROOT / "tests" / "fixtures" / "nullable_widening" / "widening.l0"
+        run([l0c, "--run", native_path(widening)])
 
         ok_main_bin = work_dir / ("ok_main.bin.exe" if is_windows_host() else "ok_main.bin")
         byte_main_bin = work_dir / ("byte_main.bin.exe" if is_windows_host() else "byte_main.bin")
