@@ -56,23 +56,22 @@ def build_search_paths(context: CompilationContext, args: argparse.Namespace) ->
         A SourceSearchPaths object if successful, or None if the entry name
         is invalid.
     """
-    # if args.entry is a path, split into dir and module name
-    entry_path = Path(args.entry)
-    if entry_path.suffix == ".l0" or entry_path.is_absolute() or entry_path.parent != Path('.'):
-        if entry_path.suffix == ".l0":
-            module_name = entry_path.stem
-        else:
-            module_name = entry_path.name
-        if entry_path.parent != Path('.'):
-            args.project_root.append(str(entry_path.parent))
-        args.entry = module_name
+    project_roots = list(args.project_root)
+    target = args.entry
+    # Path("./item.l0") loses the separator that distinguishes an explicit file.
+    explicit_path = bool(os.path.dirname(target))
+    entry_path = Path(target)
+    sp = SourceSearchPaths()
+    if explicit_path or entry_path.suffix == ".l0":
+        args.entry = entry_path.stem if entry_path.suffix == ".l0" else entry_path.name
+        if explicit_path:
+            sp.explicit_entry = (args.entry, entry_path.absolute())
+            project_roots.append(str(entry_path.parent))
     if not _is_valid_module_name(args.entry):
         _emit_diagnostic(
             f"error: [L0C-0011] invalid entry module name '{args.entry}': module components must be valid identifiers",
         )
         return None
-    if not args.project_root:
-        args.project_root = ["."]
     if not args.sys_root:
         # Default system root from environment variable L0_SYSTEM if set
         # Supports multiple paths separated by : (Unix) or ; (Windows)
@@ -82,10 +81,9 @@ def build_search_paths(context: CompilationContext, args: argparse.Namespace) ->
             args.sys_root = [p for p in sys_env.split(separator) if p]
         else:
             args.sys_root = []
-    sp = SourceSearchPaths()
     for root in args.sys_root:
         sp.add_system_root(root)
-    for root in args.project_root:
+    for root in project_roots or ["."]:
         sp.add_project_root(root)
     sys_list = ",".join(f"'{p}'" for p in sp.system_roots)
     proj_list = ",".join(f"'{p}'" for p in sp.project_roots)

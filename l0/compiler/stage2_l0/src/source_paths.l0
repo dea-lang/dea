@@ -23,6 +23,8 @@ import util.strings;
 struct SourceSearchPaths {
     system_roots: StringVector*;
     project_roots: StringVector*;
+    explicit_entry_name: string;
+    explicit_entry_path: string;
 }
 
 /**
@@ -31,7 +33,7 @@ struct SourceSearchPaths {
  * @return New search-path set with separate system and project root vectors.
  */
 func sp_create() -> SourceSearchPaths* {
-    return new SourceSearchPaths(sv_create(2), sv_create(2));
+    return new SourceSearchPaths(sv_create(2), sv_create(2), "", "");
 }
 
 /**
@@ -160,23 +162,43 @@ func sp_module_relpath(module_name: string) -> string {
  * @return First matching source path, or `null` if the module is not found.
  */
 func sp_resolve(self: SourceSearchPaths*, module_name: string) -> string? {
+    if (self.explicit_entry_path != "" && module_name == self.explicit_entry_name) {
+        if (is_file(self.explicit_entry_path)) {
+            return self.explicit_entry_path;
+        }
+        return null;
+    }
     let rel = sp_module_relpath(module_name);
 
     for (let i = 0; i < sv_size(self.system_roots); i = i + 1) {
         let candidate = join(sv_get(self.system_roots, i), rel);
-        if (exists(candidate)) {
+        if (is_file(candidate)) {
             return candidate;
         }
     }
 
     for (let project_i = 0; project_i < sv_size(self.project_roots); project_i = project_i + 1) {
         let candidate = join(sv_get(self.project_roots, project_i), rel);
-        if (exists(candidate)) {
+        if (is_file(candidate)) {
             return candidate;
         }
     }
 
     return null;
+}
+
+/**
+ * Describe a missing source using the lookup that selected it.
+ *
+ * @param self Search paths for this invocation.
+ * @param module_name Module that failed resolution.
+ * @return Diagnostic detail for the explicit file or the searched module.
+ */
+func sp_missing_source_message(self: SourceSearchPaths*, module_name: string) -> string {
+    if (self.explicit_entry_path != "" && module_name == self.explicit_entry_name) {
+        return "L0 source file not found: " + self.explicit_entry_path;
+    }
+    return "Module '" + module_name + "' not found in system_roots or project_roots";
 }
 
 /**
@@ -285,14 +307,21 @@ func sp_apply_default_sys_roots(sys_roots: StringVector*) {
 }
 
 /**
- * Build a search-path collection from explicit root vectors.
+ * Build the search paths for a normalized CLI entry.
  *
  * @param project_roots Project roots to copy.
  * @param sys_roots System roots to copy.
- * @return New search-path collection containing both root sets.
+ * @param target Original CLI operand, before removing its parent or extension.
+ * @param entry_module Validated module name of the entry.
+ * @return New search-path collection with the explicit entry file when supplied.
  */
-func sp_build_from_roots(project_roots: StringVector*, sys_roots: StringVector*) -> SourceSearchPaths* {
+func sp_build_from_roots(project_roots: StringVector*, sys_roots: StringVector*,
+                         target: string, entry_module: string) -> SourceSearchPaths* {
     let sp = sp_create();
+    if (has_parent(target)) {
+        sp.explicit_entry_name = entry_module;
+        sp.explicit_entry_path = target;
+    }
 
     for (let i = 0; i < sv_size(sys_roots); i = i + 1) {
         sp_add_system_root(sp, sv_get(sys_roots, i));
@@ -323,7 +352,7 @@ func sp_normalize_entry_target(target: string, project_roots: StringVector*, dia
         }
 
         let parent_dir = parent(target);
-        if (parent_dir != ".") {
+        if (has_parent(target)) {
             sv_push(project_roots, parent_dir);
         }
 

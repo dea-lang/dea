@@ -7,6 +7,7 @@ module driver_test;
 
 import std.io;
 import std.string;
+import std.vector;
 import std.assert;
 
 import source_paths;
@@ -85,19 +86,53 @@ func test_transitive_import_closure_ok() {
 }
 
 /**
- * Tests test_import_cycle_reports_error.
+ * Retry a failed cycle and then load a repaired diamond with the same driver.
  */
-func test_import_cycle_reports_error() {
+func test_cycle_retry_and_repair() {
     let sp = make_paths();
     with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
         let result = driver_analyze_entry(sp, "cycle_a", cfg);
 
         assert(driver_has_errors(result), "expected cycle errors");
-        assert(has_driver_diag_code(result, "DRV-0030"), "expected DRV-0030 for cycle");
+        for (let i = 0; i < 2; i = i + 1) {
+            let before = driver_diag_code_count(result, "DRV-0030");
+            assert(!dr_load_module(result, sp, "|", "cycle_a", cfg), "cycle retry succeeded");
+            assert(driver_diag_code_count(result, "DRV-0030") == before + 1, "cycle retry lost its diagnostic");
+            assert(driver_unit_count(result) == 2, "cycle retry duplicated parsed units");
+        }
+        sp_add_system_root(sp, fixture_root() + "/repaired imports");
+        assert(dr_load_module(result, sp, "|", "cycle_a", cfg), "repaired cycle failed");
+        assert(driver_unit_count(result) == 4, "expected four units in the repaired diamond");
+        assert(sv_size(result.source_texts) == 4, "expected one source per repaired unit");
+        assert(driver_find_unit(result, "cycle_a") != null && driver_find_unit(result, "cycle_b") != null
+               && driver_find_unit(result, "ok_dep1") != null && driver_find_unit(result, "ok_leaf") != null,
+               "incomplete repaired closure");
 
         driver_state_free(result);
     }
     sp_free(sp);
+}
+
+/**
+ * Retry a missing dependency, then complete its closure after adding its root.
+ */
+func test_missing_import_retry_and_repair() {
+    with (let sp = sp_create() => sp_free(sp), let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
+        sp.explicit_entry_name = "ok_dep1";
+        sp.explicit_entry_path = fixture_root() + "/ok_dep1.l0";
+        with (let state = driver_analyze_entry(sp, "ok_dep1", cfg) => driver_state_free(state)) {
+            assert(has_driver_diag_code(state, "DRV-0010"), "expected missing dependency");
+            for (let i = 0; i < 2; i = i + 1) {
+                let before = driver_diag_code_count(state, "DRV-0010");
+                assert(!dr_load_module(state, sp, "|", "ok_dep1", cfg), "missing import retry succeeded");
+                assert(driver_diag_code_count(state, "DRV-0010") == before + 1, "expected fresh missing diagnostic");
+            }
+            sp_add_project_root(sp, fixture_root());
+            assert(dr_load_module(state, sp, "|", "ok_dep1", cfg), "retry after repair failed");
+            assert(driver_unit_count(state) == 2 && driver_find_unit(state, "ok_leaf") != null,
+                   "expected one entry and one repaired dependency");
+        }
+    }
 }
 
 /**
@@ -117,15 +152,15 @@ func test_module_name_mismatch_reports_error() {
 }
 
 /**
- * Tests test_read_failure_reports_error.
+ * Report a missing module when the only candidate is a directory.
  */
-func test_read_failure_reports_error() {
+func test_directory_is_not_a_source() {
     let sp = make_paths();
     with (let cfg = log_config_create(LL_SILENT, false) => drop cfg) {
         let result = driver_analyze_entry(sp, "read_fail", cfg);
 
-        assert(driver_has_errors(result), "expected read failure errors");
-        assert(has_driver_diag_code(result, "DRV-0011"), "expected DRV-0011 for read failure");
+        assert(driver_has_errors(result), "expected missing source");
+        assert(has_driver_diag_code(result, "DRV-0010"), "expected DRV-0010 for a directory");
 
         driver_state_free(result);
     }
@@ -157,9 +192,10 @@ func test_lexer_errors_recover_into_parser() {
  */
 func main() {
     test_transitive_import_closure_ok();
-    test_import_cycle_reports_error();
+    test_cycle_retry_and_repair();
+    test_missing_import_retry_and_repair();
     test_module_name_mismatch_reports_error();
-    test_read_failure_reports_error();
+    test_directory_is_not_a_source();
     test_lexer_errors_recover_into_parser();
     printl_s("driver_test: all tests passed");
 }

@@ -102,8 +102,9 @@ class L0Driver:
         self.search_paths = search_paths or SourceSearchPaths()
         self.context = context or CompilationContext.default()
         self.diagnostics: list[Diagnostic] = []
-        # Modules successfully loaded (by module name).
+        # Latest single-file parse by declared name, independent of import resolution.
         self.module_cache: dict[str, Module] = {}
+        self._loaded_modules: dict[str, Module] = {}
         # Modules currently being loaded (for cycle detection).
         self._loading: set[str] = set()
 
@@ -216,26 +217,22 @@ class L0Driver:
         def visit(mod: Module) -> None:
             """Collect a module and its transitive imports once per module name.
 
-            Update the enclosing ``visited`` set and ``collected`` mapping before
-            walking imports in declaration order. Repeated visits are no-ops.
-            Import-loading failures propagate without rolling back collected
-            modules or changes to the driver's module cache.
+            Walk the sources selected by the initial load, including recovered
+            parse trees when the compilation unit has syntax diagnostics.
 
             Args:
                 mod: Parsed module to collect along with its reachable imports.
-
-            Raises:
-                ImportCycleError: If loading an import detects a cycle.
-                FileNotFoundError: If an imported module cannot be found.
-                ValueError: If an imported module declares a different name.
-                SourceEncodingError: If an imported source is not valid UTF-8.
             """
             if mod.name in visited:
                 return
             visited.add(mod.name)
             collected[mod.name] = mod
             for imp in mod.imports:
-                dep = self.load_module(imp.name)
+                dep = self._loaded_modules.get(imp.name)
+                if dep is None:
+                    dep = self.module_cache[imp.name]
+                else:
+                    log_debug(self.context, f"Module '{imp.name}' already loaded (cache hit)")
                 visit(dep)
 
         visit(entry)
@@ -264,9 +261,9 @@ class L0Driver:
             raise ImportCycleError(f"Cyclic import detected involving '{module_name}'")
 
         # If already fully loaded, reuse it.
-        if module_name in self.module_cache:
+        if module_name in self._loaded_modules:
             log_debug(self.context, f"Module '{module_name}' already loaded (cache hit)")
-            return self.module_cache[module_name]
+            return self._loaded_modules[module_name]
 
         log_debug(self.context, f"Loading module '{module_name}'")
         self._loading.add(module_name)
@@ -275,6 +272,7 @@ class L0Driver:
             path = self.search_paths.resolve(module_name)
             log_debug(self.context, f"Resolved '{module_name}' to {path}")
 
+            diagnostic_start = len(self.diagnostics)
             module = self._load_single_file(path)
 
             # Sanity: declared name must match what we are loading.
@@ -284,14 +282,11 @@ class L0Driver:
                     f"but was loaded as '{module_name}'"
                 )
 
-            # Store in cache before resolving imports so that non-cyclic
-            # mutual references can reuse it once loading finishes.
-            self.module_cache[module_name] = module
-
-            # Recursively load imports.
             for imp in module.imports:
                 self.load_module(imp.name)
 
+            if not any(d.kind == "error" for d in self.diagnostics[diagnostic_start:]):
+                self._loaded_modules[module_name] = module
             return module
         finally:
             self._loading.remove(module_name)

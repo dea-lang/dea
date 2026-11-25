@@ -136,5 +136,27 @@ def test_import_cycle_raises(write_l0_file_to, tmp_path):
 
     driver = L0Driver(search_paths=paths)
 
-    with pytest.raises(ImportCycleError):
-        driver.load_module("a")
+    for _ in range(2):
+        with pytest.raises(ImportCycleError, match="involving 'a'"):
+            driver.build_compilation_unit("a")
+
+    write_l0_file_to(proj_root, "b", "module b;")
+    assert set(driver.build_compilation_unit("a").modules) == {"a", "b"}
+
+
+def test_failed_import_retries_after_direct_parse_and_repair(write_l0_file, search_paths):
+    path = write_l0_file("entry", "module entry; import left; import right;")
+    write_l0_file("left", "module left; import leaf;")
+    write_l0_file("right", "module right; import leaf;")
+    driver = L0Driver(search_paths)
+    parsed = driver._load_single_file(path)
+    assert driver.module_cache["entry"] is parsed
+
+    for _ in range(2):
+        with pytest.raises(FileNotFoundError, match="leaf"):
+            driver.load_module("entry")
+
+    write_l0_file("leaf", "module leaf;")
+    cu = driver.build_compilation_unit("entry")
+    assert set(cu.modules) == {"entry", "left", "right", "leaf"}
+    assert driver.load_module("leaf") is cu.modules["leaf"]

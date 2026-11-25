@@ -20,9 +20,11 @@ class SourceSearchPaths:
     Attributes:
         system_roots: List of paths for standard library and toolchain modules.
         project_roots: List of paths for user and project-specific modules.
+        explicit_entry: Module name and exact source file selected by a path operand.
     """
     system_roots: list[Path] = field(default_factory=list)
     project_roots: list[Path] = field(default_factory=list)
+    explicit_entry: tuple[str, Path] | None = None
 
     def add_system_root(self, root: str | Path) -> None:
         """Add a path to the system search roots.
@@ -65,19 +67,17 @@ class SourceSearchPaths:
         Raises:
             FileNotFoundError: If the module cannot be found in any root.
         """
+        if self.explicit_entry is not None and self.explicit_entry[0] == module_name:
+            path = self.explicit_entry[1]
+            if path.is_file():
+                return path.absolute()
+            raise FileNotFoundError(f"L0 source file not found: {path}")
+
         rel = self.module_relpath(module_name)
-
-        # 1. system roots
-        for root in self.system_roots:
+        for root in (*self.system_roots, *self.project_roots):
             candidate = root / rel
-            if candidate.exists():
-                return candidate
-
-        # 2. project roots
-        for root in self.project_roots:
-            candidate = root / rel
-            if candidate.exists():
-                return candidate
+            if candidate.is_file():
+                return candidate.absolute()
 
         raise FileNotFoundError(
             f"Module '{module_name}' not found in system_roots or project_roots"

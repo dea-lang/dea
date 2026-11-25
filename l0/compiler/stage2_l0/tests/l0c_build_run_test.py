@@ -204,6 +204,62 @@ exec "$L0_WORKSPACE_REAL_CC" "$@"
     path.chmod(0o755)
 
 
+def check_entry_file_identity(l0c: str, work_dir: Path) -> None:
+    """Exercise explicit entry selection through token, graph and native build paths.
+
+    Args:
+        l0c: Path to the Stage 2 launcher.
+        work_dir: Isolated working directory for this test.
+
+    Raises:
+        ToolTestFailure: If a command selects another file or loses a diagnostic.
+    """
+    system = work_dir / "system root"
+    project = work_dir / "project root"
+    system.mkdir()
+    project.mkdir()
+    entry = project / "item.l0"
+    write_text(entry, "module item; import sibling; func main() -> int { return project_value(); }")
+    write_text(project / "sibling.l0", "module sibling; func project_value() -> int { return 23; }")
+    write_text(system / "item.l0", "module item; func other_value() -> int { return 37; } func main() -> int { return other_value(); }")
+    roots = ["-Rs", native_path(system), "-Rp", native_path(work_dir)]
+    targets = [native_path(entry), "./item.l0"]
+    if is_windows_host():
+        targets.append(r"..\project root/item.l0")
+    for target in targets:
+        for flags in (["--tok"], ["--tok", "--all-modules"]):
+            result = run([l0c, *flags, *roots, target], cwd=project)
+            if "project_value" not in result.stdout or "other_value" in result.stdout:
+                raise ToolTestFailure(f"{flags} selected the wrong file for {target}")
+            if "--all-modules" in flags and "Tokens for module sibling" not in result.stdout:
+                raise ToolTestFailure(f"missing sibling token dump for {target}")
+        run([l0c, "--run", *roots, target], cwd=project, expected_returncode=23)
+
+    for mode, code in [("--tok", "L0C-0070"), ("--check", "DRV-0010"), ("--run", "DRV-0010")]:
+        result = run([l0c, mode, *roots, "../missing/item.l0"], cwd=project, expected_returncode=1)
+        if code not in result.stderr:
+            raise ToolTestFailure(f"{mode} lost the missing-file diagnostic: {result.stderr}")
+
+    for root, value in [(system, 37), (project, 23)]:
+        (root / "pkg").mkdir()
+        write_text(root / "pkg/item.l0", f"module pkg.item; func main() -> int {{ return {value}; }}")
+    run([l0c, "--run", "-Rs", native_path(system), "pkg.item"], cwd=project, expected_returncode=37)
+    write_text(entry, "module wrong_name;")
+    mismatch = run([l0c, "--check", *roots, "./item.l0"], cwd=project, expected_returncode=1)
+    if "DRV-0020" not in mismatch.stderr:
+        raise ToolTestFailure(f"lost the explicit file's module-name mismatch: {mismatch.stderr}")
+
+    if not is_windows_host():
+        entry.chmod(0)
+        try:
+            if not os.access(entry, os.R_OK):
+                result = run([l0c, "--check", *roots, "./item.l0"], cwd=project, expected_returncode=1)
+                if "DRV-0011" not in result.stderr:
+                    raise ToolTestFailure(f"lost the regular-file read error: {result.stderr}")
+        finally:
+            entry.chmod(0o600)
+
+
 def main() -> int:
     """Program entrypoint."""
 
@@ -215,6 +271,8 @@ def main() -> int:
         build_stage2(repo_relative(bootstrap_dir))
         l0c = stage2_launcher_path(bootstrap_dir / "bin" / "l0c-stage2")
         stage2_native = native_path(bootstrap_dir / "bin" / "l0c-stage2.native")
+
+        check_entry_file_identity(l0c, work_dir)
 
         ok_main_bin = work_dir / ("ok_main.bin.exe" if is_windows_host() else "ok_main.bin")
         byte_main_bin = work_dir / ("byte_main.bin.exe" if is_windows_host() else "byte_main.bin")

@@ -1581,3 +1581,42 @@ def test_temporary_parent_resolution_failure(tmp_path, monkeypatch, capsys):
     diagnostic = capsys.readouterr().err
     assert "[L0C-9511] cannot resolve compiler temporary parent" in diagnostic
     assert str(missing) in diagnostic
+
+
+def test_explicit_file_selects_entry_across_cli_modes(tmp_path, monkeypatch, capsys, runtime_dir):
+    system = tmp_path / "system root"
+    project = tmp_path / "project root"
+    entry = _write_module(project, "item", "module item; import sibling; func main() -> int { return project_value(); }")
+    _write_module(project, "sibling", "module sibling; func project_value() -> int { return 23; }")
+    _write_module(system, "item", "module item; func other_value() -> int { return 37; } func main() -> int { return other_value(); }")
+    monkeypatch.chdir(project)
+    roots = dict(sys_root=[str(system)], project_root=[str(tmp_path)])
+    targets = [str(entry), "./item.l0"]
+    if os.name == "nt":
+        targets.append(r"..\project root/item.l0")
+    for target in targets:
+        for all_modules in (False, True):
+            assert cmd_tok(_inspect_args(tmp_path, target, **roots, all_modules=all_modules)) == 0
+            tokens = capsys.readouterr().out
+            assert "project_value" in tokens
+            assert "other_value" not in tokens
+            if all_modules:
+                assert "Tokens for module sibling" in tokens
+        assert cmd_run(_build_args(tmp_path, target, **roots, args=[], output=None,
+                                   c_compiler=None, runtime_include=str(runtime_dir))) == 23
+
+    for command, expected_code in [(cmd_check, "DRV-0010"), (cmd_tok, "L0C-0070")]:
+        assert command(_inspect_args(tmp_path, "../missing/item.l0", **roots)) == 1
+        assert expected_code in capsys.readouterr().err
+
+    missing = _build_args(tmp_path, "../missing/item.l0", **roots, args=[], output=None)
+    assert cmd_run(missing) == 1
+    assert "DRV-0010" in capsys.readouterr().err
+    entry.write_text("module wrong_name;", encoding="utf-8")
+    assert cmd_check(_inspect_args(tmp_path, "./item.l0", **roots)) == 1
+    assert "DRV-0020" in capsys.readouterr().err
+
+    for root, marker in [(system, "system_choice"), (project, "project_choice")]:
+        _write_module(root, "pkg.choice", f"module pkg.choice; func {marker}() {{}}")
+    assert cmd_tok(_inspect_args(project, "pkg.choice", sys_root=[str(system)])) == 0
+    assert "system_choice" in capsys.readouterr().out

@@ -1,6 +1,6 @@
 # L0 Compiler CLI Contract
 
-Version: 2026-07-29
+Version: 2026-11-25
 
 This document is the normative shared CLI contract for the L0 compiler across Stage 1 and Stage 2. Stage-specific
 differences are called out explicitly in [Section 9](#9-stage-specific-differences).
@@ -124,7 +124,10 @@ The compiler resolves a target to a source file using the following rules, appli
 4. **Plain name with `.l0` extension (e.g. `hello.l0`):** resolved relative to the project root(s).
 5. **Plain name without extension:** resolved as `<name>.l0` under project root(s).
 
-A target containing a path separator always bypasses the module-name search path.
+A target containing a path separator selects that exact file for token dumps (including `--all-modules`), analysis and
+native compilation. A missing explicit file is an error even when another root contains the same basename. Its parent
+directory joins the project roots for imports. Module-name searches skip directories and other non-regular candidates
+and select the first regular file in root order.
 
 ## 6. Search-Path and Root Defaults
 

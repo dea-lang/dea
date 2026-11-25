@@ -2,8 +2,8 @@
 
 ## Preserve explicit entry paths and retry failed module loads
 
-- Date: 2026-11-21
-- Status: Draft
+- Date: 2026-11-25
+- Status: In Progress (implemented, native Windows verification pending)
 - Title: Preserve explicit entry paths and retry failed module loads
 - Kind: Bug Fix
 - Severity: High
@@ -11,7 +11,6 @@
 - Subsystem: CLI target normalization, source search, and compilation-unit loading
 - Modules:
   - `l0/compiler/stage1_py/l0_cli_context.py`
-  - `l0/compiler/stage1_py/l0_cli_commands.py`
   - `l0/compiler/stage1_py/l0_paths.py`
   - `l0/compiler/stage1_py/l0_driver.py`
   - `l0/compiler/stage2_l0/src/source_paths.l0`
@@ -33,55 +32,34 @@
 - Repro: Give a system root and a project directory different `item.l0` files. Pass the absolute project file to
   `./scripts/l0c --tok -Rs <system> <project>/item.l0` from `l0/` and inspect the token marker.
 
-## Summary
+## Implementation
 
-Both stages can execute a different file from the explicit CLI operand. In the native Stage 2 probe, the requested file
-returned 0 alone. With a competing system root, absolute, dot-relative and explicitly missing paths all ran the system
-file and returned 37. A directory named `thing.l0` also hid the next root's source and produced `DRV-0011`. The
-absolute-result guarantee belongs to the Stage 1 Python resolver. Stage 2 documents the first matching source path and
-successfully loads relative results.
+Both stages previously reduced explicit CLI paths to module names. A competing system file could run even when the
+requested entry was missing. The CLI now binds an explicit file to its entry module for token dumps, graph analysis and
+native builds. Its parent participates in ordinary import resolution. Dotted targets retain ordered root search.
 
-Both loaders also cache failures. On a single Stage 2 `DriverState`, `dr_load_module` returned false, then true, for
-both a missing import and a cycle. The original error remained in the collector. A fresh CLI process cannot expose this
-false cache hit.
-
-## Fixes and regression tests
-
-1. **Explicit entry identity.** Classify the original target spelling before constructing a host `Path`, which can
-   discard a leading `./`. Carry the selected file into token dumping (including `--all-modules`) and the
-   compilation-unit loader used by analysis and generation. Keep its parent available for import resolution. Give two
-   same-named files different declarations and results. With the competing system root first, verify that absolute and
-   `./` targets dump the requested marker and execute the requested result. An explicitly missing file must fail even
-   when another root has its basename. On Stage 2 carry the explicit path through both CLI and build-driver input
-   preparation and into the graph loader. Run the marker and exit-value fixtures through the native launcher. Exercise a
-   dotted target and a sibling import separately to verify root precedence and entry-parent handling.
-2. **Directory shadowing.** Accept a candidate when it is a file. Put a directory named `thing.l0` in the first root and
-   a module file of that name in the next. Assert filesystem identity with the latter. With only the directory
-   available, assert the Stage 1 missing-module exception and the Stage 2 driver's `DRV-0010`. Apply the file-kind check
-   in both Stage 2 root groups. Preserve `DRV-0011` when a selected regular source cannot be read. Strengthen the
-   existing system-before-project test with distinct file contents or file identity.
-3. **Absolute results (Stage 1).** Honor the documented `SourceSearchPaths.resolve` return contract even for relative
-   roots. Assert both `is_absolute()` and identity with the selected file for relative system and project roots
-   containing spaces. For Stage 2 assert that `sp_resolve` selects the intended file under a relative root containing
-   spaces.
-4. **Cache after failure.** Separate in-progress cycle detection, parsed files, and successfully loaded import closures.
-   Inspect both cache writes in `load_module` and `_parse_source`; preserve the direct single-file parser's cache
-   contract. On one driver, call `load_module` twice with a missing dependency and build the same cyclic compilation
-   unit twice. Each attempt must raise the original exception. Repair the fixture, retry on that driver, and assert the
-   complete module set. Include a successful diamond import as the reuse control. In Stage 2, `dr_mark_loaded` runs even
-   when a child fails. Register successful closures only, and handle pending parsed units so a retry cannot duplicate or
-   reuse a failed unit. In `driver_test`, reuse one state per fixture: require two false returns and the appropriate
-   `DRV-0010` or `DRV-0030`. Check the boolean independently of the retained diagnostics. Repair the dependency and
-   require a successful reload with one unit per module.
+- Both resolvers skip directory candidates. Stage 1 returns an absolute path for a selected regular file under a
+  relative root. Stage 2 can retain a relative path and reports `DRV-0011` for a regular source it cannot read.
+- Stage 1 keeps direct single-file parses separate from the cache of completed import closures. It detects a cycle
+  through the active load chain and retries failed closures against the filesystem.
+- Stage 2 retains parsed units for diagnostic rendering and records successful closures separately. Before another
+  top-level load, it releases failed units and their source-cache rows, preserving successful units in order. The
+  boolean result reports the current load, while the collector retains earlier diagnostics.
 
 ## Verification
 
-Run the four listed pytest modules from `l0/` with `../.venv/bin/python -m pytest -q` and their level-relative paths.
-Run `make test-stage2 TESTS="source_paths_test driver_test l0c_build_run_test"` there. Assert exit status and marker
-contents independently of path rendering. Exercise native POSIX and Windows path spellings on their respective hosts,
-including mixed separators on Windows. Identify any `PureWindowsPath` cases as simulation. Keep existing missing-file
-and cycle diagnostic meanings (`DRV-0010`, `DRV-0030`) and token-mode resolution diagnostics. These fixes need no new
-diagnostic code.
+- Stage 1 focused tests passed in `test_l0c_assumptions.py`, `test_driver_paths.py`, `test_driver_imports.py`,
+  `test_compilation_unit.py`, and `test_driver.py`. From `l0/`, run these modules with
+  `../.venv/bin/python -m pytest -q` using the paths listed above and `compiler/stage1_py/tests/driver/test_driver.py`.
+- From `l0/`, `make test-stage2 TESTS="source_paths_test driver_test l0c_build_run_test"` passed all three cases.
+  Absolute and dot-relative targets selected the requested token marker and returned 23 with a competing source that
+  returns 37. Repeated missing imports and cycles failed on the same driver, and repaired graphs loaded successfully.
+- `make test-extended` passed on macOS Intel, including 1,688 Stage 1 tests, the Stage 2 suite, triple bootstrap,
+  examples, workflow checks, and all 34 Stage 2 ARC/memory trace cases.
+- Local lexical simulations exercised drive-rooted, UNC, dot-relative and mixed separators with spaces using `ntpath`
+  and `PureWindowsPath` for Stage 1 and native Stage 2 target preparation with synthetic Windows strings.
+- The remaining check is native Windows execution of the focused suites. Both CLI regressions exercise a mixed-separator
+  target on Windows. Record that result before closure.
 
 ## ADR Impact
 

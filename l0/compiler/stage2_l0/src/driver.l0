@@ -286,6 +286,36 @@ func dr_visit_closure(state: DriverState*, search_paths: SourceSearchPaths*, mod
 }
 
 /**
+ * Discard failed parse snapshots before starting another load on the same driver.
+ * Successful units keep their order and identity. Diagnostics from prior attempts
+ * remain in the collector.
+ *
+ * @param state Driver state with one source-cache row per parsed unit.
+ */
+func dr_discard_failed_units(state: DriverState*) {
+    let count = sv_size(state.loaded);
+    let units = ptr_vec_create(count);
+    let names = sv_create(count);
+    let texts = sv_create(count);
+    for (let i = 0; i < driver_unit_count(state); i = i + 1) {
+        let unit = driver_unit_get(state, i);
+        if (dr_sv_has(state.loaded, unit.module_name)) {
+            ptr_vec_push(units, unit as void*);
+            sv_push(names, unit.path);
+            sv_push(texts, sv_get(state.source_texts, i));
+        } else {
+            dr_unit_free(unit);
+        }
+    }
+    vec_free(state.units);
+    sv_free(state.source_names);
+    sv_free(state.source_texts);
+    state.units = units;
+    state.source_names = names;
+    state.source_texts = texts;
+}
+
+/**
  * Load one module and its import closure into the driver state.
  *
  * @param state Driver state that caches loaded modules and diagnostics.
@@ -297,6 +327,9 @@ func dr_visit_closure(state: DriverState*, search_paths: SourceSearchPaths*, mod
  */
 func dr_load_module(state: DriverState*, search_paths: SourceSearchPaths*, loading_chain: string,
                     module_name: string, cfg: LogConfig*) -> bool {
+    if (loading_chain == "|" && driver_unit_count(state) != sv_size(state.loaded)) {
+        dr_discard_failed_units(state);
+    }
     if (dr_sv_has(state.loaded, module_name)) {
         log_debug(cfg, "Module '" + module_name + "' already loaded (cache hit)");
         return true;
@@ -310,12 +343,17 @@ func dr_load_module(state: DriverState*, search_paths: SourceSearchPaths*, loadi
         return false;
     }
 
+    // A previously visited branch of this attempt already diagnosed this unit.
+    if (driver_has_errors(state) && driver_find_unit(state, module_name) != null) {
+        return false;
+    }
+
     let next_loading_chain = loading_chain + module_name + "|";
     let ok = true;
 
     let path_opt = sp_resolve(search_paths, module_name);
     if (path_opt == null) {
-        dr_emit_error(state.diags, "DRV-0010", "Module '" + module_name + "' not found in system_roots or project_roots", "");
+        dr_emit_error(state.diags, "DRV-0010", sp_missing_source_message(search_paths, module_name), "");
         ok = false;
     } else {
         let path = path_opt as string;
@@ -369,7 +407,9 @@ func dr_load_module(state: DriverState*, search_paths: SourceSearchPaths*, loadi
         }
     }
 
-    dr_mark_loaded(state.loaded, module_name);
+    if (ok) {
+        dr_mark_loaded(state.loaded, module_name);
+    }
     return ok;
 }
 

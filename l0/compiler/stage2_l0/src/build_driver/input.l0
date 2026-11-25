@@ -53,7 +53,7 @@ func bd_prepare_input(opts: CliOptions*, diags: DiagCollector*, cfg: LogConfig*)
         let entry_module = sp_normalize_entry_target(entry_target, project_roots, diags)?;
         sp_apply_default_project_roots(project_roots);
         bd_log_effective_roots(cfg, sys_roots, project_roots);
-        let sp = sp_build_from_roots(project_roots, sys_roots);
+        let sp = sp_build_from_roots(project_roots, sys_roots, entry_target, entry_module);
         return new BuildPreparedInput(entry_module, sp);
     }
 }

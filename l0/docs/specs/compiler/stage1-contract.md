@@ -1,6 +1,6 @@
 # L0 Stage 1 Compiler Contract
 
-Version: 2026-10-03
+Version: 2026-11-25
 
 This document is the compact Stage 1 contract and navigation index.
 
@@ -90,6 +90,9 @@ Stage 1-specific notes:
 - Module file extension: `.l0`.
 - Module mapping: dotted name -> path segments (for example, `std.io` -> `std/io.l0`).
 - Declared `module ...;` name must match the loaded module name.
+- `SourceSearchPaths.resolve` returns an absolute path even when the matching root is relative.
+- The single-file parser records the latest parse by declared name. The driver caches a recursive load after its import
+  closure succeeds. A missing dependency or cycle can be repaired and retried on the same driver.
 
 ### 2.3 Backend output contract
 

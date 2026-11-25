@@ -4,6 +4,8 @@
 import textwrap
 from pathlib import Path
 
+import pytest
+
 from l0_driver import L0Driver
 from l0_paths import SourceSearchPaths
 
@@ -74,10 +76,7 @@ def test_system_root_has_priority_over_project(tmp_path):
     driver = L0Driver(search_paths=paths)
     mod = driver.load_module("std.io")
 
-    # We don't look into the body here; we just ensure resolution chose sys_root.
-    # The path logic is validated indirectly by the fact that parsing succeeds
-    # and the declared module name matches.
-    assert mod.name == "std.io"
+    assert Path(mod.filename).samefile(sys_root / "std/io.l0")
 
 
 def test_module_not_found_raises(tmp_path):
@@ -92,3 +91,19 @@ def test_module_not_found_raises(tmp_path):
         assert "does.not.exist" in str(e)
     else:
         assert False, "expected FileNotFoundError"
+
+
+@pytest.mark.parametrize("group", ["system_roots", "project_roots"])
+def test_resolution_skips_directories_and_returns_absolute_files(tmp_path, monkeypatch, group):
+    monkeypatch.chdir(tmp_path)
+    first, second = Path("first root"), Path("second root")
+    (first / "thing.l0").mkdir(parents=True)
+    expected = write(second, "thing.l0", "module thing;")
+    paths = SourceSearchPaths(**{group: [first, second]})
+
+    result = paths.resolve("thing")
+    assert result.is_absolute()
+    assert result.samefile(expected)
+    expected.unlink()
+    with pytest.raises(FileNotFoundError, match="thing"):
+        paths.resolve("thing")

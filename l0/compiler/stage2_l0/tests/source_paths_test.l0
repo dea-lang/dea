@@ -136,6 +136,28 @@ func test_project_root_declaration_order() {
 }
 
 /**
+ * Skip directory candidates in either root group and load the next regular file.
+ */
+func test_directory_shadowing() {
+    let first = "compiler/stage2_l0/tests/fixtures/driver";
+    let second = join(first, "repaired imports");
+    for (let group = 0; group < 2; group = group + 1) {
+        with (let paths = sp_create() => sp_free(paths)) {
+            if (group == 0) {
+                sp_add_system_root(paths, first);
+            } else {
+                sp_add_project_root(paths, first);
+            }
+            assert(sp_resolve(paths, "read_fail") == null, "a directory cannot satisfy module lookup");
+            sp_add_project_root(paths, second);
+            let selected = sp_resolve(paths, "read_fail");
+            assert(selected != null && selected as string == join(second, "read_fail.l0"),
+                   "directory hid the regular file in the relative root with spaces");
+        }
+    }
+}
+
+/**
  * Main entry point for the module.
  */
 func main() {
@@ -148,5 +170,6 @@ func main() {
     test_system_roots_precede_project_roots();
     test_system_root_declaration_order();
     test_project_root_declaration_order();
+    test_directory_shadowing();
     printl_s("source_paths_test: all tests passed");
 }
