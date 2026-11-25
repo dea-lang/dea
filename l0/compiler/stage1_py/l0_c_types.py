@@ -249,6 +249,8 @@ class CTypes:
         self._opt_wrappers.clear()
         self._opt_emitted.clear()
 
+        for ty in self.state.analysis.local_annotation_types:
+            self._collect_opt_wrappers_from_type(ty)
         for ty in self.state.analysis.let_types.values():
             self._collect_opt_wrappers_from_type(ty)
 

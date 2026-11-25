@@ -63,7 +63,8 @@ also proceed independently.
   sources. Its implicit-conversion and cast tests cover rejected narrowing, layer removal, and incompatible payloads.
 
 - L0 Stage 2 executed the same fixture through its native launcher. Its expression checker rejects nullable narrowing,
-  loss of depth, and widening through a pointer.
+  loss of depth, and widening through a pointer. Both stages also compile an unread destination whose local annotation
+  is the sole use of its four-layer wrapper.
 
 ## Baseline and implementation sequence
 

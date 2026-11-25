@@ -281,6 +281,7 @@ class StatementFlow:
 
             # When widening_type is provided, _infer_expr already checks compatibility
             if annot_ty is not None:
+                self.state.analysis.local_annotation_types.add(annot_ty)
                 self.lookup._declare_local(stmt.name, annot_ty, stmt)
                 return StmtFlow.FALLTHROUGH
 

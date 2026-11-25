@@ -96,6 +96,7 @@ func main() -> int {
     let boxed: Box = Box(max);
     if (read(boxed.value, -1) != 255 || read(zero, -1) != 0) return 1;
     let present: B = max;
+    let annotation_only: III? = present;
     let initialized: I = present;
     if (read(initialized, -1) != 255) return 2;
     initialized = empty;

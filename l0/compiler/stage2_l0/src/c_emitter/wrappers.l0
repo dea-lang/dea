@@ -10,6 +10,9 @@ import std.hashmap;
 import std.hashset;
 import std.vector;
 import ast;
+import driver;
+import name_resolver;
+import type_resolve;
 import types;
 import c_emitter.builder;
 import c_emitter.state;
@@ -157,6 +160,35 @@ func cem_prepare_optional_wrappers(self: CEmitter*) {
             let variant_info = ptr_vec_get(enum_info.variants, j) as EnumVariantInfo*;
             for (let k = 0; k < vec_size(variant_info.field_types); k = k + 1) {
                 cem_collect_opt_wrappers_from_type(self, ptr_vec_get(variant_info.field_types, k) as Type*);
+            }
+        }
+    }
+
+    for (let i = 0; i < spm_capacity(tables.let_types); i = i + 1) {
+        if (spm_slot_occupied(tables.let_types, i)) {
+            cem_collect_opt_wrappers_from_type(self, spm_slot_value(tables.let_types, i) as Type*);
+        }
+    }
+
+    // A local annotation can require a wrapper even if the binding is never read.
+    if (analysis.names != null) {
+        let names = analysis.names as NameResolution*;
+        for (let i = 0; i < driver_unit_count(analysis.driver_state); i = i + 1) {
+            let unit = driver_unit_get(analysis.driver_state, i) as DriverUnit*;
+            let env = nr_env_find(names, unit.module_name);
+            if (env == null) continue;
+            let stmts = unit.parse_result.stmt_arena.nodes;
+            with (let seen = ss_create() => ss_free(seen)) {
+                for (let j = 0; j < vec_size(stmts); j = j + 1) {
+                    let stmt = ptr_vec_get(stmts, j) as StmtNode*;
+                    if (ord(stmt.kind) != ord(ST_LET) || stmt.type_ref == null) continue;
+                    let ty = tr_resolve_type_ref(tables, names, env as ModuleEnv*, stmt.type_ref as TypeRef*,
+                        analysis.diags, seen);
+                    if (ty != null) {
+                        cem_collect_opt_wrappers_from_type(self, ty as Type*);
+                        type_free(ty as Type*);
+                    }
+                }
             }
         }
     }
