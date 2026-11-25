@@ -167,7 +167,7 @@ func be_emit_expr_with_expected_type(self: Backend*, expr_id: ExprId, expected: 
 
     with (let natural_ty = be_expr_type(self, expr_id) => type_free_opt(natural_ty)) {
         let c_expr = be_emit_expr(self, expr_id);
-        return be_convert_expr_with_expected_type(c_expr, natural_ty, expected);
+        return be_convert_expr_with_expected_type(self, c_expr, natural_ty, expected);
     }
 }
 
@@ -199,7 +199,7 @@ func be_emit_owned_expr_with_expected_type(self: Backend*, expr_id: ExprId, expe
         let c_expr = be_emit_expr(self, expr_id);
         let place_like = be_is_place_expr(self, expr_id) || be_is_borrowed_extraction(self, expr_id);
         if (natural_ty == null) {
-            return be_convert_expr_with_expected_type(c_expr, natural_ty, expected);
+            return be_convert_expr_with_expected_type(self, c_expr, natural_ty, expected);
         }
         return be_convert_owned_c_expr_with_expected_type(self, c_expr, natural_ty as Type*, expected, place_like);
     }
@@ -410,10 +410,10 @@ func be_emit_binary_op(self: Backend*, expr_id: ExprId) -> string {
 
         if (common_int_ty != null) {
             if (left_ty != null) {
-                c_left = be_convert_expr_with_expected_type(c_left, left_ty as Type*, common_int_ty as Type*);
+                c_left = be_convert_expr_with_expected_type(self, c_left, left_ty as Type*, common_int_ty as Type*);
             }
             if (right_ty != null) {
-                c_right = be_convert_expr_with_expected_type(c_right, right_ty as Type*, common_int_ty as Type*);
+                c_right = be_convert_expr_with_expected_type(self, c_right, right_ty as Type*, common_int_ty as Type*);
             }
         }
         if ((expr.text_value == "==" || expr.text_value == "!=") &&
@@ -583,10 +583,10 @@ func be_emit_condition_expr(self: Backend*, expr_id: ExprId) -> string {
 
         if (common_int_ty != null) {
             if (left_ty != null) {
-                c_left = be_convert_expr_with_expected_type(c_left, left_ty as Type*, common_int_ty as Type*);
+                c_left = be_convert_expr_with_expected_type(self, c_left, left_ty as Type*, common_int_ty as Type*);
             }
             if (right_ty != null) {
-                c_right = be_convert_expr_with_expected_type(c_right, right_ty as Type*, common_int_ty as Type*);
+                c_right = be_convert_expr_with_expected_type(self, c_right, right_ty as Type*, common_int_ty as Type*);
             }
         }
         if ((expr.text_value == "==" || expr.text_value == "!=") &&
@@ -1394,7 +1394,9 @@ func be_emit_new_expr(self: Backend*, expr_id: ExprId) -> string {
         }
 
         if (arg_count == 1) {
-            cem_emit_checked_pointer_assignment(self.emitter, tmp, c_base, be_emit_expr(self, id_vec_get(expr.ids as VectorBase*, 0)));
+            let init_id = id_vec_get(expr.ids as VectorBase*, 0);
+            let init = be_emit_owned_expr_with_expected_type(self, init_id, base_ty);
+            cem_emit_checked_pointer_assignment(self.emitter, tmp, c_base, init);
             return tmp;
         }
 
@@ -1581,6 +1583,9 @@ func be_emit_expr(self: Backend*, expr_id: ExprId) -> string {
                 }
 
                 if (ord((dst_ty as Type*).kind) == ord(TY_NULLABLE)) {
+                    if (src_ty != null && type_numeric_widening_injections(dst_ty as Type*, src_ty as Type*) >= 0) {
+                        return be_convert_expr_with_expected_type(self, c_inner, src_ty, dst_ty as Type*);
+                    }
                     let dst_inner = (dst_ty as Type*).inner as Type*;
                     if (src_ty != null && type_equals(dst_inner, src_ty as Type*)) {
                         if (cem_is_niche_nullable(dst_ty as Type*)) {
@@ -1603,7 +1608,7 @@ func be_emit_expr(self: Backend*, expr_id: ExprId) -> string {
                             } else {
                                 c_payload = cem_emit_checked_unsigned_cast(c_inner_dst, c_inner);
                             }
-                        } else if (be_can_widen_int(dst_inner, src_ty as Type*)) {
+                        } else if (type_can_widen_int(dst_inner, src_ty as Type*)) {
                             c_payload = cem_emit_widen_int(c_inner, src_ty as Type*, dst_inner);
                         } else {
                             c_payload = cem_emit_cast(cem_emit_type(dst_inner), c_inner);

@@ -514,6 +514,17 @@ func be_try_emit_evaluated_const_initializer(self: Backend*, expr_id: ExprId, ex
  * @return Constant initializer expression, or `null` when runtime init is required.
  */
 func be_try_emit_let_initializer(self: Backend*, expr_id: ExprId, expected_type: Type*) -> string? {
+    if (ord(expected_type.kind) == ord(TY_NULLABLE)) {
+        with (let natural = be_expr_type(self, expr_id) => type_free_opt(natural)) {
+            if (natural != null && type_numeric_widening_injections(expected_type, natural as Type*) >= 0) {
+                if (ord((natural as Type*).kind) == ord(TY_NULLABLE)) {
+                    return null; // Inspect the source tag during module initialization.
+                }
+                let payload = be_try_emit_let_initializer(self, expr_id, expected_type.inner as Type*)?;
+                return "{.has_value = 1, .value = " + payload + "}";
+            }
+        }
+    }
     let bigint_init = be_emit_typed_bigint_expr(self, expr_id, expected_type);
     if (bigint_init != null) {
         return bigint_init;

@@ -1,0 +1,29 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module rejected;
+
+/**
+ * Exercise rejected widening boundaries with typed sources.
+ *
+ * @param x Optional integer.
+ * @param b Optional byte.
+ * @param deep Two optional byte layers.
+ * @param ptr Pointer to optional byte storage.
+ * @param array Array of optional bytes.
+ * @param slice Slice of optional bytes.
+ */
+func reject(x: int?, b: byte?, deep: byte??, ptr: byte?*, array: byte?[2], slice: byte?[]) {
+    let narrow: byte? = x;
+    let removed: int = b;
+    let shallow: int? = deep;
+    let literal_only: float? = x;
+    let p: int?* = ptr;
+    let a: int?[2] = array;
+    let s: int?[] = slice;
+    let sum = x + b;
+    let comparison = x == b;
+    let bad_cast = x as byte?;
+}

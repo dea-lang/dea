@@ -348,10 +348,9 @@ distinguish outer null from an outer-present inner null pointer.
 For non-pointer nullable values, and for nested nullable values whose outer layer cannot use a pointer niche, generated
 C uses wrapper representations rather than exposing host-specific niche assumptions.
 
-Dea has accepted lifted implicit numeric widening for L1's existing scalar widening pairs. Under this rule, an absent
-`byte?` converts to an absent `int?`. Conversion of that same value to `int??` adds a present outer layer. The
-corresponding `as` cast must preserve the same states. L1 currently rejects `byte?` to `int?` in both forms. See
-[docs/specs/language/nullable-numeric-widening.md][nullable-widening].
+L1 lifts each implicit integer widening and `float` to `double` through matching nullable layers. An absent `byte?`
+converts to an absent `int?`. Conversion of that same value to `int??` adds a present outer layer. The corresponding
+`as` cast preserves the same states. See [docs/specs/language/nullable-numeric-widening.md][nullable-widening].
 
 Future direction: broaden the cast rule so `expr as U` is valid whenever there is an explicit cast target `V` for the
 operand and `V` can be implicitly widened to `U`. That would make the current integer-to-optional-integer behavior one

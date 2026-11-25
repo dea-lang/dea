@@ -429,6 +429,81 @@ func type_is_builtin(self: Type*, name: string) -> bool {
 }
 
 /**
+ * Check whether an implicit integer widening is supported.
+ *
+ * @param dst Destination type.
+ * @param src Source type.
+ * @return `true` if `src` can widen into `dst`.
+ */
+func type_can_widen_int(dst: Type*, src: Type*) -> bool {
+    if (type_is_builtin(dst, "short") && type_is_builtin(src, "tiny")) return true;
+    if (type_is_builtin(dst, "long") && type_is_builtin(src, "tiny")) return true;
+    if (type_is_builtin(dst, "int") && type_is_builtin(src, "tiny")) return true;
+    if (type_is_builtin(dst, "short") && type_is_builtin(src, "byte")) return true;
+    if (type_is_builtin(dst, "ushort") && type_is_builtin(src, "byte")) return true;
+    if (type_is_builtin(dst, "int") && type_is_builtin(src, "byte")) return true;
+    if (type_is_builtin(dst, "uint") && type_is_builtin(src, "byte")) return true;
+    if (type_is_builtin(dst, "long") && type_is_builtin(src, "byte")) return true;
+    if (type_is_builtin(dst, "ulong") && type_is_builtin(src, "byte")) return true;
+    if (type_is_builtin(dst, "int") && type_is_builtin(src, "short")) return true;
+    if (type_is_builtin(dst, "long") && type_is_builtin(src, "short")) return true;
+    if (type_is_builtin(dst, "int") && type_is_builtin(src, "ushort")) return true;
+    if (type_is_builtin(dst, "uint") && type_is_builtin(src, "ushort")) return true;
+    if (type_is_builtin(dst, "long") && type_is_builtin(src, "ushort")) return true;
+    if (type_is_builtin(dst, "ulong") && type_is_builtin(src, "ushort")) return true;
+    if (type_is_builtin(dst, "long") && type_is_builtin(src, "int")) return true;
+    if (type_is_builtin(dst, "long") && type_is_builtin(src, "uint")) return true;
+    if (type_is_builtin(dst, "ulong") && type_is_builtin(src, "uint")) return true;
+    return false;
+}
+
+/**
+ * Check whether an implicit floating-point widening is supported.
+ *
+ * @param dst Destination type.
+ * @param src Source type.
+ * @return `true` if `src` can widen into `dst`.
+ */
+func type_can_widen_real(dst: Type*, src: Type*) -> bool {
+    return type_is_builtin(dst, "double") && type_is_builtin(src, "float");
+}
+
+/**
+ * Check the level's scalar integer and floating-point widening rules.
+ *
+ * @param dst Destination type.
+ * @param src Source type.
+ * @return Whether the numeric payload widens implicitly.
+ */
+func type_can_widen_numeric(dst: Type*, src: Type*) -> bool {
+    return type_can_widen_int(dst, src) || type_can_widen_real(dst, src);
+}
+
+/**
+ * Count the present layers injected after widening through the source layers.
+ *
+ * @param dst Borrowed destination type.
+ * @param src Borrowed source type.
+ * @return Extra destination depth, or -1 for an unsupported conversion.
+ */
+func type_numeric_widening_injections(dst: Type*, src: Type*) -> int {
+    let target = dst;
+    let source = src;
+    while (ord(source.kind) == ord(TY_NULLABLE)) {
+        if (ord(target.kind) != ord(TY_NULLABLE)) return -1;
+        target = target.inner as Type*;
+        source = source.inner as Type*;
+    }
+    let extra = 0;
+    while (ord(target.kind) == ord(TY_NULLABLE)) {
+        target = target.inner as Type*;
+        extra = extra + 1;
+    }
+    if (type_can_widen_numeric(target, source)) return extra;
+    return -1;
+}
+
+/**
  * Report whether a type is a pointer constructor.
  *
  * @param self Type to inspect.

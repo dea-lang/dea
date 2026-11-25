@@ -19,7 +19,7 @@
 - Target status:
   - L0 Stage 1: Implemented
   - L0 Stage 2: Implemented
-  - L1 canonical compiler: Pending
+  - L1 canonical compiler: Implemented
   - L2 canonical compiler: Pending
 - Modules:
   - `l0/compiler/stage1_py/l0_check_compat.py`, `l0/compiler/stage1_py/l0_backend_convert.py`
@@ -29,7 +29,7 @@
 - Test modules:
   - `l0/compiler/stage1_py/tests/integration/test_implicit_conversions.py`
   - `l0/compiler/stage2_l0/tests/expr_types_test.l0`, `l0/compiler/stage2_l0/tests/l0c_build_run_test.py`
-  - `l1/compiler/tests/expr_types_test.l0`, `l1/compiler/tests/l1c_build_run_multi_cu_test.py`
+  - `l1/compiler/tests/expr_types_test.l0`, `l1/compiler/tests/nullable_numeric_widening_test.py`
   - `l2/compiler/tests/expr_types_test.l1`, `l2/compiler/tests/l2c_build_run_multi_cu_test.py`
 - Related:
   - [docs/specs/language/nullable-numeric-widening.md][spec]
@@ -65,6 +65,10 @@ also proceed independently.
 - L0 Stage 2 executed the same fixture through its native launcher. Its expression checker rejects nullable narrowing,
   loss of depth, and widening through a pointer. Both stages also compile an unread destination whose local annotation
   is the sole use of its four-layer wrapper.
+
+- L1 passed `expr_types_test` and `nullable_numeric_widening_test.py`. The native matrix covers all 18 integer pairs and
+  the floating pair with typed boundaries, nested presence states, and checked rejection of mixed optional equality,
+  arithmetic, pointer, array and slice conversions.
 
 ## Baseline and implementation sequence
 

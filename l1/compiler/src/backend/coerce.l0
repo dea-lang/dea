@@ -197,35 +197,6 @@ func be_int_range_contains(dst: Type*, src: Type*) -> bool {
 }
 
 /**
- * Check whether an implicit integer widening is supported.
- *
- * @param dst Destination type.
- * @param src Source type.
- * @return `true` if `src` can widen into `dst`.
- */
-func be_can_widen_int(dst: Type*, src: Type*) -> bool {
-    if (type_is_builtin(dst, "short") && type_is_builtin(src, "tiny")) return true;
-    if (type_is_builtin(dst, "long") && type_is_builtin(src, "tiny")) return true;
-    if (type_is_builtin(dst, "int") && type_is_builtin(src, "tiny")) return true;
-    if (type_is_builtin(dst, "short") && type_is_builtin(src, "byte")) return true;
-    if (type_is_builtin(dst, "ushort") && type_is_builtin(src, "byte")) return true;
-    if (type_is_builtin(dst, "int") && type_is_builtin(src, "byte")) return true;
-    if (type_is_builtin(dst, "uint") && type_is_builtin(src, "byte")) return true;
-    if (type_is_builtin(dst, "long") && type_is_builtin(src, "byte")) return true;
-    if (type_is_builtin(dst, "ulong") && type_is_builtin(src, "byte")) return true;
-    if (type_is_builtin(dst, "int") && type_is_builtin(src, "short")) return true;
-    if (type_is_builtin(dst, "long") && type_is_builtin(src, "short")) return true;
-    if (type_is_builtin(dst, "int") && type_is_builtin(src, "ushort")) return true;
-    if (type_is_builtin(dst, "uint") && type_is_builtin(src, "ushort")) return true;
-    if (type_is_builtin(dst, "long") && type_is_builtin(src, "ushort")) return true;
-    if (type_is_builtin(dst, "ulong") && type_is_builtin(src, "ushort")) return true;
-    if (type_is_builtin(dst, "long") && type_is_builtin(src, "int")) return true;
-    if (type_is_builtin(dst, "long") && type_is_builtin(src, "uint")) return true;
-    if (type_is_builtin(dst, "ulong") && type_is_builtin(src, "uint")) return true;
-    return false;
-}
-
-/**
  * Choose a shared builtin integer type under the backend's promotion rules.
  *
  * The first containing domain in the order `int`, `uint`, `long`, `ulong`
@@ -270,14 +241,32 @@ func be_common_int_type(left: Type*, right: Type*) -> Type*? {
 }
 
 /**
+ * Widen a stabilized numeric place through equal nullable depths.
+ *
+ * @param place Side-effect-free C temporary or payload member.
+ * @param source Natural type at this layer.
+ * @param target Destination type at this layer.
+ * @return C expression that reads only present payloads.
+ */
+func be_widen_numeric_place(place: string, source: Type*, target: Type*) -> string {
+    if (ord(source.kind) != ord(TY_NULLABLE)) {
+        return cem_emit_cast(cem_emit_type(target), place);
+    }
+    let payload = be_widen_numeric_place(cem_emit_optional_value(place), source.inner as Type*, target.inner as Type*);
+    let present = cem_emit_some_value_for_nullable(target, payload);
+    return "(" + cem_emit_optional_has_value(place) + " ? " + present + " : " + cem_emit_none_value_for_nullable(target) + ")";
+}
+
+/**
  * Convert a lowered expression to an expected type when required.
  *
+ * @param self Backend state for naming the source temporary.
  * @param c_expr Lowered source expression.
  * @param natural_ty Natural source type.
  * @param expected Expected destination type.
  * @return Lowered expression converted as needed.
  */
-func be_convert_expr_with_expected_type(c_expr: string, natural_ty: Type*?, expected: Type*) -> string {
+func be_convert_expr_with_expected_type(self: Backend*, c_expr: string, natural_ty: Type*?, expected: Type*) -> string {
     if (natural_ty == null) {
         return c_expr;
     }
@@ -289,15 +278,21 @@ func be_convert_expr_with_expected_type(c_expr: string, natural_ty: Type*?, expe
 
     if (ord(expected.kind) == ord(TY_NULLABLE)) {
         let inner = expected.inner as Type*;
-        let payload = be_convert_expr_with_expected_type(c_expr, natural, inner);
+        if (ord(natural.kind) == ord(TY_NULLABLE) && type_numeric_widening_injections(expected, natural) == 0) {
+            let tmp = cem_fresh_tmp(self.emitter, "widen");
+            cem_emit_temp_decl(self.emitter, cem_emit_type(natural), tmp, "{0}");
+            let widened = be_widen_numeric_place(tmp, natural, expected);
+            return "(" + tmp + " = " + c_expr + ", " + widened + ")";
+        }
+        let payload = be_convert_expr_with_expected_type(self, c_expr, natural, inner);
         if (be_is_int_assignable(inner) && be_is_int_assignable(natural) && !type_equals(inner, natural) &&
-            !be_can_widen_int(inner, natural)) {
+            !type_can_widen_int(inner, natural)) {
             payload = cem_emit_cast(cem_emit_type(inner), c_expr);
         }
         return cem_emit_some_value_for_nullable(expected, payload);
     }
 
-    if (be_can_widen_int(expected, natural)) {
+    if (type_can_widen_int(expected, natural)) {
         return cem_emit_widen_int(c_expr, natural, expected);
     }
 
@@ -325,15 +320,18 @@ func be_convert_owned_c_expr_with_expected_type(self: Backend*, c_expr: string, 
 
     if (ord(expected.kind) == ord(TY_NULLABLE)) {
         let inner = expected.inner as Type*;
+        if (ord(natural.kind) == ord(TY_NULLABLE) && type_numeric_widening_injections(expected, natural) >= 0) {
+            return be_convert_expr_with_expected_type(self, c_expr, natural, expected);
+        }
         let payload = be_convert_owned_c_expr_with_expected_type(self, c_expr, natural, inner, place_like);
         if (be_is_int_assignable(inner) && be_is_int_assignable(natural) && !type_equals(inner, natural) &&
-            !be_can_widen_int(inner, natural)) {
+            !type_can_widen_int(inner, natural)) {
             payload = cem_emit_cast(cem_emit_type(inner), c_expr);
         }
         return cem_emit_some_value_for_nullable(expected, payload);
     }
 
-    return be_convert_expr_with_expected_type(c_expr, natural, expected);
+    return be_convert_expr_with_expected_type(self, c_expr, natural, expected);
 }
 
 /**

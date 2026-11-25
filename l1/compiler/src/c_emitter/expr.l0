@@ -72,24 +72,7 @@ func cem_emit_widen_int(c_expr: string, src_type: Type*, dst_type: Type*) -> str
     if (src_type.name == dst_type.name) {
         return c_expr;
     }
-    if ((type_is_builtin(src_type, "tiny") && type_is_builtin(dst_type, "short")) ||
-        (type_is_builtin(src_type, "tiny") && type_is_builtin(dst_type, "int")) ||
-        (type_is_builtin(src_type, "tiny") && type_is_builtin(dst_type, "long")) ||
-        (type_is_builtin(src_type, "byte") && type_is_builtin(dst_type, "short")) ||
-        (type_is_builtin(src_type, "byte") && type_is_builtin(dst_type, "ushort")) ||
-        (type_is_builtin(src_type, "byte") && type_is_builtin(dst_type, "int")) ||
-        (type_is_builtin(src_type, "byte") && type_is_builtin(dst_type, "uint")) ||
-        (type_is_builtin(src_type, "byte") && type_is_builtin(dst_type, "long")) ||
-        (type_is_builtin(src_type, "byte") && type_is_builtin(dst_type, "ulong")) ||
-        (type_is_builtin(src_type, "short") && type_is_builtin(dst_type, "int")) ||
-        (type_is_builtin(src_type, "short") && type_is_builtin(dst_type, "long")) ||
-        (type_is_builtin(src_type, "ushort") && type_is_builtin(dst_type, "int")) ||
-        (type_is_builtin(src_type, "ushort") && type_is_builtin(dst_type, "uint")) ||
-        (type_is_builtin(src_type, "ushort") && type_is_builtin(dst_type, "long")) ||
-        (type_is_builtin(src_type, "ushort") && type_is_builtin(dst_type, "ulong")) ||
-        (type_is_builtin(src_type, "int") && type_is_builtin(dst_type, "long")) ||
-        (type_is_builtin(src_type, "uint") && type_is_builtin(dst_type, "long")) ||
-        (type_is_builtin(src_type, "uint") && type_is_builtin(dst_type, "ulong"))) {
+    if (type_can_widen_int(dst_type, src_type)) {
         return cem_emit_cast(cem_emit_type(dst_type), c_expr);
     }
     return cem_ice_string("[ICE-1293] unsupported widening cast " + type_format(src_type) + " -> " + type_format(dst_type));

@@ -276,17 +276,6 @@ func etc_real_binary_result_type(left: Type*, right: Type*) -> Type*? {
 }
 
 /**
- * Check whether an implicit floating-point widening is supported.
- *
- * @param dst Destination type.
- * @param src Source type.
- * @return `true` if `src` can widen into `dst`.
- */
-func etc_can_widen_real(dst: Type*, src: Type*) -> bool {
-    return type_is_builtin(dst, "double") && type_is_builtin(src, "float");
-}
-
-/**
  * Check whether a type is nullable.
  *
  * @param ty Type to inspect.
@@ -457,35 +446,6 @@ func etc_diag_int_literal_range_error(self: ExpressionTypeChecker*, value: int, 
 }
 
 /**
- * Check whether an implicit integer widening is supported.
- *
- * @param dst Destination type.
- * @param src Source type.
- * @return `true` if `src` can widen into `dst`.
- */
-func etc_can_widen_int(dst: Type*, src: Type*) -> bool {
-    if (type_is_builtin(dst, "short") && type_is_builtin(src, "tiny")) return true;
-    if (type_is_builtin(dst, "long") && type_is_builtin(src, "tiny")) return true;
-    if (type_is_builtin(dst, "int") && type_is_builtin(src, "tiny")) return true;
-    if (type_is_builtin(dst, "short") && type_is_builtin(src, "byte")) return true;
-    if (type_is_builtin(dst, "ushort") && type_is_builtin(src, "byte")) return true;
-    if (type_is_builtin(dst, "int") && type_is_builtin(src, "byte")) return true;
-    if (type_is_builtin(dst, "uint") && type_is_builtin(src, "byte")) return true;
-    if (type_is_builtin(dst, "long") && type_is_builtin(src, "byte")) return true;
-    if (type_is_builtin(dst, "ulong") && type_is_builtin(src, "byte")) return true;
-    if (type_is_builtin(dst, "int") && type_is_builtin(src, "short")) return true;
-    if (type_is_builtin(dst, "long") && type_is_builtin(src, "short")) return true;
-    if (type_is_builtin(dst, "int") && type_is_builtin(src, "ushort")) return true;
-    if (type_is_builtin(dst, "uint") && type_is_builtin(src, "ushort")) return true;
-    if (type_is_builtin(dst, "long") && type_is_builtin(src, "ushort")) return true;
-    if (type_is_builtin(dst, "ulong") && type_is_builtin(src, "ushort")) return true;
-    if (type_is_builtin(dst, "long") && type_is_builtin(src, "int")) return true;
-    if (type_is_builtin(dst, "long") && type_is_builtin(src, "uint")) return true;
-    if (type_is_builtin(dst, "ulong") && type_is_builtin(src, "uint")) return true;
-    return false;
-}
-
-/**
  * Check and apply a builtin integer context to a wrapped bigint literal.
  *
  * Reject expressions whose bigint digits or base cannot be recovered. For a
@@ -589,18 +549,28 @@ func etc_check_assign_expr(self: ExpressionTypeChecker*, dst: Type*, src: Type*,
  * @return `true` if assignment is allowed.
  */
 func etc_can_assign(self: ExpressionTypeChecker*, dst: Type*, src: Type*) -> bool {
+    return etc_can_assign_types(dst, src, true);
+}
+
+/**
+ * Check assignment while keeping nullable widening outside pointer compatibility.
+ *
+ * @param dst Destination type.
+ * @param src Source type.
+ * @param lift_numeric Permit lifted numeric conversion at this value position.
+ * @return Whether the assignment is allowed.
+ */
+func etc_can_assign_types(dst: Type*, src: Type*, lift_numeric: bool) -> bool {
     if (type_equals(dst, src)) return true;
 
     if (ord(src.kind) == ord(TY_NULL) && ord(dst.kind) == ord(TY_NULLABLE)) return true;
-    if (etc_can_widen_int(dst, src)) return true;
-    if (etc_can_widen_real(dst, src)) return true;
+    if (type_can_widen_numeric(dst, src)) return true;
 
     if (ord(dst.kind) == ord(TY_NULLABLE)) {
-        return etc_can_assign(self, dst.inner as Type*, src);
-    }
-
-    if (ord(src.kind) == ord(TY_NULLABLE) && ord(dst.kind) == ord(TY_NULLABLE)) {
-        return etc_can_assign(self, dst.inner as Type*, src.inner as Type*);
+        if (lift_numeric && ord(src.kind) == ord(TY_NULLABLE) && type_numeric_widening_injections(dst, src) >= 0) {
+            return true;
+        }
+        return etc_can_assign_types(dst.inner as Type*, src, lift_numeric);
     }
 
     if (ord(src.kind) == ord(TY_POINTER) && ord(dst.kind) == ord(TY_POINTER)) {
@@ -609,7 +579,7 @@ func etc_can_assign(self: ExpressionTypeChecker*, dst: Type*, src: Type*) -> boo
         if (type_is_builtin(dst_inner, "void") || type_is_builtin(src_inner, "void")) {
             return true;
         }
-        return etc_can_assign(self, dst_inner, src_inner);
+        return etc_can_assign_types(dst_inner, src_inner, false);
     }
 
     return false;
