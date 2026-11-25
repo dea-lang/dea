@@ -38,7 +38,7 @@ linked implementation plan tracks conformance separately from acceptance of this
 ## Related Plans
 
 - [work/plans/features/2026-11-25-shared-nullable-numeric-widening-noref.md][implementation] owns compiler conformance.
-- [l0/work/plans/bug-fixes/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md][l0-plan] identified the
+- [l0/work/plans/bug-fixes/closed/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md][l0-plan] identified the
   original stage discrepancy.
 - [l1/work/plans/features/closed/2026-05-11-ordered-type-suffix-constructors-noref.md][suffixes] established the
   significance of successive type constructors.
@@ -50,6 +50,6 @@ linked implementation plan tracks conformance separately from acceptance of this
 
 [implementation]: ../../work/plans/features/2026-11-25-shared-nullable-numeric-widening-noref.md
 [l0-nullability]: ../../l0/docs/decisions/0007-nullability-and-casts.md
-[l0-plan]: ../../l0/work/plans/bug-fixes/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md
+[l0-plan]: ../../l0/work/plans/bug-fixes/closed/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md
 [spec]: ../specs/language/nullable-numeric-widening.md
 [suffixes]: ../../l1/work/plans/features/closed/2026-05-11-ordered-type-suffix-constructors-noref.md

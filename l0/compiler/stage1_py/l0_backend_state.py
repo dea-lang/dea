@@ -10,7 +10,21 @@ from l0_internal_error import InternalCompilerError, ICELocation
 from l0_name_resolver import Symbol, SymbolKind
 from l0_resolve import resolve_symbol, resolve_type_ref
 from l0_scope_context import ScopeContext
-from l0_types import Type, BuiltinType, StructType, EnumType, PointerType, NullableType
+from l0_types import Type, BuiltinType, PointerType, NullableType
+
+
+def is_null_literal(expr: Expr) -> bool:
+    """Recognize a null literal through any grouping parentheses.
+
+    Args:
+        expr: Operand to inspect.
+
+    Returns:
+        Whether the operand needs its null representation from context.
+    """
+    while isinstance(expr, ParenExpr):
+        expr = expr.inner
+    return isinstance(expr, NullLiteral)
 
 
 @dataclass
@@ -73,7 +87,8 @@ class BackendState:
             self.ice("[ICE-1330] scope underflow")
         self._current_scope = self._current_scope.parent
 
-    def _types_equal(self, a: Type, b: Type) -> bool:
+    @staticmethod
+    def _types_equal(a: Type, b: Type) -> bool:
         """Check if two types are structurally equal.
 
         Args:
@@ -83,20 +98,7 @@ class BackendState:
         Returns:
             True if types are equal, False otherwise.
         """
-        if type(a) != type(b):
-            # Different kinds of types
-            return False
-        if isinstance(a, BuiltinType) and isinstance(b, BuiltinType):
-            return a.name == b.name
-        if isinstance(a, PointerType) and isinstance(b, PointerType):
-            return self._types_equal(a.inner, b.inner)
-        if isinstance(a, NullableType) and isinstance(b, NullableType):
-            return self._types_equal(a.inner, b.inner)
-        if isinstance(a, StructType) and isinstance(b, StructType):
-            return a.module == b.module and a.name == b.name
-        if isinstance(a, EnumType) and isinstance(b, EnumType):
-            return a.module == b.module and a.name == b.name
-        return False
+        return a == b
 
     def _is_int_assignable(self, typ: Type) -> bool:
         """Check if a type is assignable to an integer.

@@ -19,6 +19,8 @@ import re
 import subprocess
 import sys
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -67,10 +69,18 @@ def _compile_with_trace_arc(analyze_single, compile_and_run, tmp_path, src):
     return ok, stdout, stderr, arc_lines
 
 
-def test_trace_arc_comparison_temporary_cleanup(analyze_single, compile_and_run, tmp_path):
-    """Comparison operands must preserve semantics and free every owned payload."""
-    compiler_dir = Path(__file__).resolve().parents[3]
-    fixture = compiler_dir / "stage2_l0/tests/fixtures/arc_comparisons/main.l0"
+def _run_balanced_fixture(fixture, analyze_single, compile_and_run, tmp_path):
+    """Run a source fixture with ARC and memory tracing and check its allocation balances.
+
+    Args:
+        fixture: Source file declaring module main.
+        analyze_single: Stage 1 analysis fixture.
+        compile_and_run: Host C build and execution fixture.
+        tmp_path: Working directory for the generated program and trace.
+
+    Returns:
+        The target program's standard output and error text.
+    """
     result = analyze_single("main", fixture.read_text(encoding="utf-8"))
     assert not result.has_errors(), result.diagnostics
     result.context.trace_arc = True
@@ -80,11 +90,9 @@ def test_trace_arc_comparison_temporary_cleanup(analyze_single, compile_and_run,
 
     ok, stdout, stderr = compile_and_run(Backend(result).generate(), tmp_path)
     assert ok, stderr
-    assert stdout == "arc comparisons ok\n"
-    assert "op=alloc_string " in stderr, "the regression must allocate heap strings"
-    trace_file = tmp_path / "comparisons.stderr.log"
+    trace_file = tmp_path / "trace.stderr.log"
     trace_file.write_text(stderr, encoding="utf-8")
-    checker = compiler_dir / "stage2_l0/scripts/check_trace_log.py"
+    checker = Path(__file__).resolve().parents[3] / "stage2_l0/scripts/check_trace_log.py"
     report = subprocess.run(
         [sys.executable, str(checker), str(trace_file), "--triage"],
         capture_output=True,
@@ -94,6 +102,29 @@ def test_trace_arc_comparison_temporary_cleanup(analyze_single, compile_and_run,
     assert report.returncode == 0, report.stdout + report.stderr
     assert "leaked_string_ptrs=0" in report.stdout
     assert "leaked_object_ptrs=0" in report.stdout
+    return stdout, stderr
+
+
+def test_trace_arc_comparison_temporary_cleanup(analyze_single, compile_and_run, tmp_path):
+    """Comparison operands must preserve semantics and free every owned payload."""
+    fixture = Path(__file__).resolve().parents[3] / "stage2_l0/tests/fixtures/arc_comparisons/main.l0"
+    stdout, stderr = _run_balanced_fixture(fixture, analyze_single, compile_and_run, tmp_path)
+    assert stdout == "arc comparisons ok\n"
+    assert "op=alloc_string " in stderr, "the regression must allocate heap strings"
+
+
+@pytest.mark.parametrize(("case", "strings"), [("argument", 2), ("drop", 1)])
+def test_nullable_ownership(case, strings, analyze_single, compile_and_run, tmp_path):
+    """Converted arguments and allocated optional slots each release their owned payload."""
+    fixture = Path(__file__).resolve().parents[4] / "tests/fixtures/nullable_ownership" / case / "main.l0"
+    _, stderr = _run_balanced_fixture(fixture, analyze_single, compile_and_run, tmp_path)
+    assert stderr.count("op=alloc_string ") == strings
+    arc = parse_arc_lines(stderr)
+    assert sum(e.get("action") == "free" for e in arc) == strings
+    if case == "drop":
+        assert len(arc) == 1
+        assert stderr.index("op=free_string ") < stderr.index("op=drop ")
+        assert re.findall(r"op=drop ptr=\S+ action=(\S+)", stderr) == ["free", "free", "noop-null"]
 
 
 # ---------------------------------------------------------------------------

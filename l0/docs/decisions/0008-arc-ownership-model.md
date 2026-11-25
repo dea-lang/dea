@@ -1,7 +1,7 @@
 # ADR-0008: ARC Ownership Model
 
 - Decision date: 2025-12-29
-- Last edited: 2026-05-20
+- Last edited: 2026-11-25
 - Status: Accepted
 
 ## Context
@@ -48,6 +48,8 @@ ARC insertion logic.
 
 ## Related Plans
 
+- [l0/work/plans/bug-fixes/closed/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md](../../work/plans/bug-fixes/closed/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md)
+  covers borrowed calls with converted temporaries and cleanup of allocated optional slots.
 - [l0/work/plans/bug-fixes/closed/2026-02-15-arc-bug-fixes-noref.md](../../work/plans/bug-fixes/closed/2026-02-15-arc-bug-fixes-noref.md):
   ARC leaks for temporaries and discarded results
 - [l0/work/plans/bug-fixes/closed/2026-02-17-arc-return-expression-temp-cleanup-noref.md](../../work/plans/bug-fixes/closed/2026-02-17-arc-return-expression-temp-cleanup-noref.md):

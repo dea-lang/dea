@@ -275,6 +275,11 @@ def main() -> int:
         check_entry_file_identity(l0c, work_dir)
         widening = REPO_ROOT / "tests" / "fixtures" / "nullable_widening" / "widening.l0"
         run([l0c, "--run", native_path(widening)])
+        contextual_null = REPO_ROOT / "tests" / "fixtures" / "contextual_null"
+        run([l0c, "--run", native_path(contextual_null / "contextual_null.l0")])
+        invalid = run([l0c, "--check", native_path(contextual_null / "invalid.l0")], expected_returncode=1)
+        if "TYP-0310" not in invalid.stderr:
+            raise ToolTestFailure(f"missing non-nullable destination diagnostic: {invalid.stderr}")
 
         ok_main_bin = work_dir / ("ok_main.bin.exe" if is_windows_host() else "ok_main.bin")
         byte_main_bin = work_dir / ("byte_main.bin.exe" if is_windows_host() else "byte_main.bin")

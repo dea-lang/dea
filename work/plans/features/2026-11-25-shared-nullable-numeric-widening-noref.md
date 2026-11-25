@@ -39,10 +39,10 @@
 
 Both L0 stages and L1 implement ADR-0029 and passed focused local checks. L2 is the remaining target. Resume it when the
 project maintainer selects a stable L1 baseline and activates
-[l2/work/plans/features/2026-10-27-stable-l1-catch-up-noref.md][catch-up]. The L0 contextual-null, ARC and structural
-type-equality repairs retain their own scope in
-[l0/work/plans/bug-fixes/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md][l0-fixes]. The two L1 fixes can
-also proceed independently.
+[l2/work/plans/features/2026-10-27-stable-l1-catch-up-noref.md][catch-up]. Both L0 stages also completed the
+contextual-null and ARC repairs, alongside the Stage 1 structural type-equality fix.
+[l0/work/plans/bug-fixes/closed/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md][l0-fixes] records their
+verification. The two L1 fixes can proceed independently.
 
 - [l1/work/plans/bug-fixes/2026-11-21-contextual-null-lowering-noref.md][l1-null] supplies the destination type for an
   untyped null literal.
@@ -126,7 +126,7 @@ Then port the L1 widening rule and run the conformance cases below with L2-owned
 [adr]: ../../../docs/decisions/0029-lifted-nullable-numeric-widening.md
 [catch-up]: ../../../l2/work/plans/features/2026-10-27-stable-l1-catch-up-noref.md
 [diagnostics]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
-[l0-fixes]: ../../../l0/work/plans/bug-fixes/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md
+[l0-fixes]: ../../../l0/work/plans/bug-fixes/closed/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md
 [l1-drop]: ../../../l1/work/plans/bug-fixes/2026-11-21-drop-optional-payload-cleanup-noref.md
 [l1-null]: ../../../l1/work/plans/bug-fixes/2026-11-21-contextual-null-lowering-noref.md
 [spec]: ../../../docs/specs/language/nullable-numeric-widening.md

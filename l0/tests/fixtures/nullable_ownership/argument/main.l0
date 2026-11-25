@@ -1,0 +1,21 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module main;
+
+import std.optional;
+import std.string;
+
+/**
+ * Check optional injection at a borrowed call for an rvalue and an existing owner.
+ *
+ * @return Zero when both payloads and the original owner survive the call.
+ */
+func main() -> int {
+    if (unwrap_or_s(concat_s("a", "b"), "miss") != "ab") return 1;
+    let owner = concat_s("c", "d");
+    if (unwrap_or_s(owner, "miss") != "cd") return 2;
+    if (owner != "cd") return 3;
+    return 0;
+}

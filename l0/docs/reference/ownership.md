@@ -1,6 +1,6 @@
 # L0 Ownership and Memory Management Reference
 
-Version: 2026-09-11
+Version: 2026-11-25
 
 This document describes how ownership works in L0 today, covering:
 
@@ -63,10 +63,12 @@ How it lowers at runtime:
 - Before generated cleanup dereferences a pointee, the backend validates that the pointer is still registered as a `new`
   allocation. This makes stale `drop` failures deterministic even when cleanup must release ARC fields first.
 
-Between drop begin and finish, the compiler may emit field cleanup automatically:
+Between drop begin and finish, the compiler releases ARC data owned by the pointee.
 
 - If the struct/enum has ARC fields (e.g. `string` members), the current backends insert `rt_string_release` calls for
   those fields before freeing the object.
+- For `type S = string?;`, dropping a slot allocated with `new S(value)` releases the string when `value` is present.
+  Dropping a slot allocated with `new S(null)` frees only the slot.
 - Pointer fields that own **separate** heap objects are **not** cleaned up automatically. You must free or drop children
   explicitly before dropping the parent.
 
@@ -242,6 +244,10 @@ Value ownership:
 2. You use ARC-aware stdlib helpers that already handle ownership (`sv_*`, `sslm_*`, `islm_*`, map/set key APIs).
 
 ## 8. Control Flow and ARC Cleanup
+
+Function calls borrow their arguments. When an owned string temporary is implicitly wrapped for a `string?` parameter,
+the caller owns the converted temporary and releases its present payload after use. Passing an existing string local
+through the same conversion preserves the local's ownership.
 
 Comparisons borrow their operands for evaluation. An owned temporary consumed by a comparison is registered for normal
 ARC cleanup, including a `string?` or ARC-bearing aggregate compared with `null` and a temporary string used in equality

@@ -268,12 +268,11 @@ class ValueLifetime:
             self._emit_struct_cleanup(drop_tmp, inner_type)
         elif isinstance(inner_type, EnumType):
             self._emit_enum_cleanup(drop_tmp, inner_type)
-        elif self.state.analysis.is_arc_type(inner_type):
-            # Release the ARC value before freeing the container
+        elif self.state.analysis.has_arc_data(inner_type):
             c_cond = self.state.emitter.values.emit_pointer_null_check(drop_tmp, "!=")
             self.state.emitter.statements.emit_if_header(c_cond)
             self.state.emitter.statements.emit_block_start()
-            self.state.emitter.cleanup.emit_string_release(f"*{drop_tmp}")
+            self._emit_value_cleanup(f"*{drop_tmp}", inner_type)
             self.state.emitter.statements.emit_block_end()
         # For other builtin types or other pointers, no special cleanup needed
 

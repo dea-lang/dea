@@ -610,6 +610,18 @@ class TestConversionExecution:
 # Negative tests (things that should NOT compile)
 # ============================================================================
 
+def test_contextual_null(tmp_path, write_l0_file, search_paths, compile_and_run):
+    """Compile and execute grouped nulls and reject a non-nullable destination."""
+    fixtures = Path(__file__).resolve().parents[4] / "tests/fixtures/contextual_null"
+    src = (fixtures / "contextual_null.l0").read_text(encoding="utf-8")
+    c_code = generate_c(tmp_path, write_l0_file, search_paths, "contextual_null", src)
+    success, _, stderr = compile_and_run(c_code, tmp_path)
+    assert success, stderr
+
+    invalid = (fixtures / "invalid.l0").read_text(encoding="utf-8")
+    analyze_and_expect_error(tmp_path, write_l0_file, search_paths, "invalid", invalid, "TYP-0310")
+
+
 def test_lifted_widening_executes(tmp_path, write_l0_file, search_paths, compile_and_run):
     """Compile and run the shared L0 presence and single-evaluation fixture."""
     fixture = Path(__file__).resolve().parents[4] / "tests/fixtures/nullable_widening/widening.l0"

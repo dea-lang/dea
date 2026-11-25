@@ -15,7 +15,7 @@
   - `l1/compiler/tests/l1c_arc_trace_regression_test.py`
 - Related:
   - [l1/docs/reference/ownership.md][ownership]
-  - [l0/work/plans/bug-fixes/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md][l0-ownership]
+  - [l0/work/plans/bug-fixes/closed/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md][l0-ownership]
 - Repro: With `std.string` imported and `type S = string?;`, run `let p = new S(concat_s("a", "b") as string?); drop p;`
   under `--trace-arc --trace-memory`.
 
@@ -53,6 +53,6 @@ From `l1/`, run `make test-compiler TESTS="backend_test l1c_arc_trace_regression
 trace with `python3 compiler/scripts/check_trace_log.py <trace-log> --triage`. Update the L1 ownership reference with
 the present and absent allocated-slot examples.
 
-[l0-ownership]: ../../../../l0/work/plans/bug-fixes/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md
+[l0-ownership]: ../../../../l0/work/plans/bug-fixes/closed/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md
 [ownership]: ../../../docs/reference/ownership.md
 [widening]: ../../../../work/plans/features/2026-11-25-shared-nullable-numeric-widening-noref.md

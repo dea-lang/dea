@@ -18,7 +18,7 @@
 - Related:
   - [l1/docs/reference/design-decisions.md][nullability]
   - [l1/docs/decisions/0012-ordered-type-suffix-constructors.md][suffixes]
-  - [l0/work/plans/bug-fixes/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md][l0-nullable]
+  - [l0/work/plans/bug-fixes/closed/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md][l0-nullable]
 - Repro: Pass `(null)` to an `int?` parameter, initialize an `int?` local with `((null))`, or declare
   `type S = string?;` and evaluate `new S(null)`. Compare `l1c --check` with `l1c --gen` or `l1c --run`.
 
@@ -55,7 +55,7 @@ generated C and the executed result. These cases require only the destination ty
 payload conversions are tracked independently in
 [work/plans/features/2026-11-25-shared-nullable-numeric-widening-noref.md][widening].
 
-[l0-nullable]: ../../../../l0/work/plans/bug-fixes/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md
+[l0-nullable]: ../../../../l0/work/plans/bug-fixes/closed/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md
 [nullability]: ../../../docs/reference/design-decisions.md
 [suffixes]: ../../../docs/decisions/0012-ordered-type-suffix-constructors.md
 [widening]: ../../../../work/plans/features/2026-11-25-shared-nullable-numeric-widening-noref.md

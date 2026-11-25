@@ -1,6 +1,6 @@
 # L0 C Backend Design
 
-Version: 2026-11-11
+Version: 2026-11-25
 
 This is the canonical backend implementation document for the current C backend. Stage 1 remains the behavioral oracle;
 Stage 2 is expected to emit the same C and reuse the same diagnostic/ICE codes for equivalent backend conditions.
@@ -125,6 +125,9 @@ direct enum-tag constants. Non-static top-level initializer expressions are reje
   - `typedef struct { l0_bool has_value; T value; } l0_opt_*;`
 
 Wrapper typedefs are emitted in two phases so dependencies are valid.
+
+A null literal takes its C representation from its destination type, including through grouping parentheses. For a
+single-value allocation such as `new S((null))`, the allocated slot supplies that type.
 
 ## Name Mangling and Symbol Rules
 

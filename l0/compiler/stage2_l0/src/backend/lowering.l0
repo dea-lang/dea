@@ -74,8 +74,7 @@ func be_emit_with_cleanup_header_let_assign(self: Backend*, stmt: StmtNode*, var
  * @return Lowered expression string.
  */
 func be_emit_expr_with_expected_type(self: Backend*, expr_id: ExprId, expected: Type*) -> string {
-    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
-    if (ord(expr.kind) == ord(EX_NULL)) {
+    if (be_is_null_literal(self, expr_id)) {
         return cem_emit_null_literal(expected, false);
     }
 
@@ -94,8 +93,7 @@ func be_emit_expr_with_expected_type(self: Backend*, expr_id: ExprId, expected: 
  * @return Lowered expression string, with retain-on-copy when required.
  */
 func be_emit_owned_expr_with_expected_type(self: Backend*, expr_id: ExprId, expected: Type*) -> string {
-    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
-    if (ord(expr.kind) == ord(EX_NULL)) {
+    if (be_is_null_literal(self, expr_id)) {
         return be_emit_expr_with_expected_type(self, expr_id, expected);
     }
 
@@ -248,17 +246,15 @@ func be_emit_lvalue(self: Backend*, expr_id: ExprId) -> string {
  */
 func be_emit_binary_op(self: Backend*, expr_id: ExprId) -> string {
     let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
-    let left = expr_arena_get(be_current_expr_arena(self), expr.expr_a);
-    let right = expr_arena_get(be_current_expr_arena(self), expr.expr_b);
 
     if (expr.text_value == "&&" || expr.text_value == "||") {
         return be_emit_condition_value(self, expr_id);
     }
 
     if ((expr.text_value == "==" || expr.text_value == "!=") &&
-        (ord(left.kind) == ord(EX_NULL) || ord(right.kind) == ord(EX_NULL))) {
+        (be_is_null_literal(self, expr.expr_a) || be_is_null_literal(self, expr.expr_b))) {
         let other_id = expr.expr_a;
-        if (ord(left.kind) == ord(EX_NULL)) {
+        if (be_is_null_literal(self, expr.expr_a)) {
             other_id = expr.expr_b;
         }
 
@@ -344,13 +340,11 @@ func be_emit_condition_expr(self: Backend*, expr_id: ExprId) -> string {
     if (ord(expr.kind) != ord(EX_BINARY)) {
         return be_emit_expr(self, expr_id);
     }
-    let left = expr_arena_get(be_current_expr_arena(self), expr.expr_a);
-    let right = expr_arena_get(be_current_expr_arena(self), expr.expr_b);
 
     if ((expr.text_value == "==" || expr.text_value == "!=") &&
-        (ord(left.kind) == ord(EX_NULL) || ord(right.kind) == ord(EX_NULL))) {
+        (be_is_null_literal(self, expr.expr_a) || be_is_null_literal(self, expr.expr_b))) {
         let other_id = expr.expr_a;
-        if (ord(left.kind) == ord(EX_NULL)) {
+        if (be_is_null_literal(self, expr.expr_a)) {
             other_id = expr.expr_b;
         }
 
@@ -543,7 +537,7 @@ func be_emit_call(self: Backend*, expr_id: ExprId) -> string {
                             let c_arg = be_emit_expr_with_expected_type(self, arg_id, param_ty);
                             with (let arg_ty = be_expr_type(self, arg_id) => type_free_opt(arg_ty)) {
                                 if (arg_ty != null && be_should_materialize_arc_temp(self, arg_id, arg_ty as Type*)) {
-                                    c_arg = be_materialize_arc_temp(self, c_arg, arg_ty as Type*);
+                                    c_arg = be_materialize_arc_temp(self, c_arg, param_ty);
                                 }
                                 sb_append(sb, c_arg);
                             }
@@ -781,6 +775,9 @@ func be_emit_expr(self: Backend*, expr_id: ExprId) -> string {
                   let dst_ty = be_resolve_type_ref(self, expr.type_ref as TypeRef*) => type_free_opt(dst_ty)) {
                 if (dst_ty == null) {
                     return be_ice_string("[ICE-1110] failed to resolve cast target type");
+                }
+                if (be_is_null_literal(self, expr.expr_a)) {
+                    return cem_emit_null_literal(dst_ty as Type*, false);
                 }
                 let c_inner = be_emit_expr(self, expr.expr_a);
                 let c_dst = cem_emit_type(dst_ty as Type*);

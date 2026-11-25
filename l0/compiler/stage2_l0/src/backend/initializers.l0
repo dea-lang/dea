@@ -80,6 +80,7 @@ func be_is_static_let_initializer(self: Backend*, expr_id: ExprId) -> bool {
         EX_BOOL => { return true; }
         EX_STRING => { return true; }
         EX_NULL => { return true; }
+        EX_PAREN => { return be_is_static_let_initializer(self, expr.expr_a); }
         EX_VAR_REF => {
             let sym = be_lookup_symbol(self, expr.text_value, expr.module_path, expr.name_qualifier);
             return sym != null && sig_symbol_is_zero_field_enum_variant(sym as Symbol*);
@@ -177,10 +178,13 @@ func be_emit_static_ord_initializer(self: Backend*, expr_id: ExprId) -> string {
  * @return Constant initializer expression.
  */
 func be_emit_let_initializer(self: Backend*, expr_id: ExprId, expected_type: Type*) -> string {
+    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    if (ord(expr.kind) == ord(EX_PAREN)) {
+        return be_emit_let_initializer(self, expr.expr_a, expected_type);
+    }
     if (!be_is_static_let_initializer(self, expr_id)) {
         return be_ice_string("[ICE-1181] unsupported top-level let initializer");
     }
-    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
     if (ord(expr.kind) != ord(EX_NULL) && ord(expected_type.kind) == ord(TY_NULLABLE)) {
         let inner = expected_type.inner as Type*;
         let payload = be_emit_let_initializer(self, expr_id, inner);

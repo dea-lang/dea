@@ -4,6 +4,23 @@
 import re
 
 
+def test_backend_structural_type_equality():
+    """Compare semantic null and function types at the backend helper boundary."""
+    from l0_backend_state import BackendState
+    from l0_types import BuiltinType, FuncType, NullableType, NullType, PointerType
+
+    equal = BackendState._types_equal
+    null = NullType()
+    assert equal(null, null)
+    assert equal(null, NullType())
+    param = NullableType(PointerType(BuiltinType("int")))
+    signature = FuncType((param,), BuiltinType("bool"))
+    assert equal(signature, signature)
+    assert equal(signature, FuncType((NullableType(PointerType(BuiltinType("int"))),), BuiltinType("bool")))
+    assert not equal(signature, FuncType((NullableType(PointerType(BuiltinType("byte"))),), BuiltinType("bool")))
+    assert not equal(signature, FuncType((param,), BuiltinType("int")))
+
+
 def test_codegen_trace_defines_emitted(analyze_single):
     result = analyze_single(
         "main",

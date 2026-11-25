@@ -11,7 +11,7 @@ from l0_scope_context import ScopeContext
 from l0_types import Type, BuiltinType, StructType, EnumType, PointerType, NullableType, FuncType, format_type
 from l0_backend_convert import OwnershipConversion
 from l0_backend_lifetime import ValueLifetime
-from l0_backend_state import BackendState
+from l0_backend_state import BackendState, is_null_literal
 
 
 @dataclass
@@ -1438,8 +1438,7 @@ class Lowering:
             InternalCompilerError: If null literal is assigned to invalid type.
         """
 
-        # Special case: null literal
-        if isinstance(e, NullLiteral):
+        if is_null_literal(e):
             if isinstance(expected, (NullableType, PointerType)):
                 return self.state.emitter.types.emit_null_literal(expected)
             self.state.ice(f"[ICE-1090] invalid expected type for null literal: '{format_type(expected)}'", node=e)
@@ -1462,11 +1461,10 @@ class Lowering:
         Returns:
             A C expression string.
         """
-        natural_ty = self.state.analysis.expr_types.get(id(e))
-
-        if isinstance(e, NullLiteral):
+        if is_null_literal(e):
             return self._emit_expr_with_expected_type(e, expected)
 
+        natural_ty = self.state.analysis.expr_types.get(id(e))
         c_expr = self._emit_expr(e)
         place_like = self.state._is_place_expr(e) or self.lifetime._is_borrowed_extraction(e)
 
@@ -1610,7 +1608,7 @@ class Lowering:
                                 c_a = self._emit_expr_with_expected_type(a, p)
                                 a_ty = self.state.analysis.expr_types.get(id(a))
                                 if a_ty and self.lifetime._should_materialize_arc_temp(a, a_ty):
-                                    c_a = self.lifetime._materialize_arc_temp(c_a, a_ty)
+                                    c_a = self.lifetime._materialize_arc_temp(c_a, p)
                                 c_arg_parts.append(c_a)
                             c_args = ", ".join(c_arg_parts)
                         else:
@@ -1668,15 +1666,15 @@ class Lowering:
 
 
         elif isinstance(expr, CastExpr):
-            # Emit inner expression first
-            c_inner = self._emit_expr(expr.expr)
-
             assert self.state.current_module is not None
             # Resolve source and destination types
             src_ty = self.state.analysis.expr_types.get(id(expr.expr))
             dst_ty = self.state._resolve_type_ref(expr.target_type, self.state.current_module)
             if dst_ty is None:
                 self.state.ice("[ICE-1110] failed to resolve cast target type", node=expr.target_type)
+            if is_null_literal(expr.expr):
+                return self.state.emitter.types.emit_null_literal(dst_ty)
+            c_inner = self._emit_expr(expr.expr)
             c_dst = self.state.emitter.types.emit_type(dst_ty)
 
             if src_ty == dst_ty:
@@ -1694,8 +1692,6 @@ class Lowering:
                     return self.state.emitter.values.emit_cast(c_dst, c_inner)
 
                 # value-optional: construct wrapper
-                if isinstance(expr.expr, NullLiteral):
-                    return self.state.emitter.types.emit_null_literal(dst_ty)
                 if (
                     self.state.analysis.has_arc_data(dst_ty.inner)
                     and (self.state._is_place_expr(expr.expr) or self.lifetime._is_borrowed_extraction(expr.expr))
@@ -1787,8 +1783,8 @@ class Lowering:
             return self._emit_condition_value(expr_node)
 
         # Special-case: nullable wrapper compared with null
-        if expr_op in ("==", "!=") and (isinstance(expr_left, NullLiteral) or isinstance(expr_right, NullLiteral)):
-            other = expr_right if isinstance(expr_left, NullLiteral) else expr_left
+        if expr_op in ("==", "!=") and (is_null_literal(expr_left) or is_null_literal(expr_right)):
+            other = expr_right if is_null_literal(expr_left) else expr_left
             other_ty = self.state.analysis.expr_types.get(id(other))
             c_other = self._emit_expr(other)
             if other_ty is not None and self.lifetime._should_materialize_arc_temp(other, other_ty):

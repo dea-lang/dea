@@ -212,6 +212,22 @@ func test_analysis_expr_lookup_helpers() {
 }
 
 /**
+ * Check structural equality for null and a cloned nested function signature.
+ */
+func test_structural_type_equality() {
+    let params = ptr_vec_create(1);
+    ptr_vec_push(params, type_new_nullable(type_new_pointer(type_builtin_int())) as void*);
+    with (let signature = type_new_func(params, type_builtin_bool()) => type_free(signature),
+          let copy = type_clone(signature) => type_free(copy),
+          let null_type = type_new_null() => type_free(null_type),
+          let other_null = type_new_null() => type_free(other_null)) {
+        assert(type_equals(null_type, other_null), "distinct null types compare equal");
+        assert(type_equals(signature, copy), "cloned function signatures compare equal");
+        assert(!type_equals(signature, null_type), "different kinds compare unequal");
+    }
+}
+
+/**
  * Tests test_analysis_has_arc_data_for_struct_and_nullable_pointer.
  */
 func test_analysis_has_arc_data_for_struct_and_nullable_pointer() {
@@ -1155,6 +1171,7 @@ func main() {
     test_backend_scope_helpers_manage_cleanup_state();
     test_analysis_expr_lookup_helpers();
     test_analysis_has_arc_data_for_struct_and_nullable_pointer();
+    test_structural_type_equality();
     test_backend_generate_types_and_top_level_lets();
     test_backend_generate_basic_control_flow();
     test_backend_generate_checked_negation();

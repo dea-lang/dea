@@ -1,0 +1,25 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module main;
+
+import std.string;
+
+type S = string?;
+
+/**
+ * Drop an allocated present optional, an empty slot and a null pointer.
+ *
+ * @return Zero after all three drops.
+ */
+func main() -> int {
+    let present = new S(concat_s("a", "b") as string?);
+    drop present;
+    let empty: S = null;
+    let absent = new S(empty);
+    drop absent;
+    let missing: S*? = null;
+    drop missing;
+    return 0;
+}

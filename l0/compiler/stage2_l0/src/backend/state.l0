@@ -487,6 +487,22 @@ func be_lookup_owned_local_name(self: Backend*, expr_id: ExprId) -> string? {
 }
 
 /**
+ * Recognize a null literal through any grouping parentheses.
+ *
+ * @param self Backend providing the current expression arena.
+ * @param expr_id Operand to inspect.
+ * @return True when the operand needs its null representation from context.
+ */
+func be_is_null_literal(self: Backend*, expr_id: ExprId) -> bool {
+    let arena = be_current_expr_arena(self);
+    let expr = expr_arena_get(arena, expr_id);
+    while (ord(expr.kind) == ord(EX_PAREN)) {
+        expr = expr_arena_get(arena, expr.expr_a);
+    }
+    return ord(expr.kind) == ord(EX_NULL);
+}
+
+/**
  * Report whether an expression refers to an existing place.
  *
  * @param self Backend state to inspect.

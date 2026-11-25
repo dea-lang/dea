@@ -1986,6 +1986,20 @@ def test_comparison_temporary_cleanup(artifact_dir: Path) -> None:
     assert_true("op=alloc_string " in stderr, "comparison fixture must allocate", artifact_dir)
 
 
+def test_nullable_ownership(artifact_dir: Path) -> None:
+    """Trace the converted argument and optional-slot drop as separate child programs."""
+    fixtures = L0_ROOT / "tests/fixtures/nullable_ownership"
+    for case, strings in [("argument", 2), ("drop", 1)]:
+        _, stderr, _, arc = run_case(f"nullable_{case}", read_text(fixtures / case / "main.l0"), artifact_dir)
+        assert_equal(stderr.count("op=alloc_string "), strings, f"{case} heap allocations", artifact_dir)
+        assert_equal(len(heap_frees(arc)), strings, f"{case} final releases", artifact_dir)
+        if case == "drop":
+            assert_equal(len(arc), 1, "only the present payload generates an ARC event", artifact_dir)
+            assert_true(stderr.index("op=free_string ") < stderr.index("op=drop "), "release before drop", artifact_dir)
+            actions = [e.get("action") for e in parse_mem_lines(stderr) if e.get("op") == "drop"]
+            assert_equal(actions, ["free", "free", "noop-null"], "present, absent and null drops", artifact_dir)
+
+
 def main() -> int:
     """Program entrypoint."""
 
@@ -1994,6 +2008,7 @@ def main() -> int:
 
     checks = [
         test_comparison_temporary_cleanup,
+        test_nullable_ownership,
         test_static_string_noop,
         test_heap_string_lifecycle,
         test_string_copy_retain_and_release,

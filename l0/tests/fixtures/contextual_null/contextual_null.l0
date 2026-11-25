@@ -1,0 +1,41 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module contextual_null;
+
+type S = string?;
+let global_empty: S = ((null));
+
+/**
+ * Report whether an optional argument is absent.
+ *
+ * @param value Optional integer.
+ * @return True for absence.
+ */
+func absent(value: int?) -> bool {
+    return (null) == value;
+}
+
+/**
+ * Check contextual nulls in calls, local initializers and heap slots.
+ *
+ * @return Zero when every destination contains an absent value.
+ */
+func main() -> int {
+    let nested: int? = (((null)));
+    if (!absent(null) || !absent((null)) || !absent(nested)) return 1;
+    if (global_empty != ((null)) || !absent((null) as int?)) return 2;
+    let ptr: int*? = ((null));
+    if (ptr != (null)) return 3;
+    let empty: S = null;
+    let direct = new S(null);
+    let grouped = new S((null));
+    let typed = new S(empty);
+    let ok = *direct == null && *grouped == null && *typed == null;
+    drop direct;
+    drop grouped;
+    drop typed;
+    if (!ok) return 4;
+    return 0;
+}
