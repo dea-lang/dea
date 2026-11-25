@@ -294,7 +294,7 @@ func test_typing_let_diag_err() {
         assert(analysis_has_errors(result), "expected typing errors for typing_let_diag_err");
         assert(has_diag_code(result, "TYP-0020"), "expected duplicate local declaration error");
         assert(has_diag_code(result, "TYP-0050"), "expected void local annotation error");
-        assert(has_diag_code(result, "TYP-0052"), "expected null-inference let error");
+        assert(count_diag_code(result, "TYP-0052") == 2, "bare and grouped null both need a destination type");
         assert(has_diag_code(result, "TYP-0053"), "expected void-initializer let error");
         analysis_result_free(result);
     }

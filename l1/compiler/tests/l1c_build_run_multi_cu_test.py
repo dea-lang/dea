@@ -435,6 +435,12 @@ def main() -> int:
 
         check_explicit_entry(compiler, cc, env, root)
 
+        contextual_null = run(
+            compiler_command(compiler, cc, "--run", DRIVER_FIXTURES, "contextual_null_main"),
+            cwd=root, env=env,
+        )
+        require_status(contextual_null, 0, "contextual nulls in expressions and allocations")
+
         if os.name == "nt":
             invocation_marker = root / "unsafe-link-arg-invoked-compiler"
             marker_cc = write_invocation_marker_compiler(root, invocation_marker)

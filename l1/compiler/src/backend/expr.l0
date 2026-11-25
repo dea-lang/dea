@@ -49,6 +49,18 @@ func be_unwrap_paren_expr_id(self: Backend*, expr_id: ExprId) -> ExprId {
 }
 
 /**
+ * Recognize a null literal through any grouping parentheses.
+ *
+ * @param self Backend providing the current expression arena.
+ * @param expr_id Operand to inspect.
+ * @return True for a direct or grouped null literal.
+ */
+func be_is_null_literal(self: Backend*, expr_id: ExprId) -> bool {
+    let inner = be_unwrap_paren_expr_id(self, expr_id);
+    return ord(expr_arena_get(be_current_expr_arena(self), inner).kind) == ord(EX_NULL);
+}
+
+/**
  * Extract bigint digits through parentheses and unary negation.
  *
  * Each unary minus toggles the payload's leading sign. This recognizes syntax

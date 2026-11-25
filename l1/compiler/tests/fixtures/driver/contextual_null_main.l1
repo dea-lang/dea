@@ -1,0 +1,77 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+module contextual_null_main;
+
+type S = string?;
+type P = int*?;
+let calls: int = 0;
+
+/**
+ * Test absence using the value representation of an optional integer.
+ *
+ * @param value Optional argument.
+ * @return True when the argument is absent.
+ */
+func absent(value: int?) -> bool {
+    return (null) == value;
+}
+
+/**
+ * Count evaluations of a grouped initializer for an optional pointer slot.
+ *
+ * @return An absent pointer.
+ */
+func counted() -> P {
+    calls = calls + 1;
+    return ((null));
+}
+
+/**
+ * Compare direct, grouped and typed null initializers in heap slots.
+ *
+ * @return True when every slot contains an absent value and the call ran once.
+ */
+func check_slots() -> bool {
+    let empty: S = null;
+    let direct = new S(null);
+    let grouped = new S((null));
+    let typed = new S(empty);
+    let pointer: P = ((null));
+    let p_direct = new P(null);
+    let p_grouped = new P(((null)));
+    let p_typed = new P(pointer);
+    let make_pointer: func() -> P = counted;
+    let p_counted = new P((make_pointer()));
+    let ok = *direct == null && *grouped == null && *typed == null &&
+        *p_direct == null && *p_grouped == null && *p_typed == null && *p_counted == null;
+    drop direct;
+    drop grouped;
+    drop typed;
+    drop p_direct;
+    drop p_grouped;
+    drop p_typed;
+    drop p_counted;
+    return ok && calls == 1;
+}
+
+/**
+ * Verify contextual nulls at borrowed and owned destinations.
+ *
+ * @return Zero when runtime values match each destination's representation.
+ */
+func main() -> int {
+    let nested: int? = (((null)));
+    let check: func(int?) -> bool = absent;
+    if (!absent(null) || !absent((null)) || !check(((null))) || !check(nested)) return 1;
+    if (absent(0) || check(0)) return 2;
+    let outer: int?? = ((null));
+    if (outer != (null) || !absent((null) as int?)) return 3;
+    if (!check_slots()) return 4;
+    let source = "a" + "b";
+    let copy: S = ((source));
+    source = "replaced";
+    if (copy == null || (copy as string) != "ab") return 5;
+    return 0;
+}

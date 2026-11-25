@@ -15,6 +15,7 @@ func noop() -> void {
 func err_let_diag() -> int {
     let a: void = noop(); // TYP-0050
     let b = null; // TYP-0052
+    let grouped = ((null)); // TYP-0052
     let c = noop(); // TYP-0053
     let d: int = 1;
     let d: int = 2; // TYP-0020

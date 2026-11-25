@@ -150,12 +150,11 @@ func be_emit_array_to_slice(self: Backend*, expr_id: ExprId, array_ty: Type*, sl
  * @return Lowered expression string.
  */
 func be_emit_expr_with_expected_type(self: Backend*, expr_id: ExprId, expected: Type*) -> string {
-    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
-    if (ord(expr.kind) == ord(EX_NULL)) {
-        return cem_emit_null_literal(expected, false);
-    }
     let literal_id = be_unwrap_paren_expr_id(self, expr_id);
     let literal_expr = expr_arena_get(be_current_expr_arena(self), literal_id);
+    if (ord(literal_expr.kind) == ord(EX_NULL)) {
+        return cem_emit_null_literal(expected, false);
+    }
     if (ord(literal_expr.kind) == ord(EX_ARRAY_LITERAL) && ord(expected.kind) == ord(TY_ARRAY)) {
         return be_emit_array_literal_value(self, literal_id, expected);
     }
@@ -180,12 +179,11 @@ func be_emit_expr_with_expected_type(self: Backend*, expr_id: ExprId, expected: 
  * @return Lowered expression string, with retain-on-copy when required.
  */
 func be_emit_owned_expr_with_expected_type(self: Backend*, expr_id: ExprId, expected: Type*) -> string {
-    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
-    if (ord(expr.kind) == ord(EX_NULL)) {
-        return be_emit_expr_with_expected_type(self, expr_id, expected);
-    }
     let literal_id = be_unwrap_paren_expr_id(self, expr_id);
     let literal_expr = expr_arena_get(be_current_expr_arena(self), literal_id);
+    if (ord(literal_expr.kind) == ord(EX_NULL)) {
+        return cem_emit_null_literal(expected, false);
+    }
     if (ord(literal_expr.kind) == ord(EX_ARRAY_LITERAL) && ord(expected.kind) == ord(TY_ARRAY)) {
         return be_emit_array_literal_value(self, literal_id, expected);
     }
@@ -339,6 +337,21 @@ func be_emit_comparison_operand(self: Backend*, expr_id: ExprId, ty: Type*) -> s
 }
 
 /**
+ * Find the typed operand of a comparison with a null literal.
+ *
+ * @param self Backend providing the current expression arena.
+ * @param expr Binary expression to inspect.
+ * @return Typed operand id, or -1 for a different comparison or operator.
+ */
+func be_null_comparison_operand(self: Backend*, expr: ExprNode*) -> ExprId {
+    if (expr.text_value == "==" || expr.text_value == "!=") {
+        if (be_is_null_literal(self, expr.expr_a)) return expr.expr_b;
+        if (be_is_null_literal(self, expr.expr_b)) return expr.expr_a;
+    }
+    return -1;
+}
+
+/**
  * Emit one binary operation.
  *
  * @param self Backend state to inspect.
@@ -347,20 +360,13 @@ func be_emit_comparison_operand(self: Backend*, expr_id: ExprId, ty: Type*) -> s
  */
 func be_emit_binary_op(self: Backend*, expr_id: ExprId) -> string {
     let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
-    let left = expr_arena_get(be_current_expr_arena(self), expr.expr_a);
-    let right = expr_arena_get(be_current_expr_arena(self), expr.expr_b);
 
     if (expr.text_value == "&&" || expr.text_value == "||") {
         return be_emit_condition_value(self, expr_id);
     }
 
-    if ((expr.text_value == "==" || expr.text_value == "!=") &&
-        (ord(left.kind) == ord(EX_NULL) || ord(right.kind) == ord(EX_NULL))) {
-        let other_id = expr.expr_a;
-        if (ord(left.kind) == ord(EX_NULL)) {
-            other_id = expr.expr_b;
-        }
-
+    let other_id = be_null_comparison_operand(self, expr);
+    if (other_id >= 0) {
         with (let other_ty = be_expr_type(self, other_id) => type_free_opt(other_ty)) {
             let c_other = be_emit_expr(self, other_id);
             if (other_ty != null && be_should_materialize_arc_temp(self, other_id, other_ty as Type*)) {
@@ -531,16 +537,9 @@ func be_emit_condition_expr(self: Backend*, expr_id: ExprId) -> string {
     if (ord(expr.kind) != ord(EX_BINARY)) {
         return be_emit_expr(self, expr_id);
     }
-    let left = expr_arena_get(be_current_expr_arena(self), expr.expr_a);
-    let right = expr_arena_get(be_current_expr_arena(self), expr.expr_b);
 
-    if ((expr.text_value == "==" || expr.text_value == "!=") &&
-        (ord(left.kind) == ord(EX_NULL) || ord(right.kind) == ord(EX_NULL))) {
-        let other_id = expr.expr_a;
-        if (ord(left.kind) == ord(EX_NULL)) {
-            other_id = expr.expr_b;
-        }
-
+    let other_id = be_null_comparison_operand(self, expr);
+    if (other_id >= 0) {
         with (let other_ty = be_expr_type(self, other_id) => type_free_opt(other_ty)) {
             let c_other = be_emit_expr(self, other_id);
             if (other_ty != null && be_should_materialize_arc_temp(self, other_id, other_ty as Type*)) {
@@ -905,50 +904,53 @@ func be_emit_slice_descriptor(self: Backend*, expr: ExprNode*, expr_id: ExprId) 
 }
 
 /**
- * Lower the complete argument list for a typed variadic call.
+ * Lower positional arguments using the types of the corresponding parameters.
  *
- * Ordinary trailing values are copied into an owning fixed-array temporary and
+ * Ordinary variadic tail values are copied into an owning fixed-array temporary and
  * exposed to the callee through the effective slice parameter. A final spread
  * argument already denotes the complete slice tail and is passed through.
  *
  * @param self Backend state to update.
- * @param expr Variadic call expression.
- * @param func_ty Resolved variadic function type.
+ * @param expr Call expression with positional arguments.
+ * @param func_ty Resolved function type.
  * @return Comma-separated lowered C arguments.
  */
-func be_emit_variadic_call_args(self: Backend*, expr: ExprNode*, func_ty: Type*) -> string {
+func be_emit_positional_call_args(self: Backend*, expr: ExprNode*, func_ty: Type*) -> string {
     let params = func_ty.params as VectorBase*;
-    let fixed_count = vec_size(params) - 1;
-    let slice_ty = ptr_vec_get(params, fixed_count) as Type*;
-    let elem_ty = slice_ty.inner as Type*;
-    let args = expr.ids as VectorBase*;
-    let arg_count = vec_size(args);
+    let fixed_count = vec_size(params);
+    if (func_ty.is_variadic) fixed_count = fixed_count - 1;
+    let args = expr.ids;
 
     with (let sb = sb_create() => sb_free(sb)) {
         for (let i = 0; i < fixed_count; i = i + 1) {
             if (i > 0) {
                 sb_append(sb, ", ");
             }
-            let arg_id = id_vec_get(args, i);
+            let arg_id = id_vec_get(args as VectorBase*, i);
             let expected = ptr_vec_get(params, i) as Type*;
             let c_arg = be_emit_expr_with_expected_type(self, arg_id, expected);
             c_arg = be_finalize_lowered_call_arg(self, arg_id, c_arg, expected, false);
             sb_append(sb, c_arg);
         }
 
+        if (!func_ty.is_variadic) return sb_to_string(sb);
+
+        let slice_ty = ptr_vec_get(params, fixed_count) as Type*;
+        let elem_ty = slice_ty.inner as Type*;
         if (fixed_count > 0) {
             sb_append(sb, ", ");
         }
 
         if (expr.has_spread_arg) {
-            let spread_id = id_vec_get(args, fixed_count);
+            let spread_id = id_vec_get(args as VectorBase*, fixed_count);
             let spread_c = be_emit_expr_with_expected_type(self, spread_id, slice_ty);
             spread_c = be_finalize_lowered_call_arg(self, spread_id, spread_c, slice_ty, false);
             sb_append(sb, spread_c);
             return sb_to_string(sb);
         }
 
-        let variadic_count = arg_count - fixed_count;
+        let variadic_count = 0;
+        if (args != null) variadic_count = vec_size(args as VectorBase*) - fixed_count;
         if (variadic_count == 0) {
             sb_append(sb, "((" + cem_emit_type(slice_ty) + "){ .len = 0, .data = NULL })");
             return sb_to_string(sb);
@@ -961,7 +963,7 @@ func be_emit_variadic_call_args(self: Backend*, expr: ExprNode*, func_ty: Type*)
                 if (j > 0) {
                     sb_append(init, ", ");
                 }
-                let value_id = id_vec_get(args, fixed_count + j);
+                let value_id = id_vec_get(args as VectorBase*, fixed_count + j);
                 sb_append(init, be_emit_owned_expr_with_expected_type(self, value_id, elem_ty));
             }
             sb_append(init, "} })");
@@ -1078,7 +1080,7 @@ func be_emit_call(self: Backend*, expr_id: ExprId) -> string {
 
                 if ((func_ty as Type*).is_variadic) {
                     return be_emit_direct_function_call(self, c_func_name,
-                        be_emit_variadic_call_args(self, expr, func_ty as Type*));
+                        be_emit_positional_call_args(self, expr, func_ty as Type*));
                 }
 
                 with (let sb = sb_create() => sb_free(sb)) {
@@ -1166,9 +1168,8 @@ func be_emit_call(self: Backend*, expr_id: ExprId) -> string {
 
     with (let sb2 = sb_create() => sb_free(sb2)) {
         with (let callee_ty = be_expr_type(self, expr.expr_a) => type_free_opt(callee_ty)) {
-            if (callee_ty != null && ord((callee_ty as Type*).kind) == ord(TY_FUNC) &&
-                (callee_ty as Type*).is_variadic) {
-                sb_append(sb2, be_emit_variadic_call_args(self, expr, callee_ty as Type*));
+            if (callee_ty != null && ord((callee_ty as Type*).kind) == ord(TY_FUNC)) {
+                sb_append(sb2, be_emit_positional_call_args(self, expr, callee_ty as Type*));
             } else {
                 let arg_count2 = 0;
                 if (expr.ids != null) {
@@ -1561,6 +1562,9 @@ func be_emit_expr(self: Backend*, expr_id: ExprId) -> string {
                   let dst_ty = be_resolve_type_ref(self, expr.type_ref as TypeRef*) => type_free_opt(dst_ty)) {
                 if (dst_ty == null) {
                     return be_ice_string("[ICE-1110] failed to resolve cast target type");
+                }
+                if (be_is_null_literal(self, expr.expr_a)) {
+                    return cem_emit_null_literal(dst_ty as Type*, false);
                 }
                 let c_inner = be_emit_expr(self, expr.expr_a);
                 let c_dst = cem_emit_type(dst_ty as Type*);
@@ -2354,7 +2358,7 @@ func be_emit_stmt(self: Backend*, stmt_id: StmtId) {
             }
         }
         ST_EXPR => {
-            if (ord(expr_arena_get(be_current_expr_arena(self), stmt.expr_a).kind) == ord(EX_NULL)) {
+            if (be_is_null_literal(self, stmt.expr_a)) {
                 cem_emit_comment(self.emitter, "null literal");
                 self.next_stmt_unreachable = false;
                 return;

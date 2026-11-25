@@ -332,6 +332,10 @@ Nested nullable types are preserved. `T??` is distinct from `T?` and can represe
 null, and outer present with an inner `T` value. Likewise, suffix order is semantic: `T?*` is a pointer to an optional
 `T`, while `T*?` is an optional pointer to `T`.
 
+A null literal denotes absence at the outermost layer of its destination type. Parentheses preserve that context. For
+example, `new S((null))` with `type S = string?;` allocates a slot containing an absent string. An inferred local such
+as `let value = ((null));` still requires an explicit type.
+
 Equality operators (`==` and `!=`) are accepted between two operands of the same nullable type `T?`, provided the inner
 type `T` itself supports equality. The semantics follow a three-valued rule:
 
