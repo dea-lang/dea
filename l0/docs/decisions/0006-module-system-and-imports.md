@@ -1,7 +1,7 @@
 # ADR-0006: Module System and Import Semantics
 
 - Decision date: 2025-12-06
-- Last edited: 2026-05-20
+- Last edited: 2026-11-25
 - Status: Accepted
 
 ## Context
@@ -54,7 +54,7 @@ Semantics:
 
 ## Related Plans
 
-None (pre-plan era).
+- [l0/work/plans/bug-fixes/closed/2026-11-21-stage1-entry-paths-and-import-cache-noref.md](../../work/plans/bug-fixes/closed/2026-11-21-stage1-entry-paths-and-import-cache-noref.md)
 
 ## Current Docs
 

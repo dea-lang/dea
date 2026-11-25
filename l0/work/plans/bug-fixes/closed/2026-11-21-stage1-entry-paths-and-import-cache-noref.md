@@ -3,7 +3,7 @@
 ## Preserve explicit entry paths and retry failed module loads
 
 - Date: 2026-11-25
-- Status: In Progress (implemented, native Windows verification pending)
+- Status: Completed
 - Title: Preserve explicit entry paths and retry failed module loads
 - Kind: Bug Fix
 - Severity: High
@@ -26,9 +26,9 @@
   - `l0/compiler/stage2_l0/tests/driver_test.l0`
   - `l0/compiler/stage2_l0/tests/l0c_build_run_test.py`
 - Related:
-  - [docs/specs/compiler/cli-contract.md](../../../../docs/specs/compiler/cli-contract.md)
-  - [l0/docs/specs/compiler/cli-contract.md](../../../../l0/docs/specs/compiler/cli-contract.md)
-  - [l0/docs/specs/compiler/stage1-contract.md](../../../../l0/docs/specs/compiler/stage1-contract.md)
+  - [docs/specs/compiler/cli-contract.md](../../../../../docs/specs/compiler/cli-contract.md)
+  - [l0/docs/specs/compiler/cli-contract.md](../../../../docs/specs/compiler/cli-contract.md)
+  - [l0/docs/specs/compiler/stage1-contract.md](../../../../docs/specs/compiler/stage1-contract.md)
 - Repro: Give a system root and a project directory different `item.l0` files. Pass the absolute project file to
   `./scripts/l0c --tok -Rs <system> <project>/item.l0` from `l0/` and inspect the token marker.
 
@@ -58,8 +58,9 @@ native builds. Its parent participates in ordinary import resolution. Dotted tar
   examples, workflow checks, and all 34 Stage 2 ARC/memory trace cases.
 - Local lexical simulations exercised drive-rooted, UNC, dot-relative and mixed separators with spaces using `ntpath`
   and `PureWindowsPath` for Stage 1 and native Stage 2 target preparation with synthetic Windows strings.
-- The remaining check is native Windows execution of the focused suites. Both CLI regressions exercise a mixed-separator
-  target on Windows. Record that result before closure.
+- Unified CI passed `make test-extended` on Windows x86_64 with UCRT64 GCC. Both stages exercised absolute, dot-relative
+  and mixed-separator entry paths. Stage 2 passed `driver_test`, `source_paths_test`, `l0c_build_run_test`, and the
+  trace sweep.
 
 ## ADR Impact
 

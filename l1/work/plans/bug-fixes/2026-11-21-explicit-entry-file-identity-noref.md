@@ -20,7 +20,7 @@
   - `l1/compiler/tests/l1c_build_run_multi_cu_test.py`
 - Related:
   - [docs/specs/compiler/cli-contract.md][cli]
-  - [l0/work/plans/bug-fixes/2026-11-21-stage1-entry-paths-and-import-cache-noref.md][l0-paths]
+  - [l0/work/plans/bug-fixes/closed/2026-11-21-stage1-entry-paths-and-import-cache-noref.md][l0-paths]
 - Repro: From a project directory, run `l1c --tok -Rs SYSTEM ./item.l1` and `l1c --run -Rs SYSTEM ./item.l1` with
   different `item.l1` files in the project and system directories.
 
@@ -58,4 +58,4 @@ From `l1/`, run `make test-compiler TESTS="source_paths_test l1c_lib_test l1c_bu
 registered missing-source, read-error and module-name-mismatch diagnostics on their respective paths.
 
 [cli]: ../../../../docs/specs/compiler/cli-contract.md#5-target-and-source-path-rules
-[l0-paths]: ../../../../l0/work/plans/bug-fixes/2026-11-21-stage1-entry-paths-and-import-cache-noref.md
+[l0-paths]: ../../../../l0/work/plans/bug-fixes/closed/2026-11-21-stage1-entry-paths-and-import-cache-noref.md

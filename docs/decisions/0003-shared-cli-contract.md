@@ -1,7 +1,7 @@
 # ADR-0003: Shared CLI Contract
 
 - Decision date: 2026-03-12
-- Last edited: 2026-11-05
+- Last edited: 2026-11-25
 - Status: Accepted
 
 ## Context
@@ -74,6 +74,8 @@ artifact root maps future outputs without changing resolution inputs; scans do n
 - Long option names and level-scoped environment variables remain stable across the migration.
 
 ## Related Plans
+
+- [l0/work/plans/bug-fixes/closed/2026-11-21-stage1-entry-paths-and-import-cache-noref.md](../../l0/work/plans/bug-fixes/closed/2026-11-21-stage1-entry-paths-and-import-cache-noref.md)
 
 - [l1/work/plans/features/closed/2026-10-21-semantic-dependency-discovery-noref.md][dependency-plan]
 
