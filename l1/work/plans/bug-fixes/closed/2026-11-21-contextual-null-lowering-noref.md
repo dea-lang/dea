@@ -45,6 +45,8 @@ initializer with a side effect executes once.
 
 ## Verification
 
+The project maintainer confirmed on 2026-11-26 that Unified CI passed for the contextual null lowering fix.
+
 On macOS x86_64 with Apple Clang 17, all three focused modules passed from `l1/`:
 
 ```sh

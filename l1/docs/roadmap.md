@@ -479,14 +479,19 @@ file-watch design, and concurrency now belong to L2.
 
 ## Active standalone plans
 
+- Shared bug fix #7, [work/plans/bug-fixes/2026-11-26-shared-compound-dereference-grouping-noref.md][deref-grouping],
+  covers dereference operand grouping in L0 Stage 1, L0 Stage 2 and L1. Each target checks assignment through both
+  branches of a conditional pointer.
 - [2026-11-21-match-wildcard-dispatch-and-return-flow-noref][match-wildcard] tracks wildcard precedence and the
   disagreement between return analysis and executable dispatch.
-- [2026-11-21-compound-dereference-grouping-noref][deref-grouping] covers compound pointer operands in the C lvalue
-  emitter.
 - Feature [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] is the
   Stdlib Tier 2 audit that records portable systems capability and C99-family coverage without promising literal C99 API
   parity. It is meant to run after the main stdlib additions land and to be completed before declaring L1 stable;
   affected entries will need to be maintained alongside later stdlib changes.
+
+L0 owns bug fix #6, [l0/work/plans/bug-fixes/2026-11-21-qualified-c-type-name-mangling-noref.md][l0-type-names], and the
+independent [l0/work/plans/bug-fixes/2026-11-26-stage1-discarded-string-comment-investigation-noref.md][l0-comment]
+investigation into discarded string statements.
 
 ## Open plan readiness
 
@@ -497,7 +502,7 @@ design investigation. `implemented` means implementation is present but the plan
 | Readiness    | Plan                                                                                               | Remaining gate                                            |
 | ------------ | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | almost-ready | [2026-11-21-match-wildcard-dispatch-and-return-flow-noref][match-wildcard]                         | Select the precedence rule for enum match arms.           |
-| ready        | [2026-11-21-compound-dereference-grouping-noref][deref-grouping]                                   | The helper and host C regression can be tested directly.  |
+| ready        | [work/plans/bug-fixes/2026-11-26-shared-compound-dereference-grouping-noref.md][deref-grouping]    | The helper and host C regression can be tested directly.  |
 | ready        | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied. |
 | not-ready    | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                     |
 | not-ready    | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.       |
@@ -620,7 +625,7 @@ update to be promoted to an initiative or plan:
 [cstr-proposal]: ../work/proposals/cstr-and-c-string-guards.md
 [data-formats]: ../../l2/work/initiatives/0002-data-format-modules.md
 [dependency-discovery]: ../work/plans/features/closed/2026-10-21-semantic-dependency-discovery-noref.md
-[deref-grouping]: ../work/plans/bug-fixes/2026-11-21-compound-dereference-grouping-noref.md
+[deref-grouping]: ../../work/plans/bug-fixes/2026-11-26-shared-compound-dereference-grouping-noref.md
 [design-decisions]: reference/design-decisions.md
 [embedded-members]: ../work/proposals/anonymous-embedded-struct-members.md
 [entry-file]: ../work/plans/bug-fixes/closed/2026-11-21-explicit-entry-file-identity-noref.md
@@ -640,6 +645,8 @@ update to be promoted to an initiative or plan:
 [interface-emission]: ../work/plans/features/closed/2026-04-24-module-interface-emission-noref.md
 [interface-fingerprints]: ../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [is-intrinsic]: ../work/plans/features/closed/2026-04-20-is-intrinsic-noref.md
+[l0-comment]: ../../l0/work/plans/bug-fixes/2026-11-26-stage1-discarded-string-comment-investigation-noref.md
+[l0-type-names]: ../../l0/work/plans/bug-fixes/2026-11-21-qualified-c-type-name-mangling-noref.md
 [l1m-authoritative-linking]: ../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
 [l2-catch-up]: ../../l2/work/plans/features/2026-10-27-stable-l1-catch-up-noref.md
 [l2-roadmap]: ../../l2/docs/roadmap.md

@@ -40,6 +40,8 @@ cleanup tests `has_value` before releasing the payload. An optional pointer carr
 
 ## Verification
 
+The project maintainer confirmed on 2026-11-26 that Unified CI passed for the optional payload cleanup fix.
+
 Both focused compiler test modules and the dedicated backend trace passed on macOS x86_64 with Apple Clang 17. Run the
 checks from `l1/`.
 
