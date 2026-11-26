@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-11-11
+Version: 2026-11-26
 
 This is the canonical backend implementation document for the canonical Dea/L1 compiler.
 
@@ -324,6 +324,8 @@ Key rules:
   builds, with basic mode retaining exact-base validation while eliding interior treap lookups, and to direct C indexing
   in `--unchecked` builds; side-effectful lvalue bases or indexes are captured once so writes preserve single evaluation
   of both operands
+- dereference lvalues group the complete C pointer operand as `(*(operand))`, so a conditional pointer selects the
+  storage that receives the write
 - fixed-size array values lower at the wrapper boundary; flattened nested rows are raw C arrays only inside dedicated
   array helper paths
 - fixed-size array indexing emits a bounds check that calls `_rt_panic_oob(index, length)` before accessing `.data`

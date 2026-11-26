@@ -363,6 +363,7 @@ func test_emitter_expression_and_statement_helpers() {
 /** Tests exact runtime ABI arguments emitted by pointer and ownership helpers. */
 func test_emitter_runtime_call_contracts() {
     let emitter = cem_create();
+    assert(cem_emit_deref_lvalue("take_a ? a : b") == "(*(take_a ? a : b))", "dereference operand grouping");
     let direct = cem_emit_checked_ptr_access(
         emitter, "ptr", "l0_int*", "sizeof(l0_int)", "_RT_ALIGNOF(l0_int)",
         "_RT_ACCESS_READ");

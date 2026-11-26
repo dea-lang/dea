@@ -177,6 +177,8 @@ Implemented lowering includes:
 - String literals are decoded from token escapes to bytes, then emitted as `L0_STRING_CONST("...", len)` values (cast to
   `l0_string` where required by expression context), with decoded bytes C-escaped and trigraph-safe.
 - `new` heap allocation (`_rt_alloc_obj`) + initialization
+- A dereference lvalue groups its entire C pointer operand as `(*(operand))`, including when that operand is a
+  conditional expression. Lowering selects the pointer access mode before emitting the lvalue.
 - `try` (`expr?`) lowering to checked unwrap with early return on empty
 - Checked int arithmetic uses runtime helpers (`_rt_iadd`, `_rt_isub`, `_rt_imul`, `_rt_idiv`, `_rt_imod`)
 - Unary minus uses `_rt_isub(0, operand)` with one operand evaluation, including promotion from `byte` to `int`.

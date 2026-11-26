@@ -141,8 +141,8 @@ def test_string_assignment_through_function_call_pointer(codegen_single):
 
     # Should use the cached temp for both release and assignment through checked access.
     assert c_code.count(f"(void*)({temp_name}), (l0_int)(sizeof") >= 2
-    assert "rt_string_release((*((l0_string*)_rt_check_ptr_site" in c_code
-    assert "(*((l0_string*)_rt_check_ptr_site" in c_code
+    assert "rt_string_release((*(((l0_string*)_rt_check_ptr_site" in c_code
+    assert re.search(r"^\s*\(\*\(\(\(l0_string\*\)_rt_check_ptr_site[^\n]+ = ", c_code, re.MULTILINE)
     # Note: String literals don't need rt_string_retain (they're fresh values, not place exprs)
 
 

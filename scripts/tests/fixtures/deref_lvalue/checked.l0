@@ -1,0 +1,21 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module checked;
+
+/**
+ * Read and write one heap slot through an ordinary checked pointer.
+ *
+ * @return Zero when the original and updated values are correct.
+ */
+func main() -> int {
+    let slot = new int(3);
+    let before = *slot;
+    *slot = 7;
+    let after = *slot;
+    drop slot;
+    if (before != 3 || after != 7) return 1;
+    return 0;
+}

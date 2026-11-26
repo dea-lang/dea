@@ -3,7 +3,21 @@
 
 """Exact generated-call contracts for runtime-facing C emitter helpers."""
 
+from pathlib import Path
+
 from l0_c_emitter import CEmitter
+
+
+DEREF_FIXTURES = Path(__file__).resolve().parents[5] / "scripts/tests/fixtures/deref_lvalue"
+
+
+def test_deref_conditional_lvalue(tmp_path, compile_and_run):
+    """Assign through the actual emitted lvalue for both pointer choices."""
+    lvalue = CEmitter().values.emit_deref_lvalue("take_a ? a : b")
+    template = (DEREF_FIXTURES / "conditional.c.in").read_text(encoding="utf-8")
+    success, _, stderr = compile_and_run(template.replace("@LVALUE@", lvalue), tmp_path, strict_c99=True)
+    assert success, stderr
+    assert lvalue == "(*(take_a ? a : b))"
 
 
 def test_runtime_call_helpers_preserve_extent_alignment_and_ownership_arguments():

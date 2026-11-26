@@ -2,6 +2,7 @@
 #  Copyright (c) 2026 gwz
 
 import re
+from pathlib import Path
 
 
 def test_backend_structural_type_equality():
@@ -156,6 +157,16 @@ def test_codegen_struct_field_access_and_nullability(codegen_single):
     assert "(p)->x" in c_code
     assert "l0_opt_int" in c_code
     assert "l0_int* p = NULL;" in c_code
+
+
+def test_checked_deref_read_and_write(codegen_single, compile_and_run, tmp_path):
+    """Execute ordinary pointer accesses through the checked lowering path."""
+    fixture = Path(__file__).resolve().parents[5] / "scripts/tests/fixtures/deref_lvalue/checked.l0"
+    generated, diagnostics = codegen_single("checked", fixture.read_text(encoding="utf-8"))
+    assert generated is not None, diagnostics
+    assert "_RT_ACCESS_READ" in generated and "_RT_ACCESS_WRITE" in generated
+    success, _, stderr = compile_and_run(generated, tmp_path, strict_c99=True)
+    assert success, stderr
 
 
 def test_codegen_pointer_checks_include_alignment(codegen_single):

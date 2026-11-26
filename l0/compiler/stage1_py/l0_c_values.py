@@ -381,8 +381,8 @@ class CValues:
         return f"(void)({c_expr})"
 
     def emit_deref_lvalue(self, ptr_expr: str) -> str:
-        """Emit C code for a dereference lvalue: (*ptr)."""
-        return f"(*{ptr_expr})"
+        """Dereference the complete pointer expression as a C lvalue."""
+        return f"(*({ptr_expr}))"
 
     def emit_field_lvalue(self, obj: str, field: str, is_pointer: bool) -> str:
         """Emit C code for a field access lvalue."""

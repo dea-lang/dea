@@ -477,11 +477,12 @@ file-watch design, and concurrency now belong to L2.
 - Bug Fix [l1/work/plans/bug-fixes/closed/2026-11-21-drop-optional-payload-cleanup-noref.md][optional-drop] releases
   owned payloads before freeing allocated optional slots.
 
+- Shared bug fix #7,
+  [work/plans/bug-fixes/closed/2026-11-26-shared-compound-dereference-grouping-noref.md][deref-grouping], groups
+  compound pointer operands before dereferencing them in L0 Stage 1, L0 Stage 2 and L1.
+
 ## Active standalone plans
 
-- Shared bug fix #7, [work/plans/bug-fixes/2026-11-26-shared-compound-dereference-grouping-noref.md][deref-grouping],
-  covers dereference operand grouping in L0 Stage 1, L0 Stage 2 and L1. Each target checks assignment through both
-  branches of a conditional pointer.
 - [2026-11-21-match-wildcard-dispatch-and-return-flow-noref][match-wildcard] tracks wildcard precedence and the
   disagreement between return analysis and executable dispatch.
 - Feature [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] is the
@@ -503,7 +504,6 @@ design investigation. `implemented` means implementation is present but the plan
 | Readiness    | Plan                                                                                               | Remaining gate                                            |
 | ------------ | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | almost-ready | [2026-11-21-match-wildcard-dispatch-and-return-flow-noref][match-wildcard]                         | Select the precedence rule for enum match arms.           |
-| ready        | [work/plans/bug-fixes/2026-11-26-shared-compound-dereference-grouping-noref.md][deref-grouping]    | The helper and host C regression can be tested directly.  |
 | ready        | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied. |
 | not-ready    | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                     |
 | not-ready    | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.       |
@@ -626,7 +626,7 @@ update to be promoted to an initiative or plan:
 [cstr-proposal]: ../work/proposals/cstr-and-c-string-guards.md
 [data-formats]: ../../l2/work/initiatives/0002-data-format-modules.md
 [dependency-discovery]: ../work/plans/features/closed/2026-10-21-semantic-dependency-discovery-noref.md
-[deref-grouping]: ../../work/plans/bug-fixes/2026-11-26-shared-compound-dereference-grouping-noref.md
+[deref-grouping]: ../../work/plans/bug-fixes/closed/2026-11-26-shared-compound-dereference-grouping-noref.md
 [design-decisions]: reference/design-decisions.md
 [embedded-members]: ../work/proposals/anonymous-embedded-struct-members.md
 [entry-file]: ../work/plans/bug-fixes/closed/2026-11-21-explicit-entry-file-identity-noref.md

@@ -601,6 +601,7 @@ func test_emitter_trace_runtime_calls_use_impl_entrypoints() {
 /** Tests exact runtime ABI arguments emitted by pointer and ownership helpers. */
 func test_emitter_runtime_call_contracts() {
     let emitter = cem_create();
+    assert(cem_emit_deref_lvalue("take_a ? a : b") == "(*(take_a ? a : b))", "dereference operand grouping");
     let direct = cem_emit_checked_ptr_access(
         emitter, "ptr", "dea_int*", "sizeof(dea_int)", "_RT_ALIGNOF(dea_int)",
         "_RT_ACCESS_READ");

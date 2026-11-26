@@ -30,7 +30,11 @@ from tool_test_common import (
     stage2_launcher_path,
 )
 
-FIXTURE_ROOT = REPO_ROOT / "compiler" / "stage2_l0" / "tests" / "fixtures" / "backend_golden"
+sys.path.insert(0, str(REPO_ROOT.parent))
+from scripts.tests.fixtures.deref_lvalue.probe import check_deref_lvalue
+
+STAGE2_ROOT = REPO_ROOT / "compiler" / "stage2_l0"
+FIXTURE_ROOT = STAGE2_ROOT / "tests" / "fixtures" / "backend_golden"
 REFRESH_SCRIPT = REPO_ROOT / "scripts" / "refresh_stage2_backend_goldens.py"
 
 
@@ -98,14 +102,23 @@ def main() -> int:
         build_stage2(repo_relative(bootstrap_dir))
         l0c = stage2_launcher_path(bootstrap_dir / "bin" / "l0c-stage2")
 
+        wanted = selected_case_names(sys.argv[1:])
         compiler = ""
-        if any(FIXTURE_ROOT.glob("*/*.expected.out")):
+        if wanted is None or any(FIXTURE_ROOT.glob("*/*.expected.out")):
             resolved = detect_c_compiler()
             if resolved is None:
                 raise ToolTestFailure("no C compiler found for runtime parity checks")
             compiler = resolved
 
-        wanted = selected_case_names(sys.argv[1:])
+        if wanted is None:
+            check_deref_lvalue(
+                "c_emitter.values",
+                [l0c, "--run", "--project-root", native_path(STAGE2_ROOT / "src"),
+                 "--c-source", native_path(STAGE2_ROOT / "support/compiler_filesystem.c")],
+                compiler,
+                [l0c, "--run"],
+                ".l0",
+            )
         failed = False
         for entry_file in sorted(FIXTURE_ROOT.glob("*/entry_module.txt")):
             case_dir = entry_file.parent

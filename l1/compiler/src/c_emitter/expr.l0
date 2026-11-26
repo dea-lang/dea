@@ -1034,13 +1034,13 @@ func cem_emit_discard_expr(c_expr: string) -> string {
 }
 
 /**
- * Emit a dereference lvalue.
+ * Dereference the complete pointer expression as a C lvalue.
  *
  * @param ptr_expr Pointer expression.
  * @return Dereference lvalue text.
  */
 func cem_emit_deref_lvalue(ptr_expr: string) -> string {
-    return "(*" + ptr_expr + ")";
+    return "(*(" + ptr_expr + "))";
 }
 
 /**
