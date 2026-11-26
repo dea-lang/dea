@@ -1432,6 +1432,31 @@ func test_backend_generate_drop_begin_before_array_cleanup() {
 }
 
 /**
+ * Verify that optional payload cleanup uses the validated slot before freeing it.
+ */
+func test_backend_generate_optional_drop_cleanup() {
+    with (let filenames = sv_create(1) => sv_free(filenames),
+          let sources = sv_create(1) => sv_free(sources),
+          let cfg = log_config_create(LL_ERROR, false) => drop cfg,
+          let opts = cg_options_create() => cg_options_free(opts)) {
+        opts.emit_line_directives = false;
+        sv_push(filenames, "demo/main.l1");
+        sv_push(sources, "module demo.main; type S = string?; " +
+            "func zap(p: S*?) { drop p; } func main() -> int { zap(null); return 0; }");
+        let result = bt_analyze_sources("demo.main", filenames, sources);
+        assert(!analysis_has_errors(result), "analysis should succeed for optional drop fixture");
+        let generated = bt_generate_entry(result, opts, cfg);
+        let begin = find_s(generated, "_rt_drop_begin_impl((void*)(p)");
+        let present = find_s(generated, ").has_value) {");
+        let release = find_s(generated, "rt_string_release((*");
+        let finish = find_s(generated, "_rt_drop_finish_impl((void*)(");
+        assert(begin >= 0 && begin < present, "drop must validate before reading optional presence");
+        assert(present < release && release < finish, "present payload release must precede drop finish");
+        analysis_result_free(result);
+    }
+}
+
+/**
  * Tests test_backend_generate_new_and_try_lowering.
  */
 func test_backend_generate_new_and_try_lowering() {
@@ -2939,6 +2964,7 @@ func main() {
     test_backend_generate_with_cleanup_block_header_try_predeclares_nullable_lets();
     test_backend_generate_drop_statement();
     test_backend_generate_drop_begin_before_array_cleanup();
+    test_backend_generate_optional_drop_cleanup();
     test_backend_generate_new_and_try_lowering();
     test_backend_generate_intrinsics_use_analyzed_target_types();
     test_backend_generate_named_args_use_source_order_temporaries();

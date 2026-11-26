@@ -506,6 +506,71 @@ def test_struct_heap_string_field_drop(artifact_dir: Path) -> None:
     assert_true(frees[-1].get("rc_after") == "0", f"expected terminal heap free, got {frees[-1]!r}", artifact_dir)
 
 
+def test_present_optional_slot_drop(artifact_dir: Path) -> None:
+    """Dropping a present optional slot frees its heap string and the slot once.
+
+    Args:
+        artifact_dir: Directory for the child program and its trace.
+    """
+    _, stderr, _, arc = run_case(
+        "present_optional_slot_drop",
+        """
+        module main;
+        import std.string;
+        type S = string?;
+
+        func main() -> int {
+            let p = new S(concat_s("a", "b") as string?);
+            drop p;
+            return 0;
+        }
+        """,
+        artifact_dir,
+    )
+    mem = parse_mem_lines(stderr)
+    strings = [event["ptr"] for event in mem if event["op"] == "alloc_string"]
+    assert_equal(len(strings), 1, "expected one heap string allocation", artifact_dir)
+    assert_equal([event["ptr"] for event in heap_frees(arc)], strings, "payload freed by drop", artifact_dir)
+    drops = [event["action"] for event in mem if event["op"] == "drop"]
+    assert_equal(drops, ["free"], "present slot drop", artifact_dir)
+
+
+def test_optional_drop_without_owned_payload(artifact_dir: Path) -> None:
+    """Absent slots, null pointers and pointer payloads require no ARC release.
+
+    Args:
+        artifact_dir: Directory for the child program and its trace.
+    """
+    _, stderr, _, arc = run_case(
+        "optional_drop_without_owned_payload",
+        """
+        module main;
+        type S = string?;
+        type P = int*?;
+
+        func main() -> int {
+            let empty: S = null;
+            let slot = new S(empty);
+            drop slot;
+            let missing: S*? = null;
+            drop missing;
+
+            let owner = new int(7);
+            let borrowed = new P(owner);
+            drop borrowed;
+            let value = *owner;
+            drop owner;
+            return value - 7;
+        }
+        """,
+        artifact_dir,
+    )
+    releases = [event for event in arc if event["op"] == "release"]
+    assert_equal(releases, [], "unexpected payload release", artifact_dir)
+    drops = [event["action"] for event in parse_mem_lines(stderr) if event["op"] == "drop"]
+    assert_equal(drops, ["free", "noop-null", "free", "free"], "slot and owner drops", artifact_dir)
+
+
 def test_double_drop_validation_precedes_struct_arc_cleanup(artifact_dir: Path) -> None:
     """A stale helper-mediated drop should panic before a second field cleanup."""
 
@@ -2589,6 +2654,8 @@ def main() -> int:
         test_discarded_concat_freed,
         test_struct_static_string_field_drop,
         test_struct_heap_string_field_drop,
+        test_present_optional_slot_drop,
+        test_optional_drop_without_owned_payload,
         test_double_drop_validation_precedes_struct_arc_cleanup,
         test_array_nested_arc_struct_cleanup,
         test_array_nested_arc_struct_inner_arc_arrays_cleanup,

@@ -1,6 +1,6 @@
 # Dea/L1 Roadmap
 
-Version: 2026-11-25
+Version: 2026-11-26
 
 This is the live direction document for the Dea/L1 subtree. It records the current L1 position, the assumptions that
 constrain future work, completed milestones that shape the baseline, active work, and backlog items that have not yet
@@ -474,10 +474,11 @@ file-watch design, and concurrency now belong to L2.
 - Bug Fix [l1/work/plans/bug-fixes/closed/2026-11-21-contextual-null-lowering-noref.md][contextual-null] preserves the
   destination type of grouped null literals in calls, expressions and allocated slots.
 
+- Bug Fix [l1/work/plans/bug-fixes/closed/2026-11-21-drop-optional-payload-cleanup-noref.md][optional-drop] releases
+  owned payloads before freeing allocated optional slots.
+
 ## Active standalone plans
 
-- [2026-11-21-drop-optional-payload-cleanup-noref][optional-drop] tracks the heap string leaked when dropping an
-  allocated present optional.
 - [2026-11-21-match-wildcard-dispatch-and-return-flow-noref][match-wildcard] tracks wildcard precedence and the
   disagreement between return analysis and executable dispatch.
 - [2026-11-21-compound-dereference-grouping-noref][deref-grouping] covers compound pointer operands in the C lvalue
@@ -493,14 +494,13 @@ Readiness is independent of lifecycle status. `ready` means implementation can b
 immediate prerequisite remains; `not-ready` means required foundations have not landed; `speculative` means unresolved
 design investigation. `implemented` means implementation is present but the plan still has validation or closure work.
 
-| Readiness    | Plan                                                                                               | Remaining gate                                              |
-| ------------ | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| ready        | [2026-11-21-drop-optional-payload-cleanup-noref][optional-drop]                                    | Present and absent fixtures distinguish the leaked payload. |
-| almost-ready | [2026-11-21-match-wildcard-dispatch-and-return-flow-noref][match-wildcard]                         | Select the precedence rule for enum match arms.             |
-| ready        | [2026-11-21-compound-dereference-grouping-noref][deref-grouping]                                   | The helper and host C regression can be tested directly.    |
-| ready        | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied.   |
-| not-ready    | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                       |
-| not-ready    | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.         |
+| Readiness    | Plan                                                                                               | Remaining gate                                            |
+| ------------ | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| almost-ready | [2026-11-21-match-wildcard-dispatch-and-return-flow-noref][match-wildcard]                         | Select the precedence rule for enum match arms.           |
+| ready        | [2026-11-21-compound-dereference-grouping-noref][deref-grouping]                                   | The helper and host C regression can be tested directly.  |
+| ready        | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied. |
+| not-ready    | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                     |
+| not-ready    | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.       |
 
 The [work/plans/features/closed/2026-10-29-l1-stabilization-boundary-noref.md][boundary-plan] coordinates plan ownership
 and roadmap changes.
@@ -656,7 +656,7 @@ update to be promoted to an initiative or plan:
 [numeric-lexer]: ../work/plans/features/closed/2026-04-10-l1-numeric-literal-lexer-groundwork-noref.md
 [object-metadata]: ../work/plans/features/closed/2026-07-17-object-metadata-emission-and-readers-noref.md
 [opaque-exports]: ../work/plans/features/closed/2026-06-13-opaque-type-exports-and-layout-hiding-noref.md
-[optional-drop]: ../work/plans/bug-fixes/2026-11-21-drop-optional-payload-cleanup-noref.md
+[optional-drop]: ../work/plans/bug-fixes/closed/2026-11-21-drop-optional-payload-cleanup-noref.md
 [os-error-plan]: ../work/plans/features/closed/2026-08-30-os-error-and-io-results-noref.md
 [os-results]: decisions/0045-direct-os-errors-and-io-results.md
 [parenthesized-casted-place-arc]: ../../work/plans/bug-fixes/closed/2026-08-21-shared-parenthesized-casted-place-arc-classification-noref.md

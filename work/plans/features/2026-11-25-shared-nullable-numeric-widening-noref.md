@@ -2,7 +2,7 @@
 
 ## Implement lifted nullable numeric widening
 
-- Date: 2026-11-25
+- Date: 2026-11-26
 - Status: In progress
 - Title: Implement lifted nullable numeric widening across Dea compilers
 - Kind: Feature
@@ -43,8 +43,8 @@ project maintainer selects a stable L1 baseline and activates
 contextual-null and ARC repairs, alongside the Stage 1 structural type-equality fix.
 [l0/work/plans/bug-fixes/closed/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md][l0-fixes] records their
 verification. L1 completed [l1/work/plans/bug-fixes/closed/2026-11-21-contextual-null-lowering-noref.md][l1-null] for
-grouped null literals. [l1/work/plans/bug-fixes/2026-11-21-drop-optional-payload-cleanup-noref.md][l1-drop] remains open
-for releasing the owned payload when an allocated optional is dropped.
+grouped null literals and [l1/work/plans/bug-fixes/closed/2026-11-21-drop-optional-payload-cleanup-noref.md][l1-drop]
+for owned payload cleanup when dropping an allocated optional.
 
 ## ADR Impact
 
@@ -124,6 +124,6 @@ Then port the L1 widening rule and run the conformance cases below with L2-owned
 [catch-up]: ../../../l2/work/plans/features/2026-10-27-stable-l1-catch-up-noref.md
 [diagnostics]: ../../../docs/specs/compiler/diagnostic-code-catalog.md
 [l0-fixes]: ../../../l0/work/plans/bug-fixes/closed/2026-11-21-stage1-nullable-conversions-and-ownership-noref.md
-[l1-drop]: ../../../l1/work/plans/bug-fixes/2026-11-21-drop-optional-payload-cleanup-noref.md
+[l1-drop]: ../../../l1/work/plans/bug-fixes/closed/2026-11-21-drop-optional-payload-cleanup-noref.md
 [l1-null]: ../../../l1/work/plans/bug-fixes/closed/2026-11-21-contextual-null-lowering-noref.md
 [spec]: ../../../docs/specs/language/nullable-numeric-widening.md

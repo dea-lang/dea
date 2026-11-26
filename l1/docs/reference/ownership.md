@@ -1,6 +1,6 @@
 # L1 Ownership and Memory Management Reference
 
-Version: 2026-11-21
+Version: 2026-11-26
 
 This document describes how ownership works in current Dea/L1 bootstrap builds, covering:
 
@@ -65,6 +65,22 @@ elements first.
 
 Before calling the final drop helper, compiler-generated cleanup may release owned fields such as `string` members.
 Pointer children with independent ownership are still your responsibility.
+
+For an allocated optional, `drop` releases the payload when it is present and owns ARC data. Here `S` is an alias for
+`string?` and `concat_s` comes from `std.string`.
+
+```l1
+let present = new S(concat_s("a", "b") as string?);
+drop present;  // Releases the heap string, then frees its slot.
+let empty: S = null;
+let absent = new S(empty);
+drop absent;   // Frees the slot without releasing a payload.
+let missing: S*? = null;
+drop missing;  // No slot to free.
+```
+
+An optional pointer payload borrows its pointee. Dropping a slot containing an `int*?` frees the slot and leaves the
+pointed-to integer with its original owner.
 
 ### Raw and foreign memory boundaries
 
