@@ -731,8 +731,8 @@ class TestCodeGenFromFiles:
         c_code = backend.generate()
 
         # Verify struct definitions
-        assert "struct l0_test_struct_Point" in c_code
-        assert "struct l0_test_struct_Line" in c_code
+        assert "struct l0_11test_struct_Point" in c_code
+        assert "struct l0_11test_struct_Line" in c_code
         assert "l0_int x;" in c_code
         assert "l0_int y;" in c_code
 
@@ -753,15 +753,15 @@ class TestCodeGenFromFiles:
         c_code = backend.generate()
 
         # Verify enum tag definition
-        assert "enum l0_test_enum_Expr_tag" in c_code
+        assert "enum l0_9test_enum_Expr_tag" in c_code
 
         # Verify tagged union struct
-        assert "struct l0_test_enum_Expr" in c_code
+        assert "struct l0_9test_enum_Expr" in c_code
 
         # Verify variants
-        assert "l0_test_enum_Expr_Int" in c_code
-        assert "l0_test_enum_Expr_Add" in c_code
-        assert "l0_test_enum_Expr_Mul" in c_code
+        assert "l0_9test_enum_Expr_Int" in c_code
+        assert "l0_9test_enum_Expr_Add" in c_code
+        assert "l0_9test_enum_Expr_Mul" in c_code
 
     def test_match_file_contents(self):
         """Verify test_match.l0 generates correct switch statements."""
@@ -783,8 +783,8 @@ class TestCodeGenFromFiles:
         assert "switch ((_scrutinee).tag)" in c_code
 
         # Verify case labels
-        assert "case l0_test_match_Result_Ok:" in c_code
-        assert "case l0_test_match_Result_Err:" in c_code
+        assert "case l0_10test_match_Result_Ok:" in c_code
+        assert "case l0_10test_match_Result_Err:" in c_code
 
         # Verify wildcard becomes default
         assert "default:" in c_code

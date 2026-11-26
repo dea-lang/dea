@@ -73,6 +73,35 @@ func cem_mangle_module(module_name: string) -> string {
 }
 
 /**
+ * Encode a nominal C tag, prefixing underscore-bearing components with their byte length.
+ *
+ * @param module_name Dotted defining module.
+ * @param local_name Struct or enum identifier.
+ * @return C tag preserving every qualified name component.
+ */
+func cem_mangle_type_name(module_name: string, local_name: string) -> string {
+    let path = module_name + "." + local_name;
+    let size = len_s(path);
+    with (let cb = cb_create() => cb_free(cb)) {
+        cb_append_s(cb, "l0");
+        let start = 0;
+        let has_underscore = false;
+        for (let i = 0; i <= size; i = i + 1) {
+            if (i == size || char_at_s(path, i) == '.') {
+                cb_append(cb, '_');
+                if (has_underscore) cb_append_int(cb, i - start);
+                cb_append_slice(cb, path, start, i - start);
+                start = i + 1;
+                has_underscore = false;
+            } else if (char_at_s(path, i) == '_') {
+                has_underscore = true;
+            }
+        }
+        return cb_to_string(cb);
+    }
+}
+
+/**
  * Mangle a struct name.
  *
  * @param module_name Defining module name.
@@ -80,7 +109,7 @@ func cem_mangle_module(module_name: string) -> string {
  * @return Mangled C struct name.
  */
 func cem_mangle_struct_name(module_name: string, struct_name: string) -> string {
-    return "l0_" + cem_mangle_module(module_name) + "_" + struct_name;
+    return cem_mangle_type_name(module_name, struct_name);
 }
 
 /**
@@ -91,7 +120,7 @@ func cem_mangle_struct_name(module_name: string, struct_name: string) -> string 
  * @return Mangled C enum name.
  */
 func cem_mangle_enum_name(module_name: string, enum_name: string) -> string {
-    return "l0_" + cem_mangle_module(module_name) + "_" + enum_name;
+    return cem_mangle_type_name(module_name, enum_name);
 }
 
 /**

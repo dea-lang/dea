@@ -1,6 +1,6 @@
 # L0 C Backend Design
 
-Version: 2026-11-25
+Version: 2026-11-26
 
 This is the canonical backend implementation document for the current C backend. Stage 1 remains the behavioral oracle;
 Stage 2 is expected to emit the same C and reuse the same diagnostic/ICE codes for equivalent backend conditions.
@@ -131,7 +131,24 @@ single-value allocation such as `new S((null))`, the allocated slot supplies tha
 
 ## Name Mangling and Symbol Rules
 
-- User-defined type/function names: `l0_{module_path_with_underscores}_{name}`
+Both L0 stages form a struct or enum's C tag by joining its module path components and local type name with `_` after
+the prefix `l0_`. Each component containing an underscore receives its decimal byte length (without leading zeros)
+immediately before its original spelling. All other components appear verbatim. L0 identifiers are ASCII and cannot
+start with a digit, so a leading digit tells the reader exactly how many bytes to consume after the decimal prefix.
+
+| L0 type                         | Generated C tag                     |
+| ------------------------------- | ----------------------------------- |
+| `aaa.bbb::V`                    | `l0_aaa_bbb_V`                      |
+| `aaa_bbb::V`                    | `l0_7aaa_bbb_V`                     |
+| `net.http_client::HTTP_Reply`   | `l0_net_11http_client_10HTTP_Reply` |
+| `std.linear_map::LinearMapBase` | `l0_std_10linear_map_LinearMapBase` |
+
+Enum discriminants and optional wrapper names use the encoded type name. Definition guards preserve its case, so `V?`
+and `v?` can coexist. Builtin optionals share the runtime header's guards. Handwritten C that names a generated tag with
+an underscore-bearing source component must use the new spelling. The public runtime records retain the tags
+`l0_sys_rt_RtTimeParts` and `l0_sys_rt_RtFileInfo`.
+
+- Function names: `l0_{module_path_with_underscores}_{name}`
 - Top-level lets: `l0_{module}_{let_name}`
 - Local identifiers conflicting with C/runtime-reserved names are suffixed (`__v`).
 - `extern func` names are intentionally **not mangled** (FFI boundary).

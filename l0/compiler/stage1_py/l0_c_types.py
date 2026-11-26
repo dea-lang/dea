@@ -224,11 +224,12 @@ class CTypes:
             self._emit_optional_wrapper(self._opt_wrapper_name_for_inner(inner.inner), inner.inner)
         c_inner = self.emit_type(inner)
 
-        # Emit #ifndef guard so generated wrappers do not conflict.
-        self.state.out.emit(f"#ifndef {name.upper()}_DEFINED")
-        self.state.out.emit(f"#define {name.upper()}_DEFINED")
+        # Builtins share guards with dea_rt.h. User type identities are case-sensitive.
+        guard = f"{name.upper() if self._is_early_inner(inner) else name}_DEFINED"
+        self.state.out.emit(f"#ifndef {guard}")
+        self.state.out.emit(f"#define {guard}")
         self.state.out.emit(f"typedef struct {{ l0_bool has_value; {c_inner} value; }} {name};")
-        self.state.out.emit(f"#endif /* {name.upper()}_DEFINED */")
+        self.state.out.emit(f"#endif /* {guard} */")
         self.state.out.emit()
         self._opt_emitted.add(name)
 

@@ -273,6 +273,9 @@ def main() -> int:
         stage2_native = native_path(bootstrap_dir / "bin" / "l0c-stage2.native")
 
         check_entry_file_identity(l0c, work_dir)
+        type_names = REPO_ROOT / "tests" / "fixtures" / "qualified_type_names"
+        for entry in ("forward", "reverse"):
+            run([l0c, "--run", "--project-root", native_path(type_names), entry])
         widening = REPO_ROOT / "tests" / "fixtures" / "nullable_widening" / "widening.l0"
         run([l0c, "--run", native_path(widening)])
         contextual_null = REPO_ROOT / "tests" / "fixtures" / "contextual_null"

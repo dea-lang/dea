@@ -95,7 +95,11 @@ func cem_emit_optional_wrapper(self: CEmitter*, name: string, inner: Type*) {
         let payload = inner.inner as Type*;
         cem_emit_optional_wrapper(self, cem_opt_wrapper_name_for_inner(payload), payload);
     }
-    let guard = cem_upper_ascii(name) + "_DEFINED";
+    let guard_name = name;
+    if (cem_is_early_inner(inner)) {
+        guard_name = cem_upper_ascii(name);
+    }
+    let guard = guard_name + "_DEFINED";
     let c_inner = cem_emit_type(inner);
     ccb_emit(self.out, "#ifndef " + guard);
     ccb_emit(self.out, "#define " + guard);

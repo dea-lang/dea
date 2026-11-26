@@ -5,6 +5,20 @@ from dataclasses import dataclass, field
 from l0_types import EnumType
 
 
+def _mangle_type_name(module_name: str, local_name: str) -> str:
+    """Encode the ASCII components of a qualified nominal type name.
+
+    Args:
+        module_name: Dotted defining module.
+        local_name: Struct or enum identifier.
+
+    Returns:
+        A C tag with a decimal length before each component containing an underscore.
+    """
+    components = [*module_name.split("."), local_name]
+    return "l0_" + "_".join(f"{len(part)}{part}" if "_" in part else part for part in components)
+
+
 @dataclass
 class CNames:
     """C identifiers and the session-local temporary-name sequence."""
@@ -33,8 +47,7 @@ class CNames:
         Returns:
             Mangled C struct name (e.g., "l0_module_Point").
         """
-        mangled_module = module_name.replace(".", "_")
-        return f"l0_{mangled_module}_{struct_name}"
+        return _mangle_type_name(module_name, struct_name)
 
     def mangle_enum_name(self, module_name: str, enum_name: str) -> str:
         """Mangle an enum name.
@@ -46,8 +59,7 @@ class CNames:
         Returns:
             Mangled C enum name.
         """
-        mangled_module = module_name.replace(".", "_")
-        return f"l0_{mangled_module}_{enum_name}"
+        return _mangle_type_name(module_name, enum_name)
 
     def mangle_function_name(self, module_name: str, func_name: str) -> str:
         """Mangle a function name.

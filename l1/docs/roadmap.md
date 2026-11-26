@@ -489,9 +489,10 @@ file-watch design, and concurrency now belong to L2.
   parity. It is meant to run after the main stdlib additions land and to be completed before declaring L1 stable;
   affected entries will need to be maintained alongside later stdlib changes.
 
-L0 owns bug fix #6, [l0/work/plans/bug-fixes/2026-11-21-qualified-c-type-name-mangling-noref.md][l0-type-names], and the
-independent [l0/work/plans/bug-fixes/2026-11-26-stage1-discarded-string-comment-investigation-noref.md][l0-comment]
-investigation into discarded string statements.
+L0 completed bug fix #6 for qualified C type names,
+[l0/work/plans/bug-fixes/closed/2026-11-21-qualified-c-type-name-mangling-noref.md][l0-type-names]. The independent L0
+investigation into discarded string statements remains open,
+[l0/work/plans/bug-fixes/2026-11-26-stage1-discarded-string-comment-investigation-noref.md][l0-comment].
 
 ## Open plan readiness
 
@@ -646,7 +647,7 @@ update to be promoted to an initiative or plan:
 [interface-fingerprints]: ../work/plans/features/closed/2026-07-17-interface-fingerprint-canonicalization-and-verification-noref.md
 [is-intrinsic]: ../work/plans/features/closed/2026-04-20-is-intrinsic-noref.md
 [l0-comment]: ../../l0/work/plans/bug-fixes/2026-11-26-stage1-discarded-string-comment-investigation-noref.md
-[l0-type-names]: ../../l0/work/plans/bug-fixes/2026-11-21-qualified-c-type-name-mangling-noref.md
+[l0-type-names]: ../../l0/work/plans/bug-fixes/closed/2026-11-21-qualified-c-type-name-mangling-noref.md
 [l1m-authoritative-linking]: ../work/plans/features/closed/2026-08-20-l1m-authoritative-standalone-linking-noref.md
 [l2-catch-up]: ../../l2/work/plans/features/2026-10-27-stable-l1-catch-up-noref.md
 [l2-roadmap]: ../../l2/docs/roadmap.md

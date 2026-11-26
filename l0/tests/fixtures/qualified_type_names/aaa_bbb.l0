@@ -1,0 +1,32 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module aaa_bbb;
+
+struct V {
+    right: int;
+}
+
+struct v {
+    offset: int;
+}
+
+enum Read_Out {
+    Right(value: V);
+}
+
+/**
+ * Read the underscored module's field and both case-distinct optional types.
+ *
+ * @return The right field plus its offset.
+ */
+func read_right() -> int {
+    let upper: V? = V(23);
+    let lower: v? = v(2);
+    let result = Right(upper as V);
+    match (result) {
+        Right(value) => { return value.right + (lower as v).offset; }
+    }
+}

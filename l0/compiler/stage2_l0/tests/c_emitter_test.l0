@@ -151,6 +151,12 @@ func test_emitter_name_mangling() {
     let emitter = cem_create();
 
     assert(cem_mangle_struct_name("demo.main", "Point") == "l0_demo_main_Point", "struct name mismatch");
+    assert(cem_mangle_struct_name("aaa.bbb", "V") == "l0_aaa_bbb_V", "dotted module mismatch");
+    assert(cem_mangle_struct_name("aaa_bbb", "V") == "l0_7aaa_bbb_V", "underscored module mismatch");
+    assert(cem_mangle_enum_name("net.http_client", "HTTP_Reply") == "l0_net_11http_client_10HTTP_Reply",
+        "multi-digit component length mismatch");
+    assert(cem_mangle_struct_name("net_.io", "__") == "l0_4net__io_2__", "trailing underscore mismatch");
+    assert(cem_mangle_struct_name("net._io", "__") == "l0_net_3_io_2__", "leading underscore mismatch");
     assert(cem_mangle_function_name("demo.main", "main") == "l0_demo_main_main", "function name mismatch");
     assert(cem_mangle_let_name("demo.main", "static") == "l0_demo_main_l0_kw_static", "let name mismatch");
     assert(cem_mangle_identifier("return") == "return__v", "identifier keyword mangling mismatch");
@@ -514,17 +520,17 @@ func test_emitter_optional_wrappers_emit_early_then_late() {
         sb_append(expected, "typedef struct { l0_bool has_value; l0_int value; } l0_opt_int;\n");
         sb_append(expected, "#endif /* L0_OPT_INT_DEFINED */\n");
         sb_append(expected, "\n");
-        sb_append(expected, "#ifndef L0_OPT_E_L0_DEMO_MAIN_COLOR_DEFINED\n");
-        sb_append(expected, "#define L0_OPT_E_L0_DEMO_MAIN_COLOR_DEFINED\n");
+        sb_append(expected, "#ifndef l0_opt_e_l0_demo_main_Color_DEFINED\n");
+        sb_append(expected, "#define l0_opt_e_l0_demo_main_Color_DEFINED\n");
         sb_append(expected,
             "typedef struct { l0_bool has_value; struct l0_demo_main_Color value; } l0_opt_e_l0_demo_main_Color;\n");
-        sb_append(expected, "#endif /* L0_OPT_E_L0_DEMO_MAIN_COLOR_DEFINED */\n");
+        sb_append(expected, "#endif /* l0_opt_e_l0_demo_main_Color_DEFINED */\n");
         sb_append(expected, "\n");
-        sb_append(expected, "#ifndef L0_OPT_S_L0_DEMO_MAIN_POINT_DEFINED\n");
-        sb_append(expected, "#define L0_OPT_S_L0_DEMO_MAIN_POINT_DEFINED\n");
+        sb_append(expected, "#ifndef l0_opt_s_l0_demo_main_Point_DEFINED\n");
+        sb_append(expected, "#define l0_opt_s_l0_demo_main_Point_DEFINED\n");
         sb_append(expected,
             "typedef struct { l0_bool has_value; struct l0_demo_main_Point value; } l0_opt_s_l0_demo_main_Point;\n");
-        sb_append(expected, "#endif /* L0_OPT_S_L0_DEMO_MAIN_POINT_DEFINED */\n");
+        sb_append(expected, "#endif /* l0_opt_s_l0_demo_main_Point_DEFINED */\n");
         sb_append(expected, "\n");
         assert(cem_get_output(emitter) == sb_to_string(expected), "optional wrapper emission mismatch");
     }
