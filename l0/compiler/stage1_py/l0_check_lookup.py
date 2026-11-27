@@ -34,8 +34,8 @@ class SemanticLookup:
         if self._lookup_local(name) is not None:
             self.state._warn(node, f"[TYP-0021] local variable '{name}' shadows variable from outer scope")
 
-        if self.state._current_func_env is not None:
-            module_name = self.state._current_func_env.module_name
+        if self.state._current_module is not None:
+            module_name = self.state._current_module
             sym_result = resolve_symbol(self.state.module_envs, module_name, name)
             sym = sym_result.symbol
             if sym is not None and sym.kind is SymbolKind.ENUM_VARIANT:
@@ -98,8 +98,8 @@ class SemanticLookup:
             module_path: list[str] | None = None,
     ) -> Type | None:
         """Try to resolve an identifier as a type name."""
-        assert self.state._current_func_env is not None
-        module_name = self.state._current_func_env.module_name
+        assert self.state._current_module is not None
+        module_name = self.state._current_module
 
         sym_result = resolve_symbol(self.state.module_envs, module_name, name, module_path=module_path)
         sym = sym_result.symbol
@@ -159,14 +159,14 @@ class SemanticLookup:
 
     def _resolve_type_ref(self, tref) -> Type | None:
         """Resolve a TypeRef to a semantic Type."""
-        if self.state._current_func_env is None:
+        if self.state._current_module is None:
             return None
 
         # Reject overqualified type references (e.g. color::Color::Red as a type)
         if self._reject_name_qualifier(tref, tref.name, tref.name_qualifier, tref.module_path):
             return None
 
-        module_name = self.state._current_func_env.module_name
+        module_name = self.state._current_module
         result = resolve_type_ref(self.state.module_envs, module_name, tref, module_path=tref.module_path)
         if result.type is None:
             if result.error is TypeResolveErrorKind.INVALID_NULLABLE_VOID:

@@ -61,3 +61,13 @@ def test_qualified_type_names(entry, tmp_path, search_paths, compile_and_run):
     for module in ("aaa_bbb", "7aaa_bbb"):
         assert f"struct l0_{module}_V {{" in generated
         assert f"enum l0_{module}_8Read_Out_tag {{" in generated
+
+
+def test_intrinsics_and_qualified_owners(tmp_path, search_paths, compile_and_run):
+    """Execute bare intrinsics alongside locals and qualified module declarations."""
+    fixtures = Path(__file__).resolve().parents[4] / "tests/fixtures/intrinsic_names"
+    search_paths.add_project_root(fixtures)
+    result = L0Driver(search_paths=search_paths).analyze("positive")
+    assert not result.has_errors(), result.diagnostics
+    success, _, stderr = compile_and_run(Backend(result).generate(), tmp_path, strict_c99=True)
+    assert success, stderr

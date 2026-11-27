@@ -11,6 +11,8 @@ import std.assert;
 
 import driver;
 import name_resolver;
+import signatures;
+import types;
 import source_paths;
 import util.diag;
 import util.log;
@@ -153,6 +155,30 @@ func test_duplicate_top_level_reports_error() {
 }
 
 /**
+ * Check that rejected module names never enter the defining or importing environment.
+ */
+func test_reserved_intrinsic_names() {
+    with (let sp = sp_create() => sp_free(sp),
+          let cfg = log_config_create(LL_SILENT, false) => drop cfg,
+          let diags = diag_create() => diag_free(diags)) {
+        sp_add_project_root(sp, "tests/fixtures/intrinsic_names");
+        with (let state = driver_analyze_entry(sp, "bad_import", cfg) => driver_state_free(state),
+              let names = nr_resolve(state, diags) => nr_free(names),
+              let sigs = sig_resolve(state, names, diags) => sig_tables_free(sigs)) {
+            assert(count_diag_code(diags, "RES-0011") == 14, "expected one error per reserved declaration");
+            let owner = nr_env_find(names, "reserved") as ModuleEnv*;
+            let importer = nr_env_find(names, "bad_import") as ModuleEnv*;
+            assert(nr_module_env_local(owner, "sizeof") == null && nr_module_env_local(owner, "ord") == null,
+                "invalid declarations entered the module");
+            assert(nr_module_env_all(importer, "sizeof") == null && nr_module_env_all(importer, "ord") == null,
+                "invalid declarations escaped through an import");
+            assert(sig_lookup_func_type(sigs, "reserved", "sizeof") == null &&
+                sig_lookup_let_type(sigs, "reserved", "ord") == null, "invalid declarations acquired signatures");
+        }
+    }
+}
+
+/**
  * Tests test_import_shadow_warning_keeps_qualified_variant_lookup_available.
  */
 func test_import_shadow_warning_keeps_qualified_variant_lookup_available() {
@@ -239,6 +265,7 @@ func main() {
     test_name_resolution_ok();
     test_ambiguous_import_reports_warning();
     test_duplicate_top_level_reports_error();
+    test_reserved_intrinsic_names();
     test_import_shadow_warning_keeps_qualified_variant_lookup_available();
     test_duplicate_open_import_reports_warning();
     printl_s("name_resolver_test: all tests passed");

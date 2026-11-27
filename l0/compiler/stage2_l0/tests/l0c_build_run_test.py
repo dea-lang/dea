@@ -260,6 +260,27 @@ def check_entry_file_identity(l0c: str, work_dir: Path) -> None:
             entry.chmod(0o600)
 
 
+def check_intrinsic_names(l0c: str) -> None:
+    """Check module-scope declarations, qualified calls and legal local uses."""
+    root = REPO_ROOT / "tests" / "fixtures" / "intrinsic_names"
+    project = ["--project-root", native_path(root)]
+    run([l0c, "--run", *project, "positive"])
+    run([l0c, "--check", *project, "fields"])
+
+    reserved = run([l0c, "--check", *project, "bad_import"], expected_returncode=1)
+    locations = re.findall(r"reserved\.l0:(\d+):\d+: error: \[RES-0011\] '(sizeof|ord)'", reserved.stderr)
+    lines = (root / "reserved.l0").read_text(encoding="utf-8").splitlines()
+    if len({line for line, _ in locations}) != 14 or any(name not in lines[int(line) - 1] for line, name in locations):
+        raise ToolTestFailure(f"expected a reserved-name error at each declaration: {reserved.stderr}")
+
+    invalid = run([l0c, "--check", *project, "invalid_calls"], expected_returncode=1)
+    calls = re.findall(r"\[TYP-0189\] [^'\n]*'([^']+)'", invalid.stderr)
+    expected = {f"{owner}::{name}" for owner in ("invalid_calls", "positive", "ord", "missing")
+                for name in ("sizeof", "ord")}
+    if set(calls) != expected or "[TYP-0102]" not in invalid.stderr or "[TYP-0104]" not in invalid.stderr:
+        raise ToolTestFailure(f"missing qualified call or pattern diagnostic: {invalid.stderr}")
+
+
 def main() -> int:
     """Program entrypoint."""
 
@@ -273,6 +294,7 @@ def main() -> int:
         stage2_native = native_path(bootstrap_dir / "bin" / "l0c-stage2.native")
 
         check_entry_file_identity(l0c, work_dir)
+        check_intrinsic_names(l0c)
         type_names = REPO_ROOT / "tests" / "fixtures" / "qualified_type_names"
         for entry in ("forward", "reverse"):
             run([l0c, "--run", "--project-root", native_path(type_names), entry])

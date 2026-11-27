@@ -649,15 +649,16 @@ func sig_resolve(driver_state: DriverState*, nr: NameResolution*, diags: DiagCol
         for (let j = 0; j < vec_size(mod.decls); j = j + 1) {
             let top = ptr_vec_get(mod.decls, j) as TopLevelDecl*;
             let canonical_sym = nr_module_env_local(env, sig_top_decl_name(top));
-            if (canonical_sym != null) {
-                let canonical_span = (canonical_sym as Symbol*).span;
-                let top_span = sig_top_decl_span(top);
-                if (canonical_span.start_line != top_span.start_line ||
-                    canonical_span.start_column != top_span.start_column ||
-                    canonical_span.end_line != top_span.end_line ||
-                    canonical_span.end_column != top_span.end_column) {
-                    continue;
-                }
+            if (canonical_sym == null) {
+                continue;
+            }
+            let canonical_span = (canonical_sym as Symbol*).span;
+            let top_span = sig_top_decl_span(top);
+            if (canonical_span.start_line != top_span.start_line ||
+                canonical_span.start_column != top_span.start_column ||
+                canonical_span.end_line != top_span.end_line ||
+                canonical_span.end_column != top_span.end_column) {
+                continue;
             }
             match (top.kind) {
                 TD_STRUCT => {

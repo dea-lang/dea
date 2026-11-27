@@ -423,7 +423,7 @@ func test_emitter_cleanup_and_switch_helpers() {
     ptr_vec_push(decls, cet_wrap_decl(TD_ENUM, new EnumDecl("Maybe",
         ptr_vec_create(1), span_here(1, 1)) as void*) as void*);
     let enum_decl = (ptr_vec_get(decls, 0) as TopLevelDecl*).data as EnumDecl*;
-    ptr_vec_push(enum_decl.variants, new EnumVariant("Some", payload_fields) as void*);
+    ptr_vec_push(enum_decl.variants, new EnumVariant("Some", payload_fields, span_here(1, 1)) as void*);
     cet_push_module(result, cet_module("demo.main", "demo/main.l0", decls));
 
     let emitter = cem_create();
@@ -588,11 +588,11 @@ func test_emitter_top_level_forms_match_stage1_shape() {
     ptr_vec_push(decl_fields, new FieldDecl("y", cet_builtin_type_ref("int")) as void*);
     let point_decl = new StructDecl("Point", decl_fields, span_here(1, 1));
 
-    ptr_vec_push(enum_variants, new EnumVariant("None", ptr_vec_create(0)) as void*);
+    ptr_vec_push(enum_variants, new EnumVariant("None", ptr_vec_create(0), span_here(1, 1)) as void*);
     ptr_vec_push(rgb_decl_fields, new FieldDecl("r", cet_builtin_type_ref("byte")) as void*);
     ptr_vec_push(rgb_decl_fields, new FieldDecl("g", cet_builtin_type_ref("byte")) as void*);
     ptr_vec_push(rgb_decl_fields, new FieldDecl("b", cet_builtin_type_ref("byte")) as void*);
-    ptr_vec_push(enum_variants, new EnumVariant("Rgb", rgb_decl_fields) as void*);
+    ptr_vec_push(enum_variants, new EnumVariant("Rgb", rgb_decl_fields, span_here(1, 1)) as void*);
     let color_decl = new EnumDecl("Color", enum_variants, span_here(1, 1));
 
     ptr_vec_push(func_params, new Param("a", cet_builtin_type_ref("int")) as void*);

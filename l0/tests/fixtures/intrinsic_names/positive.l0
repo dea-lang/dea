@@ -1,0 +1,36 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module positive;
+import ord;
+
+enum Local { Green; }
+
+/**
+ * Read a parameter whose name is also an intrinsic.
+ *
+ * @param sizeof Integer to size.
+ * @return The parameter when its size agrees with the type alias.
+ */
+func value(sizeof: int) -> int {
+    if (sizeof(ord::Count) != sizeof(sizeof)) return 0;
+    return sizeof;
+}
+
+/**
+ * Check qualified owners, unqualified imports and intrinsic spellings in local scopes.
+ *
+ * @return Zero when ordinary calls, intrinsic calls and all three pattern forms agree.
+ */
+func main() -> int {
+    let ord = 8;
+    let value = 9;
+    if (ord != 8 || ord(Blue(0)) != 1 || positive::value(value) != 9) return 1;
+    match (Green) { positive::Green => {} }
+    match (Blue(9)) {
+        Red => { return 2; }
+        ord::Blue(sizeof) => { return sizeof - 9; }
+    }
+}

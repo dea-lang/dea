@@ -161,6 +161,7 @@ func ps_parse_enum(self: ParserState*) -> EnumDecl*? {
 
     with (let variants: VectorBase*? = ptr_vec_create(4) => enum_variant_vec_free(variants)) {
         while (!ps_check(self, ord(TT_RBRACE))) {
+            let variant_start = ps_span_start(self);
             let var_name_tok = ps_expect_ident(self, "PAR-0063", "expected variant name")?;
 
             with (let fields: VectorBase*? = ptr_vec_create(2) => field_decl_vec_free(fields)) {
@@ -181,7 +182,8 @@ func ps_parse_enum(self: ParserState*) -> EnumDecl*? {
                 }
 
                 ps_expect(self, ord(TT_SEMI), "PAR-0067", "expected ';' after variant")?;
-                let variant = new EnumVariant(token_ident_text(var_name_tok) as string, fields as VectorBase*);
+                let variant = new EnumVariant(token_ident_text(var_name_tok) as string, fields as VectorBase*,
+                    ps_extend_span(self, variant_start));
                 ptr_vec_push(variants as VectorBase*, variant as void*);
                 fields = null;
             }

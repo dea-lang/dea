@@ -553,6 +553,12 @@ class CallExpr(Expr):
     callee: Expr
     args: list[Expr]
 
+    def bare_callee_name(self) -> str | None:
+        """Return the callee name for a direct, unqualified identifier call."""
+        if isinstance(self.callee, VarRef) and self.callee.module_path is None and self.callee.name_qualifier is None:
+            return self.callee.name
+        return None
+
 
 @dataclass
 class IndexExpr(Expr):

@@ -125,28 +125,29 @@ class NameResolver:
                 continue
 
     def _define_local(self, env: ModuleEnv, name: str, sym: Symbol) -> None:
-        """Define a local symbol, checking for duplicates.
+        """Define a module symbol unless its name is reserved or already defined.
 
         Args:
             env: The environment to define the symbol in.
             name: The name of the symbol.
             sym: The Symbol object.
         """
-        if name in env.locals:
-            env.diagnostics.append(
-                diag_from_node(
-                    kind="error",
-                    message=f"[RES-0010] duplicate top-level definition of '{name}' in module '{env.name}'",
-                    module_name=env.name,
-                    filename=env.module.filename,
-                    node=(sym.node if isinstance(sym.node, Node) else None),
-                )
-            )
-            # Keep the previously defined local symbol
+        if name in ("sizeof", "ord"):
+            message = f"[RES-0011] '{name}' is reserved for an L0 intrinsic at module scope"
+        elif name in env.locals:
+            message = f"[RES-0010] duplicate top-level definition of '{name}' in module '{env.name}'"
+        else:
+            env.locals[name] = sym
+            env.all[name] = sym
             return
 
-        env.locals[name] = sym
-        env.all[name] = sym
+        env.diagnostics.append(diag_from_node(
+            kind="error",
+            message=message,
+            module_name=env.name,
+            filename=env.module.filename,
+            node=sym.node if isinstance(sym.node, Node) else None,
+        ))
 
     def _open_imports(self, env: ModuleEnv) -> None:
         """Process imports for a module environment.

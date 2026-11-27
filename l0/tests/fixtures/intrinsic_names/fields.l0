@@ -1,0 +1,11 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module fields;
+
+struct Record { sizeof: int; ord: int; }
+enum Item { Value(sizeof: int, ord: int); }
+
+func read(r: Record) -> int { return r.sizeof + r.ord; }

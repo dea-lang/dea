@@ -278,30 +278,36 @@ func etc_infer_binary(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprN
  */
 func etc_infer_call(self: ExpressionTypeChecker*, expr_id: ExprId, expr: ExprNode*) -> Type*? {
     let callee = expr_arena_get((self.current_unit as DriverUnit*).parse_result.expr_arena, expr.expr_a);
+    if (expr_is_bare_name(callee, "sizeof")) {
+        return etc_infer_sizeof_intrinsic(self, expr_id, expr);
+    }
+    if (expr_is_bare_name(callee, "ord")) {
+        return etc_infer_ord_intrinsic(self, expr);
+    }
+
+    let callee_ty: Type*? = null;
     if (ord(callee.kind) == ord(EX_VAR_REF)) {
-        if (callee.text_value == "sizeof") {
-            return etc_infer_sizeof_intrinsic(self, expr_id, expr);
+        if (callee.name_qualifier != null) {
+            etc_diag_error(self, "TYP-0158", etc_nested_symbol_path_message(callee),
+                (self.current_unit as DriverUnit*).path, callee.span);
+            return null;
         }
-        if (callee.text_value == "ord") {
-            return etc_infer_ord_intrinsic(self, expr);
-        }
-        with (let local_callee_ty = etc_lookup_local(self, callee.text_value) => etc_type_free_opt(local_callee_ty)) {
-            if (local_callee_ty == null &&
-                etc_lookup_symbol(self, callee.text_value, callee.module_path, callee.name_qualifier) == null &&
-                callee.module_path == null && callee.name_qualifier == null &&
+        let sym = etc_lookup_symbol(self, callee.text_value, callee.module_path, null);
+        if (sym == null) {
+            if (callee.module_path != null) {
+                let owner = tr_module_from_path(callee.module_path as StringVector*);
+                etc_diag_error(self, "TYP-0189", "unknown function '" + owner + "::" + callee.text_value + "'",
+                    (self.current_unit as DriverUnit*).path, callee.span);
+                return null;
+            }
+            if (etc_lookup_visible_local_symbol(self, callee.text_value) == null &&
                 !nr_module_env_is_ambiguous(self.current_env as ModuleEnv*, callee.text_value)) {
                 etc_diag_error(self, "TYP-0189", "unknown function '" + callee.text_value + "'",
                     (self.current_unit as DriverUnit*).path, callee.span);
                 return null;
             }
-        }
-    }
-
-    let callee_ty: Type*? = null;
-    if (ord(callee.kind) == ord(EX_VAR_REF)) {
-        let callee_sym2 = etc_lookup_symbol(self, callee.text_value, callee.module_path, callee.name_qualifier);
-        if (callee_sym2 != null) {
-            let cs = callee_sym2 as Symbol*;
+        } else {
+            let cs = sym as Symbol*;
             if (ord(cs.kind) == ord(SYM_STRUCT)) {
                 callee_ty = type_new_struct(cs.module_name, cs.name);
             } else if (ord(cs.kind) == ord(SYM_ENUM)) {
@@ -572,7 +578,10 @@ func etc_infer_expr(self: ExpressionTypeChecker*, expr_id: ExprId) -> Type*? {
                     unit.path, expr.span);
                 return null;
             }
-            let local_ty = etc_lookup_local(self, expr.text_value);
+            let local_ty: Type*? = null;
+            if (expr.module_path == null && expr.name_qualifier == null) {
+                local_ty = etc_lookup_local(self, expr.text_value);
+            }
             if (local_ty != null) {
                 if (etc_is_guarded_cleanup_header_local(self, expr.text_value)) {
                     etc_diag_error(

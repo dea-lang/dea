@@ -222,6 +222,7 @@ DRV_TRIGGERS = {
 }
 
 RES_TRIGGERS = {
+    "RES-0011": "module main; type sizeof = int;",
     "RES-0010": dedent("""\
         module main;
         func foo() -> int { return 1; }

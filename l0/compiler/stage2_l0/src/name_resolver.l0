@@ -353,11 +353,17 @@ func nr_module_env_all_keys(self: ModuleEnv*) -> StringVector* {
  * Add a top-level local symbol to a module environment.
  *
  * @param env Module environment being populated.
- * @param diags Diagnostic collector for duplicate-definition errors.
+ * @param diags Diagnostic collector for invalid module declarations.
  * @param name Symbol name.
  * @param sym Symbol to insert.
  */
 func nr_define_local(env: ModuleEnv*, diags: DiagCollector*, name: string, sym: Symbol*) {
+    if (name == "sizeof" || name == "ord") {
+        nr_span_diag_error(diags, "RES-0011", "'" + name + "' is reserved for an L0 intrinsic at module scope",
+            env.module_ptr.filename, sym.span);
+        symbol_free(sym);
+        return;
+    }
     if (spm_has(env.locals, name)) {
         nr_span_diag_error(
             diags,
@@ -403,7 +409,7 @@ func nr_collect_locals(env: ModuleEnv*, diags: DiagCollector*) {
                     let variant = ptr_vec_get(decl.variants, j) as EnumVariant*;
                     nr_define_local(env, diags, variant.name,
                         symbol_create(variant.name, SYM_ENUM_VARIANT, env.module_name, decl.name, variant as void*,
-                            decl.span));
+                            variant.span));
                 }
             }
             TD_TYPE_ALIAS => {

@@ -54,8 +54,10 @@ class CheckerState:
         self.void_type: BuiltinType = get_builtin_type("void")
         self.null_type: NullType = get_null_type()
 
+        # Module initializers and function bodies share name resolution.
+        self._current_module: str | None = None
+
         # Per-function state (set in _check_function)
-        self._current_func_env: FunctionEnv | None = None
         self._current_func_type: FuncType | None = None
         self._local_scopes: list[dict[str, Type]] = []
         self._alive_scopes: list[dict[str, bool]] = []  # definite liveness (True=usable)
@@ -170,13 +172,9 @@ class CheckerState:
             "[TYP-0062]" in message or "[TYP-0150]" in message
         ):
             return
-        mod_name = None
-        filename = None
-        if self.cu is not None and self._current_func_env is not None:
-            mod_name = self._current_func_env.module_name
-            mod = self.cu.modules.get(mod_name)
-            if mod is not None:
-                filename = mod.filename
+        mod_name = self._current_module
+        mod = self.cu.modules.get(mod_name) if mod_name is not None else None
+        filename = mod.filename if mod is not None else None
 
         diagnostic = diag_from_node(
             kind=kind,

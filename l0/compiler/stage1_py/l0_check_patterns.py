@@ -76,8 +76,8 @@ class PatternAnalysis:
             return None
 
         if pattern.module_path is not None:
-            assert self.state._current_func_env is not None
-            module_name = self.state._current_func_env.module_name
+            assert self.state._current_module is not None
+            module_name = self.state._current_module
             sym_result = resolve_symbol(
                 self.state.module_envs,
                 module_name,

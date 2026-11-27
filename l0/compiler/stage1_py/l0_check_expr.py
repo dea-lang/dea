@@ -147,8 +147,8 @@ class ExpressionInference:
                 return local_ty
 
         # 2. Module-level symbols (functions only, for now)
-        assert self.state._current_func_env is not None
-        module_name = self.state._current_func_env.module_name
+        assert self.state._current_module is not None
+        module_name = self.state._current_module
 
         sym_result = resolve_symbol(self.state.module_envs, module_name, expr.name, module_path=expr.module_path)
         sym = sym_result.symbol
@@ -346,10 +346,7 @@ class ExpressionInference:
 
     def _try_infer_intrinsic(self, expr: CallExpr) -> Type | None:
         """Handle compiler intrinsics calls."""
-        if not isinstance(expr.callee, VarRef):
-            return None
-
-        name = expr.callee.name
+        name = expr.bare_callee_name()
 
         if name == "sizeof":
             return self._infer_sizeof_intrinsic(expr)
@@ -420,11 +417,9 @@ class ExpressionInference:
 
     def _infer_call(self, expr: CallExpr) -> Type | None:
         """Infer type for a function or constructor call."""
-        # Check for intrinsic calls first
-        if isinstance(expr.callee, VarRef):
-            intrinsic_result = self._try_infer_intrinsic(expr)
-            if intrinsic_result is not None:
-                return intrinsic_result
+        intrinsic_result = self._try_infer_intrinsic(expr)
+        if intrinsic_result is not None:
+            return intrinsic_result
 
         # Only allow calling plain identifiers.
         if not isinstance(expr.callee, VarRef):
@@ -440,8 +435,8 @@ class ExpressionInference:
         ):
             return None
 
-        assert self.state._current_func_env is not None
-        module_name = self.state._current_func_env.module_name
+        assert self.state._current_module is not None
+        module_name = self.state._current_module
 
         sym_result = resolve_symbol(self.state.module_envs, module_name, expr.callee.name,
                                     module_path=expr.callee.module_path)
@@ -702,9 +697,6 @@ class ExpressionInference:
 
     def _infer_try(self, expr: TryExpr) -> Type | None:
         """Infer type for a '?' try operator expression."""
-        if self.state._current_func_type is None:
-            return None
-
         inner_ty = self._infer_expr(expr.expr)
         if inner_ty is None:
             return None
@@ -713,7 +705,7 @@ class ExpressionInference:
             self.state._error(expr, f"[TYP-0250] cannot apply '?' to non-nullable type '{format_type(inner_ty)}'")
             return None
 
-        if not isinstance(self.state._current_func_type.result, NullableType):
+        if self.state._current_func_type is None or not isinstance(self.state._current_func_type.result, NullableType):
             self.state._error(expr, "[TYP-0251] cannot use '?' in a function that does not return a nullable type (T?)")
             return None
 
@@ -721,10 +713,10 @@ class ExpressionInference:
 
     def _infer_new(self, expr: NewExpr) -> Type | None:
         """Infer type for a 'new' heap allocation expression."""
-        if self.state._current_func_env is None:
-            return self.state._error(expr, f"[TYP-9288] internal error: 'new' outside function context")
+        if self.state._current_module is None:
+            return self.state._error(expr, f"[TYP-9288] internal error: 'new' outside module context")
 
-        module_name = self.state._current_func_env.module_name
+        module_name = self.state._current_module
         mod_env = self.state.module_envs.get(module_name)
 
         if mod_env is None:

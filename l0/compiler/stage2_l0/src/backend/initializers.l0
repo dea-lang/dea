@@ -93,10 +93,10 @@ func be_is_static_let_initializer(self: Backend*, expr_id: ExprId) -> bool {
             let args = expr.ids as VectorBase*;
             let arg_count = 0;
             if (args != null) arg_count = vec_size(args);
-            if (callee.text_value == "sizeof") {
+            if (expr_is_bare_name(callee, "sizeof")) {
                 return arg_count == 1;
             }
-            if (callee.text_value == "ord") {
+            if (expr_is_bare_name(callee, "ord")) {
                 return arg_count == 1 && be_is_static_let_initializer(self, id_vec_get(args, 0));
             }
             let sym2 = be_lookup_symbol(self, callee.text_value, callee.module_path, callee.name_qualifier);
@@ -202,10 +202,10 @@ func be_emit_let_initializer(self: Backend*, expr_id: ExprId, expected_type: Typ
         EX_VAR_REF => { return be_emit_bare_variant_static_initializer(self, expr_id, expected_type); }
         EX_CALL => {
             let callee = expr_arena_get(be_current_expr_arena(self), expr.expr_a);
-            if (ord(callee.kind) == ord(EX_VAR_REF) && callee.text_value == "sizeof") {
+            if (expr_is_bare_name(callee, "sizeof")) {
                 return be_emit_call(self, expr_id);
             }
-            if (ord(callee.kind) == ord(EX_VAR_REF) && callee.text_value == "ord") {
+            if (expr_is_bare_name(callee, "ord")) {
                 return be_emit_static_ord_initializer(self, expr_id);
             }
             return be_emit_const_constructor(self, expr_id, expected_type);

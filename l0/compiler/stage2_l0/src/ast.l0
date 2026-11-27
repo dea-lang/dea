@@ -177,6 +177,7 @@ struct FieldDecl {
 struct EnumVariant {
     name: string;
     fields: VectorBase*; // FieldDecl*
+    span: Span;
 }
 
 /**
@@ -448,6 +449,18 @@ func expr_node_create(kind: ExprKind, span: Span) -> ExprNode* {
         null,
         null
     );
+}
+
+/**
+ * Test whether an expression is a direct reference to the given unqualified name.
+ *
+ * @param expr Expression to inspect.
+ * @param name Expected identifier.
+ * @return True when the identifier matches and carries no qualifiers.
+ */
+func expr_is_bare_name(expr: ExprNode*, name: string) -> bool {
+    return ord(expr.kind) == ord(EX_VAR_REF) && expr.module_path == null && expr.name_qualifier == null &&
+        expr.text_value == name;
 }
 
 /**

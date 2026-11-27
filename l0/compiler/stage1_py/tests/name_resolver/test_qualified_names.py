@@ -1,9 +1,13 @@
 #  SPDX-License-Identifier: MIT OR Apache-2.0
 #  Copyright (c) 2026 gwz
 
+from pathlib import Path
+
 from conftest import has_error_code
 from l0_driver import L0Driver
 from l0_paths import SourceSearchPaths
+
+INTRINSIC_FIXTURES = Path(__file__).resolve().parents[4] / "tests/fixtures/intrinsic_names"
 
 
 def test_qualified_expr_resolves_imported_symbol(write_l0_file, temp_project):
@@ -916,3 +920,30 @@ def test_single_qualified_still_works(write_l0_file, temp_project):
 
     result = driver.analyze("main")
     assert not result.has_errors()
+
+
+def test_reserved_module_declarations(search_paths):
+    search_paths.add_project_root(INTRINSIC_FIXTURES)
+    reserved = L0Driver(search_paths=search_paths).analyze("bad_import")
+    errors = [d for d in reserved.diagnostics if d.kind == "error"]
+    lines = (INTRINSIC_FIXTURES / "reserved.l0").read_text(encoding="utf-8").splitlines()
+    assert len(errors) == 14
+    assert len({d.line for d in errors}) == 14
+    for d in errors:
+        assert d.module_name == "reserved" and "[RES-0011]" in d.message
+        assert d.line is not None and any(name in lines[d.line - 1] and f"'{name}'" in d.message
+                                          for name in ("sizeof", "ord"))
+
+
+def test_qualified_intrinsic_calls_and_wrong_owner_pattern(search_paths):
+    search_paths.add_project_root(INTRINSIC_FIXTURES)
+    driver = L0Driver(search_paths=search_paths)
+    fields = driver.analyze("fields")
+    assert not fields.has_errors(), fields.diagnostics
+    invalid = driver.analyze("invalid_calls")
+    calls = [d for d in invalid.diagnostics if "[TYP-0189]" in d.message]
+    expected = {f"{owner}::{name}" for owner in ("invalid_calls", "positive", "ord", "missing")
+                for name in ("sizeof", "ord")}
+    assert {d.message.split("'")[1] for d in calls} == expected
+    assert has_error_code(invalid.diagnostics, "TYP-0102")
+    assert has_error_code(invalid.diagnostics, "TYP-0104")

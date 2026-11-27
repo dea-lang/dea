@@ -2,6 +2,7 @@
 # Copyright (c) 2025-2026 gwz
 
 from l0_analysis import AnalysisResult
+from l0_ast import LetDecl
 from l0_check_state import CheckerState
 from l0_check_lookup import SemanticLookup
 from l0_check_compat import TypeCompatibility
@@ -32,7 +33,7 @@ class ExpressionTypeChecker:
         self.flow = StatementFlow(compat=self.compat, expr=self.expr, liveness=self.liveness, lookup=self.lookup, patterns=self.patterns, state=self.state)
 
     def check(self) -> None:
-        """Run expression/type checking for all non-extern functions.
+        """Check expressions in module initializers and non-extern functions.
 
         This is the main entry point for expression analysis. It should be
         called after top-level signature resolution is complete and local scopes have been built.
@@ -44,7 +45,16 @@ class ExpressionTypeChecker:
             )
             return
 
+        for env in self.state.module_envs.values():
+            self.state._current_module = env.name
+            for symbol in env.locals.values():
+                if isinstance(symbol.node, LetDecl) and symbol.type is not None:
+                    self.expr._infer_expr(symbol.node.value)
+        self.state._current_module = None
+
         for key, func_env in self.state.func_envs.items():
+            if func_env.func.name not in self.state.module_envs[func_env.module_name].locals:
+                continue  # Name resolution already rejected the declaration.
             func_type = self.state.func_types.get(key)
             if func_type is None:
                 # SignatureResolver should have produced this already

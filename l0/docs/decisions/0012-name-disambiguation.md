@@ -1,7 +1,7 @@
 # ADR-0012: Name Disambiguation via Qualified References
 
 - Decision date: 2026-01-31
-- Last edited: 2026-05-20
+- Last edited: 2026-11-27
 - Status: Accepted
 
 ## Context
@@ -32,7 +32,8 @@ Qualified names (`module.path::Name`) are the disambiguation mechanism:
 
 ## Related Plans
 
-None (pre-plan era). Implemented as part of the initial module system.
+- [l0/work/plans/bug-fixes/closed/2026-11-21-module-qualified-lookup-noref.md](../../work/plans/bug-fixes/closed/2026-11-21-module-qualified-lookup-noref.md)
+  verifies owner lookup for qualified calls and enum patterns.
 
 ## Current Docs
 

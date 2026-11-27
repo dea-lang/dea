@@ -1,6 +1,6 @@
 # Dea/L<sub>0</sub> Grammar
 
-Version: 2026-10-13
+Version: 2026-11-27
 
 The following is the formal grammar for level 0 of the Dea programming language (Dea/L<sub>0</sub>) in EBNF style. This
 describes the concrete syntax that lexers and parsers should accept.
@@ -401,7 +401,8 @@ PrimaryExpr         ::=     IntLiteral
 
 Notes:
 
-- `QualifiedIdent` in expressions resolves to a module-qualified symbol reference. The module must be imported.
+- A qualified reference selects a declaration owned by the current module or an explicitly imported module. This also
+  applies to qualified enum variant patterns.
 - `Ident` as a primary expression is a simple variable reference. When the identifier resolves to a zero-argument enum
   variant, it acts as a constructor (e.g. `Red` is equivalent to `Red()`).
 - `as` casts support `T?` \<-> `T` conversion.
@@ -412,8 +413,9 @@ Notes:
   followed by `*` or `?` suffixes that end at an argument boundary (`,` or `)`).
 - Plain identifiers like `sizeof(Point)` parse as `Expr`; the type checker resolves whether `Point` refers to a type or
   variable.
-- Intrinsics such as `sizeof` and `ord` are parsed as ordinary identifiers and given special meaning during semantic
-  analysis and lowering.
+- Only bare `sizeof(T)`, `sizeof(expr)` and `ord(enum_value)` calls invoke intrinsics. The names `sizeof` and `ord` are
+  reserved in module declarations, including extern functions, enum variants, type aliases and top-level `let`. They
+  remain ordinary identifiers in module paths, parameters, locals, pattern bindings and fields.
 
 This grammar is intended to be just expressive enough to:
 

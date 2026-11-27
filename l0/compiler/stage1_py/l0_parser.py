@@ -462,6 +462,7 @@ class Parser:
         self._expect(TokenKind.LBRACE, "[PAR-0062] expected '{' after enum name")
         variants: list[EnumVariant] = []
         while not self._check(TokenKind.RBRACE):
+            variant_start = self._span_start()
             var_name_tok = self._expect(TokenKind.IDENT, "[PAR-0063] expected variant name")
             fields: list[FieldDecl] = []
             if self._match(TokenKind.LPAREN):
@@ -475,7 +476,7 @@ class Parser:
                             break
                 self._expect(TokenKind.RPAREN, "[PAR-0066] expected ')' after variant payload")
             self._expect_semicolon("[PAR-0067] expected ';' after variant")
-            variants.append(EnumVariant(var_name_tok.text, fields))
+            variants.append(EnumVariant(var_name_tok.text, fields, span=self._extend_span(variant_start)))
         self._expect(TokenKind.RBRACE, "[PAR-0068] expected '}' after enum body")
         return EnumDecl(name_tok.text, variants, span=self._extend_span(start))
 

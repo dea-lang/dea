@@ -1167,10 +1167,7 @@ class Lowering:
         Returns:
             C code string if it is an intrinsic, otherwise None.
         """
-        if not isinstance(expr.callee, VarRef):
-            return None
-
-        name = expr.callee.name
+        name = expr.bare_callee_name()
 
         if name == "sizeof":
             return self.convert._emit_sizeof_intrinsic(expr)

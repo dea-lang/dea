@@ -1,0 +1,24 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module invalid_calls;
+import positive;
+
+let bad_size: int = (positive::sizeof(7));
+let bad_ord: int = invalid_calls::ord(Green);
+
+func bad(sizeof: int, ord: int) -> int {
+    invalid_calls::sizeof(7);
+    positive::ord(Green);
+    ord::sizeof(7);
+    ord::ord(Green);
+    missing::sizeof(7);
+    missing::ord(Green);
+    return 0;
+}
+
+func wrong_owner(c: positive::Local) {
+    match (c) { invalid_calls::Green => {} }
+}

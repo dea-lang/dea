@@ -477,7 +477,7 @@ func be_emit_call(self: Backend*, expr_id: ExprId) -> string {
     let callee = expr_arena_get(be_current_expr_arena(self), expr.expr_a);
 
     if (ord(callee.kind) == ord(EX_VAR_REF)) {
-        if (callee.text_value == "sizeof" && expr.ids != null && vec_size(expr.ids as VectorBase*) == 1) {
+        if (expr_is_bare_name(callee, "sizeof") && expr.ids != null && vec_size(expr.ids as VectorBase*) == 1) {
             let arg = expr_arena_get(be_current_expr_arena(self), id_vec_get(expr.ids as VectorBase*, 0));
             if (ord(arg.kind) == ord(EX_TYPE) && arg.type_ref != null) {
                 with (let target_ty = be_resolve_type_ref(self, arg.type_ref as TypeRef*) => type_free_opt(target_ty)) {
@@ -496,7 +496,7 @@ func be_emit_call(self: Backend*, expr_id: ExprId) -> string {
             }
         }
 
-        if (callee.text_value == "ord" && expr.ids != null && vec_size(expr.ids as VectorBase*) == 1) {
+        if (expr_is_bare_name(callee, "ord") && expr.ids != null && vec_size(expr.ids as VectorBase*) == 1) {
             return cem_emit_ord(be_emit_expr(self, id_vec_get(expr.ids as VectorBase*, 0)));
         }
 

@@ -1,6 +1,6 @@
 # Compiler Diagnostic Code Catalog
 
-Version: 2026-11-05
+Version: 2026-11-27
 
 Normative catalog of Dea compiler diagnostic codes.
 
@@ -434,25 +434,26 @@ diagnostic.
 
 ## Name Resolution and Import Analysis
 
-| Code       | Level | Meaning                                                                                    |
-| ---------- | ----- | ------------------------------------------------------------------------------------------ |
-| `RES-0010` | All   | Duplicate top-level definition in the same module                                          |
-| `RES-0020` | All   | Imported extern function is shadowed by a compatible local extern declaration              |
-| `RES-0021` | All   | Imported symbol is shadowed by a local definition                                          |
-| `RES-0022` | All   | Ambiguous unqualified import: the same symbol name is imported from multiple modules       |
-| `RES-0023` | L1+   | Interface-replayed extern function is shadowed by an incompatible local extern declaration |
-| `RES-0029` | All   | Import refers to an unknown module                                                         |
-| `RES-0030` | L1+   | Duplicate name in explicit export manifest                                                 |
-| `RES-0031` | L1+   | Explicit export manifest names an unknown top-level symbol                                 |
-| `RES-0032` | L1+   | Selective import names a symbol that the imported module does not export                   |
-| `RES-0033` | L1+   | Duplicate import alias in the same module                                                  |
-| `RES-0034` | L1+   | Name is used both as an import alias and as a visible symbol in the same module            |
-| `RES-0035` | L1+   | Redundant selective import names symbols already imported from the same module             |
-| `RES-0036` | All   | Duplicate open import declaration for the same module                                      |
-| `RES-0037` | L1+   | Exported surface references an unexported type                                             |
-| `RES-0038` | L1+   | Opaque type is used where transparent layout is required                                   |
-| `RES-0039` | L1+   | `opaque` export qualifier is applied to a non-type symbol                                  |
-| `RES-0040` | L1+   | Interface surface references a provider outside its semantic require closure               |
+| Code       | Level   | Meaning                                                                                    |
+| ---------- | ------- | ------------------------------------------------------------------------------------------ |
+| `RES-0010` | All     | Duplicate top-level definition in the same module                                          |
+| `RES-0011` | L0 only | Module-scope declaration uses the reserved intrinsic name `sizeof` or `ord`                |
+| `RES-0020` | All     | Imported extern function is shadowed by a compatible local extern declaration              |
+| `RES-0021` | All     | Imported symbol is shadowed by a local definition                                          |
+| `RES-0022` | All     | Ambiguous unqualified import: the same symbol name is imported from multiple modules       |
+| `RES-0023` | L1+     | Interface-replayed extern function is shadowed by an incompatible local extern declaration |
+| `RES-0029` | All     | Import refers to an unknown module                                                         |
+| `RES-0030` | L1+     | Duplicate name in explicit export manifest                                                 |
+| `RES-0031` | L1+     | Explicit export manifest names an unknown top-level symbol                                 |
+| `RES-0032` | L1+     | Selective import names a symbol that the imported module does not export                   |
+| `RES-0033` | L1+     | Duplicate import alias in the same module                                                  |
+| `RES-0034` | L1+     | Name is used both as an import alias and as a visible symbol in the same module            |
+| `RES-0035` | L1+     | Redundant selective import names symbols already imported from the same module             |
+| `RES-0036` | All     | Duplicate open import declaration for the same module                                      |
+| `RES-0037` | L1+     | Exported surface references an unexported type                                             |
+| `RES-0038` | L1+     | Opaque type is used where transparent layout is required                                   |
+| `RES-0039` | L1+     | `opaque` export qualifier is applied to a non-type symbol                                  |
+| `RES-0040` | L1+     | Interface surface references a provider outside its semantic require closure               |
 
 ## Signature Analysis and Type Resolution for Type Declarations, Type Aliases, and Type References
 

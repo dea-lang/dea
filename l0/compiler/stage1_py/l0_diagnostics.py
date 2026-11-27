@@ -168,6 +168,7 @@ DIAGNOSTIC_CODE_FAMILIES = {
     ],
     "RES": [
         "RES-0010",
+        "RES-0011",
         "RES-0020",
         "RES-0021",
         "RES-0022",

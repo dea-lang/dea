@@ -1,6 +1,6 @@
 # L0 Language and Runtime Design Decisions
 
-Version: 2026-11-25
+Version: 2026-11-27
 
 This document records rationale and policy decisions.
 
@@ -174,8 +174,11 @@ short-circuiting behavior with explicit type semantics.
 
 ### 4.4 Language intrinsics and type introspection
 
-- `sizeof` exists as a language intrinsic and returns `int`.
-- `ord` is a language intrinsic for enum tag introspection and returns `int`.
+- Bare `sizeof(T)` and `sizeof(expr)` return the size as an `int`. Bare `ord(enum_value)` returns the zero-based variant
+  ordinal as an `int`.
+- Both names are reserved for intrinsics at module scope. A module declaration named `sizeof` or `ord` is a `RES-0011`
+  error, even when unused. Fields and function-local bindings can use either name.
+- Qualified calls use ordinary owner lookup. L0 provides no intrinsic module.
 
 ## 5. Early I/O Model
 
@@ -193,7 +196,8 @@ See also: [reference/standard-library.md](standard-library.md) for the current `
 
 ## 6. Name Disambiguation via Qualified References
 
-Qualified names (`module.path::Name`) are used for cross-module disambiguation when open imports conflict.
+Qualified names (`module.path::Name`) select declarations owned by that module. Qualifying a reference with the current
+module excludes names introduced by open imports.
 
 Rationale:
 

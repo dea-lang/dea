@@ -1,0 +1,23 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module reserved;
+
+func sizeof() {}
+func ord() {}
+extern func sizeof();
+extern func ord();
+struct sizeof {}
+struct ord {}
+enum sizeof { First; }
+enum ord { Second; }
+enum Tagged {
+    sizeof;
+    ord(value: int);
+}
+type sizeof = int;
+type ord = int;
+let sizeof = 1;
+let ord = 2;

@@ -34,7 +34,7 @@ class StatementFlow:
             func_env: The function's environment containing AST and module info.
             func_type: The function's resolved signature.
         """
-        self.state._current_func_env = func_env
+        self.state._current_module = func_env.module_name
         self.state._current_func_type = func_type
 
         # Root scope: one frame containing parameters
@@ -57,7 +57,7 @@ class StatementFlow:
             )
 
         self.state._local_scopes = []
-        self.state._current_func_env = None
+        self.state._current_module = None
         self.state._current_func_type = None
 
     def _check_dead_liveness_block(self, block: Block, *, check_return_paths: bool) -> StmtFlow:
@@ -338,10 +338,10 @@ class StatementFlow:
         if isinstance(stmt, DropStmt):
             var_ty = self.lookup._lookup_local(stmt.name)
             if var_ty is None:
-                assert self.state._current_func_env is not None
+                assert self.state._current_module is not None
                 sym_result = resolve_symbol(
                     self.state.module_envs,
-                    self.state._current_func_env.module_name,
+                    self.state._current_module,
                     stmt.name,
                 )
                 if sym_result.symbol is not None and sym_result.symbol.kind is SymbolKind.LET:

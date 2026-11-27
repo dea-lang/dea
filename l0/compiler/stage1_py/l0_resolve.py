@@ -111,11 +111,7 @@ def resolve_symbol(
     module_name = ".".join(module_path) if module_path else current_module
     current_env = module_envs.get(current_module)
 
-    # Treat lookups qualified with the current module as unqualified
-    if module_path is not None and module_name == current_module:
-        module_path = None
-
-    if module_path and require_import:
+    if module_path and module_name != current_module and require_import:
         if current_env is None:
             return SymbolResolution(None, ResolveErrorKind.UNKNOWN_MODULE, module_name, name)
         if not _is_imported(current_env, module_name):

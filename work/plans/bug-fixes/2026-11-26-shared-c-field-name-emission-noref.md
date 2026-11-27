@@ -31,7 +31,7 @@
   - `l0/compiler/stage2_l0/tests/l0c_build_run_test.py`
   - `l1/compiler/tests/l1c_build_run_multi_cu_test.py`
 - Related:
-  - [l0/work/plans/bug-fixes/2026-11-21-module-qualified-lookup-noref.md](../../../l0/work/plans/bug-fixes/2026-11-21-module-qualified-lookup-noref.md)
+  - [l0/work/plans/bug-fixes/closed/2026-11-21-module-qualified-lookup-noref.md](../../../l0/work/plans/bug-fixes/closed/2026-11-21-module-qualified-lookup-noref.md)
   - [l0/docs/reference/c-backend-design.md](../../../l0/docs/reference/c-backend-design.md)
   - [l1/docs/reference/c-backend-design.md](../../../l1/docs/reference/c-backend-design.md)
 - Repro: Save the example below as `main.l0` or `main.l1`; run the target compiler with `--check`, then `--run`.
