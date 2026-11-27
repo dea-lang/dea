@@ -8,12 +8,63 @@ module expr_types.initializers;
 
 import std.vector;
 import ast;
+import driver;
 import name_resolver;
 import signatures;
 import symbols;
 import types;
 import expr_types.state;
 import expr_types.expr;
+import expr_types.lookup;
+
+/**
+ * Find the first operand outside the static subset in a successfully typed initializer.
+ *
+ * @param self Checker positioned in the binding's module.
+ * @param expr_id Initializer expression to inspect.
+ * @return The offending node borrowed from the current arena, or null for a static expression.
+ */
+func etc_non_static_initializer(self: ExpressionTypeChecker*, expr_id: ExprId) -> ExprNode*? {
+    let arena = (self.current_unit as DriverUnit*).parse_result.expr_arena;
+    let expr = expr_arena_get(arena, expr_id);
+    match (expr.kind) {
+        EX_INT => { return null; }
+        EX_BYTE => { return null; }
+        EX_BOOL => { return null; }
+        EX_STRING => { return null; }
+        EX_NULL => { return null; }
+        EX_PAREN => { return etc_non_static_initializer(self, expr.expr_a); }
+        EX_VAR_REF => {
+            let sym = etc_lookup_symbol(self, expr.text_value, expr.module_path, expr.name_qualifier);
+            if (sym != null && sig_symbol_is_zero_field_enum_variant(sym as Symbol*)) return null;
+        }
+        EX_CALL => {
+            let callee = expr_arena_get(arena, expr.expr_a);
+            if (expr_is_bare_name(callee, "sizeof")) return null;
+            if (ord(callee.kind) != ord(EX_VAR_REF)) return expr;
+            let args = expr.ids as VectorBase*;
+            if (expr_is_bare_name(callee, "ord")) {
+                return etc_non_static_initializer(self, id_vec_get(args, 0));
+            }
+            let sym = etc_lookup_symbol(self, callee.text_value, callee.module_path, callee.name_qualifier);
+            if (sym == null) return expr;
+            let target = sym as Symbol*;
+            let is_constructor = ord(target.kind) == ord(SYM_STRUCT) || ord(target.kind) == ord(SYM_ENUM_VARIANT) ||
+                (ord(target.kind) == ord(SYM_TYPE_ALIAS) && target.resolved_type != null &&
+                 ord((target.resolved_type as Type*).kind) == ord(TY_STRUCT));
+            if (!is_constructor) return expr;
+            if (args != null) {
+                for (let i = 0; i < vec_size(args); i = i + 1) {
+                    let invalid = etc_non_static_initializer(self, id_vec_get(args, i));
+                    if (invalid != null) return invalid;
+                }
+            }
+            return null;
+        }
+        _ => {}
+    }
+    return expr;
+}
 
 /**
  * Type-check module-scope `let` initializer expressions.
@@ -51,6 +102,14 @@ func etc_check_top_level_initializers(self: ExpressionTypeChecker*, root: Module
             etc_diag_error(self, "TYP-0050", "variable cannot have type 'void'", root.filename, decl.span);
             continue;
         }
-        etc_check_initializer_expr(self, expected as Type*, decl.value, decl.name, root.filename, decl.span);
+        let errors_before = self.result.diags.error_count;
+        if (etc_check_initializer_expr(self, expected as Type*, decl.value, decl.name, root.filename, decl.span) &&
+            self.result.diags.error_count == errors_before) {
+            let invalid = etc_non_static_initializer(self, decl.value);
+            if (invalid != null) {
+                etc_diag_error(self, "TYP-0054", "A top-level let initializer must be static.",
+                    root.filename, (invalid as ExprNode*).span);
+            }
+        }
     }
 }

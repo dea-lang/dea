@@ -1,0 +1,15 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module provider;
+
+enum Choice { Empty; One(value: int); }
+
+/**
+ * Return an integer from an ordinary function.
+ *
+ * @return One.
+ */
+func value() -> int { return 1; }

@@ -1,7 +1,7 @@
 # ADR-0013: Compiler Diagnostic Collection, Parser Recovery, and Phase Barriers
 
 - Decision date: 2026-06-09
-- Last edited: 2026-10-06
+- Last edited: 2026-11-27
 - Status: Accepted
 
 ## Context
@@ -74,6 +74,9 @@ downstream gates.
   broader collector, parser recovery, and phase-gating contract.
 
 ## Related Plans
+
+- [l0/work/plans/bug-fixes/closed/2026-11-27-non-static-top-level-initializers-noref.md](../../l0/work/plans/bug-fixes/closed/2026-11-27-non-static-top-level-initializers-noref.md):
+  applied the source-checking phase barrier to non-static L0 top-level initializers
 
 - [work/plans/bug-fixes/closed/2026-10-06-shared-declaration-recovery-noref.md](../../work/plans/bug-fixes/closed/2026-10-06-shared-declaration-recovery-noref.md):
   preserved declaration scope after signature and declaration-body failures across all four L0/L1 frontends

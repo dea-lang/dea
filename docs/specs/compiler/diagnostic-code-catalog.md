@@ -498,6 +498,7 @@ diagnostic.
 | `TYP-0051` | All     | Initializer for type mismatch                                                                          |
 | `TYP-0052` | All     | Cannot infer type from 'null'; explicit type required                                                  |
 | `TYP-0053` | All     | Initializer is 'void', cannot assign to variable                                                       |
+| `TYP-0054` | L0 only | A top-level let initializer must be static.                                                            |
 | `TYP-0060` | All     | Unknown variable                                                                                       |
 | `TYP-0061` | All     | Cannot drop non-pointer type                                                                           |
 | `TYP-0062` | All     | Use of dropped variable                                                                                |

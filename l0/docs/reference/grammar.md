@@ -105,6 +105,7 @@ TopLevelDecl        ::=     FunctionDecl
                       |     StructDecl
                       |     EnumDecl
                       |     TypeAliasDecl
+                      |     LetDecl
                       |     ExternFuncDecl
 ```
 
@@ -155,6 +156,16 @@ TypeAliasDecl ::= "type" Ident "=" Type ";"
 ```
 
 Used for things like `type RawPtr = void*;`.
+
+### 3.6 Top-level bindings
+
+```ebnf
+LetDecl ::= "let" Ident ( ":" Type )? "=" Expr ";"
+```
+
+A top-level initializer must be static. Literals, value constructors with static arguments, `sizeof`, and `ord` of a
+statically known variant can initialize a binding. A function can use `new` or call another function to initialize a
+local binding at runtime.
 
 ## 4. Types
 

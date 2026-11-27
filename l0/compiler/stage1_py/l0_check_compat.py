@@ -63,14 +63,14 @@ class TypeCompatibility:
         """Check if type is 'int' or 'byte'."""
         return isinstance(typ, BuiltinType) and (typ.name == "int" or typ.name == "byte")
 
-    def _get_const_int_for_explicit_cast(self, expr: Expr) -> int | None:
-        """Extract a compile-time integer value from a cast operand when available."""
+    def _const_int_value(self, expr: Expr) -> int | None:
+        """Extract an integer literal value through parentheses and unary negation."""
         if isinstance(expr, IntLiteral):
             return expr.value
         if isinstance(expr, ParenExpr):
-            return self._get_const_int_for_explicit_cast(expr.inner)
+            return self._const_int_value(expr.inner)
         if isinstance(expr, UnaryOp) and expr.op == "-":
-            inner = self._get_const_int_for_explicit_cast(expr.operand)
+            inner = self._const_int_value(expr.operand)
             if inner is not None:
                 return -inner
         return None

@@ -3,7 +3,7 @@
  * Copyright (c) 2026 gwz
  */
 
-/** Static initializer classification and constructor lowering. */
+/** Lower checked static initializers to C file-scope constants. */
 module backend.initializers;
 
 import std.vector;
@@ -66,63 +66,6 @@ func be_emit_bare_variant_static_initializer(self: Backend*, expr_id: ExprId, ex
 }
 
 /**
- * Check whether an expression belongs to the supported static-initializer subset.
- *
- * @param self Backend state to inspect.
- * @param expr_id Expression id to inspect.
- * @return `true` when the expression can be emitted at C file scope.
- */
-func be_is_static_let_initializer(self: Backend*, expr_id: ExprId) -> bool {
-    let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
-    match (expr.kind) {
-        EX_INT => { return true; }
-        EX_BYTE => { return true; }
-        EX_BOOL => { return true; }
-        EX_STRING => { return true; }
-        EX_NULL => { return true; }
-        EX_PAREN => { return be_is_static_let_initializer(self, expr.expr_a); }
-        EX_VAR_REF => {
-            let sym = be_lookup_symbol(self, expr.text_value, expr.module_path, expr.name_qualifier);
-            return sym != null && sig_symbol_is_zero_field_enum_variant(sym as Symbol*);
-        }
-        EX_CALL => {
-            let callee = expr_arena_get(be_current_expr_arena(self), expr.expr_a);
-            if (ord(callee.kind) != ord(EX_VAR_REF)) {
-                return false;
-            }
-            let args = expr.ids as VectorBase*;
-            let arg_count = 0;
-            if (args != null) arg_count = vec_size(args);
-            if (expr_is_bare_name(callee, "sizeof")) {
-                return arg_count == 1;
-            }
-            if (expr_is_bare_name(callee, "ord")) {
-                return arg_count == 1 && be_is_static_let_initializer(self, id_vec_get(args, 0));
-            }
-            let sym2 = be_lookup_symbol(self, callee.text_value, callee.module_path, callee.name_qualifier);
-            if (sym2 == null) {
-                return false;
-            }
-            let target = sym2 as Symbol*;
-            let is_constructor = ord(target.kind) == ord(SYM_STRUCT) ||
-                ord(target.kind) == ord(SYM_ENUM_VARIANT) ||
-                (ord(target.kind) == ord(SYM_TYPE_ALIAS) && target.resolved_type != null &&
-                 ord((target.resolved_type as Type*).kind) == ord(TY_STRUCT));
-            if (!is_constructor) {
-                return false;
-            }
-            for (let i = 0; i < arg_count; i = i + 1) {
-                if (!be_is_static_let_initializer(self, id_vec_get(args, i))) {
-                    return false;
-                }
-            }
-            return true;
-        }
-        _ => { return false; }
-    }
-}
-
-/**
  * Resolve the enum-variant symbol named by one static constructor expression.
  *
  * @param self Backend state to inspect.
@@ -131,6 +74,9 @@ func be_is_static_let_initializer(self: Backend*, expr_id: ExprId) -> bool {
  */
 func be_static_variant_symbol(self: Backend*, expr_id: ExprId) -> Symbol*? {
     let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
+    while (ord(expr.kind) == ord(EX_PAREN)) {
+        expr = expr_arena_get(be_current_expr_arena(self), expr.expr_a);
+    }
     let name_expr = expr;
     if (ord(expr.kind) == ord(EX_CALL)) {
         name_expr = expr_arena_get(be_current_expr_arena(self), expr.expr_a);
@@ -181,9 +127,6 @@ func be_emit_let_initializer(self: Backend*, expr_id: ExprId, expected_type: Typ
     let expr = expr_arena_get(be_current_expr_arena(self), expr_id);
     if (ord(expr.kind) == ord(EX_PAREN)) {
         return be_emit_let_initializer(self, expr.expr_a, expected_type);
-    }
-    if (!be_is_static_let_initializer(self, expr_id)) {
-        return be_ice_string("[ICE-1181] unsupported top-level let initializer");
     }
     if (ord(expr.kind) != ord(EX_NULL) && ord(expected_type.kind) == ord(TY_NULLABLE)) {
         let inner = expected_type.inner as Type*;

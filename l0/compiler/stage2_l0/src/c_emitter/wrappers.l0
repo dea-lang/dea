@@ -125,6 +125,20 @@ func cem_emit_optional_wrapper_for_defined_type(self: CEmitter*, inner: Type*) {
 }
 
 /**
+ * Collect optional wrappers from a map of resolved types.
+ *
+ * @param self Emitter to update.
+ * @param type_map Map of borrowed type pointers to scan.
+ */
+func cem_collect_type_map_wrappers(self: CEmitter*, type_map: StringPtrMap*) {
+    for (let i = 0; i < spm_capacity(type_map); i = i + 1) {
+        if (spm_slot_occupied(type_map, i)) {
+            cem_collect_opt_wrappers_from_type(self, spm_slot_value(type_map, i) as Type*);
+        }
+    }
+}
+
+/**
  * Scan analysis metadata and collect every needed optional wrapper.
  *
  * @param self Emitter to update.
@@ -138,11 +152,7 @@ func cem_prepare_optional_wrappers(self: CEmitter*) {
 
     let tables = analysis.signatures as SignatureTables*;
 
-    for (let i = 0; i < spm_capacity(tables.func_types); i = i + 1) {
-        if (spm_slot_occupied(tables.func_types, i)) {
-            cem_collect_opt_wrappers_from_type(self, spm_slot_value(tables.func_types, i) as Type*);
-        }
-    }
+    cem_collect_type_map_wrappers(self, tables.func_types);
 
     for (let struct_info_i = 0; struct_info_i < spm_capacity(tables.struct_infos); struct_info_i = struct_info_i + 1) {
         if (!spm_slot_occupied(tables.struct_infos, struct_info_i)) {
@@ -168,11 +178,7 @@ func cem_prepare_optional_wrappers(self: CEmitter*) {
         }
     }
 
-    for (let i = 0; i < spm_capacity(tables.let_types); i = i + 1) {
-        if (spm_slot_occupied(tables.let_types, i)) {
-            cem_collect_opt_wrappers_from_type(self, spm_slot_value(tables.let_types, i) as Type*);
-        }
-    }
+    cem_collect_type_map_wrappers(self, tables.let_types);
 
     // A local annotation can require a wrapper even if the binding is never read.
     if (analysis.names != null) {
@@ -197,11 +203,8 @@ func cem_prepare_optional_wrappers(self: CEmitter*) {
         }
     }
 
-    for (let expr_type_i = 0; expr_type_i < spm_capacity(analysis.expr_types); expr_type_i = expr_type_i + 1) {
-        if (spm_slot_occupied(analysis.expr_types, expr_type_i)) {
-            cem_collect_opt_wrappers_from_type(self, spm_slot_value(analysis.expr_types, expr_type_i) as Type*);
-        }
-    }
+    cem_collect_type_map_wrappers(self, analysis.expr_types);
+    cem_collect_type_map_wrappers(self, analysis.intrinsic_targets);
 }
 
 /**

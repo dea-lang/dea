@@ -1,6 +1,6 @@
 # L0 C Backend Design
 
-Version: 2026-11-26
+Version: 2026-11-27
 
 This is the canonical backend implementation document for the current C backend. Stage 1 remains the behavioral oracle;
 Stage 2 is expected to emit the same C and reuse the same diagnostic/ICE codes for equivalent backend conditions.
@@ -54,7 +54,7 @@ Stage 1 `Backend.generate()` delegates the complete translation-unit operation t
 | Pointer checks and expected-type conversion                                     | `l0_backend_convert`      | `backend.convert`      |
 | ARC temporary materialization, retention, value cleanup, and drop               | `l0_backend_lifetime`     | `backend.lifetime`     |
 | Type dependency ordering and definition emission                                | `l0_backend_ordering`     | `backend.ordering`     |
-| Static initializer classification and constructors                              | `l0_backend_initializers` | `backend.initializers` |
+| Static initializer and constructor emission                                     | `l0_backend_initializers` | `backend.initializers` |
 | Function/module declarations and function lifecycle                             | `l0_backend_module`       | `backend.output`       |
 | Recursive expressions, statements, control flow, and scheduled cleanup          | `l0_backend_lowering`     | `backend.lowering`     |
 
@@ -92,9 +92,11 @@ The generated C file is organized in this order in both stages:
 
 Current backend target is a **single C translation unit**.
 
-Top-level `let` storage is emitted as file-scope `static` C. Initializers are restricted to the supported C99 constant
-subset; Stage 2 checks them against the resolved declaration type and lowers statically known `ord(Variant)` calls to
-direct enum-tag constants. Non-static top-level initializer expressions are rejected before host compilation.
+Top-level `let` storage is emitted as file-scope `static` C. Both stages check the initializer during source checking.
+Accepted forms include literals, typed `null`, bare zero-field variants, and struct or variant constructors with static
+arguments. Parentheses preserve staticness. `sizeof` uses only its operand's type, and `ord` of a static variant lowers
+to its C enum-tag constant. An evaluated function call, `new`, a variable read, or another expression outside this
+subset produces `TYP-0054` at the offending expression.
 
 ## Type Lowering
 

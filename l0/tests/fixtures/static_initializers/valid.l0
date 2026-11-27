@@ -1,0 +1,40 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module valid;
+import provider;
+
+struct Pair { first: int; second: int; }
+type Two = Pair;
+struct Box { pair: Two; }
+
+let calls: int = 0;
+let sizes: Box = Box(Two(sizeof(allocate()), sizeof(new int(1))));
+let optional_size: int = sizeof(Box?);
+let tag: int? = ord((provider::One(sizeof(int))));
+let empty: int = ord((provider::Empty));
+let missing: int*? = null;
+
+/**
+ * Count and perform an allocation.
+ *
+ * @return An owned integer pointer.
+ */
+func allocate() -> int* { calls = calls + 1; return new int(1); }
+
+/**
+ * Verify static values and run an allocating helper inside a function.
+ *
+ * @return Zero on success.
+ */
+func main() -> int {
+    if (calls != 0 || sizes.pair.first != sizeof(int*) || sizes.pair.second != sizeof(int*)) return 1;
+    if ((tag as int) != 1 || empty != 0 || missing != null) return 2;
+    if (optional_size < sizeof(Box)) return 3;
+    let p = allocate();
+    let n = *p;
+    drop p;
+    return n - calls;
+}

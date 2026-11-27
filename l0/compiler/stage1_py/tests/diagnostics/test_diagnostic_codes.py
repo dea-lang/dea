@@ -308,6 +308,7 @@ TYP_TRIGGERS = {
         func v() -> void {}
         func foo() -> int { let x = v(); return 0; }
     """),
+    "TYP-0054": "module main; let p: int* = new int(1);",
     "TYP-0060": dedent("""\
         module main;
         func foo() -> int { drop unknown; return 0; }

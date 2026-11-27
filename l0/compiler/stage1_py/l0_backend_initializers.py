@@ -1,18 +1,20 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # Copyright (c) 2025-2026 gwz
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from l0_ast import Expr, IntLiteral, StringLiteral, BoolLiteral, VarRef, CallExpr, ParenExpr, NullLiteral, NewExpr, ByteLiteral
 from l0_name_resolver import SymbolKind
 from l0_types import Type, StructType, EnumType, NullableType
 from l0_backend_state import BackendState
+from l0_backend_convert import OwnershipConversion
 
 
 @dataclass
 class StaticInitializers:
-    """Static initializer classification and constructor recursion."""
+    """Lower checked static initializers to C file-scope constants."""
 
     state: BackendState
+    convert: OwnershipConversion
 
     def _emit_let_initializer(self, expr: Expr, expected_type: Type) -> str:
         """Generate C initializer expression for a top-level let.
@@ -31,8 +33,10 @@ class StaticInitializers:
         """
         while isinstance(expr, ParenExpr):
             expr = expr.inner
-        if isinstance(expected_type, NullableType) and isinstance(expr, (ByteLiteral, IntLiteral)):
+        if isinstance(expected_type, NullableType) and not isinstance(expr, NullLiteral):
             payload = self._emit_let_initializer(expr, expected_type.inner)
+            if self.state.emitter.types.is_niche_nullable(expected_type):
+                return payload
             return self.state.emitter.values.emit_struct_static_initializer([("has_value", "1"), ("value", payload)])
         if isinstance(expr, IntLiteral):
             return self.state.emitter.values.emit_int_literal(expr.value)
@@ -47,6 +51,18 @@ class StaticInitializers:
         elif isinstance(expr, VarRef):
             return self._emit_bare_variant_static_initializer(expr, expected_type)
         elif isinstance(expr, CallExpr) and isinstance(expr.callee, VarRef):
+            if expr.bare_callee_name() == "sizeof":
+                return self.convert._emit_sizeof_intrinsic(expr)
+            if expr.bare_callee_name() == "ord":
+                variant = expr.args[0]
+                while isinstance(variant, ParenExpr):
+                    variant = variant.inner
+                enum_type = self.state.analysis.expr_types[id(variant)]
+                name = variant.callee if isinstance(variant, CallExpr) else variant
+                if not isinstance(enum_type, EnumType) or not isinstance(name, VarRef):
+                    self.state.ice("[ICE-1181] unsupported top-level ord initializer", node=variant)
+                tag = self.state.emitter.names.emit_enum_tag(enum_type, name.name)
+                return self.state.emitter.values.emit_cast("l0_int", tag)
             # Struct or enum variant construction: Point(1, 2) or Color.Red
             return self._emit_const_constructor(expr, expected_type)
         elif isinstance(expr, NewExpr):

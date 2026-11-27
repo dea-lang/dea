@@ -1,0 +1,35 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module invalid;
+import provider;
+
+struct Box { n: int; }
+extern func external_value() -> int;
+
+/**
+ * Allocate an integer.
+ *
+ * @return An owned integer pointer.
+ */
+func make_ptr() -> int* { return new int(1); }
+
+let p: int* = make_ptr();
+let q: int* = (new int(1));
+let imported: int = provider::value();
+let external: int = external_value();
+let nested: Box = Box((value()));
+let choice: Choice = Empty;
+let dynamic_tag: int = ord(choice);
+let dynamic_payload: int = ord(One(value()));
+let read: Choice = choice;
+let expression: int = 1 + 2;
+
+/**
+ * Provide an entry point for all compiler modes.
+ *
+ * @return Zero.
+ */
+func main() -> int { return 0; }

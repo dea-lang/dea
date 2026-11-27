@@ -17,7 +17,7 @@ import sys
 import tempfile
 import textwrap
 
-from tool_test_common import resolve_tool
+from tool_test_common import native_path, resolve_tool
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -83,7 +83,7 @@ def write_case_source(artifact_dir: Path, case_name: str, source: str) -> Path:
 
 def run_compiler(
     case_name: str,
-    source: str,
+    source: str | Path,
     artifact_dir: Path,
     *args: str,
 ) -> tuple[int, str, str]:
@@ -92,12 +92,12 @@ def run_compiler(
     compiler = stage2_compiler()
     assert_true(compiler.is_file(), f"missing repo-local Stage 2 compiler: {compiler}", artifact_dir)
 
-    source_path = write_case_source(artifact_dir, case_name, source)
+    source_path = source if isinstance(source, Path) else write_case_source(artifact_dir, case_name, source)
     stdout_path = artifact_dir / f"{case_name}.stdout.log"
     stderr_path = artifact_dir / f"{case_name}.stderr.log"
 
     run_result = subprocess.run(
-        [str(compiler), *args, str(source_path)],
+        [str(compiler), *args, native_path(source_path)],
         cwd=REPO_ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -393,33 +393,27 @@ def test_toplet_static_intrinsics(artifact_dir: Path) -> None:
     run_ok("toplet_static_intrinsics", 0, source, artifact_dir)
 
 
-def test_toplet_nonconstant_ord_rejected(artifact_dir: Path) -> None:
-    """An `ord` of a top-level variable must not become an invalid C initializer."""
-
-    actual_rc, stdout, stderr = run_compiler(
-        "toplet_nonconstant_ord_rejected",
-        """
-        module main;
-
-        enum Choice {
-            None;
-        }
-
-        let choice: Choice = None;
-        let tag: int = ord(choice);
-
-        func main() -> int {
-            return tag;
-        }
-        """,
-        artifact_dir,
-        "--build",
-    )
-    output = stdout + stderr
-    assert_true(actual_rc != 0, "non-constant top-level ord should fail lowering", artifact_dir)
-    assert_true("[ICE-1181]" in output, "expected the static-initializer restriction", artifact_dir)
-    assert_true("initializer element is not constant" not in output,
-        "invalid C should not reach the host compiler", artifact_dir)
+def test_static_initializer_forms(artifact_dir: Path) -> None:
+    """Run static constructors and intrinsics, and reject runtime operands before lowering."""
+    fixtures = L0_ROOT / "tests" / "fixtures" / "static_initializers"
+    rc, _, stderr = run_compiler("static_valid", fixtures / "valid.l0", artifact_dir,
+                                 "--run", "--project-root", native_path(fixtures))
+    assert_true(rc == 0, stderr, artifact_dir)
+    rc, _, stderr = run_compiler("static_type_errors", fixtures / "type_errors.l0", artifact_dir,
+                                 "--check", "--project-root", native_path(fixtures))
+    codes = sorted(re.findall(r"error: \[([A-Z]+-\d+)\]", stderr))
+    assert_true(rc == 1 and codes == ["SIG-0030", "TYP-0183", "TYP-0189", "TYP-0310"], stderr, artifact_dir)
+    invalid = fixtures / "invalid.l0"
+    lines = invalid.read_text(encoding="utf-8").splitlines()
+    for mode in ("--check", "--gen", "--build", "--run"):
+        rc, stdout, stderr = run_compiler("static_invalid_" + mode[2:], invalid, artifact_dir,
+                                          mode, "--project-root", native_path(fixtures))
+        assert_true(rc == 1 and not stdout and "[ICE-" not in stderr, stderr, artifact_dir)
+        locations = re.findall(r"invalid\.l0:(\d+):(\d+): error: \[TYP-0054\] "
+                               r"A top-level let initializer must be static\.$", stderr, re.MULTILINE)
+        operands = [lines[int(line) - 1][int(column) - 1:] for line, column in locations]
+        assert_true(operands == ["make_ptr();", "new int(1));", "provider::value();", "external_value();",
+                                 "value()));", "choice);", "value()));", "choice;", "1 + 2;"], stderr, artifact_dir)
 
 
 def test_toplet_string_reassignment_arc(artifact_dir: Path) -> None:
@@ -493,7 +487,7 @@ def main() -> int:
         test_toplet_bare_payload_variant_diagnostic,
         test_toplet_initializer_type_mismatch,
         test_toplet_static_intrinsics,
-        test_toplet_nonconstant_ord_rejected,
+        test_static_initializer_forms,
         test_toplet_string_reassignment_arc,
         test_drop_toplet_pointer_diagnostic,
     ]

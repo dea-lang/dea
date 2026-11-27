@@ -272,6 +272,8 @@ class CTypes:
         # Also scan inferred expr types (covers locals/temps that never appear in sigs)
         for t in self.state.analysis.expr_types.values():
             self._collect_opt_wrappers_from_type(t)
+        for t in self.state.analysis.intrinsic_targets.values():
+            self._collect_opt_wrappers_from_type(t)
 
     def emit_optional_wrappers(self, *, early: bool) -> None:
         """Emit C typedef declarations for collected optional wrapper types.

@@ -667,7 +667,7 @@ class ExpressionInference:
                 and isinstance(target_ty, BuiltinType)
                 and target_ty.name == "byte"
         ):
-            const_int = self.compat._get_const_int_for_explicit_cast(expr.expr)
+            const_int = self.compat._const_int_value(expr.expr)
             if const_int is not None and (const_int < 0 or const_int > 255):
                 return self.state._error(
                     expr,

@@ -23,6 +23,37 @@ from l0_parser import Parser
 STAGE1_ROOT = Path(__file__).resolve().parents[2]
 RUNTIME_PATH = STAGE1_ROOT.parent / "shared" / "runtime"
 STDLIB_PATH = STAGE1_ROOT.parent / "shared" / "l0" / "stdlib"
+STATIC_FIXTURES = STAGE1_ROOT.parents[1] / "tests" / "fixtures" / "static_initializers"
+
+
+def test_static_initializer_intrinsics(search_paths, compile_and_run, tmp_path):
+    """Generate and execute file-scope constructors, sizes and enum tag constants."""
+    search_paths.add_project_root(STATIC_FIXTURES)
+    result = L0Driver(search_paths=search_paths).analyze("valid")
+    assert not result.has_errors(), result.diagnostics
+    success, _, stderr = compile_and_run(Backend(result).generate(), tmp_path, strict_c99=True)
+    assert success, stderr
+
+
+def test_non_static_initializer_diagnostics(search_paths):
+    """Diagnose each runtime operation at its source location during checking."""
+    search_paths.add_project_root(STATIC_FIXTURES)
+    result = L0Driver(search_paths=search_paths).analyze("invalid")
+    errors = [d for d in result.diagnostics if d.kind == "error"]
+    lines = (STATIC_FIXTURES / "invalid.l0").read_text(encoding="utf-8").splitlines()
+    assert all(d.message == "[TYP-0054] A top-level let initializer must be static." for d in errors)
+    assert [lines[d.line - 1][d.column - 1:] for d in errors] == [
+        "make_ptr();", "new int(1));", "provider::value();", "external_value();", "value()));",
+        "choice);", "value()));", "choice;", "1 + 2;",
+    ]
+
+
+def test_static_initializer_type_errors(search_paths):
+    """Report earlier inference, name, arity and type errors without a staticness cascade."""
+    search_paths.add_project_root(STATIC_FIXTURES)
+    result = L0Driver(search_paths=search_paths).analyze("type_errors")
+    codes = [d.message.split()[0] for d in result.diagnostics if d.kind == "error"]
+    assert sorted(codes) == ["[SIG-0030]", "[TYP-0183]", "[TYP-0189]", "[TYP-0310]"]
 
 
 def write_tmp(tmp_path, name: str, src: str):
