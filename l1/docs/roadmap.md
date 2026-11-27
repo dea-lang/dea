@@ -483,6 +483,8 @@ file-watch design, and concurrency now belong to L2.
 
 ## Active standalone plans
 
+- Shared bug fix [2026-11-26-shared-c-field-name-emission-noref][field-names] covers C member names for struct and enum
+  payload fields in both L0 stages and L1.
 - [2026-11-21-match-wildcard-dispatch-and-return-flow-noref][match-wildcard] tracks wildcard precedence and the
   disagreement between return analysis and executable dispatch.
 - Feature [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] is the
@@ -504,6 +506,7 @@ design investigation. `implemented` means implementation is present but the plan
 | Readiness    | Plan                                                                                               | Remaining gate                                            |
 | ------------ | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | almost-ready | [2026-11-21-match-wildcard-dispatch-and-return-flow-noref][match-wildcard]                         | Select the precedence rule for enum match arms.           |
+| ready        | [2026-11-26-shared-c-field-name-emission-noref][field-names]                                       | Native failure reproduced in all three targets.           |
 | ready        | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied. |
 | not-ready    | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                     |
 | not-ready    | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.       |
@@ -633,6 +636,7 @@ update to be promoted to an initiative or plan:
 [env-text-reassessment]: ../work/plans/refactors/closed/2026-09-15-native-identity-environment-text-reassessment-noref.md
 [explicit-profiles]: ../work/initiatives/0010-explicit-profiles-and-composable-builds.md
 [export-imports]: ../work/plans/features/closed/2026-04-24-export-manifests-and-aliased-imports-noref.md
+[field-names]: ../../work/plans/bug-fixes/2026-11-26-shared-c-field-name-emission-noref.md
 [filesystem-io]: ../work/initiatives/closed/0005-filesystem-and-stream-io.md
 [fingerprint-blocker]: ../work/plans/bug-fixes/closed/2026-09-07-stage2-fingerprint-bridge-declaration-conflict-noref.md
 [fingerprint-gcc]: ../work/plans/bug-fixes/closed/2026-09-07-fingerprint-adapter-gcc-array-parameter-noref.md

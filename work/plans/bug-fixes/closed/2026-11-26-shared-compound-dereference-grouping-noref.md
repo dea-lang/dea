@@ -15,9 +15,9 @@
 - Origin: Establish the helper contract and C99 regression in L0 Stage 1.
 - Porting rule: Apply the same operand grouping and two-branch write test in L0 Stage 2, then in L1.
 - Target status:
-  - L0 Stage 1: Verified locally
-  - L0 Stage 2: Verified locally
-  - L1 canonical compiler: Verified locally
+  - L0 Stage 1: Implemented
+  - L0 Stage 2: Implemented
+  - L1 canonical compiler: Implemented
 - Subsystem: C expression emission for pointer lvalues
 - Modules:
   - `l0/compiler/stage1_py/l0_c_values.py`
@@ -59,6 +59,8 @@ expression. Lowering still selects the access mode and evaluates side-effectful 
   - Rationale: Parenthesizing the operand fulfills the existing lvalue contract using ordinary C syntax.
 
 ## Verification by target
+
+The project maintainer confirmed on 2026-11-26 that Unified CI passed for the shared dereference-grouping fix.
 
 Apple Clang 17 compiled all three targets' fixtures on macOS. The shared C99 fixture takes the actual expression
 returned by each emitter. Starting from `(left, right) = (1, 2)`, the true branch writes `11` and checks `(11, 2)`. The

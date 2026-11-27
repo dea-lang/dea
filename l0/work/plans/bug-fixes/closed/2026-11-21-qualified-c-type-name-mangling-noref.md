@@ -57,6 +57,8 @@ exercises `V?` and `v?` in one module. Reversing the imports exposed the opposit
 
 ## Verification
 
+The project maintainer confirmed on 2026-11-26 that Unified CI passed for the L0 qualified type-name fix.
+
 Local validation used Apple Clang from `l0/`.
 
 - Stage 1 passed 52 tests across the four backend pytest modules listed above, including strict C compilation in both
