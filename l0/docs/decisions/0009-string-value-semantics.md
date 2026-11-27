@@ -1,7 +1,7 @@
 # ADR-0009: ARC String Value Contract
 
 - Decision date: 2025-12-29
-- Last edited: 2026-05-20
+- Last edited: 2026-11-27
 - Status: Accepted
 
 ## Context
@@ -36,7 +36,8 @@ The original operator surface for string equality, ordering, and concatenation w
 
 ## Related Plans
 
-None (pre-plan era).
+- [l0/work/plans/bug-fixes/closed/2026-11-26-unicode-string-escapes-noref.md](../../work/plans/bug-fixes/closed/2026-11-26-unicode-string-escapes-noref.md)
+  restored byte equality between raw and escaped Unicode string literals in both L0 stages.
 
 ## Current Docs
 

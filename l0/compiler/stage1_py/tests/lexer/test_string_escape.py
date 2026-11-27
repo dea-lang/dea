@@ -1,7 +1,10 @@
 #  SPDX-License-Identifier: MIT OR Apache-2.0
 #  Copyright (c) 2026 gwz
 
-from l0_string_escape import decode_l0_string_token, encode_c_string_bytes
+import pytest
+
+from l0_lexer import Lexer, TokenKind
+from l0_string_escape import EscapeDecodeError, decode_l0_string_token, encode_c_string_bytes
 
 
 def test_decode_l0_string_token_simple_ascii():
@@ -16,8 +19,34 @@ def test_decode_l0_string_token_hex_and_octal():
     assert decode_l0_string_token(r"\x41\101") == b"AA"
 
 
-def test_decode_l0_string_token_unicode_to_utf8_bytes():
-    assert decode_l0_string_token(r"\u20AC") == "€".encode("utf-8")
+@pytest.mark.parametrize("spelling,expected", [
+    (r"\u00E9", b"\xc3\xa9"),
+    (r"\u20AC", b"\xe2\x82\xac"),
+    (r"\uD7FF", b"\xed\x9f\xbf"),
+    (r"\uE000", b"\xee\x80\x80"),
+    (r"\U0001F600", b"\xf0\x9f\x98\x80"),
+    (r"\U0010FFFF", b"\xf4\x8f\xbf\xbf"),
+    (r"\\u00E9", b"\\u00E9"),
+])
+def test_decode_l0_string_token_unicode_to_utf8_bytes(spelling, expected):
+    assert decode_l0_string_token(spelling) == expected
+
+
+@pytest.mark.parametrize("spelling", [
+    r"\uD800", r"\uDFFF", r"\U0000D800", r"\U0000DFFF", r"\U00110000", r"\UFFFFFFFF",
+])
+def test_invalid_scalar_in_lexer_and_decoder(spelling):
+    for quote in ("'", '"'):
+        token, eof = Lexer.from_source(f"\n  {quote}{spelling}{quote}").tokenize()
+        assert eof.kind == TokenKind.EOF
+        assert token.kind == TokenKind.LEXER_ERROR
+        diagnostic, = token.diagnostics
+        assert diagnostic.message.startswith("[LEX-0054]")
+        assert (diagnostic.line, diagnostic.column) == (2, 4)
+
+    with pytest.raises(EscapeDecodeError) as error:
+        decode_l0_string_token(spelling)
+    assert error.value.code == "unicode_out_of_range"
 
 
 def test_encode_c_string_bytes_ascii_passthrough():

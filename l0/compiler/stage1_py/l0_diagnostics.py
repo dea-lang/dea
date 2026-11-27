@@ -29,7 +29,7 @@ DIAGNOSTIC_CODE_FAMILIES = {
         "LEX-0051",
         "LEX-0052",
         "LEX-0053",
-        "LEX-0054", # Unicode code point out of range (currently not used in Stage 1)
+        "LEX-0054",
         "LEX-0059",
         "LEX-0060",
         "LEX-0061",

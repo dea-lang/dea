@@ -13,6 +13,8 @@ Covers:
   compile-and-run round-trips
 """
 
+from pathlib import Path
+
 import pytest
 
 from l0_ast import (
@@ -20,6 +22,32 @@ from l0_ast import (
     IntLiteral, ByteLiteral, StringLiteral, BoolLiteral, Block, )
 from l0_lexer import Lexer, TokenKind
 from l0_parser import Parser
+
+
+@pytest.mark.parametrize("name,expected", [
+    ("decoded", []),
+    ("duplicate", [("[TYP-0108]", 11)]),
+    ("invalid", [("[LEX-0054]", 9), ("[LEX-0054]", 14), ("[LEX-0054]", 19)]),
+])
+def test_unicode_escape_fixtures(name, expected, codegen_single, compile_and_run, tmp_path):
+    fixture = Path(__file__).resolve().parents[4] / "tests/fixtures/unicode_string_escapes" / f"{name}.l0"
+    c_code, diagnostics = codegen_single(name, fixture.read_text(encoding="utf-8"))
+    assert [(d.message.split()[0], d.line) for d in diagnostics] == expected
+    if expected:
+        assert c_code is None
+    else:
+        ok, _, stderr = compile_and_run(c_code, tmp_path)
+        assert ok, stderr
+
+
+def test_case_decoder_reports_invalid_scalar(analyze_single):
+    from l0_expr_types import ExpressionTypeChecker
+
+    result = analyze_single("main", "module main;")
+    patterns = ExpressionTypeChecker(result).patterns
+    assert patterns._case_literal_info(StringLiteral(r"\uD800")) is None
+    diagnostic, = result.diagnostics
+    assert diagnostic.message.startswith("[TYP-0109]")
 
 
 # ============================================================================
@@ -1051,7 +1079,6 @@ def test_codegen_case_string_rvalue_scrutinee(codegen_single, compile_and_run, t
 ])
 def test_wildcard_fallbacks(name, warnings, errors, analyze_single, compile_and_run, tmp_path):
     """Check each fallback's reachability, then execute each valid dispatch matrix."""
-    from pathlib import Path
     from l0_backend import Backend
 
     fixture = Path(__file__).resolve().parents[4] / "tests/fixtures/wildcard_fallbacks" / f"{name}.l0"

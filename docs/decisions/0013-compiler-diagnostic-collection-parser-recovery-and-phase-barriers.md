@@ -75,6 +75,9 @@ downstream gates.
 
 ## Related Plans
 
+- [l0/work/plans/bug-fixes/closed/2026-11-26-unicode-string-escapes-noref.md](../../l0/work/plans/bug-fixes/closed/2026-11-26-unicode-string-escapes-noref.md)
+  records how both L0 lexers report invalid Unicode scalars before literal checking or code generation.
+
 - [l0/work/plans/bug-fixes/closed/2026-11-27-non-static-top-level-initializers-noref.md](../../l0/work/plans/bug-fixes/closed/2026-11-27-non-static-top-level-initializers-noref.md):
   applied the source-checking phase barrier to non-static L0 top-level initializers
 

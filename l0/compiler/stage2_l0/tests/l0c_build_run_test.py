@@ -307,6 +307,20 @@ def check_wildcard_fallbacks(l0c: str) -> None:
             run([l0c, "--run", native_path(path)])
 
 
+def check_unicode_string_escapes(l0c: str) -> None:
+    """Execute the UTF-8 fixture and check diagnostics for invalid and duplicate case literals."""
+    fixtures = REPO_ROOT / "tests" / "fixtures" / "unicode_string_escapes"
+    run([l0c, "--run", native_path(fixtures / "decoded.l0")])
+    for name, expected in [
+        ("duplicate", [("11", "9", "TYP-0108")]),
+        ("invalid", [("9", "12", "LEX-0054"), ("14", "9", "LEX-0054"), ("19", "12", "LEX-0054")]),
+    ]:
+        result = run([l0c, "--check", native_path(fixtures / f"{name}.l0")], expected_returncode=1)
+        locations = re.findall(r":(\d+):(\d+): error: \[([^\]]+)\]", result.stderr)
+        if locations != expected:
+            raise ToolTestFailure(f"{name}: unexpected Unicode literal diagnostics: {result.stderr}")
+
+
 def main() -> int:
     """Program entrypoint."""
 
@@ -322,6 +336,7 @@ def main() -> int:
         check_entry_file_identity(l0c, work_dir)
         check_intrinsic_names(l0c)
         check_wildcard_fallbacks(l0c)
+        check_unicode_string_escapes(l0c)
         type_names = REPO_ROOT / "tests" / "fixtures" / "qualified_type_names"
         for entry in ("forward", "reverse"):
             run([l0c, "--run", "--project-root", native_path(type_names), entry])

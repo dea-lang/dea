@@ -1,0 +1,20 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module invalid;
+
+func invalid_string() -> string {
+    return "\uD800";
+}
+
+func invalid_case(value: string) {
+    case (value) {
+        "\U0000DFFF" => {}
+    }
+}
+
+func beyond_unicode() -> string {
+    return "\U00110000";
+}

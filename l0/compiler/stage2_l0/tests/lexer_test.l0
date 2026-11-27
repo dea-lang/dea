@@ -233,6 +233,48 @@ func test_no_recovery_wrapper_minus_context() {
 }
 
 /**
+ * Check a string token's source spelling and decoded bytes independently.
+ *
+ * @param spelling Source text between the quotes.
+ * @param expected Expected decoded bytes.
+ */
+func expect_string_value(spelling: string, expected: string) {
+    with (let ls = ls_create("\"" + spelling + "\"", "<test>") => ls_free(ls)) {
+        let toks = tokenize(ls);
+        assert(toks != null, "Expected successful string lexing");
+        with (let tv = toks as TokenVector => tv_free(tv)) {
+            assert(tv_len(tv) == 2, "Expected one string token and EOF");
+            match (tv_get(tv, 0).token_type) {
+                TT_STRING(text, value) => {
+                    assert(text == spelling, "Expected original escape spelling");
+                    assert(value == expected, "Unexpected decoded string bytes");
+                }
+                _ => { assert(false, "Expected a string token"); }
+            }
+        }
+    }
+}
+
+/**
+ * Test UTF-8 encoding, scalar boundaries and recovery from invalid Unicode escapes.
+ */
+func test_unicode_escapes() {
+    expect_string_value("a\\u0000b", "a\0b");
+    expect_string_value("\\u00E9", "é");
+    expect_string_value("\\U0001F600", "😀");
+    expect_string_value("\\uD7FF", byte_to_s(237 as byte) + byte_to_s(159 as byte) + byte_to_s(191 as byte));
+    expect_string_value("\\uE000", byte_to_s(238 as byte) + byte_to_s(128 as byte) + byte_to_s(128 as byte));
+    expect_string_value("\\U0010FFFF", byte_to_s(244 as byte) + byte_to_s(143 as byte) + byte_to_s(191 as byte) + byte_to_s(191 as byte));
+    expect_string_value("\\\\u00E9", "\\u00E9");
+    expect_lex_error("\"\\uD800\"", "LEX-0054");
+    expect_lex_error("\"\\U0000DFFF\"", "LEX-0054");
+    expect_lex_error("\"\\U00110000\"", "LEX-0054");
+    expect_lex_error("\"\\UFFFFFFFF\"", "LEX-0054");
+    expect_lex_error("'\\uD800'", "LEX-0054");
+    expect_recovery_then_binary_minus("'\\uD800' -5", 1);
+}
+
+/**
  * Tests recoverable lexer diagnostics return wrapper tokens.
  */
 func test_recoverable_lexer_errors_are_tokens() {
@@ -299,6 +341,7 @@ func test_token_vector() {
  */
 func main() {
     test_token_vector();
+    test_unicode_escapes();
     test_recoverable_lexer_errors_are_tokens();
     test_recoverable_lexer_errors_can_queue_multiple_wrappers();
     test_recovery_token_minus_context();

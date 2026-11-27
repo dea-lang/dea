@@ -58,7 +58,7 @@ class PatternAnalysis:
                 self.state._error(node, "[TYP-0109] invalid unicode escape in 'case' literal")
                 return None
             if err.code == "unicode_out_of_range":
-                self.state._error(node, "[TYP-0109] unicode escape out of range in 'case' literal")
+                self.state._error(node, "[TYP-0109] invalid Unicode scalar value in 'case' literal")
                 return None
             self.state._error(node, "[TYP-0109] invalid escape in 'case' literal")
             return None

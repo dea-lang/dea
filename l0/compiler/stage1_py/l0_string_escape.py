@@ -41,6 +41,18 @@ class EscapeDecodeError(ValueError):
     details: str = ""
 
 
+def is_unicode_scalar(value: int) -> bool:
+    """Check whether an integer represents a Unicode scalar value.
+
+    Args:
+        value: The integer parsed from the escape.
+
+    Returns:
+        True for code points in the Unicode range excluding surrogates.
+    """
+    return 0 <= value <= 0x10FFFF and not 0xD800 <= value <= 0xDFFF
+
+
 def decode_l0_string_token(text: str) -> bytes:
     """Decode an L0 string literal payload to raw bytes.
 
@@ -89,26 +101,16 @@ def decode_l0_string_token(text: str) -> bytes:
             out.append(int(hex_digits, 16) & 0xFF)
             continue
 
-        if esc == "u":
-            digits = text[i + 1:i + 5]
-            if len(digits) != 4 or any(c not in _HEX_CHARS for c in digits):
-                raise EscapeDecodeError("invalid_unicode_escape", "\\u")
+        if esc in ("u", "U"):
+            width = 4 if esc == "u" else 8
+            digits = text[i + 1:i + 1 + width]
+            if len(digits) != width or any(c not in _HEX_CHARS for c in digits):
+                raise EscapeDecodeError("invalid_unicode_escape", "\\" + esc)
             value = int(digits, 16)
-            if value > 0x10FFFF:
-                raise EscapeDecodeError("unicode_out_of_range", "\\u")
+            if not is_unicode_scalar(value):
+                raise EscapeDecodeError("unicode_out_of_range", "\\" + esc)
             out.extend(chr(value).encode("utf-8"))
-            i += 5
-            continue
-
-        if esc == "U":
-            digits = text[i + 1:i + 9]
-            if len(digits) != 8 or any(c not in _HEX_CHARS for c in digits):
-                raise EscapeDecodeError("invalid_unicode_escape", "\\U")
-            value = int(digits, 16)
-            if value > 0x10FFFF:
-                raise EscapeDecodeError("unicode_out_of_range", "\\U")
-            out.extend(chr(value).encode("utf-8"))
-            i += 9
+            i += 1 + width
             continue
 
         if esc in _OCT_CHARS:

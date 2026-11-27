@@ -44,9 +44,13 @@ EscapedChar         ::=     '"' | '\' | 'n' | 't' | 'r' | "'" | Oct1to3
                       |     'u' Hex4 | 'U' Hex8 | 'x' HexDigit HexDigit*
 ```
 
-String literal payload text may contain Unicode characters encoded as UTF-8, subject to the delimiter and escape rules
-above. Comments may also contain Unicode text valid under the source encoding. Outside those free-text regions, the
-language vocabulary remains ASCII-only.
+In a string literal, each `\uHHHH` or `\UHHHHHHHH` escape denotes one Unicode scalar value and produces its UTF-8 bytes.
+For example, `"\u00E9"` and `"é"` both contain two bytes and compare equal, including in a string `case`. Values from
+U+D800 through U+DFFF and values above U+10FFFF are invalid. In a byte literal, a Unicode escape must encode to a single
+byte (U+0000 through U+007F).
+
+Comments may also contain Unicode text valid under the source encoding. Outside strings and comments, the language
+vocabulary remains ASCII-only.
 
 ### 1.3 Keywords
 

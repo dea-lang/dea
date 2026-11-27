@@ -10,6 +10,7 @@ along with Token definitions and related utilities.
 from dataclasses import dataclass
 from enum import Enum, auto
 from l0_diagnostics import Diagnostic
+from l0_string_escape import is_unicode_scalar
 from l0_types import L0_PRIMITIVE_TYPES
 
 
@@ -590,17 +591,22 @@ class Lexer:
             self._error("[LEX-0020] unterminated char literal", self.line, self.column)
             return "\0"
 
+        diagnostic_start = len(self.diagnostics)
         if ch == "\\":
             chars.append(self._read_valid_char_escape())
         else:
             chars.append(self._advance())
 
+        invalid_escape = len(self.diagnostics) > diagnostic_start
         if self._peek() != "'":
             self._error("[LEX-0021] invalid char literal, expected closing single quote", self.line, self.column)
         else:
             self._advance()  # consume closing '
 
         text = "".join(chars)
+
+        if invalid_escape:
+            return text
 
         # validate that the char literal **represents a single byte**
         if text.startswith("\\x"):
@@ -671,29 +677,18 @@ class Lexer:
                 else:
                     break
 
-        elif esc == "u":  # unicode escape of the form \uXXXX
-            chars.append(self._advance())  # append 'u'
-            for _ in range(4):  # expect exactly four hex digits
-                next_ch = self._peek()
-                if next_ch in HEX_CHARS:
-                    chars.append(self._advance())
-                else:
-                    self._error(f"[LEX-0051] invalid unicode escape sequence (\\u)", self.line, self.column)
+        elif esc in ("u", "U"):
+            chars.append(self._advance())
+            width = 4 if esc == "u" else 8
+            for _ in range(width):
+                if self._peek() not in HEX_CHARS:
+                    code = "LEX-0051" if esc == "u" else "LEX-0052"
+                    self._error(f"[{code}] invalid unicode escape sequence (\\{esc})", self.line, self.column)
                     return "".join(chars)
-
-        elif esc == "U":  # unicode escape of the form \UXXXXXXXX
-            chars.append(self._advance())  # append 'U'
-            for _ in range(8):  # expect exactly eight hex digits
-                next_ch = self._peek()
-                if next_ch in HEX_CHARS:
-                    chars.append(self._advance())
-                else:
-                    self._error(f"[LEX-0052] invalid unicode escape sequence (\\U)", self.line, self.column)
-                    return "".join(chars)
-            value = int("".join(chars[2:]), 16)
-            if value > 0x10FFFF:
-                self._error("[LEX-0054] Unicode code point out of range (must be <= 0x10FFFF)",
-                                 self.line, self.column)
+                chars.append(self._advance())
+            if not is_unicode_scalar(int("".join(chars[2:]), 16)):
+                self._error("[LEX-0054] invalid Unicode scalar value (must be <= 0x10FFFF and not a surrogate)",
+                            self.line, self.column - len(chars))
 
         elif esc in OCT_CHARS:  # octal escape
             chars.append(self._advance())  # append the first octal digit
