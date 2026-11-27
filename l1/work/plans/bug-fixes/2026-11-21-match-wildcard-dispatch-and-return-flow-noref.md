@@ -2,21 +2,26 @@
 
 ## Make enum match flow and execution agree on wildcard precedence
 
-- Date: 2026-11-21
+- Date: 2026-11-27
 - Status: Draft
 - Title: Make enum match flow and execution agree on wildcard precedence
 - Kind: Bug Fix
 - Severity: Medium
 - Subsystem: Enum pattern coverage, control flow, and switch generation
 - Modules:
+  - `l1/compiler/src/parser/stmt.l0`
   - `l1/compiler/src/expr_types/stmt.l0`
   - `l1/compiler/src/expr_types/patterns.l0`
   - `l1/compiler/src/backend/lower.l0`
 - Test modules:
+  - `l1/compiler/tests/parser_test.l0`
+  - `l1/compiler/tests/diagnostic_code_parity_test.py`
+  - `l1/compiler/tests/diagnostic_message_parity_test.py`
   - `l1/compiler/tests/expr_types_test.l0`
   - `l1/compiler/tests/backend_test.l0`
   - `l1/compiler/tests/l1c_build_run_multi_cu_test.py`
 - Related:
+  - [work/plans/bug-fixes/2026-11-27-shared-wildcard-fallbacks-noref.md][shared-fallbacks]
   - [l1/docs/reference/grammar.md][grammar]
   - [docs/specs/compiler/diagnostic-code-catalog.md][diagnostics]
   - [work/plans/bug-fixes/closed/2026-08-23-shared-match-validation-regressions-noref.md][coverage]
@@ -37,42 +42,45 @@ func choose(c: Color) -> int {
 ```
 
 The checker reports `TYP-0010` because it counts the wildcard body as reachable. With the trailing return, the
-executable returns 7 for Red and 8 for Blue because the C switch sends only unmatched tags to its default. Placing the
-wildcard last works around this disagreement. The choice applies to enum `match`; scalar `case` has its own rules.
+executable returns 7 for Red and 8 for Blue because the C switch sends only unmatched tags to its default. Under the
+accepted rule the original function must compile and warn once at the redundant wildcard. Red must return 7 and Blue 8
+without adding a return after the match.
+
+## Accepted decision and L1 work
+
+One `_ =>` fallback can appear anywhere in enum `match` and scalar `case`. Evaluate the scrutinee once and run the
+matching explicit arm, or the fallback when every explicit arm misses. A reachable wildcard in first or middle position
+is as warning-free as one written last. The shared plan owns the decision and cross-compiler acceptance matrix.
+
+1. Compute `TYP-0105` from all successfully validated named arms. Keep unknown or wrong-owner variants and invalid
+   payload patterns out of coverage. Check ordinary errors in a redundant wildcard while excluding its flow and
+   ownership effects. Cover first, middle and last positions with and without Green, an empty fallback, missing return,
+   duplicate wildcards and a pointer used after a match.
+2. Allow value arms after a scalar wildcard in the L1 parser, including L1's existing scalar constant arm forms. Retire
+   `PAR-0234` in the L1 diagnostic fixture inventory. Keep `PAR-0236`, `TYP-0108`, unmatched-`else` diagnostics, and
+   source-span and synchronization checks for genuinely malformed arms. Keep statement bodies and current semantics for
+   statements without a fallback.
+3. Inspect the existing switch and comparison-chain lowering before changing either. Run L1-owned `.l1` programs through
+   the canonical `l1c`. Test explicit values after the fallback, misses, and exactly one evaluation and arm effect for
+   integer and string cases.
 
 ## ADR Impact
 
-- Decision: Which arms can an L1 enum match select when a wildcard precedes a named variant?
-  - Scope: L1
-  - Disposition: Pending
-  - ADR: None
-  - Rationale: The alternatives change observable results or the validity of existing L1 programs. The language rule
-    must be chosen before either the checker or the backend can serve as the reference.
+- Decision: Apply the shared position-independent fallback rule to enum match and scalar case in canonical L1.
+  - Scope: Dea-wide
+  - Disposition: Covered by ADR
+  - ADR: `docs/decisions/0007-case-default-arm-wildcard.md`
+  - Rationale: The shared plan owns the ADR amendment. This plan retains L1-specific reproduction and validation
+    evidence.
 
-## Decision and regression criteria
+## Verification
 
-| Candidate rule        | Function as written                                              | With the trailing return                                                   |
-| --------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Fallback anywhere     | Both named arms return. Accept, and flag the redundant wildcard. | Red returns 7 and Blue returns 8.                                          |
-| First matching arm    | The wildcard wins for both values. Report `TYP-0010`.            | Both calls return 9.                                                       |
-| Require wildcard last | Reject a non-final wildcard at its source location.              | Adding a return leaves the placement error. Moving `_` last gives 7 and 8. |
-
-1. Settle the L1 rule and record it alongside the enum match grammar. Coordinate the decision with the open L0 question.
-   Keep existing diagnostic meanings for missing variants (`TYP-0104`), a redundant wildcard (`TYP-0105`) and a missing
-   return (`TYP-0010`). If the final-only grammar is chosen, provisionally use the nearby unused `PAR-0178` for wildcard
-   placement. Recheck the live catalog and active reservations before assignment.
-2. Apply the chosen rule to arm reachability, liveness joins, return checking, coverage diagnostics, and generated
-   dispatch. Validate patterns before they contribute to coverage. The existing wildcard-first warning test encodes the
-   earlier before-wildcard calculation and must be reconciled with the decision.
-3. Pair a diagnostic test with an executable test that checks each variant independently. Exercise first, middle and
-   last wildcard positions, full and partial named coverage, a returning and a falling-through wildcard, and an
-   exhaustive named-only match. Check the warning location and preserve declaration order for missing variants. Under a
-   final-only rule, include rejected placements and execute their legal reordered versions.
-
-From `l1/`, run `make test-compiler TESTS="expr_types_test backend_test l1c_build_run_multi_cu_test"`. Include
-`parser_test` for a grammar change. Require analysis and execution to predict the same result for each accepted input.
+From `l1/`, run the focused parser, checker, backend, diagnostic and executable tests listed in the shared plan. Record
+the command, host, diagnostic counts, outputs for each input, and outstanding coverage under the L1 target. Verification
+is pending. The L2 target has its own bootstrap and execution checks in the shared plan.
 
 [coverage]: ../../../../work/plans/bug-fixes/closed/2026-08-23-shared-match-validation-regressions-noref.md
 [diagnostics]: ../../../../docs/specs/compiler/diagnostic-code-catalog.md
 [grammar]: ../../../docs/reference/grammar.md
 [l0-match]: ../../../../l0/work/plans/bug-fixes/2026-11-21-match-wildcard-precedence-and-return-flow-noref.md
+[shared-fallbacks]: ../../../../work/plans/bug-fixes/2026-11-27-shared-wildcard-fallbacks-noref.md

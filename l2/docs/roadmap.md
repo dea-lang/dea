@@ -1,6 +1,6 @@
 # Dea/L2 Roadmap
 
-Version: 2026-10-29
+Version: 2026-11-27
 
 L2 establishes an independent canonical compiler implemented in L1, with owned `.l2` stdlib/runtime inputs and `.l2m`
 interfaces. The initial milestone passed native compiler CI on all four platforms and two-phase Linux isolation with
@@ -12,6 +12,10 @@ sibling trees inaccessible and an explicitly installed L1 bootstrap toolchain.
   completed the canonical split, independent ownership, coordinated development reuse, and optional isolation.
 
 ## Deferred development phase
+
+The active [work/plans/bug-fixes/2026-11-27-shared-wildcard-fallbacks-noref.md][shared-fallbacks] includes the L2 enum
+`match` and scalar `case` placement fix now. Verify this rule in the canonical compiler using L2-owned `.l2` fixtures
+and an explicit L1 bootstrap.
 
 Sustained L2 feature work has not started. Begin only after L1 is declared stable, a named stable release or dated
 baseline is selected, and the project maintainer explicitly starts the L2 phase. First reconcile the accumulated L1
@@ -56,4 +60,5 @@ Self-hosting and release productization remain separate future work.
 [catch-up]: ../work/plans/features/2026-10-27-stable-l1-catch-up-noref.md
 [iff-scope]: ../work/plans/features/2026-08-30-iff-scope-and-format-selection-noref.md
 [l1-roadmap]: ../../l1/docs/roadmap.md#open-plan-readiness
+[shared-fallbacks]: ../../work/plans/bug-fixes/2026-11-27-shared-wildcard-fallbacks-noref.md
 [string-slices]: ../work/plans/features/2026-06-21-cheap-string-slices-noref.md

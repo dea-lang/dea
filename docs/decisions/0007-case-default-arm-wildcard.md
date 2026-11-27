@@ -1,7 +1,7 @@
 # ADR-0007: Case Default Arm `_ =>` Wildcard Migration
 
 - Decision date: 2026-06-07
-- Last edited: 2026-08-29
+- Last edited: 2026-11-27
 - Status: Accepted
 
 ## Context
@@ -28,9 +28,20 @@ no new tokens or keywords.
 - Phase 2: mechanically rewrite the remaining in-tree `case ... else` sites to `_ =>`, remove `else` as a `case` default
   entirely, and retire the old-spelling diagnostics `PAR-0237`, `PAR-0242`, and `PAR-0243`.
 
-The rollout is complete. L0 Stage 1, L0 Stage 2, and L1 Stage 1 accept only `_ =>` as the `case` default arm. A value
-arm after `_ =>` is `PAR-0234`, a second `_ =>` is `PAR-0236`, and `else` in a `case` is diagnosed as an unmatched
-`else` (`PAR-0123`).
+The spelling migration completed in L0 Stage 1, L0 Stage 2 and L1 Stage 1. At the end of Phase 2, a value arm after
+`_ =>` produced `PAR-0234`, a second `_ =>` produced `PAR-0236`, and an unmatched `else` produced `PAR-0123`.
+
+### Position-independent fallback (accepted 2026-11-27, implementation pending)
+
+Each enum `match` and scalar `case` may contain one `_ =>` fallback in any position. Evaluate the scrutinee once. A
+matching explicit arm wins wherever it appears. Select the fallback only when no explicit arm matches. Execute the
+selected arm once, with no arm-to-arm fallthrough. Writing the fallback last is customary. Position alone never warns.
+Each level keeps its existing arm syntax, supported patterns and values, and rules for statements without a fallback.
+
+For enum `match`, a wildcard is unreachable when successfully validated explicit arms cover every variant. Warn once
+with `TYP-0105` at that wildcard and check its body for ordinary errors. Its body contributes no return, fallthrough or
+ownership/liveness effects. For scalar `case`, the new placement rule retires `PAR-0234` when implemented. The unique
+default spelling and the dangling-`else` rationale above continue to apply.
 
 ## Rationale
 
@@ -45,13 +56,17 @@ arm after `_ =>` is `PAR-0234`, a second `_ =>` is `PAR-0236`, and `else` in a `
 - Every current compiler stage accepts only `_ =>` defaults; an unmatched `else` reports `PAR-0123`.
 - `PAR-0237`, `PAR-0242`, and `PAR-0243` are retired and remain unavailable for reassignment under the diagnostic-code
   stability policy.
-- The L0 and L1 grammars both use `CaseStmt ::= "case" "(" Expr ")" "{" CaseArm* WildcardArm? "}"`.
+- Phase 2 placed the optional default after all value arms in the grammar. The accepted placement amendment allows value
+  arms on either side of that default.
 - The AST default-arm representation remains spelling-neutral, so Phase 2 required no AST reshape.
 - Production compiler sources and ordinary fixtures use `_ =>`; the compatibility parser branches and dedicated
   deprecated-spelling tests are removed.
 
 ## Related Plans
 
+- [work/plans/bug-fixes/2026-11-27-shared-wildcard-fallbacks-noref.md](../../work/plans/bug-fixes/2026-11-27-shared-wildcard-fallbacks-noref.md):
+  tracks implementation and verification of the accepted placement rule in both L0 stages, canonical L1 and L2, and the
+  shared editor grammar
 - [work/plans/features/closed/2026-06-07-case-default-arm-wildcard-phase1-noref.md](../../work/plans/features/closed/2026-06-07-case-default-arm-wildcard-phase1-noref.md):
   introduced `_ =>`, the `PAR-0242` deprecation, and the `PAR-0243` guard across L0 Stage 1/Stage 2 and L1 Stage 1
 - [work/plans/refactors/closed/2026-06-08-migrate-case-else-defaults-to-wildcard-noref.md](../../work/plans/refactors/closed/2026-06-08-migrate-case-else-defaults-to-wildcard-noref.md):
@@ -71,3 +86,4 @@ arm after `_ =>` is `PAR-0234`, a second `_ =>` is `PAR-0236`, and `else` in a `
   registry with wildcard-only `case` meanings
 - [l0/docs/reference/grammar.md](../../l0/docs/reference/grammar.md): L0 wildcard-only `case` grammar
 - [l1/docs/reference/grammar.md](../../l1/docs/reference/grammar.md): L1 wildcard-only `case` grammar
+- [l2/docs/reference/grammar.md](../../l2/docs/reference/grammar.md): L2 wildcard-only `case` grammar
