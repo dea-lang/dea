@@ -481,13 +481,16 @@ file-watch design, and concurrency now belong to L2.
   [work/plans/bug-fixes/closed/2026-11-26-shared-compound-dereference-grouping-noref.md][deref-grouping], groups
   compound pointer operands before dereferencing them in L0 Stage 1, L0 Stage 2 and L1.
 
+- Shared bug fixes #9 and #10,
+  [work/plans/bug-fixes/closed/2026-11-27-shared-wildcard-fallbacks-noref.md][shared-fallbacks], implemented
+  position-independent wildcard fallbacks for enum `match` and scalar `case` in L0 and L1 and updated Tree-sitter.
+  [l1/work/plans/bug-fixes/closed/2026-11-21-match-wildcard-dispatch-and-return-flow-noref.md][match-wildcard] records
+  the L1 results.
+
 ## Active standalone plans
 
 - Shared bug fix [2026-11-26-shared-c-field-name-emission-noref][field-names] covers C member names for struct and enum
   payload fields in both L0 stages and L1.
-- Shared bug fixes #9 and #10, [2026-11-27-shared-wildcard-fallbacks-noref][shared-fallbacks], apply the accepted
-  position-independent wildcard rule to enum `match` and scalar `case`. The
-  [2026-11-21-match-wildcard-dispatch-and-return-flow-noref][match-wildcard] plan records the canonical L1 work.
 - Feature [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] is the
   Stdlib Tier 2 audit that records portable systems capability and C99-family coverage without promising literal C99 API
   parity. It is meant to run after the main stdlib additions land and to be completed before declaring L1 stable;
@@ -504,13 +507,12 @@ Readiness is independent of lifecycle status. `ready` means implementation can b
 immediate prerequisite remains; `not-ready` means required foundations have not landed; `speculative` means unresolved
 design investigation. `implemented` means implementation is present but the plan still has validation or closure work.
 
-| Readiness | Plan                                                                                               | Remaining gate                                             |
-| --------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| ready     | [2026-11-27-shared-wildcard-fallbacks-noref][shared-fallbacks]                                     | Fallback rule accepted. Implement and verify canonical L1. |
-| ready     | [2026-11-26-shared-c-field-name-emission-noref][field-names]                                       | Native failure reproduced in all three targets.            |
-| ready     | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied.  |
-| not-ready | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                      |
-| not-ready | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.        |
+| Readiness | Plan                                                                                               | Remaining gate                                            |
+| --------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| ready     | [2026-11-26-shared-c-field-name-emission-noref][field-names]                                       | Native failure reproduced in all three targets.           |
+| ready     | [l1/work/plans/features/2026-08-30-process-spawning-and-anonymous-pipes-noref.md][plan-process]    | File ownership and native CI prerequisites are satisfied. |
+| not-ready | [l1/work/plans/features/2026-10-29-stabilization-acceptance-programs-noref.md][acceptance]         | Required public APIs.                                     |
+| not-ready | [l1/work/plans/features/2026-08-30-standard-library-capability-coverage-noref.md][stdlib-coverage] | Required capabilities delivered before final audit.       |
 
 The [work/plans/features/closed/2026-10-29-l1-stabilization-boundary-noref.md][boundary-plan] coordinates plan ownership
 and roadmap changes.
@@ -661,7 +663,7 @@ update to be promoted to an initiative or plan:
 [library-linking]: ../work/plans/features/closed/2026-04-24-external-library-linking-cli-noref.md
 [lifecycle-entrypoints]: ../work/plans/features/closed/2026-07-17-per-module-backend-and-lifecycle-entrypoints-noref.md
 [link-set]: ../work/plans/features/closed/2026-07-17-link-set-driver-and-wrapper-noref.md
-[match-wildcard]: ../work/plans/bug-fixes/2026-11-21-match-wildcard-dispatch-and-return-flow-noref.md
+[match-wildcard]: ../work/plans/bug-fixes/closed/2026-11-21-match-wildcard-dispatch-and-return-flow-noref.md
 [module-graph-invariant-hardening]: ../work/plans/bug-fixes/closed/2026-07-20-stage1-module-graph-invariant-hardening-noref.md
 [module-interface-hardening]: ../work/plans/bug-fixes/closed/2026-07-20-stage1-module-interface-resolution-hardening-noref.md
 [named-arguments]: ../work/plans/features/closed/2026-04-22-named-arguments-noref.md
@@ -701,7 +703,7 @@ update to be promoted to an initiative or plan:
 [safe-concurrency]: ../../l2/work/initiatives/0003-safe-concurrency.md
 [scalar-const-flow]: ../work/plans/features/closed/2026-06-24-stage1-scalar-const-expression-flow-noref.md
 [separate-compilation]: ../work/initiatives/closed/0001-separate-compilation-and-linking.md
-[shared-fallbacks]: ../../work/plans/bug-fixes/2026-11-27-shared-wildcard-fallbacks-noref.md
+[shared-fallbacks]: ../../work/plans/bug-fixes/closed/2026-11-27-shared-wildcard-fallbacks-noref.md
 [single-statements]: ../work/plans/features/closed/2026-04-23-single-statement-loop-and-match-bodies-noref.md
 [slice-safety]: ../work/plans/bug-fixes/closed/2026-10-29-borrowed-slice-escape-noref.md
 [small-int]: ../work/plans/features/closed/2026-04-04-l1-small-int-builtins-on-dea-abi-noref.md

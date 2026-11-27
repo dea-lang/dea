@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from support.compiler_subject import selected_compiler
 import shutil
@@ -419,6 +420,34 @@ def check_explicit_entry(compiler: Path, cc: str, env: dict[str, str], root: Pat
             entry.chmod(0o600)
 
 
+def check_wildcard_fallbacks(compiler: Path, cc: str, env: dict[str, str], root: Path) -> None:
+    """Check fallback diagnostics at their source lines and execute the valid programs."""
+    fixtures = DRIVER_FIXTURES.parent / "wildcard_fallbacks"
+    for name, warnings, errors in [
+        ("dispatch", 0, {}),
+        ("complete", 4, {}),
+        ("missing_return", 0, {"TYP-0010": 3}),
+        ("invalid_body", 1, {"TYP-0310": 1}),
+        ("invalid_bindings", 0, {"TYP-0020": 1, "TYP-0010": 1}),
+        ("duplicate_value", 0, {"TYP-0108": 1}),
+        ("duplicate_match", 0, {"PAR-0176": 1}),
+    ]:
+        path = fixtures / f"{name}.l1"
+        result = run([compiler, "--check", path], cwd=root, env=env)
+        require_status(result, int(bool(errors)), name)
+        expected_lines = [i for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+                          if warnings and line.lstrip().startswith("_ =>")]
+        locations = re.findall(r":(\d+):9[^\n]*warning: \[TYP-0105\]", result.stderr)
+        if result.stderr.count("[TYP-0105]") != warnings or [int(line) for line in locations] != expected_lines:
+            raise MultiCuFailure(f"{name}: unexpected wildcard warnings: {result.stderr}")
+        for code, count in errors.items():
+            if result.stderr.count(f"[{code}]") != count:
+                raise MultiCuFailure(f"{name}: expected {count} {code}: {result.stderr}")
+        if not errors:
+            executed = run(compiler_command(compiler, cc, "--run", fixtures, name), cwd=root, env=env)
+            require_status(executed, 0, name)
+
+
 def main() -> int:
     """Run the multi-CU build/run regression matrix."""
 
@@ -434,6 +463,7 @@ def main() -> int:
         env.pop("TMP", None)
 
         check_explicit_entry(compiler, cc, env, root)
+        check_wildcard_fallbacks(compiler, cc, env, root)
 
         contextual_null = run(
             compiler_command(compiler, cc, "--run", DRIVER_FIXTURES, "contextual_null_main"),

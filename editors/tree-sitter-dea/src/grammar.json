@@ -1940,8 +1940,20 @@
           "type": "CHOICE",
           "members": [
             {
-              "type": "SYMBOL",
-              "name": "case_default_arm"
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "case_default_arm"
+                },
+                {
+                  "type": "REPEAT",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "case_arm"
+                  }
+                }
+              ]
             },
             {
               "type": "BLANK"
@@ -3508,7 +3520,7 @@
     },
     "identifier": {
       "type": "PATTERN",
-      "value": "[A-Za-z_][A-Za-z0-9_]*"
+      "value": "[A-Za-z][A-Za-z0-9_]*|_[A-Za-z0-9_]+"
     },
     "line_comment": {
       "type": "TOKEN",

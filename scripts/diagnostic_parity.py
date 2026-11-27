@@ -141,7 +141,6 @@ def stage_trigger_source(stage: str, code: str, oracle) -> str | None:
                 "}\n"
             ),
             "PAR-0241": "module main; func main() -> int { case (42) { + => { return 1; } _ => { return 0; } } }",
-            "PAR-0234": "module main; func main() -> int { case (42) { _ => { return 0; } 1 => { return 1; } } }",
             "PAR-0236": "module main; func main() -> int { case (42) { _ => { return 0; } _ => { return 1; } } }",
             "SIG-0201": "module main;\nconst A: int = B;\nconst B: int = A;\nfunc foo() -> int { return 0; }\n",
             "TYP-0106": "module main;\nstruct Point { x: int; y: int; }\nfunc foo() -> int {\nlet p: Point = Point(1, 2);\ncase (p) {\n_ => { return 0; }\n}\n}\n",

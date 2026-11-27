@@ -92,6 +92,9 @@ diagnostic.
 
 ## Parsing and Parse-Time Analysis
 
+The former L0 and L1 `PAR-0234` placement error is retired at those levels. The code remains assigned to its original
+meaning in L2 until its wildcard fallback port and is unavailable for reassignment.
+
 | Code       | Level   | Meaning                                                                  |
 | ---------- | ------- | ------------------------------------------------------------------------ |
 | `PAR-0000` | All     | Fallback parser error when no specific parse/lex diagnostic is available |
@@ -176,7 +179,7 @@ diagnostic.
 | `PAR-0231` | All     | Expected '('                                                             |
 | `PAR-0232` | All     | Expected ')'                                                             |
 | `PAR-0233` | All     | Expected '{' after 'case' expression                                     |
-| `PAR-0234` | All     | Value arm cannot appear after the `_` default arm in 'case' statement    |
+| `PAR-0234` | L2 only | Value arm cannot appear after the `_` default arm in 'case' statement    |
 | `PAR-0235` | All     | Expected '=>' in 'case' arm                                              |
 | `PAR-0236` | All     | Duplicate `_` default arm in 'case' statement                            |
 | `PAR-0239` | All     | Expected '}' after 'case' statement                                      |

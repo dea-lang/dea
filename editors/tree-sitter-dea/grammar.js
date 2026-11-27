@@ -473,7 +473,7 @@ export default grammar({
       ")",
       "{",
       repeat($.case_arm),
-      optional($.case_default_arm),
+      optional(seq($.case_default_arm, repeat($.case_arm))),
       "}",
     ),
 
@@ -702,7 +702,8 @@ export default grammar({
 
     null_literal: _ => "null",
 
-    identifier: _ => /[A-Za-z_][A-Za-z0-9_]*/,
+    // Exclude `_` from identifiers so a second `_ =>` cannot parse as a named case value.
+    identifier: _ => /[A-Za-z][A-Za-z0-9_]*|_[A-Za-z0-9_]+/,
 
     line_comment: _ => token(seq("//", /[^\r\n]*/)),
 

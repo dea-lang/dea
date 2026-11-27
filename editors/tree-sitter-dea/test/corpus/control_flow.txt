@@ -292,3 +292,135 @@ func choose(value: int, flag: bool) -> int {
           body: (simple_statement
             (return_statement
               value: (integer_literal))))))))
+
+==================
+Wildcard fallback positions
+==================
+
+module fallbacks;
+
+func choose(x: int) {
+    case (x) { _ => {} _one => {} __ => {} }
+    case (x) { 1 => {} _ => {} 2 => {} }
+    case (x) { 1 => {} 2 => {} _ => {} }
+    match (x) { _ => {} Red => {} Blue => {} }
+    match (x) { Red => {} _ => {} Blue => {} }
+    match (x) { Red => {} Blue => {} _ => {} }
+}
+
+---
+
+(source_file
+  (module_declaration
+    name: (module_path
+      segment: (identifier)))
+  (function_declaration
+    name: (identifier)
+    parameters: (parameter_list
+      (parameter
+        name: (identifier)
+        type: (type
+          base: (builtin_type))))
+    body: (block
+      (case_statement
+        value: (qualified_identifier
+          name: (identifier))
+        (case_default_arm
+          body: (block))
+        (case_arm
+          value: (case_arm_value
+            (qualified_identifier
+              name: (identifier)))
+          body: (block))
+        (case_arm
+          value: (case_arm_value
+            (qualified_identifier
+              name: (identifier)))
+          body: (block)))
+      (case_statement
+        value: (qualified_identifier
+          name: (identifier))
+        (case_arm
+          value: (case_arm_value
+            (signed_integer_literal
+              (integer_literal)))
+          body: (block))
+        (case_default_arm
+          body: (block))
+        (case_arm
+          value: (case_arm_value
+            (signed_integer_literal
+              (integer_literal)))
+          body: (block)))
+      (case_statement
+        value: (qualified_identifier
+          name: (identifier))
+        (case_arm
+          value: (case_arm_value
+            (signed_integer_literal
+              (integer_literal)))
+          body: (block))
+        (case_arm
+          value: (case_arm_value
+            (signed_integer_literal
+              (integer_literal)))
+          body: (block))
+        (case_default_arm
+          body: (block)))
+      (match_statement
+        value: (qualified_identifier
+          name: (identifier))
+        (match_arm
+          pattern: (pattern
+            (wildcard_pattern))
+          body: (block))
+        (match_arm
+          pattern: (pattern
+            (variant_pattern
+              variant: (qualified_identifier
+                name: (identifier))))
+          body: (block))
+        (match_arm
+          pattern: (pattern
+            (variant_pattern
+              variant: (qualified_identifier
+                name: (identifier))))
+          body: (block)))
+      (match_statement
+        value: (qualified_identifier
+          name: (identifier))
+        (match_arm
+          pattern: (pattern
+            (variant_pattern
+              variant: (qualified_identifier
+                name: (identifier))))
+          body: (block))
+        (match_arm
+          pattern: (pattern
+            (wildcard_pattern))
+          body: (block))
+        (match_arm
+          pattern: (pattern
+            (variant_pattern
+              variant: (qualified_identifier
+                name: (identifier))))
+          body: (block)))
+      (match_statement
+        value: (qualified_identifier
+          name: (identifier))
+        (match_arm
+          pattern: (pattern
+            (variant_pattern
+              variant: (qualified_identifier
+                name: (identifier))))
+          body: (block))
+        (match_arm
+          pattern: (pattern
+            (variant_pattern
+              variant: (qualified_identifier
+                name: (identifier))))
+          body: (block))
+        (match_arm
+          pattern: (pattern
+            (wildcard_pattern))
+          body: (block))))))

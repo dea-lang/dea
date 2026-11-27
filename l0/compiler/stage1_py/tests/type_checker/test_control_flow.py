@@ -458,9 +458,9 @@ def test_returning_alternatives_do_not_poison_liveness_meet(analyze_single):
             let p: Box* = new Box(1);
             drop p;
             match (choice) {
+                _ => { let dead: int = p.value; }
                 A => { p = new Box(2); }
                 B => { p = new Box(3); }
-                _ => { let dead: int = p.value; }
             }
             return p.value;
         }
@@ -469,9 +469,9 @@ def test_returning_alternatives_do_not_poison_liveness_meet(analyze_single):
             let p: Box* = new Box(1);
             while (true) {
                 match (choice) {
+                    _ => { drop p; break; }
                     A => { return 0; }
                     B => { return 1; }
-                    _ => { drop p; break; }
                 }
             }
             return p.value;

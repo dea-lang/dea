@@ -222,6 +222,18 @@ func etc_check_match_pattern(self: ExpressionTypeChecker*, match_ty: Type*, patt
         return null;
     }
 
+    if (pattern_arity > 1) {
+        with (let names = ss_create() => ss_free(names)) {
+            for (let i = 0; i < pattern_arity; i = i + 1) {
+                let name = sv_get(pattern.vars as StringVector*, i);
+                if (!ss_add(names, name)) {
+                    etc_diag_error(self, "TYP-0020", "local variable '" + name + "' already declared in this scope",
+                        unit.path, pattern.span);
+                    return null;
+                }
+            }
+        }
+    }
     return variant_info;
 }
 
@@ -268,12 +280,12 @@ func etc_match_variants_fully_covered(info: EnumInfo*, covered: StringSet*) -> b
  * @param match_ty Type of the matched expression.
  * @param covered Canonical names from successfully validated variant patterns.
  * @param wildcard_present Whether the match contains a wildcard arm.
- * @param wildcard_is_unreachable Whether prior validated variants already cover the enum.
+ * @param fully_covered Whether validated named arms cover every variant.
  * @param span Source span for diagnostics.
  * @return `true` if the match is exhaustive.
  */
 func etc_check_match_exhaustiveness(self: ExpressionTypeChecker*, match_ty: Type*, covered: StringSet*,
-                                    wildcard_present: bool, wildcard_is_unreachable: bool, span: Span) -> bool {
+                                    wildcard_present: bool, fully_covered: bool, span: Span) -> bool {
     let unit = self.current_unit as DriverUnit*;
     if (ord(match_ty.kind) != ord(TY_ENUM)) {
         return false;
@@ -291,8 +303,7 @@ func etc_check_match_exhaustiveness(self: ExpressionTypeChecker*, match_ty: Type
         return false;
     }
 
-    let fully_covered = etc_match_variants_fully_covered(info as EnumInfo*, covered);
-    if (wildcard_present && wildcard_is_unreachable) {
+    if (wildcard_present && fully_covered) {
         etc_diag_warn(
             self,
             "TYP-0105",
@@ -317,8 +328,8 @@ func etc_check_match_exhaustiveness(self: ExpressionTypeChecker*, match_ty: Type
     return false;
 }
 
-/** Return whether wildcard match arms are unreachable because variants cover the enum. */
-func etc_match_wildcard_is_unreachable(self: ExpressionTypeChecker*, match_ty: Type*, covered: StringSet*) -> bool {
+/** Return whether validated named arms cover the entire enum. */
+func etc_match_named_arms_cover_enum(self: ExpressionTypeChecker*, match_ty: Type*, covered: StringSet*) -> bool {
     if (ord(match_ty.kind) != ord(TY_ENUM)) return false;
     let info = sig_lookup_enum_info(self.result.signatures as SignatureTables*, match_ty.module_name, match_ty.name);
     if (info == null) return false;

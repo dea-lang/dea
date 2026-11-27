@@ -805,6 +805,10 @@ class Lowering:
         arms_unreachable = 0
 
         for arm in stmt.arms:
+            if id(arm.pattern) in self.state.analysis.redundant_wildcards:
+                arms_unreachable += 1
+                continue
+
             # Emit case label
             if isinstance(arm.pattern, WildcardPattern):
                 self.state.emitter.statements.emit_default_label()

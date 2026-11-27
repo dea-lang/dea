@@ -17,7 +17,7 @@ func inspect(result: Result, key: int) -> int {
     }
 
     case (key) {
-        1 => return 1;
         _ => return 0;
+        1 => return 1;
     }
 }

@@ -341,15 +341,15 @@ func test_typing_match_validation_err() {
         let result = analysis_analyze_entry(sp, "typing_match_validation_err", cfg);
         assert(analysis_has_errors(result), "expected match validation errors");
         assert(count_diag_code(result, "TYP-0158") == 1, "expected one nested-pattern path error");
-        assert(count_diag_code(result, "TYP-0102") == 4,
+        assert(count_diag_code(result, "TYP-0102") == 5,
             "expected unknown, wildcard-adjacent, wrong-module, and wrong-enum errors");
-        assert(count_diag_code(result, "TYP-0101") == 1, "expected one invalid pattern arity error");
+        assert(count_diag_code(result, "TYP-0101") == 2, "expected invalid arity with and without a wildcard");
         assert(count_diag_code(result, "TYP-0104") == 5,
             "expected every invalid explicit-pattern match to stay non-exhaustive");
         assert(count_diag_code(result, "TYP-0159") == 1,
             "invalid pattern payload variables must remain unbound");
-        assert(count_diag_code(result, "TYP-0105") == 0,
-            "invalid, wildcard-first, and wildcard-free matches must not report an unreachable wildcard");
+        assert(count_diag_code(result, "TYP-0105") == 1,
+            "only the fully covered wildcard-first match must warn");
         assert(has_diag_message(result, "TYP-0158",
             "nested symbol path 'typing_match_validation_dep::RemoteColor::Red': paths must have the form 'module::symbol' (did you mean 'typing_match_validation_dep::Red'?)"),
             "expected shared nested-pattern diagnostic wording");

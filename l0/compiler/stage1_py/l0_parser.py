@@ -820,12 +820,6 @@ class Parser:
                 seen_default = True
                 continue
             # Value arm: `CaseLiteral => Stmt`.
-            if seen_default:
-                self._error(
-                    "[PAR-0234] value arm cannot appear after the '_' default arm in 'case' statement",
-                    self._peek())
-                self._sync_case_invalid_arm()
-                continue
             arm_start = self._span_start()
             literal = self._parse_case_literal()
             self._expect(TokenKind.ARROW_MATCH, "[PAR-0235] expected '=>' in 'case' arm")

@@ -1,0 +1,162 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module dispatch;
+
+enum Color { Red; Blue; Green; }
+
+let calls: int = 0;
+let effects: int = 0;
+
+func color_key(c: Color) -> Color {
+    calls = calls + 1;
+    return c;
+}
+
+func int_key(n: int) -> int {
+    calls = calls + 1;
+    return n;
+}
+
+func string_key(s: string) -> string {
+    calls = calls + 1;
+    return s;
+}
+
+func color_first(c: Color) -> int {
+    match (color_key(c)) {
+        _ => { return 9; }
+        Red => { return 7; }
+        Blue => { return 8; }
+    }
+}
+
+func int_first(x: int) -> int {
+    calls = 0;
+    effects = 0;
+    case (int_key(x)) {
+        _ => { effects = effects + 9; }
+        1 => { effects = effects + 7; }
+        2 => { effects = effects + 8; }
+    }
+    return 100 * calls + effects;
+}
+
+func string_first(x: string) -> int {
+    calls = 0;
+    effects = 0;
+    case (string_key(x)) {
+        _ => { effects = effects + 9; }
+        "one" => { effects = effects + 7; }
+        "two" => { effects = effects + 8; }
+    }
+    return 100 * calls + effects;
+}
+
+func color_middle(c: Color) -> int {
+    match (color_key(c)) {
+        Red => { return 7; }
+        _ => { return 9; }
+        Blue => { return 8; }
+    }
+}
+
+func int_middle(x: int) -> int {
+    calls = 0;
+    effects = 0;
+    case (int_key(x)) {
+        1 => { effects = effects + 7; }
+        _ => { effects = effects + 9; }
+        2 => { effects = effects + 8; }
+    }
+    return 100 * calls + effects;
+}
+
+func string_middle(x: string) -> int {
+    calls = 0;
+    effects = 0;
+    case (string_key(x)) {
+        "one" => { effects = effects + 7; }
+        _ => { effects = effects + 9; }
+        "two" => { effects = effects + 8; }
+    }
+    return 100 * calls + effects;
+}
+
+func color_last(c: Color) -> int {
+    match (color_key(c)) {
+        Red => { return 7; }
+        Blue => { return 8; }
+        _ => { return 9; }
+    }
+}
+
+func int_last(x: int) -> int {
+    calls = 0;
+    effects = 0;
+    case (int_key(x)) {
+        1 => { effects = effects + 7; }
+        2 => { effects = effects + 8; }
+        _ => { effects = effects + 9; }
+    }
+    return 100 * calls + effects;
+}
+
+func string_last(x: string) -> int {
+    calls = 0;
+    effects = 0;
+    case (string_key(x)) {
+        "one" => { effects = effects + 7; }
+        "two" => { effects = effects + 8; }
+        _ => { effects = effects + 9; }
+    }
+    return 100 * calls + effects;
+}
+
+func controls(key: int) -> int {
+    effects = 0;
+    case (key) { 1 => { effects = 1; } }
+    case ("only") { _ => { effects = effects + 2; } }
+    return effects;
+}
+
+func main() -> int {
+    calls = 0;
+    if (color_first(Red()) != 7) return 1;
+    if (color_first(Blue()) != 8) return 2;
+    if (color_first(Green()) != 9) return 3;
+    if (calls != 3) return 4;
+    if (int_first(1) != 107) return 5;
+    if (int_first(2) != 108) return 6;
+    if (int_first(3) != 109) return 7;
+    if (string_first("one") != 107) return 8;
+    if (string_first("two") != 108) return 9;
+    if (string_first("three") != 109) return 10;
+    calls = 0;
+    if (color_middle(Red()) != 7) return 11;
+    if (color_middle(Blue()) != 8) return 12;
+    if (color_middle(Green()) != 9) return 13;
+    if (calls != 3) return 14;
+    if (int_middle(1) != 107) return 15;
+    if (int_middle(2) != 108) return 16;
+    if (int_middle(3) != 109) return 17;
+    if (string_middle("one") != 107) return 18;
+    if (string_middle("two") != 108) return 19;
+    if (string_middle("three") != 109) return 20;
+    calls = 0;
+    if (color_last(Red()) != 7) return 21;
+    if (color_last(Blue()) != 8) return 22;
+    if (color_last(Green()) != 9) return 23;
+    if (calls != 3) return 24;
+    if (int_last(1) != 107) return 25;
+    if (int_last(2) != 108) return 26;
+    if (int_last(3) != 109) return 27;
+    if (string_last("one") != 107) return 28;
+    if (string_last("two") != 108) return 29;
+    if (string_last("three") != 109) return 30;
+    if (controls(1) != 3) return 31;
+    if (controls(0) != 2) return 32;
+    return 0;
+}

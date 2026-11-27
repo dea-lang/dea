@@ -409,7 +409,7 @@ func ps_parse_match_stmt(self: ParserState*) -> StmtId? {
             let pattern = ps_parse_pattern(self)?;
             ps_expect(self, ord(TT_ARROW_MATCH), "PAR-0174", "expected '=>' in match arm")?;
             let body = ps_parse_stmt(self)?;
-            let arm = new MatchArm(pattern, body, ps_extend_span(self, arm_start));
+            let arm = new MatchArm(false, pattern, body, ps_extend_span(self, arm_start));
             ptr_vec_push(arms as VectorBase*, arm as void*);
         }
 
@@ -709,12 +709,6 @@ func ps_parse_case_stmt(self: ParserState*) -> StmtId? {
                 let body = ps_parse_stmt(self)?;
                 else_arm = new CaseElse(body, ps_extend_span(self, wild_start));
                 seen_default = true;
-                continue;
-            }
-
-            if (seen_default) {
-                ps_emit_error(self, "PAR-0234", "value arm cannot appear after the default arm in 'case' statement", ps_peek(self));
-                ps_sync_case_invalid_arm(self);
                 continue;
             }
 

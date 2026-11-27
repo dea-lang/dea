@@ -1,0 +1,58 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module complete;
+
+enum Color { Red; Blue; }
+
+func color_first(c: Color) -> int {
+    match (c) {
+        _ => {}
+        Red => { return 7; }
+        Blue => { return 8; }
+    }
+}
+
+func color_middle(c: Color) -> int {
+    match (c) {
+        Red => { return 7; }
+        _ => {}
+        Blue => { return 8; }
+    }
+}
+
+func color_last(c: Color) -> int {
+    match (c) {
+        Red => { return 7; }
+        Blue => { return 8; }
+        _ => {}
+    }
+}
+
+struct Box { value: int; }
+
+func retained(c: Color) -> int {
+    let p = new Box(3);
+    match (c) {
+        Red => { p.value = 7; }
+        _ => { drop p; }
+        Blue => { p.value = 8; }
+    }
+    let value = p.value;
+    drop p;
+    return value;
+}
+
+func main() -> int {
+    if (retained(Red()) != 7) return 31;
+    if (retained(Blue()) != 8) return 32;
+    if (color_first(Red()) != 7) return 1;
+    if (color_first(Blue()) != 8) return 2;
+    if (color_middle(Red()) != 7) return 11;
+    if (color_middle(Blue()) != 8) return 12;
+    if (color_last(Red()) != 7) return 21;
+    if (color_last(Blue()) != 8) return 22;
+    return 0;
+}

@@ -281,6 +281,32 @@ def check_intrinsic_names(l0c: str) -> None:
         raise ToolTestFailure(f"missing qualified call or pattern diagnostic: {invalid.stderr}")
 
 
+def check_wildcard_fallbacks(l0c: str) -> None:
+    """Check fallback diagnostics at their source lines and execute the valid programs."""
+    fixtures = REPO_ROOT / "tests" / "fixtures" / "wildcard_fallbacks"
+    for name, warnings, errors in [
+        ("dispatch", 0, {}),
+        ("complete", 4, {}),
+        ("missing_return", 0, {"TYP-0010": 3}),
+        ("invalid_body", 1, {"TYP-0310": 1}),
+        ("invalid_bindings", 0, {"TYP-0020": 1, "TYP-0010": 1}),
+        ("duplicate_value", 0, {"TYP-0108": 1}),
+        ("duplicate_match", 0, {"PAR-0176": 1}),
+    ]:
+        path = fixtures / f"{name}.l0"
+        result = run([l0c, "--check", native_path(path)], expected_returncode=int(bool(errors)))
+        expected_lines = [i for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+                          if warnings and line.lstrip().startswith("_ =>")]
+        locations = re.findall(r":(\d+):9[^\n]*warning: \[TYP-0105\]", result.stderr)
+        if result.stderr.count("[TYP-0105]") != warnings or [int(line) for line in locations] != expected_lines:
+            raise ToolTestFailure(f"{name}: unexpected wildcard warnings: {result.stderr}")
+        for code, count in errors.items():
+            if result.stderr.count(f"[{code}]") != count:
+                raise ToolTestFailure(f"{name}: expected {count} {code}: {result.stderr}")
+        if not errors:
+            run([l0c, "--run", native_path(path)])
+
+
 def main() -> int:
     """Program entrypoint."""
 
@@ -295,6 +321,7 @@ def main() -> int:
 
         check_entry_file_identity(l0c, work_dir)
         check_intrinsic_names(l0c)
+        check_wildcard_fallbacks(l0c)
         type_names = REPO_ROOT / "tests" / "fixtures" / "qualified_type_names"
         for entry in ("forward", "reverse"):
             run([l0c, "--run", "--project-root", native_path(type_names), entry])

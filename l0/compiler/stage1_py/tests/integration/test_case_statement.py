@@ -431,7 +431,10 @@ def test_parse_case_value_arm_after_wildcard():
     }
     """
     mod, parser = parse_module_with_parser(src)
-    assert any("PAR-0234" in d.message for d in parser.diagnostics)
+    assert not parser.diagnostics
+    case = mod.decls[0].body.stmts[0]
+    assert len(case.arms) == 1
+    assert case.else_arm is not None
 
 
 # ============================================================================
@@ -1035,3 +1038,33 @@ def test_codegen_case_string_rvalue_scrutinee(codegen_single, compile_and_run, t
     assert c_code is not None, [d.message for d in diags]
     success, stdout, stderr = compile_and_run(c_code, tmp_path)
     assert success, f"Expected exit 0 (matched 'hello'): stderr={stderr}"
+
+
+@pytest.mark.parametrize("name,warnings,errors", [
+    ("dispatch", 0, {}),
+    ("complete", 4, {}),
+    ("missing_return", 0, {"TYP-0010": 3}),
+    ("invalid_body", 1, {"TYP-0310": 1}),
+    ("invalid_bindings", 0, {"TYP-0020": 1, "TYP-0010": 1}),
+    ("duplicate_value", 0, {"TYP-0108": 1}),
+    ("duplicate_match", 0, {"PAR-0176": 1}),
+])
+def test_wildcard_fallbacks(name, warnings, errors, analyze_single, compile_and_run, tmp_path):
+    """Check each fallback's reachability, then execute each valid dispatch matrix."""
+    from pathlib import Path
+    from l0_backend import Backend
+
+    fixture = Path(__file__).resolve().parents[4] / "tests/fixtures/wildcard_fallbacks" / f"{name}.l0"
+    source = fixture.read_text(encoding="utf-8")
+    result = analyze_single(name, source)
+    redundant = [d for d in result.diagnostics if "[TYP-0105]" in d.message]
+    assert len(redundant) == warnings
+    assert len({d.line for d in redundant}) == warnings
+    for d in redundant:
+        assert source.splitlines()[d.line - 1][d.column - 1] == "_"
+    for code, count in errors.items():
+        assert sum(f"[{code}]" in d.message for d in result.diagnostics) == count, result.diagnostics
+    assert result.has_errors() == bool(errors), result.diagnostics
+    if not errors:
+        ok, _, stderr = compile_and_run(Backend(result).generate(), tmp_path)
+        assert ok, stderr

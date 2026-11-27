@@ -31,7 +31,7 @@ no new tokens or keywords.
 The spelling migration completed in L0 Stage 1, L0 Stage 2 and L1 Stage 1. At the end of Phase 2, a value arm after
 `_ =>` produced `PAR-0234`, a second `_ =>` produced `PAR-0236`, and an unmatched `else` produced `PAR-0123`.
 
-### Position-independent fallback (accepted 2026-11-27, implementation pending)
+### Position-independent fallback (accepted 2026-11-27)
 
 Each enum `match` and scalar `case` may contain one `_ =>` fallback in any position. Evaluate the scrutinee once. A
 matching explicit arm wins wherever it appears. Select the fallback only when no explicit arm matches. Execute the
@@ -40,8 +40,8 @@ Each level keeps its existing arm syntax, supported patterns and values, and rul
 
 For enum `match`, a wildcard is unreachable when successfully validated explicit arms cover every variant. Warn once
 with `TYP-0105` at that wildcard and check its body for ordinary errors. Its body contributes no return, fallthrough or
-ownership/liveness effects. For scalar `case`, the new placement rule retires `PAR-0234` when implemented. The unique
-default spelling and the dangling-`else` rationale above continue to apply.
+ownership/liveness effects. Both L0 stages, canonical L1 and the shared Tree-sitter grammar implement the placement
+rule. L0 and L1 have retired `PAR-0234`. L2 retains its earlier behavior until the port after the stable L1 catch-up.
 
 ## Rationale
 
@@ -64,9 +64,9 @@ default spelling and the dangling-`else` rationale above continue to apply.
 
 ## Related Plans
 
-- [work/plans/bug-fixes/2026-11-27-shared-wildcard-fallbacks-noref.md](../../work/plans/bug-fixes/2026-11-27-shared-wildcard-fallbacks-noref.md):
-  tracks implementation and verification of the accepted placement rule in both L0 stages, canonical L1 and L2, and the
-  shared editor grammar
+- [work/plans/bug-fixes/closed/2026-11-27-shared-wildcard-fallbacks-noref.md](../../work/plans/bug-fixes/closed/2026-11-27-shared-wildcard-fallbacks-noref.md)
+- [l0/work/plans/bug-fixes/closed/2026-11-21-match-wildcard-precedence-and-return-flow-noref.md](../../l0/work/plans/bug-fixes/closed/2026-11-21-match-wildcard-precedence-and-return-flow-noref.md)
+- [l1/work/plans/bug-fixes/closed/2026-11-21-match-wildcard-dispatch-and-return-flow-noref.md](../../l1/work/plans/bug-fixes/closed/2026-11-21-match-wildcard-dispatch-and-return-flow-noref.md)
 - [work/plans/features/closed/2026-06-07-case-default-arm-wildcard-phase1-noref.md](../../work/plans/features/closed/2026-06-07-case-default-arm-wildcard-phase1-noref.md):
   introduced `_ =>`, the `PAR-0242` deprecation, and the `PAR-0243` guard across L0 Stage 1/Stage 2 and L1 Stage 1
 - [work/plans/refactors/closed/2026-06-08-migrate-case-else-defaults-to-wildcard-noref.md](../../work/plans/refactors/closed/2026-06-08-migrate-case-else-defaults-to-wildcard-noref.md):

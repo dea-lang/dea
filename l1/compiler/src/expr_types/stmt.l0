@@ -775,30 +775,28 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                     let fallthrough_states_match = ptr_vec_create(vec_size(arms) + 1);
                     let validated_pattern_ids = iset_create_with_capacity(vec_size(arms));
                     let covered_variants = ss_create();
-                    let variants_before_wildcard = ss_create();
+                    let coverage_span = stmt.span;
                     let wildcard_present = false;
                     for (let i = 0; i < vec_size(arms); i = i + 1) {
                         let arm = ptr_vec_get(arms, i) as MatchArm*;
                         let arm_pattern = pattern_arena_get(unit.parse_result.pattern_arena, arm.pattern);
                         if (ord(arm_pattern.kind) == ord(PT_WILDCARD)) {
                             wildcard_present = true;
+                            coverage_span = arm_pattern.span;
                         } else if (ord(arm_pattern.kind) == ord(PT_VARIANT)) {
                             let canonical_variant = etc_check_match_pattern(self, val_ty2 as Type*, arm.pattern);
                             if (canonical_variant != null) {
                                 iset_add(validated_pattern_ids, arm.pattern);
                                 ss_add(covered_variants, (canonical_variant as EnumVariantInfo*).name);
-                                if (!wildcard_present) {
-                                    ss_add(variants_before_wildcard, (canonical_variant as EnumVariantInfo*).name);
-                                }
                             }
                         }
                     }
-                    let wildcard_is_unreachable = etc_match_wildcard_is_unreachable(
-                        self, val_ty2 as Type*, variants_before_wildcard);
+                    let fully_covered = etc_match_named_arms_cover_enum(
+                        self, val_ty2 as Type*, covered_variants);
                     for (let i = 0; i < vec_size(arms); i = i + 1) {
                         let arm = ptr_vec_get(arms, i) as MatchArm*;
                         let arm_pattern = pattern_arena_get(unit.parse_result.pattern_arena, arm.pattern);
-                        let arm_is_reachable = !(wildcard_is_unreachable && ord(arm_pattern.kind) == ord(PT_WILDCARD));
+                        arm.redundant_wildcard = fully_covered && ord(arm_pattern.kind) == ord(PT_WILDCARD);
                         if (pre_match_alive != null) {
                             etc_alive_scope_stack_restore(self, pre_match_alive as VectorBase*);
                         }
@@ -807,7 +805,7 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                             etc_bind_pattern_types(self, val_ty2 as Type*, arm.pattern);
                         }
                         let arm_flow = FLOW_FALLTHROUGH;
-                        if (arm_is_reachable) {
+                        if (!arm.redundant_wildcard) {
                             arm_flow = etc_check_stmt(self, arm.body);
                             if (ord(arm_flow) != ord(FLOW_RETURNS)) {
                                 all_arms_return = false;
@@ -815,15 +813,14 @@ func etc_check_stmt(self: ExpressionTypeChecker*, stmt_id: StmtId) -> StmtFlowKi
                         } else {
                             arm_flow = etc_check_dead_const_stmt(self, arm.body);
                         }
-                        if (arm_is_reachable && ord(arm_flow) == ord(FLOW_FALLTHROUGH) && self.alive_scopes != null) {
+                        if (!arm.redundant_wildcard && ord(arm_flow) == ord(FLOW_FALLTHROUGH) && self.alive_scopes != null) {
                             etc_alive_state_vec_push_clone(fallthrough_states_match, self.alive_scopes as VectorBase*);
                         }
                     }
                     let is_exhaustive = etc_check_match_exhaustiveness(
-                        self, val_ty2 as Type*, covered_variants, wildcard_present, wildcard_is_unreachable, stmt.span);
+                        self, val_ty2 as Type*, covered_variants, wildcard_present, fully_covered, coverage_span);
                     iset_free(validated_pattern_ids);
                     ss_free(covered_variants);
-                    ss_free(variants_before_wildcard);
                     if (!is_exhaustive && pre_match_alive != null) {
                         etc_alive_state_vec_push_clone(fallthrough_states_match, pre_match_alive as VectorBase*);
                     }

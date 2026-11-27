@@ -65,3 +65,19 @@ func invalid_arity_plus_missing(x: typing_match_validation_dep::PayloadColor) ->
         typing_match_validation_dep::Empty => { return 0; }
     }
 }
+
+func wrong_owner_fallback(x: typing_match_validation_dep::RemoteColor) -> int {
+    match (x) {
+        typing_match_validation_dep::Red => { return 1; }
+        _ => { return 2; }
+        typing_match_validation_other::Blue => { return 3; }
+    }
+}
+
+func invalid_payload_fallback(x: typing_match_validation_dep::PayloadColor) -> int {
+    match (x) {
+        _ => { return 1; }
+        typing_match_validation_dep::Loaded => { return 2; }
+        typing_match_validation_dep::Empty => { return 3; }
+    }
+}

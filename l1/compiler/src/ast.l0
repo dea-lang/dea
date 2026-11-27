@@ -571,6 +571,7 @@ func expr_arena_get(self: ExprArena*, id: ExprId) -> ExprNode* {
  * Represents the MatchArm structure.
  */
 struct MatchArm {
+    redundant_wildcard: bool; // Set by coverage checking before lowering.
     pattern: PatternId;
     body: StmtId;
     span: Span;

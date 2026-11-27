@@ -2,7 +2,7 @@
 
 ## Catch L2 up with the stable L1 baseline
 
-- Date: 2026-11-25
+- Date: 2026-11-27
 - Status: Draft
 - Title: Catch L2 up with stable L1 compiler and standard-library work before sustained L2 development
 - Kind: Feature
@@ -36,6 +36,10 @@ changes into L2-owned sources while retaining L2's independent lineage and boots
 For lifted nullable numeric widening, consult the L2 target in
 [work/plans/features/2026-11-25-shared-nullable-numeric-widening-noref.md][widening] when recording the delta. That
 shared plan owns L2 implementation and validation of ADR-0029.
+
+Schedule the L2 wildcard fallback port after this catch-up. The accepted rule, remaining diagnostic retirement and
+level-owned verification matrix are in
+[work/plans/bug-fixes/closed/2026-11-27-shared-wildcard-fallbacks-noref.md](../../../../work/plans/bug-fixes/closed/2026-11-27-shared-wildcard-fallbacks-noref.md).
 
 ## Approach
 

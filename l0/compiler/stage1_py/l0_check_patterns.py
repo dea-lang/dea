@@ -128,6 +128,15 @@ class PatternAnalysis:
                 f"has {len(variant_info.field_types)} fields but pattern has {len(pattern.vars)} variables",
             )
             return None
+        bound_types = {}
+        for name, field_type in zip(pattern.vars, variant_info.field_types):
+            if name in bound_types:
+                self.state._error(
+                    pattern, f"[TYP-0020] local variable '{name}' already declared in this scope "
+                    f"with type '{format_type(bound_types[name])}'",
+                )
+                return None
+            bound_types[name] = field_type
         return variant_info.name
 
     def _match_coverage(self, stmt: MatchStmt, scrutinee_ty: EnumType,
@@ -152,13 +161,7 @@ class PatternAnalysis:
             else:
                 validated_variant_names.append(None)
         covered_variants = {name for name in validated_variant_names if name is not None}
-        variants_before_wildcard: set[str] = set()
-        for arm, validated_name in zip(stmt.arms, validated_variant_names):
-            if isinstance(arm.pattern, WildcardPattern):
-                break
-            if validated_name is not None:
-                variants_before_wildcard.add(validated_name)
-        wildcard_is_unreachable = enum_info is not None and variants_before_wildcard == defined_variants
+        wildcard_is_unreachable = enum_info is not None and covered_variants == defined_variants
         reachable_arm_count = sum(
             not (isinstance(arm.pattern, WildcardPattern) and wildcard_is_unreachable)
             for arm in stmt.arms
@@ -180,9 +183,9 @@ class PatternAnalysis:
             Whether a wildcard or explicit variants cover the complete enum.
         """
         # check that all variants are covered (or wildcard present)
-        is_wildcard_present = any(isinstance(arm.pattern, WildcardPattern) for arm in stmt.arms)
-        is_exhaustive = is_wildcard_present
-        if not is_wildcard_present:
+        wildcard = next((arm.pattern for arm in stmt.arms if isinstance(arm.pattern, WildcardPattern)), None)
+        is_exhaustive = wildcard is not None
+        if wildcard is None:
             if coverage.covered_variants == coverage.defined_variants:
                 is_exhaustive = True
             else:
@@ -193,9 +196,11 @@ class PatternAnalysis:
                     f"{', '.join(missing_variants)}) for enum '{format_type(scrutinee_ty)}'"
                 )
         elif coverage.wildcard_is_unreachable:
-            # wildcard is a no-op if all variants are already covered
-            self.state._warn(stmt,
-                       f"[TYP-0105] unreachable wildcard pattern in match: all variants of "
-                       f"enum '{format_type(scrutinee_ty)}' are already covered")
+            self.state.analysis.redundant_wildcards.add(id(wildcard))
+            self.state._warn(
+                wildcard,
+                f"[TYP-0105] unreachable wildcard pattern in match: all variants of "
+                f"enum '{format_type(scrutinee_ty)}' are already covered",
+            )
 
         return is_exhaustive

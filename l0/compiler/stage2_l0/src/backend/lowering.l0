@@ -1108,6 +1108,10 @@ func be_emit_match_stmt(self: Backend*, stmt: StmtNode*) {
         let unreachable_arms = 0;
         for (let i = 0; i < vec_size(arms); i = i + 1) {
             let arm = ptr_vec_get(arms, i) as MatchArm*;
+            if (arm.redundant_wildcard) {
+                unreachable_arms = unreachable_arms + 1;
+                continue;
+            }
             let pattern = pattern_arena_get(be_current_unit(self).parse_result.pattern_arena, arm.pattern);
             if (ord(pattern.kind) == ord(PT_WILDCARD)) {
                 cem_emit_default_label(self.emitter);
@@ -1198,7 +1202,9 @@ func be_emit_case_stmt(self: Backend*, stmt: StmtNode*) {
                 cem_emit_block_end(self.emitter);
             }
             if (stmt.case_else != null) {
-                cem_emit_else(self.emitter);
+                if (vec_size(arms) > 0) {
+                    cem_emit_else(self.emitter);
+                }
                 cem_emit_block_start(self.emitter);
                 let else_scope = be_push_scope(self);
                 self.next_stmt_unreachable = false;

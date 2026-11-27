@@ -1,0 +1,16 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module duplicate_match;
+
+enum Color { Red; Blue; }
+
+func repeated(c: Color) {
+    match (c) {
+        _ => {}
+        Red => {}
+        _ => {}
+    }
+}

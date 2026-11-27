@@ -56,9 +56,9 @@ func unreachable_wildcard_is_dead(choice: Choice) -> int {
     let p: Box* = new Box(1);
     drop p;
     match (choice) {
+        _ => { let dead: int = p.value; }
         A => { p = new Box(2); }
         B => { p = new Box(3); }
-        _ => { let dead: int = p.value; }
     }
     return p.value;
 }
@@ -67,9 +67,9 @@ func unreachable_wildcard_cannot_break(choice: Choice) -> int {
     let p: Box* = new Box(1);
     while (true) {
         match (choice) {
+            _ => { drop p; break; }
             A => { return 0; }
             B => { return 1; }
-            _ => { drop p; break; }
         }
     }
     return p.value;

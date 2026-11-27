@@ -273,6 +273,12 @@ def test_qualified_variant_pattern_wrong_module(write_l0_file, temp_project):
                 }
             }
         }
+        func fallback(c: colors::Color) -> int {
+            match (c) {
+                _ => { return 2; }
+                shapes::Red => { return 1; }
+            }
+        }
         """,
     )
 
@@ -284,6 +290,7 @@ def test_qualified_variant_pattern_wrong_module(write_l0_file, temp_project):
     assert result.has_errors()
     assert has_error_code(result.diagnostics, "TYP-0102")
     assert has_error_code(result.diagnostics, "TYP-0104")
+    assert not has_error_code(result.diagnostics, "TYP-0105")
 
 
 def test_wrong_enum_variant_does_not_complete_match_coverage(write_l0_file, temp_project):
@@ -365,6 +372,13 @@ def test_invalid_variant_does_not_make_wildcard_unreachable(write_l0_file, temp_
                 Empty => { return 0; }
             }
         }
+        func invalid_payload_fallback(c: PayloadColor) -> int {
+            match (c) {
+                _ => { return 1; }
+                Loaded => { return 2; }
+                Empty => { return 3; }
+            }
+        }
         """,
     )
 
@@ -378,7 +392,9 @@ def test_invalid_variant_does_not_make_wildcard_unreachable(write_l0_file, temp_
     assert has_error_code(result.diagnostics, "TYP-0101")
     assert has_error_code(result.diagnostics, "TYP-0104")
     assert has_error_code(result.diagnostics, "TYP-0159")
-    assert not has_error_code(result.diagnostics, "TYP-0105")
+    warnings = [d for d in result.diagnostics if "[TYP-0105]" in d.message]
+    assert len(warnings) == 1
+    assert "_ => { return 1; }" in (temp_project / "main.l0").read_text(encoding="utf-8").splitlines()[warnings[0].line - 1]
 
 
 def test_unqualified_variant_conflict_is_error(write_l0_file, temp_project):

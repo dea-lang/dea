@@ -1,6 +1,6 @@
 # Dea/L<sub>1</sub> Grammar
 
-Version: 2026-11-11
+Version: 2026-11-27
 
 The following is the formal grammar for level 1 of the Dea programming language (Dea/L<sub>1</sub>) in EBNF style. This
 describes the concrete syntax that lexers and parsers should accept.
@@ -392,7 +392,7 @@ MatchArm        ::=     Pattern "=>" Stmt
 ### 5.6 Case (scalar/string dispatch)
 
 ```ebnf
-CaseStmt        ::=     "case" "(" Expr ")" "{" CaseArm* WildcardArm? "}"
+CaseStmt        ::=     "case" "(" Expr ")" "{" ( CaseArm+ | CaseArm* WildcardArm CaseArm* ) "}"
 
 CaseArm         ::=     CaseArmValue "=>" Stmt
 
@@ -401,6 +401,11 @@ WildcardArm     ::=     "_" "=>" Stmt
 CaseArmValue    ::=     ConstScalarExpr
 ConstScalarExpr ::=     IntLiteral | FloatLiteral | ByteLiteral | StringLiteral | BoolLiteral | QualifiedIdent
 ```
+
+In both `match` and `case`, a single `_ =>` fallback may appear anywhere. The scrutinee is evaluated once. A matching
+explicit arm wins wherever it appears. The fallback runs only if every explicit arm misses. Exactly one selected arm
+executes, with no fallthrough to another arm. Writing the fallback last is customary. In enum `match`, fully covering
+the enum with valid named arms makes the wildcard unreachable and produces one `TYP-0105` warning at the wildcard.
 
 `CaseArmValue` expressions are resolved semantically. In this bootstrap stage, they may be scalar/string/bool literals
 or references to visible `const` declarations with comparable scalar/string/bool values. Referenced scalar constants may

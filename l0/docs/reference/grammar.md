@@ -281,7 +281,7 @@ MatchArm        ::=     Pattern "=>" Block
 ### 5.6 Case (scalar/string dispatch)
 
 ```ebnf
-CaseStmt        ::=     "case" "(" Expr ")" "{" CaseArm* WildcardArm? "}"
+CaseStmt        ::=     "case" "(" Expr ")" "{" ( CaseArm+ | CaseArm* WildcardArm CaseArm* ) "}"
 
 CaseArm         ::=     CaseLiteral "=>" Stmt
 
@@ -290,7 +290,10 @@ WildcardArm     ::=     "_" "=>" Stmt
 CaseLiteral     ::=     IntLiteral | ByteLiteral | StringLiteral | BoolLiteral
 ```
 
-`_ =>` is the sole `case` default-arm spelling, mirrors the `match` wildcard arm, and may appear at most once.
+In both `match` and `case`, a single `_ =>` fallback may appear anywhere. The scrutinee is evaluated once. A matching
+explicit arm wins wherever it appears. The fallback runs only if every explicit arm misses. Exactly one selected arm
+executes, with no fallthrough to another arm. Writing the fallback last is customary. In enum `match`, fully covering
+the enum with valid named arms makes the wildcard unreachable and produces one `TYP-0105` warning at the wildcard.
 
 Patterns (L<sub>0</sub> subset):
 

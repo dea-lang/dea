@@ -33,6 +33,7 @@ class AnalysisResult:
         func_envs: Function scope information keyed by (module_name, decl_name).
         let_types: Types of top-level 'let' declarations keyed by (module_name, decl_name).
         local_annotation_types: Resolved local declaration types used for wrapper emission.
+        redundant_wildcards: Identities of match wildcards covered by explicit variants.
         expr_types: Resolved types of expressions keyed by id(expr_node).
         var_ref_resolution: Resolution targets for VarRef nodes keyed by id(expr_node).
         intrinsic_targets: Target types for intrinsic operations keyed by id(expr_node).
@@ -51,6 +52,8 @@ class AnalysisResult:
     let_types: dict[SymbolKey, Type] = field(default_factory=dict)
 
     local_annotation_types: set[Type] = field(default_factory=set)
+
+    redundant_wildcards: set[int] = field(default_factory=set)
 
     # Expression types keyed by id(expr_node)
     expr_types: dict[int, Type] = field(default_factory=dict)

@@ -66,3 +66,16 @@ func choose(value: int) -> int {
 }
 
 ---
+
+==================
+Repeated case fallback is rejected
+:error
+==================
+
+module duplicate_default;
+
+func f(x: int) {
+    case (x) { _ => {} 1 => {} _ => {} }
+}
+
+---

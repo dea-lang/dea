@@ -1008,11 +1008,11 @@ func test_case_wildcard_default_ok() {
 
 
 /**
- * Tests that a value arm after the wildcard default is PAR-0234.
+ * Tests that a value arm can follow the wildcard default.
  */
-func test_case_value_arm_after_wildcard_error() {
+func test_case_value_arm_after_wildcard_ok() {
     let src = "module main; func main() -> int { case (1) { _ => { return 0; } 2 => { return 2; } } }";
-    expect_error_code(src, "PAR-0234");
+    expect_ok(src);
 }
 
 /**
@@ -1063,24 +1063,32 @@ func test_case_default_recovery_stays_inside_case() {
         "func main() -> int {\n" +
         "    case (1) {\n" +
         "        _ => { return 0; }\n" +
-        "        \"a\" => { return 1; }\n" +
+        "        else { return 1; }\n" +
         "        _ => 2;\n" +
         "        _ => 3;\n" +
         "    }\n" +
         "    printl_s(\"ok\");\n" +
         "    return 0;\n" +
-        "}\n";
-    expect_diag_code_present(src, "PAR-0234");
+        "}\n" +
+        "func later() {}\n";
+    expect_diag_code_present(src, "PAR-0123");
     expect_diag_code_count(src, "PAR-0236", 2);
     expect_diag_code_absent(src, "PAR-0225");
-    expect_diag_code_absent(src, "PAR-0123");
     expect_diag_code_absent(src, "PAR-0020");
-    expect_diag_code_line(src, "PAR-0234", 0, 5);
+    expect_diag_code_line(src, "PAR-0123", 0, 5);
     expect_diag_code_line(src, "PAR-0236", 0, 6);
     expect_diag_code_line(src, "PAR-0236", 1, 7);
-    expect_diag_code_span(src, "PAR-0234", 0, 5, 9, 5, 12);
+    expect_diag_code_span(src, "PAR-0123", 0, 5, 9, 5, 13);
     expect_diag_code_span(src, "PAR-0236", 0, 6, 9, 6, 10);
     expect_diag_code_span(src, "PAR-0236", 1, 7, 9, 7, 10);
+    let result = parse_module_source(src, "<test>");
+    let mod = result.root_module as Module*;
+    assert(vec_size(mod.decls) == 2, "Expected the following function to survive recovery");
+    let top = ptr_vec_get(mod.decls, 0) as TopLevelDecl*;
+    let func_decl = top.data as FuncDecl*;
+    let body = stmt_arena_get(result.stmt_arena, func_decl.body);
+    assert(vec_size(body.ids as VectorBase*) == 3, "Expected the case, print, and return statements");
+    parse_result_free(result);
 }
 
 /**
@@ -1092,18 +1100,18 @@ func test_case_recovery_preserves_one_stray_else_boundary() {
         "func main() -> int {\n" +
         "    case (1) {\n" +
         "        _ => return 0;\n" +
-        "        1 => return 1;\n" +
+        "        _ => return 1;\n" +
         "        else return 2;\n" +
         "    }\n" +
         "    return 0;\n" +
         "}\n";
-    expect_diag_code_count(src, "PAR-0234", 1);
+    expect_diag_code_count(src, "PAR-0236", 1);
     expect_diag_code_count(src, "PAR-0123", 1);
     expect_diag_code_absent(src, "PAR-0235");
     expect_diag_code_absent(src, "PAR-0100");
     expect_diag_code_absent(src, "PAR-0225");
     expect_diag_code_absent(src, "PAR-0020");
-    expect_diag_code_line(src, "PAR-0234", 0, 5);
+    expect_diag_code_line(src, "PAR-0236", 0, 5);
     expect_diag_code_line(src, "PAR-0123", 0, 6);
 }
 
@@ -1116,19 +1124,19 @@ func test_case_recovery_preserves_multiple_stray_else_boundaries() {
         "func main() -> int {\n" +
         "    case (1) {\n" +
         "        _ => return 0;\n" +
-        "        1 => return 1;\n" +
+        "        _ => return 1;\n" +
         "        else return 2;\n" +
         "        else return 3;\n" +
         "    }\n" +
         "    return 0;\n" +
         "}\n";
-    expect_diag_code_count(src, "PAR-0234", 1);
+    expect_diag_code_count(src, "PAR-0236", 1);
     expect_diag_code_count(src, "PAR-0123", 2);
     expect_diag_code_absent(src, "PAR-0235");
     expect_diag_code_absent(src, "PAR-0100");
     expect_diag_code_absent(src, "PAR-0225");
     expect_diag_code_absent(src, "PAR-0020");
-    expect_diag_code_line(src, "PAR-0234", 0, 5);
+    expect_diag_code_line(src, "PAR-0236", 0, 5);
     expect_diag_code_line(src, "PAR-0123", 0, 6);
     expect_diag_code_line(src, "PAR-0123", 1, 7);
 }
@@ -1141,12 +1149,12 @@ func test_case_default_recovery_byte_literal_span() {
         "func main() -> int {\n" +
         "    case (1) {\n" +
         "        _ => 0;\n" +
-        "        'a' => 1;\n" +
+        "        1 'a' => 1;\n" +
         "    }\n" +
         "    return 0;\n" +
         "}\n";
-    expect_diag_code_present(src, "PAR-0234");
-    expect_diag_code_span(src, "PAR-0234", 0, 5, 9, 5, 12);
+    expect_diag_code_present(src, "PAR-0235");
+    expect_diag_code_span(src, "PAR-0235", 0, 5, 11, 5, 14);
 }
 
 /**
@@ -1671,7 +1679,7 @@ func main() {
     test_stray_else_does_not_cascade_to_top_level();
     test_case_empty_error();
     test_case_wildcard_default_ok();
-    test_case_value_arm_after_wildcard_error();
+    test_case_value_arm_after_wildcard_ok();
     test_case_wildcard_missing_arrow_error();
     test_case_value_arm_if_else_body_ok();
     test_case_stray_else_arm_error();

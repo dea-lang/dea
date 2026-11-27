@@ -1,0 +1,15 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module invalid_body;
+
+enum Color { Red; Blue; }
+func check_body(c: Color) {
+    match (c) {
+        Red => {}
+        _ => { let missing: int = "wrong type"; }
+        Blue => {}
+    }
+}

@@ -1,0 +1,32 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module missing_return;
+
+enum Color { Red; Blue; Green; }
+
+func color_first(c: Color) -> int {
+    match (c) {
+        _ => {}
+        Red => { return 7; }
+        Blue => { return 8; }
+    }
+}
+
+func color_middle(c: Color) -> int {
+    match (c) {
+        Red => { return 7; }
+        _ => {}
+        Blue => { return 8; }
+    }
+}
+
+func color_last(c: Color) -> int {
+    match (c) {
+        Red => { return 7; }
+        Blue => { return 8; }
+        _ => {}
+    }
+}

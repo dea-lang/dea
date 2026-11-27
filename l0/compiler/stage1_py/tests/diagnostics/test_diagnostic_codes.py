@@ -163,7 +163,6 @@ PAR_TRIGGERS = {
     "PAR-0231": "module main; func main() -> int { case 42 { } return 0; }",
     "PAR-0232": "module main; func main() -> int { case (42 { } return 0; }",
     "PAR-0233": "module main; func main() -> int { case (42) 1 => { return 1; } return 0; }",
-    "PAR-0234": "module main; func main() -> int { case (42) { _ => { return 0; } 1 => { return 1; } } }",
     "PAR-0235": "module main; func main() -> int { case (42) { 1 { return 1; } } }",
     "PAR-0236": "module main; func main() -> int { case (42) { _ => { return 0; } _ => { return 1; } } }",
     "PAR-0240": "module main; func main() -> int { case (42) { } return 0; }",
