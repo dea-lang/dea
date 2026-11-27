@@ -199,6 +199,7 @@ Implemented lowering includes:
 Implemented lowering includes:
 
 - `let`, assignment, expression statements
+- Stage 1 omits the text of a standalone string literal statement from generated C. The statement has no side effects.
 - `if/else`, `while`, `for`
 - `match` over enum tags (switch-based)
 - `case` (scalar switch or string equality chain)

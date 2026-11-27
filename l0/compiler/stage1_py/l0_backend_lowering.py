@@ -162,7 +162,7 @@ class Lowering:
         elif isinstance(stmt, ExprStmt):
             # expr;
             c_expr = self._emit_expr(stmt.expr, is_statement=True)
-            if c_expr:  # Only emit if not empty (empty for no-op comments)
+            if c_expr:
                 expr_ty = self.state.analysis.expr_types.get(id(stmt.expr))
                 if expr_ty and self.lifetime._should_materialize_arc_temp(stmt.expr, expr_ty):
                     self.lifetime._materialize_arc_temp(c_expr, expr_ty)
@@ -1510,7 +1510,6 @@ class Lowering:
 
         elif isinstance(expr, StringLiteral):
             if is_statement:
-                self.state.emitter.statements.emit_comment(f'string literal "{expr.value}"')
                 return ""
             return self.state.emitter.values.emit_string_literal(expr.value)
 

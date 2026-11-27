@@ -625,6 +625,34 @@ def test_codegen_line_directives_normalize_backslashes(analyze_single):
     assert '#line 4 "D:/tmp/project/main.l0"' in c_code
 
 
+def test_codegen_discarded_string_literal_emits_no_c(analyze_single, compile_and_run, tmp_path):
+    """A discarded string literal leaves only the surrounding print calls."""
+    from l0_backend import Backend
+
+    source = """
+        module main;
+        import std.io;
+        func main() -> int {
+            printl_s("before");
+            "examples/*.l0";
+            printl_s("after");
+            return 0;
+        }
+    """
+
+    def generate(text):
+        result = analyze_single("main", text)
+        assert not result.has_errors(), result.diagnostics
+        result.context.emit_line_directives = False
+        return Backend(result).generate()
+
+    generated = generate(source)
+    assert generated == generate(source.replace('"examples/*.l0";', ''))
+    ok, stdout, stderr = compile_and_run(generated, tmp_path, strict_c99=True)
+    assert ok, stderr
+    assert stdout.splitlines() == ["before", "after"]
+
+
 def test_codegen_trigraph_spellings_preserve_runtime_bytes(codegen_single, compile_and_run, tmp_path):
     source_bytes = "??=??/??'??(??)??!??<??>??-"
     c_code, diagnostics = codegen_single(
