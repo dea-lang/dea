@@ -119,7 +119,7 @@ class CDeclarations:
         # Emit fields
         for field_info in struct_info.fields:
             c_type = self.types.emit_type(field_info.type)
-            self.state.out.emit(f"{c_type} {field_info.name};")
+            self.state.out.emit(f"{c_type} {self.names.mangle_member(field_info.name)};")
 
         if not struct_info.fields:
             # Empty struct - add dummy field, as empty structs are not allowed in standard C (C99)
@@ -176,16 +176,16 @@ class CDeclarations:
 
             if not variant_info.field_types:
                 # Empty variant - still need a struct for uniform access
-                self.state.out.emit(f"struct {{ char __dummy__; }} {variant.name};")
+                self.state.out.emit(f"struct {{ char __dummy__; }} {self.names.mangle_member(variant.name)};")
             else:
                 # Variant with fields
                 field_decls = []
                 for field_, ftype in zip(variant.fields, variant_info.field_types):
                     c_type = self.types.emit_type(ftype)
-                    field_decls.append(f"{c_type} {field_.name}")
+                    field_decls.append(f"{c_type} {self.names.mangle_member(field_.name)}")
 
                 fields_str = "; ".join(field_decls) + ";"
-                self.state.out.emit(f"struct {{ {fields_str} }} {variant.name};")
+                self.state.out.emit(f"struct {{ {fields_str} }} {self.names.mangle_member(variant.name)};")
 
         self.state.out.dedent()
         self.state.out.emit("} data;")

@@ -1,6 +1,6 @@
 # L1 C Backend Design
 
-Version: 2026-11-26
+Version: 2026-11-27
 
 This is the canonical backend implementation document for the canonical Dea/L1 compiler.
 
@@ -205,6 +205,12 @@ Current L1 Binary Interface (LBI) naming policy is:
 - `rt_*` for stable runtime API entry points used by generated C and stdlib declarations.
 - `_rt_*` for private runtime helpers.
 - `_dea_*` / `_DEA_*` for other private runtime names.
+
+Struct fields, named enum payloads and variant union members follow the shared L0/L1 member spelling rule. A C keyword
+from the emitter's list, a known runtime-header macro name, or a name starting with `__`, `_` plus an uppercase letter,
+`L0_`, `DEA_` or `dea_field_` receives one leading `dea_field_`. Other names keep their source spelling. For example,
+`sizeof` becomes `dea_field_sizeof` and `dea_field_sizeof` becomes `dea_field_dea_field_sizeof`. Module interfaces
+retain the Dea names. A separately compiled consumer applies the same fixed mapping when emitting C.
 
 The emitter uses these rules to ensure C identifier hygiene and stable link-time identity. The entire `__dea` prefix is
 reserved for generated L1 source and compiler infrastructure. Standalone link does not inspect native symbol tables to

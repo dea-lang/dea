@@ -155,6 +155,13 @@ an underscore-bearing source component must use the new spelling. The public run
 - Local identifiers conflicting with C/runtime-reserved names are suffixed (`__v`).
 - `extern func` names are intentionally **not mangled** (FFI boundary).
 
+Struct fields, named enum payloads and variant union members use their source spellings unless they conflict with the
+emitter's C keyword list, a fixed runtime-header macro name (such as `EOF` or `errno`), or a reserved prefix (`__`, `_`
+followed by an uppercase letter, `L0_`, or `DEA_`). In those cases the emitter prepends `dea_field_`. It also prepends
+that prefix to a source name already beginning with `dea_field_`. Thus `sizeof` and `dea_field_sizeof` yield distinct C
+members, and `ord` stays `ord`. The mapping is independent of the host C preprocessor. It preserves member order and
+types.
+
 ### Public C interoperability header
 
 Additional C translation units passed with `--c-source` include `dea_rt.h`, never `l0_runtime.h`. The public header

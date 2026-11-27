@@ -157,7 +157,7 @@ func cem_emit_struct(self: CEmitter*, module_name: string, decl: StructDecl*, st
 
     for (let i = 0; i < vec_size(struct_info.fields); i = i + 1) {
         let field_info = ptr_vec_get(struct_info.fields, i) as StructFieldInfo*;
-        ccb_emit(self.out, cem_emit_type(field_info.field_type) + " " + field_info.name + ";");
+        ccb_emit(self.out, cem_emit_type(field_info.field_type) + " " + cem_mangle_member(field_info.name) + ";");
     }
 
     if (vec_size(struct_info.fields) == 0) {
@@ -211,7 +211,7 @@ func cem_emit_enum(self: CEmitter*, module_name: string, decl: EnumDecl*, enum_i
 
         let variant_info = info as EnumVariantInfo*;
         if (vec_size(variant_info.field_types) == 0) {
-            ccb_emit(self.out, "struct { char __dummy__; } " + variant2.name + ";");
+            ccb_emit(self.out, "struct { char __dummy__; } " + cem_mangle_member(variant2.name) + ";");
             continue;
         }
 
@@ -225,10 +225,10 @@ func cem_emit_enum(self: CEmitter*, module_name: string, decl: EnumDecl*, enum_i
                 let field_type = ptr_vec_get(variant_info.field_types, j) as Type*;
                 sb_append(sb, cem_emit_type(field_type));
                 sb_append(sb, " ");
-                sb_append(sb, field_decl.name);
+                sb_append(sb, cem_mangle_member(field_decl.name));
             }
             sb_append(sb, "; } ");
-            sb_append(sb, variant2.name);
+            sb_append(sb, cem_mangle_member(variant2.name));
             sb_append(sb, ";");
             ccb_emit(self.out, sb_to_string(sb));
         }

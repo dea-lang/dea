@@ -225,7 +225,7 @@ class CStatements:
             field_inits: List of (field_name, c_value) tuples.
         """
         c_base_type = self.types.emit_type(base_type)
-        init_str = ", ".join(f".{name} = {value}" for name, value in field_inits)
+        init_str = ", ".join(f".{self.names.mangle_member(name)} = {value}" for name, value in field_inits)
         self.emit_struct_init(c_temp_name, c_base_type, init_str)
 
     def emit_enum_variant_init(
@@ -248,8 +248,8 @@ class CStatements:
         if not payload_inits:
             init_str = f".tag = {tag_value}"
         else:
-            payload_str = ", ".join(f".{name} = {value}" for name, value in payload_inits)
-            init_str = f".tag = {tag_value}, .data = {{ .{variant_name} = {{ {payload_str} }} }}"
+            payload_str = ", ".join(f".{self.names.mangle_member(name)} = {value}" for name, value in payload_inits)
+            init_str = f".tag = {tag_value}, .data = {{ .{self.names.mangle_member(variant_name)} = {{ {payload_str} }} }}"
         self.emit_struct_init(c_temp_name, c_base_type, init_str)
 
     def emit_zero_init(self, c_temp_name: str, c_base_type: str) -> None:

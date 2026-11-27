@@ -337,6 +337,7 @@ def main() -> int:
         check_intrinsic_names(l0c)
         check_wildcard_fallbacks(l0c)
         check_unicode_string_escapes(l0c)
+        run([l0c, "--run", native_path(REPO_ROOT / "tests/fixtures/field_names/main.l0")])
         type_names = REPO_ROOT / "tests" / "fixtures" / "qualified_type_names"
         for entry in ("forward", "reverse"):
             run([l0c, "--run", "--project-root", native_path(type_names), entry])

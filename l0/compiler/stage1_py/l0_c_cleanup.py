@@ -196,7 +196,7 @@ class CCleanup:
         self.state.out.indent()
 
         for field_ in info.fields:
-            field_expr = f"{c_ptr_expr}->{field_.name}"
+            field_expr = self.values.emit_field_lvalue(c_ptr_expr, field_.name, True)
             self._emit_field_cleanup(field_expr, field_.type)
 
         self.state.out.dedent()
@@ -218,7 +218,9 @@ class CCleanup:
         self._emit_enum_cleanup_switch(
             enum_type,
             f"{c_ptr_expr}->tag",
-            lambda variant_name, field_name: f"{c_ptr_expr}->data.{variant_name}.{field_name}",
+            lambda variant_name, field_name: (
+                f"{c_ptr_expr}->data.{self.names.mangle_member(variant_name)}.{self.names.mangle_member(field_name)}"
+            ),
             missing_info_is_ice=True,
         )
 

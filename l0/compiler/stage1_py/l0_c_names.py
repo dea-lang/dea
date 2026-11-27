@@ -5,6 +5,33 @@ from dataclasses import dataclass, field
 from l0_types import EnumType
 
 
+# Object-like macros from headers included by the L0 and L1 runtimes.
+_C_MEMBER_MACROS = frozenset({
+    "errno", "stdin", "stdout", "stderr",
+    "st_atime", "st_mtime", "st_ctime", "st_birthtime", "sa_handler", "sa_sigaction", "ru_first", "ru_last",
+    "sv_onstack", "w_coredump", "w_retcode", "w_stopsig", "w_stopval", "w_termsig",
+    "EOF", "BUFSIZ", "FOPEN_MAX", "FILENAME_MAX", "L_tmpnam", "TMP_MAX", "SEEK_SET", "SEEK_CUR", "SEEK_END",
+    "EXIT_SUCCESS", "EXIT_FAILURE", "RAND_MAX", "MB_CUR_MAX", "CLOCKS_PER_SEC", "TIME_UTC",
+    "CHAR_BIT", "CHAR_MIN", "CHAR_MAX", "SCHAR_MIN", "SCHAR_MAX", "UCHAR_MAX", "SHRT_MIN", "SHRT_MAX",
+    "USHRT_MAX",
+    "INT_MIN", "INT_MAX", "UINT_MAX", "LONG_MIN", "LONG_MAX", "ULONG_MAX", "LLONG_MIN", "LLONG_MAX",
+    "ULLONG_MAX",
+    "INT8_MIN", "INT8_MAX", "UINT8_MAX", "INT16_MIN", "INT16_MAX", "UINT16_MAX", "INT32_MIN", "INT32_MAX",
+    "UINT32_MAX", "INT64_MIN", "INT64_MAX", "UINT64_MAX",
+    "INTPTR_MIN", "INTPTR_MAX", "UINTPTR_MAX", "SIZE_MAX", "PTRDIFF_MIN", "PTRDIFF_MAX", "INTMAX_MIN",
+    "INTMAX_MAX", "UINTMAX_MAX", "WCHAR_MIN", "WCHAR_MAX", "WINT_MIN", "WINT_MAX", "SIG_ATOMIC_MIN",
+    "SIG_ATOMIC_MAX",
+    "EACCES", "EAGAIN", "EBADF", "EBUSY", "EDOM", "EDQUOT", "EEXIST", "EFAULT", "EFBIG", "EILSEQ", "EINTR",
+    "EINVAL", "EIO", "EISDIR", "ELOOP", "EMFILE", "ENAMETOOLONG", "ENFILE", "ENOBUFS", "ENOENT", "ENOMEM",
+    "ENOSPC", "ENOSYS", "ENOTDIR", "ENOTEMPTY", "ENOTSUP", "ENXIO", "EOPNOTSUPP", "EPERM", "EPIPE", "ERANGE",
+    "EROFS", "ESPIPE", "ETIMEDOUT", "EWOULDBLOCK",
+    "NAN", "INFINITY", "HUGE_VAL", "HUGE_VALF", "HUGE_VALL", "math_errhandling", "FLT_MAX", "DBL_MAX",
+    "LDBL_MAX", "FLT_MIN", "DBL_MIN", "LDBL_MIN", "FLT_EPSILON", "DBL_EPSILON", "LDBL_EPSILON",
+    "F_OK", "R_OK", "W_OK", "X_OK", "STDIN_FILENO", "STDOUT_FILENO", "STDERR_FILENO", "PATH_MAX",
+    "SIPHASH_IMPLEMENTATION",
+})
+
+
 def _mangle_type_name(module_name: str, local_name: str) -> str:
     """Encode the ASCII components of a qualified nominal type name.
 
@@ -89,6 +116,21 @@ class CNames:
         if safe_name in self.C_KEYWORDS:
             safe_name = f"l0_kw_{safe_name}"
         return f"l0_{safe_module}_{safe_name}"
+
+    def mangle_member(self, name: str) -> str:
+        """Return the C member spelling for a source field or variant.
+
+        Args:
+            name: The original Dea identifier.
+
+        Returns:
+            A C member name distinct from every other source member's spelling.
+        """
+        reserved = name.startswith("__") or (name.startswith("_") and name[1:2].isupper())
+        if (reserved or name in self.C_KEYWORDS or name in _C_MEMBER_MACROS
+                or name.startswith(("dea_field_", "L0_", "DEA_"))):
+            return "dea_field_" + name
+        return name
 
     def mangle_identifier(self, name: str) -> str:
         """Mangle an identifier if it conflicts with C keywords or L0 names.

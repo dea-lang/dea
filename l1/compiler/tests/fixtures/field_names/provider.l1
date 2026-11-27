@@ -1,0 +1,28 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module provider;
+
+export Box, Item, Limits, limits, seed, make_box;
+
+struct Box {
+    sizeof: int;
+    dea_field_sizeof: int;
+    ord: int;
+    errno: string;
+}
+
+enum Item {
+    switch(sizeof: string, dea_field_sizeof: int);
+    dea_field_switch;
+}
+
+struct Limits { EOF: int; _Bool: int; EPIPE: int; _count: int; }
+let limits: Limits = Limits(17, 19, 13, 11);
+let seed: Item = switch("static", 23);
+
+func make_box(text: string) -> Box {
+    return Box(2, 5, 7, text);
+}

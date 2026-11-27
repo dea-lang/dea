@@ -53,6 +53,65 @@ func cem_is_c_keyword(name: string) -> bool {
 }
 
 /**
+ * Encode a source field or variant used as a C aggregate member.
+ *
+ * @param name Original Dea identifier.
+ * @return Collision-free C member spelling shared by declarations and uses.
+ */
+func cem_mangle_member(name: string) -> string {
+    if (starts_with_s(name, "dea_field_") || starts_with_s(name, "L0_") || starts_with_s(name, "DEA_") ||
+        starts_with_s(name, "__") || cem_is_c_keyword(name)) {
+        return "dea_field_" + name;
+    }
+    if (starts_with_s(name, "_") && len_s(name) > 1) {
+        let c = char_at_s(name, 1);
+        if (c >= 'A' && c <= 'Z') return "dea_field_" + name;
+    }
+    // Object-like macros from the headers included by the L0 and L1 runtimes.
+    if (name == "errno" || name == "stdin" || name == "stdout" || name == "stderr" ||
+        name == "st_atime" || name == "st_mtime" || name == "st_ctime" || name == "st_birthtime" ||
+        name == "sa_handler" || name == "sa_sigaction" || name == "ru_first" || name == "ru_last" ||
+        name == "sv_onstack" || name == "w_coredump" || name == "w_retcode" || name == "w_stopsig" ||
+        name == "w_stopval" || name == "w_termsig" ||
+        name == "EOF" || name == "BUFSIZ" || name == "FOPEN_MAX" || name == "FILENAME_MAX" ||
+        name == "L_tmpnam" || name == "TMP_MAX" || name == "SEEK_SET" || name == "SEEK_CUR" ||
+        name == "SEEK_END" ||
+        name == "EXIT_SUCCESS" || name == "EXIT_FAILURE" || name == "RAND_MAX" || name == "MB_CUR_MAX" ||
+        name == "CLOCKS_PER_SEC" || name == "TIME_UTC" ||
+        name == "CHAR_BIT" || name == "CHAR_MIN" || name == "CHAR_MAX" || name == "SCHAR_MIN" ||
+        name == "SCHAR_MAX" || name == "UCHAR_MAX" || name == "SHRT_MIN" || name == "SHRT_MAX" ||
+        name == "USHRT_MAX" ||
+        name == "INT_MIN" || name == "INT_MAX" || name == "UINT_MAX" || name == "LONG_MIN" ||
+        name == "LONG_MAX" || name == "ULONG_MAX" || name == "LLONG_MIN" || name == "LLONG_MAX" ||
+        name == "ULLONG_MAX" ||
+        name == "INT8_MIN" || name == "INT8_MAX" || name == "UINT8_MAX" || name == "INT16_MIN" ||
+        name == "INT16_MAX" || name == "UINT16_MAX" || name == "INT32_MIN" || name == "INT32_MAX" ||
+        name == "UINT32_MAX" || name == "INT64_MIN" || name == "INT64_MAX" || name == "UINT64_MAX" ||
+        name == "INTPTR_MIN" || name == "INTPTR_MAX" || name == "UINTPTR_MAX" || name == "SIZE_MAX" ||
+        name == "PTRDIFF_MIN" || name == "PTRDIFF_MAX" || name == "INTMAX_MIN" || name == "INTMAX_MAX" ||
+        name == "UINTMAX_MAX" || name == "WCHAR_MIN" || name == "WCHAR_MAX" || name == "WINT_MIN" ||
+        name == "WINT_MAX" || name == "SIG_ATOMIC_MIN" || name == "SIG_ATOMIC_MAX" ||
+        name == "EACCES" || name == "EAGAIN" || name == "EBADF" || name == "EBUSY" || name == "EDOM" ||
+        name == "EDQUOT" || name == "EEXIST" || name == "EFAULT" || name == "EFBIG" || name == "EILSEQ" ||
+        name == "EINTR" || name == "EINVAL" || name == "EIO" || name == "EISDIR" || name == "ELOOP" ||
+        name == "EMFILE" || name == "ENAMETOOLONG" || name == "ENFILE" || name == "ENOBUFS" ||
+        name == "ENOENT" || name == "ENOMEM" || name == "ENOSPC" || name == "ENOSYS" || name == "ENOTDIR" ||
+        name == "ENOTEMPTY" || name == "ENOTSUP" || name == "ENXIO" || name == "EOPNOTSUPP" ||
+        name == "EPERM" || name == "EPIPE" || name == "ERANGE" || name == "EROFS" || name == "ESPIPE" ||
+        name == "ETIMEDOUT" || name == "EWOULDBLOCK" ||
+        name == "NAN" || name == "INFINITY" || name == "HUGE_VAL" || name == "HUGE_VALF" ||
+        name == "HUGE_VALL" || name == "math_errhandling" || name == "FLT_MAX" || name == "DBL_MAX" ||
+        name == "LDBL_MAX" || name == "FLT_MIN" || name == "DBL_MIN" || name == "LDBL_MIN" ||
+        name == "FLT_EPSILON" || name == "DBL_EPSILON" || name == "LDBL_EPSILON" ||
+        name == "F_OK" || name == "R_OK" || name == "W_OK" || name == "X_OK" || name == "STDIN_FILENO" ||
+        name == "STDOUT_FILENO" || name == "STDERR_FILENO" || name == "PATH_MAX" ||
+        name == "SIPHASH_IMPLEMENTATION") {
+        return "dea_field_" + name;
+    }
+    return name;
+}
+
+/**
  * Replace dots with underscores for C symbol names.
  *
  * @param module_name Module name to sanitize.

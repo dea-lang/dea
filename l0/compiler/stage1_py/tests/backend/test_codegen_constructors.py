@@ -7,6 +7,8 @@ Tests both type checking and code generation for constructor expressions.
 #  SPDX-License-Identifier: MIT OR Apache-2.0
 #  Copyright (c) 2026 gwz
 
+from pathlib import Path
+
 from conftest import has_error_code
 from l0_ast import FuncDecl, LetStmt
 from l0_types import StructType, EnumType
@@ -729,3 +731,15 @@ def test_field_access_on_non_struct(analyze_single):
 
     assert result.has_errors()
     assert has_error_code(result.diagnostics, "TYP-0222")
+
+
+def test_c_member_spelling(codegen_single):
+    """Check readable members, escaped collisions and the existing top-level let spelling."""
+    fixture = Path(__file__).resolve().parents[4] / "tests/fixtures/field_names/main.l0"
+    c_code, diagnostics = codegen_single("main", fixture.read_text(encoding="utf-8"))
+    assert c_code is not None, diagnostics
+    for declaration in ("l0_int dea_field_sizeof;", "l0_int dea_field_dea_field_sizeof;", "l0_int ord;",
+                        "l0_string dea_field_errno;", "l0_int dea_field_EOF;", "l0_int dea_field__Bool;",
+                        "l0_int dea_field_EPIPE;", "l0_int _count;"):
+        assert declaration in c_code
+    assert "l0_main_errno" in c_code

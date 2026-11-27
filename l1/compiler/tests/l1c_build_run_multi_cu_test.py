@@ -448,6 +448,21 @@ def check_wildcard_fallbacks(compiler: Path, cc: str, env: dict[str, str], root:
             require_status(executed, 0, name)
 
 
+def check_field_names(compiler: Path, cc: str, env: dict[str, str], root: Path) -> None:
+    """Compile a provider, then build and run its consumer using only the interface and object."""
+    fixtures = SEPARATE_FIXTURES.parent / "field_names"
+    artifacts = root / "field-artifacts"
+    compile_module(compiler, cc, env, fixtures, artifacts, "provider")
+    consumer = root / "field-consumer"
+    consumer.mkdir()
+    shutil.copyfile(fixtures / "main.l1", consumer / "main.l1")
+    result = run(
+        compiler_command(compiler, cc, "--run", consumer, "main", "--interface-path", artifacts),
+        cwd=root, env=env,
+    )
+    require_status(result, 0, "field names through a compiled provider interface")
+
+
 def main() -> int:
     """Run the multi-CU build/run regression matrix."""
 
@@ -462,6 +477,7 @@ def main() -> int:
         env.pop("TEMP", None)
         env.pop("TMP", None)
 
+        check_field_names(compiler, cc, env, root)
         check_explicit_entry(compiler, cc, env, root)
         check_wildcard_fallbacks(compiler, cc, env, root)
 

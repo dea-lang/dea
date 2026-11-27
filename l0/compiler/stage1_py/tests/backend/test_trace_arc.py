@@ -105,6 +105,11 @@ def _run_balanced_fixture(fixture, analyze_single, compile_and_run, tmp_path):
     return stdout, stderr
 
 
+def test_c_field_name_copy_and_drop(analyze_single, compile_and_run, tmp_path):
+    fixture = Path(__file__).resolve().parents[4] / "tests/fixtures/field_names/main.l0"
+    _run_balanced_fixture(fixture, analyze_single, compile_and_run, tmp_path)
+
+
 def test_trace_arc_comparison_temporary_cleanup(analyze_single, compile_and_run, tmp_path):
     """Comparison operands must preserve semantics and free every owned payload."""
     fixture = Path(__file__).resolve().parents[3] / "stage2_l0/tests/fixtures/arc_comparisons/main.l0"

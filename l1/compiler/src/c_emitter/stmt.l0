@@ -8,6 +8,7 @@ module c_emitter.stmt;
 import std.text;
 import std.vector;
 import types;
+import c_emitter.abi;
 import c_emitter.expr;
 import c_emitter.state;
 import c_emitter.types;
@@ -322,7 +323,7 @@ func cem_emit_struct_init_from_fields(self: CEmitter*, c_temp_name: string, base
                 sb_append(sb, ", ");
             }
             sb_append(sb, ".");
-            sb_append(sb, sv_get(field_inits, i));
+            sb_append(sb, cem_mangle_member(sv_get(field_inits, i)));
             sb_append(sb, " = ");
             sb_append(sb, sv_get(field_inits, i + 1));
         }
@@ -351,14 +352,14 @@ func cem_emit_enum_variant_init(self: CEmitter*, c_temp_name: string, enum_type:
         sb_append(sb, ".tag = ");
         sb_append(sb, tag_value);
         sb_append(sb, ", .data = { .");
-        sb_append(sb, variant_name);
+        sb_append(sb, cem_mangle_member(variant_name));
         sb_append(sb, " = { ");
         for (let i = 0; i < sv_size(payload_inits); i = i + 2) {
             if (i > 0) {
                 sb_append(sb, ", ");
             }
             sb_append(sb, ".");
-            sb_append(sb, sv_get(payload_inits, i));
+            sb_append(sb, cem_mangle_member(sv_get(payload_inits, i)));
             sb_append(sb, " = ");
             sb_append(sb, sv_get(payload_inits, i + 1));
         }

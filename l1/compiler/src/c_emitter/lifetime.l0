@@ -238,7 +238,7 @@ func cem_emit_struct_cleanup(self: CEmitter*, c_ptr_expr: string, struct_type: T
     ccb_indent(self.out);
     for (let i = 0; i < vec_size((info as StructInfo*).fields); i = i + 1) {
         let field = ptr_vec_get((info as StructInfo*).fields, i) as StructFieldInfo*;
-        cem_emit_value_cleanup(self, c_ptr_expr + "->" + field.name, field.field_type);
+        cem_emit_value_cleanup(self, cem_emit_field_lvalue(c_ptr_expr, field.name, true), field.field_type);
     }
     ccb_dedent(self.out);
     ccb_emit(self.out, "}");
@@ -281,8 +281,8 @@ func cem_emit_enum_cleanup(self: CEmitter*, c_ptr_expr: string, enum_type: Type*
         ccb_indent(self.out);
         for (let cleanup_j = 0; cleanup_j < vec_size(info2.field_types); cleanup_j = cleanup_j + 1) {
             let field_ty = ptr_vec_get(info2.field_types, cleanup_j) as Type*;
-            cem_emit_value_cleanup(self, c_ptr_expr + "->data." + info2.name + "." +
-                sv_get(info2.field_names, cleanup_j), field_ty);
+            cem_emit_value_cleanup(self, c_ptr_expr + "->data." + cem_mangle_member(info2.name) + "." +
+                cem_mangle_member(sv_get(info2.field_names, cleanup_j)), field_ty);
         }
         cem_emit_exit_switch(self);
         ccb_dedent(self.out);

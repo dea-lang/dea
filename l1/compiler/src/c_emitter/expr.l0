@@ -665,9 +665,9 @@ func cem_emit_function_call(c_func_name: string, c_args: string) -> string {
  */
 func cem_emit_field_access(c_obj: string, field_name: string, is_pointer: bool) -> string {
     if (is_pointer) {
-        return "(" + c_obj + ")->" + field_name;
+        return "(" + c_obj + ")->" + cem_mangle_member(field_name);
     }
-    return "(" + c_obj + ")." + field_name;
+    return "(" + c_obj + ")." + cem_mangle_member(field_name);
 }
 
 /**
@@ -935,7 +935,7 @@ func cem_emit_enum_tag_access(c_expr: string) -> string {
  * @return Member-access expression.
  */
 func cem_emit_enum_payload_field_access(c_expr: string, variant: string, field: string) -> string {
-    return "(" + c_expr + ").data." + variant + "." + field;
+    return "(" + c_expr + ").data." + cem_mangle_member(variant) + "." + cem_mangle_member(field);
 }
 
 /**
@@ -1053,9 +1053,9 @@ func cem_emit_deref_lvalue(ptr_expr: string) -> string {
  */
 func cem_emit_field_lvalue(obj: string, field: string, is_pointer: bool) -> string {
     if (is_pointer) {
-        return obj + "->" + field;
+        return obj + "->" + cem_mangle_member(field);
     }
-    return obj + "." + field;
+    return obj + "." + cem_mangle_member(field);
 }
 
 /**
@@ -1090,7 +1090,7 @@ func cem_emit_struct_constructor(c_struct_name: string, field_inits: StringVecto
                 sb_append(sb, ", ");
             }
             sb_append(sb, ".");
-            sb_append(sb, sv_get(field_inits, i));
+            sb_append(sb, cem_mangle_member(sv_get(field_inits, i)));
             sb_append(sb, " = ");
             sb_append(sb, sv_get(field_inits, i + 1));
         }
@@ -1117,7 +1117,7 @@ func cem_emit_struct_static_initializer(field_inits: StringVector*) -> string {
                 sb_append(sb, ", ");
             }
             sb_append(sb, ".");
-            sb_append(sb, sv_get(field_inits, i));
+            sb_append(sb, cem_mangle_member(sv_get(field_inits, i)));
             sb_append(sb, " = ");
             sb_append(sb, sv_get(field_inits, i + 1));
         }
@@ -1169,14 +1169,14 @@ func cem_emit_variant_constructor(c_enum_name: string, variant_name: string, tag
         sb_append(sb, "){ .tag = ");
         sb_append(sb, tag_value);
         sb_append(sb, ", .data = { .");
-        sb_append(sb, variant_name);
+        sb_append(sb, cem_mangle_member(variant_name));
         sb_append(sb, " = { ");
         for (let i = 0; i < sv_size(payload_inits); i = i + 2) {
             if (i > 0) {
                 sb_append(sb, ", ");
             }
             sb_append(sb, ".");
-            sb_append(sb, sv_get(payload_inits, i));
+            sb_append(sb, cem_mangle_member(sv_get(payload_inits, i)));
             sb_append(sb, " = ");
             sb_append(sb, sv_get(payload_inits, i + 1));
         }
@@ -1203,14 +1203,14 @@ func cem_emit_variant_static_initializer(variant_name: string, tag_value: string
         sb_append(sb, "{ .tag = ");
         sb_append(sb, tag_value);
         sb_append(sb, ", .data = { .");
-        sb_append(sb, variant_name);
+        sb_append(sb, cem_mangle_member(variant_name));
         sb_append(sb, " = { ");
         for (let i = 0; i < sv_size(payload_inits); i = i + 2) {
             if (i > 0) {
                 sb_append(sb, ", ");
             }
             sb_append(sb, ".");
-            sb_append(sb, sv_get(payload_inits, i));
+            sb_append(sb, cem_mangle_member(sv_get(payload_inits, i)));
             sb_append(sb, " = ");
             sb_append(sb, sv_get(payload_inits, i + 1));
         }

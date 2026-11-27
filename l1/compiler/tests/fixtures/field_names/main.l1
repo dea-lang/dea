@@ -1,0 +1,38 @@
+/*
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ * Copyright (c) 2026 gwz
+ */
+
+module main;
+
+import std.string;
+import Box, Item, limits, seed, make_box, switch, dea_field_switch from provider;
+
+func check_item(item: Item, expected: string, number: int) -> bool {
+    match (item) {
+        switch(text, n) => { return text == expected && n == number; }
+        dea_field_switch => { return false; }
+    }
+}
+
+func main() -> int {
+    if (limits.EOF != 17 || limits._Bool != 19 || limits.EPIPE != 13 || limits._count != 11) return 1;
+    if (!check_item(seed, "static", 23)) return 2;
+    let b = make_box(concat_s("ow", "ned"));
+    b.sizeof = b.sizeof + 1;
+    let p = new Box(errno: b.errno, ord: b.ord, dea_field_sizeof: b.dea_field_sizeof, sizeof: b.sizeof);
+    p.dea_field_sizeof = p.dea_field_sizeof + 6;
+    p.sizeof = p.sizeof + 1;
+    let saved = *p;
+    drop p;
+    if (saved.sizeof != 4 || saved.dea_field_sizeof != 11 || saved.ord != 7) return 3;
+    if (b.sizeof != 3 || b.dea_field_sizeof != 5 || saved.errno != "owned") return 4;
+
+    let dynamic = switch(concat_s(saved.errno, "!"), 29);
+    let q = new switch(concat_s("se", "cond"), 31);
+    let copied = *q;
+    drop q;
+    if (!check_item(dynamic, "owned!", 29) || !check_item(copied, "second", 31)) return 5;
+    if (check_item(dea_field_switch, "static", 23)) return 6;
+    return 0;
+}

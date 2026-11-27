@@ -24,7 +24,7 @@
 - Related:
   - [l0/docs/decisions/0012-name-disambiguation.md](../../../../docs/decisions/0012-name-disambiguation.md)
   - [l0/docs/decisions/0028-module-scope-intrinsic-names.md](../../../../docs/decisions/0028-module-scope-intrinsic-names.md)
-  - [work/plans/bug-fixes/2026-11-26-shared-c-field-name-emission-noref.md](../../../../../work/plans/bug-fixes/2026-11-26-shared-c-field-name-emission-noref.md)
+  - [work/plans/bug-fixes/closed/2026-11-26-shared-c-field-name-emission-noref.md](../../../../../work/plans/bug-fixes/closed/2026-11-26-shared-c-field-name-emission-noref.md)
 
 ## Summary
 

@@ -211,6 +211,7 @@ class CValues:
         Returns:
             C field access expression string.
         """
+        field_name = self.names.mangle_member(field_name)
         if is_pointer:
             return f"({c_obj})->{field_name}"
         else:
@@ -358,7 +359,7 @@ class CValues:
 
     def emit_enum_payload_field_access(self, c_expr: str, variant: str, field: str) -> str:
         """Emit C code for reading a field from an enum payload."""
-        return f"({c_expr}).data.{variant}.{field}"
+        return f"({c_expr}).data.{self.names.mangle_member(variant)}.{self.names.mangle_member(field)}"
 
     def emit_string_equals_call(self, lhs: str, rhs: str) -> str:
         """Emit the runtime string-equality helper call."""
@@ -386,6 +387,7 @@ class CValues:
 
     def emit_field_lvalue(self, obj: str, field: str, is_pointer: bool) -> str:
         """Emit C code for a field access lvalue."""
+        field = self.names.mangle_member(field)
         return f"{obj}->{field}" if is_pointer else f"{obj}.{field}"
 
     def emit_index_lvalue(self, base: str, index: str) -> str:
@@ -405,7 +407,7 @@ class CValues:
         if not field_inits:
             return f"(struct {c_struct_name}){{ 0 }}"
 
-        inits_str = ", ".join(f".{name} = {value}" for name, value in field_inits)
+        inits_str = ", ".join(f".{self.names.mangle_member(name)} = {value}" for name, value in field_inits)
         return f"(struct {c_struct_name}){{ {inits_str} }}"
 
     def emit_struct_static_initializer(self, field_inits: list[tuple[str, str]]) -> str:
@@ -414,7 +416,7 @@ class CValues:
         if not field_inits:
             return "{ 0 }"
 
-        inits_str = ", ".join(f".{name} = {value}" for name, value in field_inits)
+        inits_str = ", ".join(f".{self.names.mangle_member(name)} = {value}" for name, value in field_inits)
         return f"{{ {inits_str} }}"
 
     def emit_struct_constructor_for_type(self, struct_type: StructType, field_inits: list[tuple[str, str]]) -> str:
@@ -453,8 +455,9 @@ class CValues:
         if not payload_inits:
             return f"(struct {c_enum_name}){{ .tag = {tag_value} }}"
 
-        payload_str = ", ".join(f".{name} = {value}" for name, value in payload_inits)
-        return f"(struct {c_enum_name}){{ .tag = {tag_value}, .data = {{ .{variant_name} = {{ {payload_str} }} }} }}"
+        member = self.names.mangle_member(variant_name)
+        payload_str = ", ".join(f".{self.names.mangle_member(name)} = {value}" for name, value in payload_inits)
+        return f"(struct {c_enum_name}){{ .tag = {tag_value}, .data = {{ .{member} = {{ {payload_str} }} }} }}"
 
     def emit_variant_static_initializer(
             self,
@@ -467,8 +470,9 @@ class CValues:
         if not payload_inits:
             return f"{{ .tag = {tag_value} }}"
 
-        payload_str = ", ".join(f".{name} = {value}" for name, value in payload_inits)
-        return f"{{ .tag = {tag_value}, .data = {{ .{variant_name} = {{ {payload_str} }} }} }}"
+        member = self.names.mangle_member(variant_name)
+        payload_str = ", ".join(f".{self.names.mangle_member(name)} = {value}" for name, value in payload_inits)
+        return f"{{ .tag = {tag_value}, .data = {{ .{member} = {{ {payload_str} }} }} }}"
 
     def emit_variant_constructor_for_type(
             self,
